@@ -24,10 +24,8 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
     ("/info", fun () -> new Info.handler) ;
   ]
 
+  (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
   let dispatch request body =
-    (* Route dispatch. If it returns [None], the URI path did not
-     * match any pattern. Then, the server should return a
-     * 404 [`Not_found]. *)
     let now () = Ptime.v (Clock.now_d_ps ()) in
     let start = now () in
     Access_log.info (fun m -> m "request %s %s"
@@ -52,7 +50,7 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
                          (Astring.String.concat ~sep:", " path)) ;
     Http.respond ~headers ~body ~status ()
 
-  (* Redirect to same address in https *)
+  (* Redirect to https *)
   let redirect port request _body =
     let uri = Cohttp.Request.uri request in
     let new_uri = Uri.with_scheme uri (Some "https") in
