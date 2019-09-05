@@ -17,11 +17,13 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
   module Wm = Webmachine.Make(Lwt)(WmClock)
 
   module Info = Handler_info.Make(Wm)
+  module Health = Handler_health.Make(Wm)
   module Users = Handler_users.Make(Wm)
 
   let routes now = [
-    ("/users/:id", fun () -> new Users.handler now) ;
     ("/info", fun () -> new Info.handler) ;
+    ("/health/:ep", fun () -> new Health.handler) ;
+    ("/users/:id", fun () -> new Users.handler now) ;
   ]
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
