@@ -11,7 +11,7 @@ module Make (Wm : Webmachine.S) = struct
         | "state", state -> 
             let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
             Ok (`String json)
-        | _, _ -> Error `Payment_required
+        | _, _ -> Error `Precondition_failed
       in
       match result with
       | Ok body -> Wm.continue body rd
