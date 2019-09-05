@@ -12,9 +12,8 @@ struct
   module Webserver = Server.Make(R)(Pclock)(Http)
 
   let tls_init kv =
-    X509.certificate kv `Default >>= fun cert ->
-    let conf = Tls.Config.server ~certificates:(`Single cert) () in
-    Lwt.return conf
+    X509.certificate kv `Default >|= fun cert ->
+    Tls.Config.server ~certificates:(`Single cert) ()
 
   let start _random _clock _assets server_keys http =
     tls_init server_keys >>= fun cfg ->

@@ -1,5 +1,4 @@
 open Lwt.Infix
-open Webmachine.Rd
 
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
@@ -17,54 +16,17 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
 
   module Wm = Webmachine.Make(Lwt)(WmClock)
 
-  class user _now = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
-
-    method private requested_user rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Error `Bad_request
-      | Some x -> (*if not (sane x) then Error `Bad_request else*) Ok x
-
-    method private requested_password rd =
-      match Uri.get_query_param rd.uri "password" with
-      | None -> Error `Bad_request
-      | Some x -> Ok x
-
-    method! allowed_methods rd =
-      Wm.continue [`PUT; `OPTIONS; `DELETE ] rd
-
-    method! known_methods rd =
-      Wm.continue [`PUT; `OPTIONS; `DELETE ] rd
-
-    method private create_user rd = 
-      Wm.continue true rd
-
-    method! delete_resource rd =
-      Wm.continue true rd
-
-    method content_types_provided rd =
-      Wm.continue [ ("*/*", Wm.continue `Empty) ] rd
-
-    method content_types_accepted rd =
-      Wm.continue [
-        ("application/octet-stream", self#create_user)
-      ] rd
-
-    method! is_authorized rd =
-      Wm.continue `Authorized rd
-
-    method! forbidden rd =
-      Wm.continue false rd
-  end
-
+  module Info = Handler_info.Make(Wm)
+  module Users = Handler_users.Make(Wm)
 
   let routes now = [
-    ("/users/:id", fun () -> new user now) ;
+    ("/users/:id", fun () -> new Users.handler now) ;
+    ("/info", fun () -> new Info.handler) ;
   ]
 
   let dispatch request body =
-    (* Perform route dispatch. If [None] is returned, then the URI path did not
-     * match any of the route patterns. In this case the server should return a
+    (* Route dispatch. If it returns [None], the URI path did not
+     * match any pattern. Then, the server should return a
      * 404 [`Not_found]. *)
     let now () = Ptime.v (Clock.now_d_ps ()) in
     let start = now () in
@@ -101,12 +63,12 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
     let headers = Cohttp.Header.init_with "location" (Uri.to_string new_uri) in
     Http.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
 
-  let serve dispatch =
+  let serve cb =
     let callback (_, cid) request body =
       let uri = Cohttp.Request.uri request in
       let cid = Cohttp.Connection.to_string cid in
       Logs.info (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
-      dispatch request body
+      cb request body
     in
     let conn_closed (_,cid) =
       let cid = Cohttp.Connection.to_string cid in
