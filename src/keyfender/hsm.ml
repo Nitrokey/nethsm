@@ -15,13 +15,15 @@ let state_to_yojson state =
 
 type t = {
   info : info ;
-  state : state ;
+  mutable state : state ;
 }
 
 let make = { 
   info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
-  state = `Operational ;
+  state = `Unprovisioned ;
 }
 
 let info t = t.info
 let state t = t.state
+
+let provision t ~unlock ~admin time = t.state <- `Operational 

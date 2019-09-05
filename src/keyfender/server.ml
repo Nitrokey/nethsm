@@ -3,7 +3,7 @@ open Lwt.Infix
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-let hsm_state = ref Hsm.make
+let hsm_state = Hsm.make
 
 module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) = struct
 
@@ -20,11 +20,13 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
 
   module Info = Handler_info.Make(Wm)
   module Health = Handler_health.Make(Wm)
+  module Provision = Handler_provision.Make(Wm)
   module Users = Handler_users.Make(Wm)
 
   let routes now = [
-    ("/info", fun () -> new Info.handler !hsm_state) ;
-    ("/health/:ep", fun () -> new Health.handler !hsm_state) ;
+    ("/info", fun () -> new Info.handler hsm_state) ;
+    ("/health/:ep", fun () -> new Health.handler hsm_state) ;
+    ("/provision", fun () -> new Provision.handler hsm_state) ;
     ("/users/:id", fun () -> new Users.handler now) ;
   ]
 
