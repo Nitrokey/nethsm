@@ -21,12 +21,14 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
   module Info = Handler_info.Make(Wm)
   module Health = Handler_health.Make(Wm)
   module Provision = Handler_provision.Make(Wm)
+  module System = Handler_system.Make(Wm)
   module Users = Handler_users.Make(Wm)
 
   let routes now = [
     ("/info", fun () -> new Info.handler hsm_state) ;
     ("/health/:ep", fun () -> new Health.handler hsm_state) ;
     ("/provision", fun () -> new Provision.handler hsm_state) ;
+    ("/system/:ep", fun () -> new System.handler hsm_state) ;
     ("/users/:id", fun () -> new Users.handler now) ;
   ]
 
