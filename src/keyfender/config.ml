@@ -21,12 +21,12 @@ let https_port =
 
 let main =
   let packages = [
-    package "uri"; package "magic-mime"
+    package "uri"; package "magic-mime"; package "webmachine"
   ] in
   let keys = List.map Key.abstract [ http_port; https_port ] in
   foreign
     ~packages ~keys
-    "Unikernel.Main" (pclock @-> kv_ro @-> kv_ro @-> http @-> job)
+    "Unikernel.Main" (random @-> pclock @-> kv_ro @-> kv_ro @-> http @-> job)
 
 let () =
-  register "keyfender" [main $ default_posix_clock $ data $ certs $ https_srv]
+  register "keyfender" [main $ default_random $ default_posix_clock $ data $ certs $ https_srv]
