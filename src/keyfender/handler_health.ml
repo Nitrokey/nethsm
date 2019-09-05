@@ -1,15 +1,15 @@
 module Make (Wm : Webmachine.S) = struct
-  class handler = object(self)
+  class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private to_json rd =
       let result = match Webmachine.Rd.lookup_path_info "ep" rd with
       | None -> Error `Bad_request
-      | Some ep -> match ep, Backend.state with
+      | Some ep -> match ep, Hsm.state hsm_state with
         | "alive", (`Locked | `Unprovisioned) -> Ok `Empty
         | "ready", `Operational -> Ok `Empty
         | "state", state -> 
-            let json = Yojson.Safe.to_string (Backend.state_to_yojson state) in
+            let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
             Ok (`String json)
         | _, _ -> Error `Payment_required
       in

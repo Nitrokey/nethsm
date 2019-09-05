@@ -1,10 +1,10 @@
 module Make (Wm : Webmachine.S) = struct
-  class handler = object(self)
+  class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private to_json rd =
-      let open Backend in
-      let json = Yojson.Safe.to_string (info_to_yojson info) in
+      let open Hsm in
+      let json = Yojson.Safe.to_string (info_to_yojson @@ info hsm_state) in
       Wm.continue (`String json) rd
 
     method content_types_provided rd =
