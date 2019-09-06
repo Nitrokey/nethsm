@@ -30,7 +30,7 @@ type t = {
   users : users ;
 }
 
-let make = { 
+let make () = { 
   info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
   system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
   state = `Unprovisioned ;

@@ -10,7 +10,7 @@ let nonempty s =
 let try_parse_json content = 
   try 
     Ok (Yojson.Safe.from_string content)
-  with Yojson.Safe.Finally _ -> Error `Bad_request
+  with _ -> Error `Bad_request
 
 let parse_req_body json =
   Rresult.R.reword_error (fun _ -> `Bad_request) @@ req_body_of_yojson json

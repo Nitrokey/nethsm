@@ -3,7 +3,7 @@ open Lwt.Infix
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-let hsm_state = Hsm.make
+let hsm_state = Hsm.make ()
 
 module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) = struct
 
