@@ -28,6 +28,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) = struct
       | Some "restore" -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
+    (* we use this not for the service, but to check the internal state before processing requests *)
+    method! service_available rd =
+      if Access.is_in_state hsm_state `Operational
+      then Wm.continue true rd
+      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
     method! is_authorized rd =
       let auth, rd' = Access.is_authorized hsm_state rd in
       Wm.continue auth rd'

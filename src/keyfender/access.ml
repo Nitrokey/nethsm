@@ -35,6 +35,9 @@ let is_authorized hsm_state rd =
       Logs.warn (fun m -> m "is_authorized failed with header value %s and message %s" auth msg);
       (`Basic "invalid authorization"), rd
 
+let is_in_state hsm_state state =
+  Hsm.state hsm_state = state
+
 let forbidden hsm_state role rd =
   let user = get_user rd.Webmachine.Rd.req_headers in
   let granted = Hsm.is_authorized hsm_state user role in
