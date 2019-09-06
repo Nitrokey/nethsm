@@ -5,7 +5,7 @@ module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
 let hsm_state = Hsm.make
 
-module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) = struct
+module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) = struct
 
   module WmClock = struct
     let now () =
@@ -24,13 +24,18 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
   module System = Handler_system.Make(Wm)
   module Users = Handler_users.Make(Wm)
 
-  let routes now = [
+  let routes hsm_state now = [
     ("/info", fun () -> new Info.handler hsm_state) ;
     ("/health/:ep", fun () -> new Health.handler hsm_state) ;
     ("/provision", fun () -> new Provision.handler hsm_state) ;
     ("/system/:ep", fun () -> new System.handler hsm_state) ;
     ("/users/:id", fun () -> new Users.handler now) ;
   ]
+end
+
+module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) = struct
+
+  module Handlers = Make_handlers(R)(Clock)
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
   let dispatch request body =
@@ -41,7 +46,7 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
                         (Cohttp.Request.resource request));
     Access_log.debug (fun m -> m "request headers %s"
                          (Cohttp.Header.to_string (Cohttp.Request.headers request)) );
-    Wm.dispatch' (routes now) ~body ~request
+    Handlers.Wm.dispatch' (Handlers.routes hsm_state now) ~body ~request
     >|= begin function
       | None        -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
       | Some result -> result

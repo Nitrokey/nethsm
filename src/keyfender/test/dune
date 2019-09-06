@@ -1,0 +1,5 @@
+(test
+  (libraries lwt.unix mirage-clock-unix mirage-random-test keyfender oUnit)
+  (modules test_dispatch)
+  (name test_dispatch)
+  (package keyfender))

@@ -9,7 +9,7 @@ module Main
 struct
 
   module X509 = Tls_mirage.X509(Server_keys)(Pclock)
-  module Webserver = Server.Make(R)(Pclock)(Http)
+  module Webserver = Keyfender.Server.Make(R)(Pclock)(Http)
 
   let tls_init kv =
     X509.certificate kv `Default >|= fun cert ->

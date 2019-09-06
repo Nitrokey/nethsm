@@ -21,7 +21,7 @@ let https_port =
 
 let main =
   let packages = [
-    package "uri"; package "magic-mime"; package "webmachine" ; package "yojson" ; package "ppx_deriving_yojson"
+    package "keyfender"; 
   ] in
   let keys = List.map Key.abstract [ http_port; https_port ] in
   foreign
