@@ -30,5 +30,7 @@ depends: [
   "mirage-clock" 
   "mirage-random"
   "ppx_deriving_yojson"
+  "mirage-clock-unix" {with-test}
+  "mirage-random-test" {with-test}
 ]
 synopsis: "Keyfender library"
