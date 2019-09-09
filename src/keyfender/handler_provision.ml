@@ -31,7 +31,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) = struct
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private provision rd =
-      let open Hsm in
       begin
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >|= fun content ->

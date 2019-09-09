@@ -47,7 +47,7 @@ let is_authenticated t ~username ~password =
 let is_authorized t username role =
   List.exists (fun u -> u.name = username && u.role = role) t.users
 
-let provision t ~unlock ~admin time = t.state <- `Operational 
+let provision t ~unlock:_ ~admin:_ _time = t.state <- `Operational 
 
 let reboot () = ()
 let shutdown () = ()

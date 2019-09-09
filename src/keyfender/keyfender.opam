@@ -29,5 +29,6 @@ depends: [
   "yojson" 
   "mirage-clock" 
   "mirage-random"
+  "ppx_deriving_yojson"
 ]
 synopsis: "Keyfender library"
