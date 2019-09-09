@@ -3,3 +3,9 @@
   (modules test_dispatch)
   (name test_dispatch)
   (package keyfender))
+
+(test
+  (libraries keyfender mirage-random-test oUnit)
+  (modules test_crypto)
+  (name test_crypto)
+  (package keyfender))
