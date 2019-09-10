@@ -30,12 +30,12 @@ type t = {
   users : users ;
 }
 
-let make () = { 
+let make () = {
   info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
   system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
   state = `Unprovisioned ;
   (* TODO these are dummies *)
-  users = [ { name = "admin" ; password = "test1" ; role = Administrator } ; 
+  users = [ { name = "admin" ; password = "test1" ; role = Administrator } ;
             { name = "operator" ; password = "test2" ; role = Operator } ] ;
 }
 
@@ -47,7 +47,7 @@ let is_authenticated t ~username ~password =
 let is_authorized t username role =
   List.exists (fun u -> u.name = username && u.role = role) t.users
 
-let provision t ~unlock:_ ~admin:_ _time = t.state <- `Operational 
+let provision t ~unlock:_ ~admin:_ _time = t.state <- `Operational
 
 let reboot () = ()
 let shutdown () = ()

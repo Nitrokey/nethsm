@@ -21,7 +21,11 @@ let decode_json content =
   parse_req_body json >>= fun b ->
   nonempty b.unlockPassphrase >>= fun () ->
   nonempty b.adminPassphrase >>= fun () ->
-  Ptime.of_rfc3339 b.time >>| fun time ->
+  (* since ~sub:true is _not_ passed to of_rfc3339,
+     no trailing bytes (third return value will be String.length b.time) *)
+  Ptime.of_rfc3339 b.time >>= fun (time, off, _) ->
+  (* according to spec, we accept only UTC timestamps! *)
+  (match off with None | Some 0 -> Ok () | _ -> Error `Bad_request) >>| fun () ->
   (b.unlockPassphrase, b.adminPassphrase, time)
 
 
