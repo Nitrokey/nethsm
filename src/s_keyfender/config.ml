@@ -10,10 +10,9 @@ let http_port =
   let doc = Key.Arg.info ~doc:"Listening HTTP port." ["http"] in
   Key.(create "http_port" Arg.(opt int 8080 doc))
 
-let certs_key = Key.(value @@ kv_ro ~group:"certs" ())
 (* some default CAs and self-signed certificates are included in
-   the tls/ directory, but you can replace them with your own. *)
-let certs = generic_kv_ro ~key:certs_key "tls"
+   the tls/ directory. *)
+let certs = direct_kv_rw "tls"
 
 let https_port =
   let doc = Key.Arg.info ~doc:"Listening HTTPS port." ["https"] in
@@ -26,7 +25,7 @@ let main =
   let keys = List.map Key.abstract [ http_port; https_port ] in
   foreign
     ~packages ~keys
-    "Unikernel.Main" (random @-> pclock @-> kv_ro @-> kv_ro @-> http @-> job)
+    "Unikernel.Main" (random @-> pclock @-> kv_ro @-> kv_rw @-> http @-> job)
 
 let () =
   register "keyfender" [main $ default_random $ default_posix_clock $ data $ certs $ https_srv]

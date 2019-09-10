@@ -5,11 +5,12 @@ let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NitroHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
 module Main
-    (R: Mirage_types_lwt.RANDOM) (Pclock: Mirage_types.PCLOCK) (Static_assets: Mirage_types_lwt.KV_RO) (Server_keys: Mirage_types_lwt.KV_RO) (Http: Cohttp_lwt.S.Server) =
+    (R: Mirage_types_lwt.RANDOM) (Pclock: Mirage_types.PCLOCK) (Static_assets: Mirage_types_lwt.KV_RO) (Server_keys: Mirage_types_lwt.KV_RW) (Http: Cohttp_lwt.S.Server) =
 struct
 
+  module Hsm = Keyfender.Hsm.Make(Server_keys)
   module X509 = Tls_mirage.X509(Server_keys)(Pclock)
-  module Webserver = Keyfender.Server.Make(R)(Pclock)(Http)
+  module Webserver = Keyfender.Server.Make(R)(Pclock)(Http)(Hsm)
 
   let tls_init kv =
     X509.certificate kv `Default >|= fun cert ->
@@ -22,9 +23,10 @@ struct
     let http_port = Key_gen.http_port () in
     let tcp = `TCP http_port in
     let open Webserver in
+    let hsm_state = Hsm.make server_keys in
     let https =
       Log.info (fun f -> f "listening on %d/TCP" https_port);
-      http tls @@ serve dispatch
+      http tls @@ serve @@ dispatch hsm_state
     in
     let http =
       Log.info (fun f -> f "listening on %d/TCP" http_port);
