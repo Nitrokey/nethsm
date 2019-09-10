@@ -1,21 +1,32 @@
 open OUnit
 open Cohttp
+open Lwt.Infix
 
-module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)
+module Kv_mem = Mirage_kv_mem.Make(Pclock)
+module Hsm = Keyfender.Hsm.Make(Kv_mem)
+module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
 
 let now () = Ptime.v (Pclock.now_d_ps ())
 
-let request ?(hsm_state = Keyfender.Hsm.make ()) ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
+let kv = Kv_mem.connect ()
+
+let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
+  let hsm_state' = match hsm_state with
+    | None -> Lwt_main.run (Kv_mem.connect () >|= Hsm.make)
+    | Some x -> x
+  in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path () in
   let request = Request.make ~meth ~headers uri in
-  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state now) ~body ~request with
-  | None -> hsm_state, None
-  | Some (status, _, _, _) as r -> Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ; hsm_state, r
+  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' now) ~body ~request with
+  | None -> hsm_state', None
+  | Some (status, _, _, _) as r -> Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ; hsm_state', r
 
 let operational_mock () =
-  let state = Keyfender.Hsm.make () in
-  Keyfender.Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch;
-  state
+  Lwt_main.run (
+    Kv_mem.connect () >|= fun kv ->
+    let state = Hsm.make kv in
+    Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch;
+    state)
 
 let empty () =
   "a request for / will produce no result"
@@ -49,7 +60,7 @@ let health_state_ok () =
   let hsm_state = operational_mock () in
   "a request for /health/state will produce an HTTP 200"
     @? begin match request ~hsm_state "/health/state" with
-       | _, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Hsm.state_to_yojson @@ Keyfender.Hsm.state hsm_state 
+       | _, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.state_to_yojson @@ Hsm.state hsm_state 
        | _ -> false
     end
 
@@ -63,7 +74,7 @@ let provision_ok () =
   let body = `String provision_json in
   "an initial provision request is successful (state transition to operational, HTTP response 204)"
     @? begin match request ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
-       | hsm_state, Some (`No_content, _, _, _) -> Keyfender.Hsm.state hsm_state = `Operational
+       | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
        | _ -> false
     end
 
@@ -71,7 +82,7 @@ let provision_error_malformed_request () =
   let body = `String ("hallo" ^ provision_json) in
   "an initial provision request with invalid json returns a malformed request with 400"
     @? begin match request ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
-       | hsm_state, Some (`Bad_request, _, _, _) -> Keyfender.Hsm.state hsm_state = `Unprovisioned
+       | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Unprovisioned
        | _ -> false
     end
 
@@ -94,7 +105,7 @@ let authorization_header user pass =
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
    @? begin match request ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/info" with
-      | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Hsm.system_info_to_yojson @@ Keyfender.Hsm.system_info hsm_state
+      | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.system_info_to_yojson @@ Hsm.system_info hsm_state
       | _ -> false
    end
 

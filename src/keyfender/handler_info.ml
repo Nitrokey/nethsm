@@ -1,4 +1,4 @@
-module Make (Wm : Webmachine.S) = struct
+module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 

@@ -2,4 +2,4 @@
   (name        keyfender)
   (public_name keyfender)
   (preprocess (pps ppx_deriving_yojson))
-  (libraries astring logs lwt ptime cohttp rresult nocrypto webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf))
+  (libraries astring logs lwt ptime cohttp rresult nocrypto webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf mirage-kv-lwt))

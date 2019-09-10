@@ -3,9 +3,7 @@ open Lwt.Infix
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-let hsm_state = Hsm.make ()
-
-module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) = struct
+module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : Hsm.S) = struct
 
   module WmClock = struct
     let now () =
@@ -18,10 +16,10 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) = struc
 
   module Wm = Webmachine.Make(Lwt)(WmClock)
 
-  module Info = Handler_info.Make(Wm)
-  module Health = Handler_health.Make(Wm)
-  module Provision = Handler_provision.Make(Wm)
-  module System = Handler_system.Make(Wm)
+  module Info = Handler_info.Make(Wm)(Hsm)
+  module Health = Handler_health.Make(Wm)(Hsm)
+  module Provision = Handler_provision.Make(Wm)(Hsm)
+  module System = Handler_system.Make(Wm)(Hsm)
   module Users = Handler_users.Make(Wm)
 
   let routes hsm_state now = [
@@ -33,12 +31,12 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) = struc
   ]
 end
 
-module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) = struct
+module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
 
-  module Handlers = Make_handlers(R)(Clock)
+  module Handlers = Make_handlers(R)(Clock)(Hsm)
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
-  let dispatch request body =
+  let dispatch hsm_state request body =
     let now () = Ptime.v (Clock.now_d_ps ()) in
     let start = now () in
     Access_log.info (fun m -> m "request %s %s"

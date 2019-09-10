@@ -29,7 +29,9 @@ let decode_json content =
   (b.unlockPassphrase, b.adminPassphrase, time)
 
 
-module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) = struct
+module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
+
+  module Access = Access.Make(Hsm)
 
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
