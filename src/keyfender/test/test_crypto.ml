@@ -31,8 +31,8 @@ let basic_enc_dec_fail_too_small () =
   | Error _ -> true (* expecting the data too small message *)
 
 let unlock_key passphrase =
-  let salt = "ABCDEF" in
-  Keyfender.Crypto.unlock_key_of_passphrase ~salt passphrase
+  let salt = Cstruct.of_string "ABCDEF" in
+  Keyfender.Crypto.key_of_passphrase ~salt passphrase
 
 let kdf () =
   let passphrase = "einszweidreivier" in

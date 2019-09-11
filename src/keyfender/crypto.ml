@@ -1,15 +1,13 @@
 
 let count = 1000
-let key_len = 16l
+let key_len = 16
 
 module K = Pbkdf.Make(Nocrypto.Hash.SHA256)
 
-let unlock_key_of_passphrase ~salt password =
-  (* results in the key data for the individual stores (authentication, key) *)
+let key_of_passphrase ~salt password =
   K.pbkdf2
     ~password:(Cstruct.of_string password)
-    ~salt:(Cstruct.of_string salt)
-    ~count ~dk_len:key_len
+    ~salt ~count ~dk_len:(Int32.of_int key_len)
 
 module GCM = Nocrypto.Cipher_block.AES.GCM
 

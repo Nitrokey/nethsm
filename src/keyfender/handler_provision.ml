@@ -39,13 +39,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private provision rd =
       begin
         let body = rd.Webmachine.Rd.req_body in
-        Cohttp_lwt.Body.to_string body >|= fun content ->
+        Cohttp_lwt.Body.to_string body >>= fun content ->
         match decode_json content with
-        | Ok (unlock, admin, time) -> Hsm.provision hsm_state ~unlock ~admin time; Ok true
-        | Error _ -> Error `Bad_request
+        | Ok (unlock, admin, time) -> Hsm.provision hsm_state ~unlock ~admin time
+        | Error _ -> Lwt.return (Error `Bad_request)
       end >>= function
-      | Ok body -> Wm.continue body rd
-      | Error status -> Wm.respond (Cohttp.Code.code_of_status status) rd
+      | Ok () -> Wm.continue true rd
+      | Error _ -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) rd
 
     method private noop rd =
       Wm.continue `Empty rd

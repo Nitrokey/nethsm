@@ -42,7 +42,8 @@ module type S = sig
 
   val is_authorized : t -> string -> role -> bool
 
-  val provision : t -> unlock:string -> admin:string -> Ptime.t -> unit
+  val provision : t -> unlock:string -> admin:string -> Ptime.t ->
+    (unit, [> `Msg of string ]) result Lwt.t
 
   val reboot : unit -> unit
 
@@ -56,7 +57,7 @@ open Lwt.Infix
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (KV : Mirage_kv_lwt.RW) = struct
+module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   type info = {
     vendor : string ;
     product : string ;
@@ -86,6 +87,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
   type t = {
     mutable state : state ;
     kv : KV.t ;
+    mutable auth_store_key : Crypto.GCM.key option ;
+    mutable key_store_key : Crypto.GCM.key option ;
     info : info ;
     system_info : system_info ;
     users : users ;
@@ -101,11 +104,23 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
   let write_config t key value =
     KV.set t.kv (Key.add config_key key) value
 
+  let domain_key = Key.v "domain"
+
+  let domain_key_name = function
+    | `Passphrase -> "0"
+
+  let _read_domain_key t key =
+    KV.get t.kv (Key.add domain_key (domain_key_name key))
+
+  let write_domain_key t key value =
+    KV.set t.kv (Key.add domain_key (domain_key_name key)) value
+
   let make kv =
     let t =
       {
         state = `Unprovisioned ;
         kv ;
+        auth_store_key = None ; key_store_key = None ;
         info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
         system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
         (* TODO these are dummies *)
@@ -113,7 +128,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
                   { name = "operator" ; password = "test2" ; role = Operator } ] ;
       }
     in
-    (* if unlock-salt and unlock-iterations is present, go to locked *)
+    (* if unlock-salt is present, go to locked *)
     read_config t "unlock-salt" >|= function
     | Ok _ -> t.state <- `Locked; t
     | Error (`Not_found _) -> t
@@ -189,7 +204,28 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
   let is_authorized t username role =
     List.exists (fun u -> u.name = username && u.role = role) t.users
 
-  let provision t ~unlock:_ ~admin:_ _time = t.state <- `Operational
+  let provision t ~unlock ~admin:_ _time =
+    if t.state <> `Unprovisioned then begin
+      Log.err (fun m -> m "HSM is already provisioned");
+      Lwt.return (Error (`Msg "HSM already provisioned"))
+    end else begin
+      (* TODO we need a lock? (avoid multiple /provision being executed) *)
+      t.state <- `Operational;
+      let unlock_salt = Rng.generate 16 in
+      let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+      let domain_key = Rng.generate (Crypto.key_len * 2) in
+      let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
+      t.auth_store_key <- Some (Crypto.GCM.of_secret auth_store_key);
+      t.key_store_key <- Some (Crypto.GCM.of_secret key_store_key);
+      let enc_domain_key = Crypto.encrypt_domain_key Rng.generate ~unlock_key domain_key in
+      (* TODO handle write errors *)
+      write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
+      write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >|= fun _ ->
+      Ok ()
+      (* TODO:
+         - generate administrator account (another salt, passphrase hash (admin), role (admin), name, id), store in auth_store
+         - compute "time - our_current_idea_of_now", store offset in configuration store *)
+    end
 
   let reboot () = ()
 

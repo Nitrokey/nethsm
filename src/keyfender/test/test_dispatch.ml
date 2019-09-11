@@ -3,7 +3,7 @@ open Cohttp
 open Lwt.Infix
 
 module Kv_mem = Mirage_kv_mem.Make(Pclock)
-module Hsm = Keyfender.Hsm.Make(Kv_mem)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
 
 let now () = Ptime.v (Pclock.now_d_ps ())
@@ -23,8 +23,8 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
 
 let operational_mock () =
   Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.make >|= fun state ->
-    Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch;
+    Kv_mem.connect () >>= Hsm.make >>= fun state ->
+    Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch >|= fun _ ->
     state)
 
 let empty () =

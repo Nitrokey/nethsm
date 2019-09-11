@@ -42,7 +42,8 @@ module type S = sig
 
   val is_authorized : t -> string -> role -> bool
 
-  val provision : t -> unlock:string -> admin:string -> Ptime.t -> unit
+  val provision : t -> unlock:string -> admin:string -> Ptime.t ->
+    (unit, [> `Msg of string ]) result Lwt.t
 
   val reboot : unit -> unit
 
@@ -51,7 +52,7 @@ module type S = sig
   val reset : unit -> unit
 end
 
-module Make (KV : Mirage_kv_lwt.RW) : sig
+module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
   include S
   val make : KV.t -> t Lwt.t
 end
