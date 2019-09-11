@@ -36,6 +36,8 @@ module type S = sig
 
   val state : t -> state
 
+  val certificate : t -> Tls.Config.own_cert Lwt.t
+
   val is_authenticated : t -> username:string -> password:string -> bool
 
   val is_authorized : t -> string -> role -> bool
@@ -51,5 +53,5 @@ end
 
 module Make (KV : Mirage_kv_lwt.RW) : sig
   include S
-  val make : KV.t -> t
+  val make : KV.t -> t Lwt.t
 end

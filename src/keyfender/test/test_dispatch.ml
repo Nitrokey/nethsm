@@ -12,7 +12,7 @@ let kv = Kv_mem.connect ()
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
   let hsm_state' = match hsm_state with
-    | None -> Lwt_main.run (Kv_mem.connect () >|= Hsm.make)
+    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.make)
     | Some x -> x
   in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path () in
@@ -23,8 +23,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
 
 let operational_mock () =
   Lwt_main.run (
-    Kv_mem.connect () >|= fun kv ->
-    let state = Hsm.make kv in
+    Kv_mem.connect () >>= Hsm.make >|= fun state ->
     Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch;
     state)
 
