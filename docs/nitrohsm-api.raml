@@ -1,0 +1,1361 @@
+#%RAML 1.0
+title: NitroHSM
+version: v1
+description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All <a href="https://tools.ietf.org/html/rfc4648#section-4">base64url</a> encoded values are Big Endian.
+baseUri: https://{host}/api/{version}
+baseUriParameters:
+  host:
+    description: NitroHSM hostname or IP address. For TLS certificate validation to succeed this should be the same as the <i>commonName</i> set in <a href="#config_tls_csr_pem_post">/config/tls/csr.pem</a>. In an <i>Unprovisioned</i> state, this is always 192.168.1.1.
+protocols: HTTPS
+mediaType: application/json
+securitySchemes:
+  basic:
+    description: NitroHSM supports Basic Authentication.
+    type: Basic Authentication
+
+types:
+  Passphrase:
+    type: string
+    minLength: 1
+  ID:
+    type: string
+    pattern: ^[a-zA-Z0-9]+$
+    minLength: 1
+    maxLength: 128
+  UserRole:
+    enum: ["Administrator", "Operator", "Metrics", "Backup"]
+  User:
+    type: object
+    properties:
+      realname : string
+      role: UserRole
+      passphrase: Passphrase
+  KeyList:
+    type: array
+    items:
+      type: object
+      properties:
+        key: ID
+  UserList:
+    type: array
+    items:
+      type: object
+      properties:
+        user: ID
+  KeyPurpose:
+    enum: ["Sign", "Decrypt"]
+  KeyAlgorithm:
+    enum: ["RSA"]
+  PrivateKey:
+    type: object
+    properties:
+      purpose: KeyPurpose
+      algorithm: KeyAlgorithm
+      key:
+        properties:
+          primeP: string
+          primeQ: string
+          publicExponent: string
+  PublicKey:
+    type: object
+    properties:
+      purpose: KeyPurpose
+      algorithm: KeyAlgorithm
+      key:
+        properties:
+          modulus: string
+          publicExponent: string
+      operations: integer
+  DistinguishedName:
+    type: object
+    properties:
+      countryName : string # 2 letter code
+      stateOrProvinceName : string # full name
+      localityName : string # city
+      organizationName : string # company
+      organizationalUnitName : string # section
+      commonName : string # fully qualified host name
+      emailAddress : string
+  SystemInformation:
+    type: object
+    properties:
+      vendor: string
+      product: string
+      version: string
+
+/info:
+  description: "Public"
+  get:
+    description: Information about the vendor, product, version.
+    securedBy: null
+    responses:
+      200:
+        body:
+          application/json:
+            type: SystemInformation
+          example:
+            vendor: Nitrokey UG
+            product: NitroHSM
+            version: v1 # API version
+
+/health:
+  description: "Public"
+  /alive: # state: Locked | Unprovisioned
+    get:
+      description: Retrieve wether NitroHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.
+      responses:
+        200:
+          description: Yes, it is alive.
+  /ready: # state: Operational
+    get:
+      description: Retrieve wether NitroHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.
+      responses:
+        200:
+          description: Yes, it is alive and ready.
+        402:
+          description: Not alive and ready (not in operational state).
+  /state:
+    get:
+      description: Retrieve the state of NitroHSM.
+      responses:
+        200:
+          body:
+            application/json:
+            properties:
+              state:
+                enum: ["Unprovisioned", "Locked", "Operational"]
+            example:
+              state: "Unprovisioned"
+
+/metrics:
+  description: "Role: <b>R-Metrics</b>"
+  get:
+    description: Get metrics. Precondition: NitroHSM is <i>Unlocked</i> and a <b>R-Metrics</b> can be authenticated.
+    securedBy: basic # R-Metrics
+    responses:
+      200:
+        body:
+          application/json:
+          example:
+            keyOperations: 1132412
+            someOtherMetric: 2222
+      401: # unauthorized
+        description: Authentication required but none provided.
+      403: # forbidden
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+/provision:
+  description: "Public"
+  put:
+    description: Initial provisioning, only available in <i>Unprovisioned</i> state.
+    body:
+      properties:
+        unlockPassphrase: Passphrase
+        adminPassphrase: Passphrase
+        systemTime: RFC3339 (UTC only)
+      example:
+        unlockPassphrase: "This is my unlock passphrase"
+        adminPassphrase: "This is my administrator passphrase"
+        systemTime: "2018-10-30T11:20:50Z"
+    responses:
+      200:
+        description: Provisioning was successful, NitroHSM is <i>Operational</i> now.
+      400:
+        description: Malformed request data (e.g. malformed time, weak passphrase).
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unprovisioned</i>).
+
+/unlock:
+  description: "Public"
+  post:
+    description: Brings a <i>Locked</i> NitroHSM into <i>Operational</i> state.
+    body:
+      properties:
+        passphrase: Passphrase
+      example:
+        passphrase: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
+    responses:
+      200:
+        description: Unlock was successful, NitroHSM is <i>Operational</i> now.
+      403:
+        description: Unlock failed (access denied).
+      402:
+        description: Precondition failed (NitroHSM was not <i>Locked</i>).
+
+/random:
+  description: "Role: <b>R-Operator</b>"
+  get:
+    description: Retrieve cryptographically strong random bytes from NitroHSM. Precondition: NitroHSM is <i>Unlocked</i> and a <b>R-Operator</b> can be authenticated.
+    securedBy: basic # R-Operator
+    body:
+      properties:
+        length:
+          type: integer
+          minimum: 1
+          maximum: 1024
+      example:
+        length: 5
+    responses:
+      200:
+        description: Successful request for <i>length</i> random bytes.
+        body:
+          application/json:
+            type: object
+            properties:
+              random: base64
+            example:
+              random: "VGhlIHE="
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+# - no paging for now, but if we wanted it we would key it on KeyID and return a subsequence based on limit and offset
+/keys:
+  description: "Role: <b>R-Operator</b> can GET keys. <b>R-Administrator</b> can GET and POST keys, and also POST /generate."
+  get:
+    description: Get a list of the identifiers of all keys that are currently stored in NitroHSM. Separate requests need to be made to request the individual key data.
+    securedBy: basic # R-Operator or R-Administrator
+    responses:
+      200:
+        description: Successful request for the list of keys.
+        body:
+          application/json:
+            type: KeyList
+            example: [key: "key1", key: "key2", key: "gz78ijhbhuij"]
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+  post:
+    description: Import a private key into NitroHSM and let NitroHSM generate a KeyID. The public key will be automatically derived.
+    securedBy: basic # R-Administrator
+    body:
+      application/json:
+        type: PrivateKey
+        example:
+          purpose: "Sign"
+          algorithm: "RSA"
+          key:
+            primeP: "frtz7u89gft89uz"
+            primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+            publicExponent: "w367rg90jhj0asdf98gz"
+      application/x-pem-file:
+        example: |
+          -----BEGIN RSA PRIVATE KEY-----
+          MIIEpAIBAAKCAQEAseU3o1Ix2euXUi50ht/mpDYnE2J4maJrIOLmDrmz+jv20hsR
+          vPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3Aq71Ls1wqOnW9++bZAvqvEVUtlHh0
+          5Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZLuDYiVy1/gzARjpf2hCmTyQSAvtcA
+          07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2lXrwXehVaw9KZzg7KuRO0Qnk+IfR6
+          LZjiKiEB9malzqSx3N20vibI672bMR+fqID2oC+ovNOEdRhPlCnztaY1HsnDhJt8
+          MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3TwIDAQABAoIBAQClSL5QDX9p5R28
+          apMz+XYW3oWh2h0JScHVVVvBFMNm3S3vet0ZRAV3Wcl2mxUjSN6Vazte2JKTyBWo
+          yXvQFUGdj4x1Qk2t8VWqZYr93KKqLQTjbKPXd/8WUHzf2sbhfcqn4bxrRY4mCB6c
+          aglIocm6hvmTHB/caN33KbQOiX7ZBbwoZG3AKgoJU3SMXnVUfQzl/xnVrWLKESqm
+          5kL0OTGLP091jZyMhcceh54RIuaJjPU4opL0bm46DLeQE4z20GfGCcRK/CUt4bNc
+          c0wvuOyyzGI5p7QB/HCUJqR33m9ydwDkqC4vrORDxpMaSRNerpoGA+cNHREULh2P
+          gaPydXq5AoGBAN3xIhci5LpIVvscNjPyxD6WQq5EZx251IzTnwQ/5E/+qxfYHvwe
+          qAuLJ2+QvNQBuNKk85jwZsfUgPR6kku9dOt3n61lnrBRgGcqWnR0j8/NbpVe1qOe
+          WArLeijpKKnCZ6uwpE6NND398dCmm3WLZZH64+1eLT8PbX/AIzId5zyzAoGBAM0x
+          vWEsKi4pjNMBdaawJMbHEoDmMuib4t+FkbHDkqqSe/OIkHZ9tDQuHWpzDHmb30Na
+          KNwQSNLwu3QK64z1NcjZUJFmu0+3NxSyI/EvNA9tiGCT5iSonsz04oa51AYt+IK5
+          7JjMjo128INrQwtRFSYHx3hoVVW06tZNE037NiD1AoGABqeNOx5bt04l9X+CDIqx
+          4aKFu03nvZdtzQ8nTGxR/ygGnz9mpm6Q4U+5zfmL/9tRXFd/yk0i98jiWPI34rd6
+          gvjiO8O5P1YiQHWforBAA54IO8hNLTi5MRGqxwE+q+BdVWOFeal4MIelsXjdXmfg
+          ksDwBpT1TFe9E8CCDaWh4ksCgYAhHCiR2H2J61x04+RnHD8i8BZ1RC/sxtKp/LSQ
+          uZ0d9vsXRe8Bn7EHRnWqqpvVt6gkBxVWxS3rE7s7s1Nk8GBYY3CTtb790vOJXGFe
+          Vp6Q6ry50MOvIKJXMiCnWq7yvFJATd32nfNWsl2G5zTvS4sdEt5F+Jfkd4f5QoCd
+          8a4/TQKBgQDEdY3XTibkDt80zUFIP6RRAyfM6p2grk+o08De0BBZD/1GX9V9ARNT
+          bC3+2qXXDYGxbMWgsoqsQTREJD78+sdD3q+IfIc1m7XvuIgyLMAalm+Kd1HlUF/J
+          7VCKjgchT0OKwmi0d52TEOiz6U35Jv4GWBstsh1KVpHYiTnwnhAwKg==
+          -----END RSA PRIVATE KEY-----
+    responses:
+      200:
+        description: Successful import of a private key. The response contains a Location header, e.g. "https://nitrohsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+        body:
+          properties:
+            key: ID
+          example:
+            key: "I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K"
+      400:
+        description: Bad request (specified properties are invalid).
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+  /generate:
+    description: "Role: <b>R-Administrator</b>"
+    post:
+      description: Generate a pair of public and private key and store it in NitroHSM. KeyID is optional as a parameter and will be generated by NitroHSM if not present.
+      securedBy: basic # R-Administrator
+      body:
+        application/json:
+          properties:
+            purpose: KeyPurpose
+            algorithm: KeyAlgorithm
+            length:
+              type: int
+              mimimum: 1024
+              maximum: 8192
+            id:
+              type: ID
+              required: false
+          example:
+            purpose: "Sign"
+            algorithm: "RSA"
+            length: 2048
+            id: "myKey1" # KeyID is optional, will be created if not present
+      responses:
+        200:
+          description: Successful creation of new public and private key pair.
+          body:
+          properties:
+            key: ID
+          example:
+            Location-Header: "https://nitrohsm.local/v1/keys/myKey1"
+            key: "myKey1"
+        400:
+          description: Bad request (specified properties are invalid).
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+/keys/{KeyID}:
+    description: "Role: <b>R-Operator</b> can GET and POST, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /encrypt."
+    get:
+      description: Retrieve the public key.
+      securedBy: basic # R-Operator or R-Administrator
+      responses:
+        200:
+          body:
+            application/json:
+              type: PublicKey
+              example:
+                purpose: "Sign"
+                algorithm: "RSA"
+                key:
+                  modulus: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+                  publicExponent: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+                operations: 242
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+        404:
+          description: Key for KeyID not found.
+    put:
+      description: Import a private key into NitroHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
+      securedBy: basic # R-Administrator
+      body:
+        application/json:
+          type: PrivateKey
+          example:
+            purpose: "Sign"
+            algorithm: "RSA"
+            key:
+              primeP: "frtz7u89gft89uz"
+              primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+              publicExponent: "w367rg90jhj0asdf98gz"
+      responses:
+        200:
+          description: Successful import of a private key.
+        400:
+          description: Bad request (specified properties are invalid).
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+        409:
+          description: Conflict, key already exists for this keyID.
+    delete:
+      description: Delete a pair of public and private key.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Key was successfully deleted.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+        404:
+          description: Key for KeyID not found.
+
+    /public.pem:
+      get:
+        description: Retrieve public key in PEM format.
+        securedBy: basic # R-Administrator or R-Operator
+        responses:
+          200:
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN PUBLIC KEY-----
+                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAseU3o1Ix2euXUi50ht/m
+                  pDYnE2J4maJrIOLmDrmz+jv20hsRvPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3A
+                  q71Ls1wqOnW9++bZAvqvEVUtlHh05Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZL
+                  uDYiVy1/gzARjpf2hCmTyQSAvtcA07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2l
+                  XrwXehVaw9KZzg7KuRO0Qnk+IfR6LZjiKiEB9malzqSx3N20vibI672bMR+fqID2
+                  oC+ovNOEdRhPlCnztaY1HsnDhJt8MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3
+                  TwIDAQAB
+                  -----END PUBLIC KEY-----
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+          404:
+            description: Key for KeyID not found.
+
+    /csr.pem:
+      post:
+        description: Retrieve a certificate signing request in PEM format.
+        securedBy: basic # R-Administrator or R-Operator
+        body:
+          properties: DistinguishedName
+          example:
+            countryName : "DE"
+            stateOrProvinceName : ""
+            localityName : "Berlin"
+            organizationName : "Nitrokey"
+            organizationalUnitName : ""
+            commonName : "nitrohsm.local"
+            emailAddress : "info@nitrokey.com"
+        responses:
+          200:
+            description: Successful generation of certificate signing request.
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN CERTIFICATE REQUEST-----
+                  MIICUjCCAToCAQAwDTELMAkGA1UEBhMCZGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB
+                  DwAwggEKAoIBAQCx5TejUjHZ65dSLnSG3+akNicTYniZomsg4uYOubP6O/bSGxG8
+                  +xacp69hmoRia9AU07Yy/0MHkxl+cneMvcCrvUuzXCo6db375tkC+q8RVS2UeHTl
+                  HP2TUZrfb85occRmP6Ub0+UojzLrcr6wpku4NiJXLX+DMBGOl/aEKZPJBIC+1wDT
+                  tZcCqis0jyaFxsiGesYJ4p8HwdgnVPe6TaVevBd6FVrD0pnODsq5E7RCeT4h9Hot
+                  mOIqIQH2ZqXOpLHc3bS+JsjrvZsxH5+ogPagL6i804R1GE+UKfO1pjUeycOEm3ww
+                  NOOVUa94ISW96y5JWc1UeZW6AOMRhNTUpXdPAgMBAAGgADANBgkqhkiG9w0BAQsF
+                  AAOCAQEAqA+22efrmbc1l+rnBtqeHJJWPZybRFDhqxkUoMAOMLIgd92TM6mnzlYu
+                  RmKZr2ExlbODOnaJJVcnbq2XYuHPiWYjhNFLTJ4bHJzo2yq+UUB0d409jQ0zkgVw
+                  CqfSauVZq7gqLLJ67KqqDDzJtsWEjeuJxIRh+cKPre1vtQp4uCncwRXOymxzaoTg
+                  KdJ6vwLLEkLVKwk1NEuvMe4IAa2+CtWf2z/jjoEKBeg/rxoFUwAmIxp/vWsZaDmY
+                  K0X2haYIM4Ihz+tTbAPlO/hMAs/spxYvmWu46BpBpX4naxhOKJzpwO2NeZtZkjL6
+                  7wSAdo8xe7eWf/eaMebITfIRfgyczA==
+                  -----END CERTIFICATE REQUEST-----
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+          404:
+            description: Key for KeyID not found.
+
+    /decrypt:
+      post:
+        description: Decrypt an encrypted message with the secret key.
+        securedBy: basic # R-Operator
+        body:
+          application/json:
+            type: object
+            properties:
+              mode:
+                enum: ["raw", "pkcs1", "oaep/md5", "oaep/sha1", "oaep/sha224", "oaep/sha256", "oaep/sha384", "oaep/sha512"]
+              encrypted: base64
+            example:
+              mode: "raw"
+              encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
+        responses:
+          200:
+            body:
+              application/json:
+                type: object
+                properties:
+                  decrypted: base64
+                example:
+                  decrypted: "Important message."
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+          404:
+            description: Key for KeyID not found.
+          400:
+            description: Bad Request, e.g. invalid encryption mode.
+
+    /sign:
+      post:
+        description: Sign a message with the secret key.
+        securedBy: basic # R-Operator
+        body:
+          application/json:
+            type: object
+            properties:
+              mode:
+                enum: ["pkcs1", "pss/md5", "pss/sha1", "pss/sha224", "pss/sha256", "pss/sha384", "pss/sha512"]
+              message: string
+            example:
+              mode: "pkcs1"
+              message: "this is a message"
+        responses:
+          200:
+            body:
+              application/json:
+                type: object
+                properties:
+                  signature: base64
+                example:
+                  signature: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+          404:
+            description: Key for KeyID not found.
+          400:
+            description: Bad Request, e.g. invalid signing mode.
+
+    /cert:
+      description: "Role: <b>R-Operator</b> can GET, <b>R-Administrator</b> can GET, PUT and DELETE."
+      get:
+        description: Retrieve stored certificate. The content-type header will display the media type of the stored data.
+        securedBy: basic # R-Administrator or R-Operator
+        responses:
+          200:
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN CERTIFICATE-----
+                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+                  35mqzHn+FjWq0eAtpzhO5Q==
+                  -----END CERTIFICATE-----
+              application/x-x509-ca-cert:
+                example: |
+                  0<82>^D<BC>0<82>^B<A4>^B        ^@<99><F5>R<87>e"<B2>t0^M^F     *<86>H<86><F7>^M^A^A^K^E^@0 1^N0^L^F^CU^D^H^L^Ehello1^N0^L^F^CU^D^G^L^Ehello0^^^W^M181030124047Z^W^M191030124047Z0 1^N0^L^F^CU^D^H^L^Ehello1^N0^L^F^CU^D^G^L^Ehello0<82>^B"0^M^F        *<86>H
+                  <86><F7>^M^A^A^A^E^@^C<82>^B^O^@0<82>^B
+                  ^B<82>^B^A^@<BC>Y^R&<81><EB><B8>S<A6> <E6><AD>?J<FA>"y^B<F9>'^C<C7>h*<CD><E8>'4<9A>?)<9F>4<C1><BB><F7><F4>A<83>^<9E><D7>'<BB>A^\<94>?}<92>V<BA><FE>^Gb&{to<F2>^S<DB>z7<EF><EB>v<9F>@o^R^EP0<9C>I<FC>^Xȩ&B<CA>J<B8>Iaʉ<AD>NK<BB>I(M<90><FE>^X^F<AB><F4>P'L<DE>qb<80><F5>+<9A>}p<ED>ҙp<D2>Ƴ?<C6>h<B0>\<93><A0><C6>'<^^xK5<E3>⧃<E6><D9>Ӛ<99>4<F2><CE>,?^X<90><C6>w^K,"a^C}<E5><B2>1^Tr^]<C2>^Z<BB><D1><CD>^Y<A4><F1><8C>'AESC0<91><F8><F1>^Wݑ<E1>ESC9y<88><C9>`<B5><95>^H
+                  ^È^K<C5>dq<C4>`<DB>r    oY<CD>@vd<A1>6<9C><C6><EE><F2>^V<E5><EC>e<D1>   <D2>Z^B<A9>I|<A8><86><A7><F5><AF>nj˄,<DC>¨n<E1>I<EA>^Ys<B1>xD+ʹ^O^A<B8><8B>i<FA><9B>|<F2><C7>^G<B7>k<F0><E1>^F<95>L<E9><D5> <87>GRq<C1><D0>U<A2>ESC<8E><DA>R<FE>;<99><CC>^OvUuY<E1><D8>^D<B7><A2>=<94><EE>0<F7><EE>gh<8E><A9><98><EE>(<CB><D3>쨫ԏ^Ug^Q<EA>5^Q<ED>g<F6><8F><F8>O<A7><DE><E9>pH@<B3><EA>^Rl<B6>!|<A7>d<FD>^^&}X<BB>ԅNDҘ<9F><A3>F%;^Pƚ<81>
+                  <CC><E0>;9<B1><E5>MUb<8E><BD>H<C3>@%~A^VZh<F7>+<90><CA>^E<B6>2<C2>T<C8>K<83>.<CC><FC>7<E5><EB>z<82>q<D5>d?^G[#<F6><A9><8D><F1><BC><A8><CA><DE>ω7<A8>^FCb^D<B7>~<E8><F2><BA><AF>p<BF><BC>[<AB>o<A8><D0>)8:z6<98><C0>^@<E8><90><D2>f<BF>^W<C1>^]<DA>s<F5>
+                  ԡ<AF><FB>^G<A1><D5><F3><95>;<E7>:<99>#}3<E5><B5>2<D9>   K<E8><B8><FC>^H<F6><C8>0<89><CD>Y7^Y<9A>]<E7><F1>:[^B^C^A^@^A0^M^F      *<86>H<86><F7>^M^A^A^K^E^@^C<82>^B^A^@^A<FB>ϵvM<B4>?<A4>~F<F0>ѳY<A8>{P<9E><81><A3><C7>ٹ}<B7>U<95><B9>rHRJ<C8>^X7^^V<BE>_<D7>
+                  <DA>\h<D4>^Qc^Fn<A1>^G|U^E<C2>eJVn<8F><FF>Mle"Է<A6><B4> r<B7><DC>N.<E0>^K:u<FA><AD>[fN<87><DB>[s^Q <C9>MsŧM}<FF>*]P^^       <B2>ܻ<A9>^B<FB><DE><C1>7<9E>><BB>^L^?<AC><AC><F0><A4><9C>^H_^U<A8>4t<F3><8E><8C>^F5<F4><8A>ȢkA2[<D8>6<96><F9>^<EA>DP^D^E
+                  9:U<D2><D5>^C<<E5>3<94><B0><8F><E9>&,^M^NPt<C5><DB>00<8F>i>^G<D4>@<91><B7><AD><BB><F9>W/^E"<89>^CF<D3>H<FC>`<FD>7<94>J<F1>^Mݽ<9B>h<E5>4YR<9F><C6>^X<B2>^L<E6><8A>^Qy}AS%s<F9><B5>.<E5>^W<81>g,<D6><F0><F6><97><DD>yVAO[<93>9<C7>$<98>[�����<D6>R^V^P<BB><D2>^PA<F2><D1>E<B5><E9><86>^V<AB><99><D0><DE><F0><F0><EE>Ø<86>^H<F7>~<A7><DB><CD><EB><CF>^\<AE>Yؾ&<A3><94>CB<B3><A4>f<C5>8<FD><ED>^@<E7>Us^_<C9>[<C9>#^MՑq^P<EB><F3><93>82y^F<E8>q3[<8B><B3>^XESCq^F<99>K<EC><A1><F4>/<C2><D7><FA>\z<C9>(ȭ<B4>CB<DC>^A<C7>^FF<B4>vI^B<AB>$;<AB><E8>o<<F2>l"<AE>UF<90><C2>C<EB>B¹<88><B0>:6}X<C6><D9>o<A0><F7><8D>!η=<AD><E2><C7><CB><CD>^U<B0>S<B5>.<A2>^E<D6><CE>>ǹ<AA>^DU<D0>0<BD><E2><87>^^w2<B0><E1>^L<D0>E<AE>Q^P<89><E2>'e<FC><85>Z^U^A<C0>a<DE>t
+                  ɐ)<97>b?<A5><93>%m<9D>^B<83><9C><B1><8E>^PZĬ^\<8B><B8><F2><A0>ǫ0<CA>6^Q<D6><D9>7<CE><E0>?<ED><B1><EA>ҮcS^Nߙ<AA><CC>y<FE>^V5<AA><D1><E0>-<A7>8N<E5>"
+              application/pgp-keys:
+                example: |
+                  -----BEGIN PGP PRIVATE KEY BLOCK-----
+                  Version: GnuPG v2
+    
+                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+                  35mqzHn+FjWq0eAtpzhO5Q==
+                  -----END PGP PRIVATE KEY BLOCK-----
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+          404:
+            description: Certificate for KeyID not found.
+  put:
+    description: Store a certificate. Maximum size 1MB. The content-type header provides the media type.
+    securedBy: basic # R-Administrator
+    body:
+      application/x-pem-file:
+        example: |
+          -----BEGIN CERTIFICATE-----
+          MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+          ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+          MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+          SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+          6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+          MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+          P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+          u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+          nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+          fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+          aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+          TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+          /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+          mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+          GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+          e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+          ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+          nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+          M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+          NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+          FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+          AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+          QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+          Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+          3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+          35mqzHn+FjWq0eAtpzhO5Q==
+          -----END CERTIFICATE-----
+      application/x-x509-ca-cert:
+        example: |
+          0<82>^D<BC>0<82>^B<A4>^B        ^@<99><F5>R<87>e"<B2>t0^M^F     *<86>H<86><F7>^M^A^A^K^E^@0 1^N0^L^F^CU^D^H^L^Ehello1^N0^L^F^CU^D^G^L^Ehello0^^^W^M181030124047Z^W^M191030124047Z0 1^N0^L^F^CU^D^H^L^Ehello1^N0^L^F^CU^D^G^L^Ehello0<82>^B"0^M^F        *<86>H
+          <86><F7>^M^A^A^A^E^@^C<82>^B^O^@0<82>^B
+          ^B<82>^B^A^@<BC>Y^R&<81><EB><B8>S<A6> <E6><AD>?J<FA>"y^B<F9>'^C<C7>h*<CD><E8>'4<9A>?)<9F>4<C1><BB><F7><F4>A<83>^<9E><D7>'<BB>A^\<94>?}<92>V<BA><FE>^Gb&{to<F2>^S<DB>z7<EF><EB>v<9F>@o^R^EP0<9C>I<FC>^Xȩ&B<CA>J<B8>Iaʉ<AD>NK<BB>I(M<90><FE>^X^F<AB><F4>P'L<DE>qb<80><F5>+<9A>}p<ED>ҙp<D2>Ƴ?<C6>h<B0>\<93><A0><C6>'<^^xK5<E3>⧃<E6><D9>Ӛ<99>4<F2><CE>,?^X<90><C6>w^K,"a^C}<E5><B2>1^Tr^]<C2>^Z<BB><D1><CD>^Y<A4><F1><8C>'AESC0<91><F8><F1>^Wݑ<E1>ESC9y<88><C9>`<B5><95>^H
+          ^È^K<C5>dq<C4>`<DB>r    oY<CD>@vd<A1>6<9C><C6><EE><F2>^V<E5><EC>e<D1>   <D2>Z^B<A9>I|<A8><86><A7><F5><AF>nj˄,<DC>¨n<E1>I<EA>^Ys<B1>xD+ʹ^O^A<B8><8B>i<FA><9B>|<F2><C7>^G<B7>k<F0><E1>^F<95>L<E9><D5> <87>GRq<C1><D0>U<A2>ESC<8E><DA>R<FE>;<99><CC>^OvUuY<E1><D8>^D<B7><A2>=<94><EE>0<F7><EE>gh<8E><A9><98><EE>(<CB><D3>쨫ԏ^Ug^Q<EA>5^Q<ED>g<F6><8F><F8>O<A7><DE><E9>pH@<B3><EA>^Rl<B6>!|<A7>d<FD>^^&}X<BB>ԅNDҘ<9F><A3>F%;^Pƚ<81>
+          <CC><E0>;9<B1><E5>MUb<8E><BD>H<C3>@%~A^VZh<F7>+<90><CA>^E<B6>2<C2>T<C8>K<83>.<CC><FC>7<E5><EB>z<82>q<D5>d?^G[#<F6><A9><8D><F1><BC><A8><CA><DE>ω7<A8>^FCb^D<B7>~<E8><F2><BA><AF>p<BF><BC>[<AB>o<A8><D0>)8:z6<98><C0>^@<E8><90><D2>f<BF>^W<C1>^]<DA>s<F5>
+          ԡ<AF><FB>^G<A1><D5><F3><95>;<E7>:<99>#}3<E5><B5>2<D9>   K<E8><B8><FC>^H<F6><C8>0<89><CD>Y7^Y<9A>]<E7><F1>:[^B^C^A^@^A0^M^F      *<86>H<86><F7>^M^A^A^K^E^@^C<82>^B^A^@^A<FB>ϵvM<B4>?<A4>~F<F0>ѳY<A8>{P<9E><81><A3><C7>ٹ}<B7>U<95><B9>rHRJ<C8>^X7^^V<BE>_<D7>
+          <DA>\h<D4>^Qc^Fn<A1>^G|U^E<C2>eJVn<8F><FF>Mle"Է<A6><B4> r<B7><DC>N.<E0>^K:u<FA><AD>[fN<87><DB>[s^Q <C9>MsŧM}<FF>*]P^^       <B2>ܻ<A9>^B<FB><DE><C1>7<9E>><BB>^L^?<AC><AC><F0><A4><9C>^H_^U<A8>4t<F3><8E><8C>^F5<F4><8A>ȢkA2[<D8>6<96><F9>^<EA>DP^D^E
+          9:U<D2><D5>^C<<E5>3<94><B0><8F><E9>&,^M^NPt<C5><DB>00<8F>i>^G<D4>@<91><B7><AD><BB><F9>W/^E"<89>^CF<D3>H<FC>`<FD>7<94>J<F1>^Mݽ<9B>h<E5>4YR<9F><C6>^X<B2>^L<E6><8A>^Qy}AS%s<F9><B5>.<E5>^W<81>g,<D6><F0><F6><97><DD>yVAO[<93>9<C7>$<98>[�����<D6>R^V^P<BB><D2>^PA<F2><D1>E<B5><E9><86>^V<AB><99><D0><DE><F0><F0><EE>Ø<86>^H<F7>~<A7><DB><CD><EB><CF>^\<AE>Yؾ&<A3><94>CB<B3><A4>f<C5>8<FD><ED>^@<E7>Us^_<C9>[<C9>#^MՑq^P<EB><F3><93>82y^F<E8>q3[<8B><B3>^XESCq^F<99>K<EC><A1><F4>/<C2><D7><FA>\z<C9>(ȭ<B4>CB<DC>^A<C7>^FF<B4>vI^B<AB>$;<AB><E8>o<<F2>l"<AE>UF<90><C2>C<EB>B¹<88><B0>:6}X<C6><D9>o<A0><F7><8D>!η=<AD><E2><C7><CB><CD>^U<B0>S<B5>.<A2>^E<D6><CE>>ǹ<AA>^DU<D0>0<BD><E2><87>^^w2<B0><E1>^L<D0>E<AE>Q^P<89><E2>'e<FC><85>Z^U^A<C0>a<DE>t
+          ɐ)<97>b?<A5><93>%m<9D>^B<83><9C><B1><8E>^PZĬ^\<8B><B8><F2><A0>ǫ0<CA>6^Q<D6><D9>7<CE><E0>?<ED><B1><EA>ҮcS^Nߙ<AA><CC>y<FE>^V5<AA><D1><E0>-<A7>8N<E5>"
+      application/pgp-keys:
+        example: |
+          -----BEGIN PGP PRIVATE KEY BLOCK-----
+          Version: GnuPG v2
+
+          MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+          ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+          MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+          SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+          6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+          MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+          P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+          u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+          nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+          fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+          aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+          TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+          /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+          mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+          GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+          e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+          ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+          nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+          M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+          NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+          FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+          AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+          QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+          Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+          3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+          35mqzHn+FjWq0eAtpzhO5Q==
+          -----END PGP PRIVATE KEY BLOCK-----
+    responses:
+      200:
+        description: Successful import of a certificate.
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+      409:
+        description: Conflict, certificate already exists for this KeyID.
+  delete:
+    description: Delete the certificate.
+    securedBy: basic # R-Administrator
+    responses:
+      200:
+        description: Successful deletion of a certificate.
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+      404:
+        description: Certificate with this KeyID not found.
+
+/users:
+  description: "Role: <b>R-Administrator</b> can GET, POST"
+  get:
+    description: Get a list of all user ids that have accounts on NitroHSM.
+    securedBy: basic # R-Administrator
+    responses:
+      200:
+        body:
+          application/json:
+            type: UserList
+            example: [ user: "juser", user: "manfred" ]
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+  post:
+    description: Create a new user on NitroHSM. The user-ID is generated by NitroHSM.
+    securedBy: basic # R-Administrator
+    body:
+      application/json:
+        type: User
+        example: { realname : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
+    responses:
+      200:
+        description: Successful creation of user. The response contains a Location header, e.g. "https://nitrohsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+        body:
+          properties:
+            user: ID
+          example:
+            user: "I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K"
+      400:
+        description: Bad request (specified properties are invalid, e.g. weak passphrase).
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+/users/{UserID}:
+  description: "Role: <b>R-Operator</b> can GET users, and POST their own passphrase, <b>R-Administrator</b> can GET, PUT and DELETE, and POST the passphrase for everyone."
+  get:
+    description: "Get user info: name and role."
+    securedBy: basic # R-Operator or R-Administrator
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              realName: string
+              role: UserRole
+            example: { realName: "Jane User", role: "Administrator" }
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+      404:
+        description: Key for KeyID not found.
+  put:
+    description: Create a user on keyfender.
+    securedBy: basic # R-Administrator
+    body:
+      type: User
+      example: { realName: "Jane User", role: "Administrator", passphrase: "Very secret" }
+    responses:
+      200:
+        description: Successful creation of user.
+      400:
+        description: Bad request (specified properties are invalid, e.g. weak passphrase).
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+      409:
+        description: Conflict - user already exists for this user-ID.
+  delete:
+    description: Delete a user from keyfender.
+    securedBy: basic # R-Administrator
+    responses:
+      200:
+        description: Successful deletion of user.
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      402:
+        description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+      404:
+        description: User not found for this user-ID.
+
+  # current passphrase not needed for update
+  /passphrase:
+    post:
+      description: Update the passphrase.
+      securedBy: basic # R-Administrator or R-Operator for themselves
+      body:
+        application/json:
+          type: object
+          properties:
+            passphrase: Passphrase
+          example: { "passphrase": "Some cool new passphrase" }
+      responses:
+        200:
+          description: Successful change of passphrase.
+        400:
+          description: Bad request - weak passphrase.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+        404:
+          description: User not found for this user-ID.
+
+/config:
+  description: "Role: <b>R-Administrator</b>"
+  /unlock-passphrase:
+    post:
+      description: Update the unlock passphrase.
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          passphrase: Passphrase
+        example:
+          passphrase: "This is my unlock passphrase"
+      responses:
+        200:
+          description: Successful change of passphrase.
+        400:
+          description: Bad request - weak passphrase.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+  /unattended-boot:
+    get:
+      description: "Read unattended boot configuration: is it on or off?"
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Successful read of unattended boot configuration.
+          body:
+            properties:
+              status: enum: ["on", "off"]
+            example:
+              status: "on"
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+    post:
+      description: "Configure unattended boot: switch it on or off (flip the switch)."
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          status: enum: ["on", "off"]
+        example:
+          status: "on"
+      responses:
+        200:
+          description: Successful change of unattended boot mode.
+        400:
+          description: Bad request - invalid status setting.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+  /tls:
+    /public.pem:
+      get:
+        description: Get public key for NitroHSMs https API.
+        securedBy: basic # R-Administrator
+        responses:
+          200:
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN PUBLIC KEY-----
+                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAseU3o1Ix2euXUi50ht/m
+                  pDYnE2J4maJrIOLmDrmz+jv20hsRvPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3A
+                  q71Ls1wqOnW9++bZAvqvEVUtlHh05Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZL
+                  uDYiVy1/gzARjpf2hCmTyQSAvtcA07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2l
+                  XrwXehVaw9KZzg7KuRO0Qnk+IfR6LZjiKiEB9malzqSx3N20vibI672bMR+fqID2
+                  oC+ovNOEdRhPlCnztaY1HsnDhJt8MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3
+                  TwIDAQAB
+                  -----END PUBLIC KEY-----
+            description: Successful retrieval of public key.
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+    /cert.pem:
+      get:
+        description: Get certificate for NitroHSMs https API.
+        securedBy: basic # R-Administrator
+        responses:
+          200:
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN CERTIFICATE-----
+                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+                  35mqzHn+FjWq0eAtpzhO5Q==
+                  -----END CERTIFICATE-----
+            description: Successful retrieval of certificate.
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+      put:
+        description: Set certificate for NitroHSMs https API e.g. to replace self-signed intital certificate.
+        securedBy: basic # R-Administrator
+        body:
+          application/x-pem-file:
+            example: |
+              -----BEGIN CERTIFICATE-----
+              MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+              ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+              MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+              SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+              6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+              MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+              P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+              u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+              nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+              fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+              aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+              TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+              /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+              mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+              GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+              e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+              ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+              nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+              M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+              NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+              FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+              AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+              QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+              Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+              3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+              35mqzHn+FjWq0eAtpzhO5Q==
+              -----END CERTIFICATE-----
+        responses:
+          200:
+            description: Successfully set certificate.
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+    /csr.pem:
+      post:
+        description: Get NitroHSM certificate signing request e.g. to replace self-signed intital certificate.
+        securedBy: basic # R-Administrator
+        body:
+          properties: DistinguishedName
+          example:
+            countryName : "DE"
+            stateOrProvinceName : ""
+            localityName : "Berlin"
+            organizationName : "Nitrokey"
+            organizationalUnitName : ""
+            commonName : "nitrohsm.local"
+            emailAddress : "info@nitrokey.com"
+        responses:
+          200:
+            description: Successful generation of certificate signing request.
+            body:
+              application/x-pem-file:
+                example: |
+                  -----BEGIN CERTIFICATE REQUEST-----
+                  MIICUjCCAToCAQAwDTELMAkGA1UEBhMCZGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB
+                  DwAwggEKAoIBAQCx5TejUjHZ65dSLnSG3+akNicTYniZomsg4uYOubP6O/bSGxG8
+                  +xacp69hmoRia9AU07Yy/0MHkxl+cneMvcCrvUuzXCo6db375tkC+q8RVS2UeHTl
+                  HP2TUZrfb85occRmP6Ub0+UojzLrcr6wpku4NiJXLX+DMBGOl/aEKZPJBIC+1wDT
+                  tZcCqis0jyaFxsiGesYJ4p8HwdgnVPe6TaVevBd6FVrD0pnODsq5E7RCeT4h9Hot
+                  mOIqIQH2ZqXOpLHc3bS+JsjrvZsxH5+ogPagL6i804R1GE+UKfO1pjUeycOEm3ww
+                  NOOVUa94ISW96y5JWc1UeZW6AOMRhNTUpXdPAgMBAAGgADANBgkqhkiG9w0BAQsF
+                  AAOCAQEAqA+22efrmbc1l+rnBtqeHJJWPZybRFDhqxkUoMAOMLIgd92TM6mnzlYu
+                  RmKZr2ExlbODOnaJJVcnbq2XYuHPiWYjhNFLTJ4bHJzo2yq+UUB0d409jQ0zkgVw
+                  CqfSauVZq7gqLLJ67KqqDDzJtsWEjeuJxIRh+cKPre1vtQp4uCncwRXOymxzaoTg
+                  KdJ6vwLLEkLVKwk1NEuvMe4IAa2+CtWf2z/jjoEKBeg/rxoFUwAmIxp/vWsZaDmY
+                  K0X2haYIM4Ihz+tTbAPlO/hMAs/spxYvmWu46BpBpX4naxhOKJzpwO2NeZtZkjL6
+                  7wSAdo8xe7eWf/eaMebITfIRfgyczA==
+                  -----END CERTIFICATE REQUEST-----
+          401:
+            description: Authentication required but none provided.
+          403:
+            description: Access denied.
+          402:
+            description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+  /network:
+    get:
+      description: Get network configuration. IP address, netmask, router.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Successful retrieval of network configuration.
+          body:
+            properties:
+              ipAddress: string
+              netmask: string
+              gateway: string
+            example:
+              ipAddress: 10.0.0.23
+              netmask: 255.255.255.0
+              gateway: 10.0.0.1
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+    put:
+      description: Configure network.
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          ipAddress: string
+          netmask: string
+          gateway: string
+        example:
+          ipAddress: 10.0.0.23
+          netmask: 255.255.255.0
+          gateway: 10.0.0.1
+      responses:
+        200:
+          description: Succesful update of network configuration.
+        400:
+          description: Bad request - invalid input format.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+  /logging:
+    get:
+      description: Get logging configuration. Protocol is always syslog over UDP. Configurable are IP adress and port, log level.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Successful retrieval of logging configuration.
+          body:
+            properties:
+              ipAddress: string
+              port: string
+              logLevel: enum: [ "debug", "info", "warn", "error" ]
+            example:
+              ipAddress: 10.0.0.42
+              port: 514
+              logLevel: info
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+    put:
+      description: Configure log level and destination.
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          ipAddress: string
+          port: string
+          logLevel: enum: [ "debug", "info", "warn", "error" ]
+        example:
+          ipAddress: 10.0.0.42
+          port: 514
+          logLevel: info
+      responses:
+        200:
+          description: Succesful update of logging configuration.
+        400:
+          description: Bad request - invalid input format.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+  /backup-passphrase:
+    post:
+      description: Update the backup passphrase.
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          passphrase: Passphrase
+        example:
+          passphrase: "This is my backup passphrase"
+      responses:
+        200:
+          description: Successful change of passphrase.
+        400:
+          description: Bad request - weak passphrase.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+  /time:
+    get:
+      description: Get system time.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Successful retrieval of system time.
+          body:
+            properties:
+              time: RFC3339 (UTC only)
+            example:
+              time: "2018-10-30T11:20:50Z"
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+    put:
+      description: Configure system time.
+      securedBy: basic # R-Administrator
+      body:
+        properties:
+          time: RFC3339 (UTC only)
+        example:
+          time: "2018-10-30T11:20:50Z"
+      responses:
+        200:
+          description: Succesful update of system time.
+        400:
+          description: Bad request - invalid input format.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+# RPC uses post
+/system:
+  description: "Role: <b>R-Administrator</b>"
+  /info:
+    get:
+      description: Get detailed system information, including firmware version, system software version, hardware version.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: Successful retrieval of system information.
+          body:
+            properties:
+              firmwareVersion: string
+              softwareVersion: string
+              hardwareVersion: string
+            example:
+              firmwareVersion: 1.0
+              softwareVersion: 0.7rc3
+              hardwareVersion: 2.2.2
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+
+  /reboot:
+    post:
+      description: Reboot NitroHSM.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: About to reboot NitroHSM.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+  /shutdown:
+    post:
+      description: Shut down NitroHSM.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: About to shut down NitroHSM.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+  /reset:
+    post:
+      description: Reset NitroHSM to factory settings.
+      securedBy: basic # R-Administrator
+      responses:
+        200:
+          description: About to reset NitroHSM.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+  /update:
+    post:
+      securedBy: basic # R-Administrator
+      description: Update NitroHSM software.
+      body:
+        application/octet-stream: "encrypted backup"
+      # Add extra internal state for being in Update? nice to have
+      responses:
+        200:
+          description: Successfully verified update image (authenticity, integrity, and version number).
+          body:
+            application/json:
+              properties:
+                releaseNotes: string
+              example:
+                releaseNotes: "Some new feature is available."
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
+        409:
+          description: Conflict - Major version downgrade is not allowed.
+   /commit-update:
+    post:
+      securedBy: basic # R-Administrator
+      description: Commit update of NitroHSM software.
+      responses:
+        200:
+          description: About to update NitroHSM.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i> or update image is not present - call /update first).
+   /cancel-update:
+    post:
+      securedBy: basic # R-Administrator
+      description: Cancel update of NitroHSM software.
+      responses:
+        200:
+          description: Update successfully cancelled.
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i> or update image is not present - call /update first).
+
+
+  /backup:
+    post:
+      securedBy: basic # R-Backup
+      description: Back up the key store to a backup file.
+      responses:
+        200:
+          description: Successful retrieval of backup data.
+          body:
+            application/octet-stream: "encrypted backup"
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unlocked</i> or <i>Backup Passphrase</i> was not set).
+  /restore: # no auth, only in unprovisioned state
+    post:
+      description: Restore the key store from a backup file. Only available in <i>Unprovisioned</i> state.
+      queryParameters:
+        backupPassphrase: Passphrase
+        systemTime: RFC3339 (UTC only)
+      body:
+        application/octet-stream: "encrypted backup"
+      responses:
+        200:
+          description: Successful restore from backup data.
+        402:
+          description: Precondition failed (NitroHSM was not <i>Unprovisioned</i>).
+        400:
+          description: Bad request - restore did not apply.
