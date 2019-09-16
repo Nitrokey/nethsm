@@ -21,7 +21,7 @@ let decrypt_domain_key ~unlock_key data =
     Error (`Msg "data too small")
   else
     let iv, data' = Cstruct.split data iv_size in
-    let ctag, data'' = Cstruct.split data' 16 in
+    let ctag, data'' = Cstruct.split data' GCM.block_size in
     let { GCM.message ; tag } =
       GCM.decrypt ~key:(GCM.of_secret unlock_key) ~iv ~adata:dk_adata data''
     in
