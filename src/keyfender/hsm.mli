@@ -49,7 +49,14 @@ module type S = sig
 
   val reset : unit -> unit
 
+  val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
+
   val add_user : t -> role:role -> passphrase:string -> name:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
+  val remove_user : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+
+  val change_user_passphrase : t -> name:string -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 end
 

@@ -49,7 +49,14 @@ module type S = sig
 
   val reset : unit -> unit
 
+  val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
+
   val add_user : t -> role:role -> passphrase:string -> name:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
+  val remove_user : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+
+  val change_user_passphrase : t -> name:string -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 end
 
@@ -223,21 +230,55 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | Error _ -> false
     | Ok user -> user.role = role
 
-  (* TODO: handle conflict (user already exists), validate usename/id, generate id *)
-  let add_user t ~role ~passphrase ~name =
+  let write_user t user =
     match t.auth_store with
     | None -> Lwt.return (Error (`Msg "not unlocked"))
     | Some auth_store ->
-      let user =
-        let salt = Rng.generate 16 in
-        let digest = Crypto.key_of_passphrase ~salt passphrase in
-        { name ; salt = Cstruct.to_string salt ;
-          digest = Cstruct.to_string digest ; role }
-      in
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      Kv_crypto.set auth_store (Key.v name) user_str >|=
+      Kv_crypto.set auth_store (Key.v user.name) user_str >|=
       Rresult.R.reword_error
         (fun e -> `Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
+
+  (* TODO: handle conflict (user already exists), validate usename/id, generate id *)
+  let add_user t ~role ~passphrase ~name =
+    let user =
+      let salt = Rng.generate 16 in
+      let digest = Crypto.key_of_passphrase ~salt passphrase in
+      { name ; salt = Cstruct.to_string salt ;
+        digest = Cstruct.to_string digest ; role }
+    in
+    write_user t user
+
+  let list_users t =
+    match t.auth_store with
+    | None -> Lwt.return (Error (`Msg "no auth store"))
+    | Some auth_store ->
+      Kv_crypto.list auth_store Key.empty >|= function
+      | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_error e))
+      | Ok xs ->
+        let ids = List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs) in
+        Ok ids
+
+  let remove_user t name =
+    match t.auth_store with
+    | None -> Lwt.return (Error (`Msg "no auth store"))
+    | Some auth_store ->
+      Kv_crypto.remove auth_store (Key.v name) >|= function
+      | Ok () -> Ok ()
+      | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
+
+  let change_user_passphrase t ~name ~passphrase =
+    find_user t name >>= function
+    | Error _ -> Lwt.return (Error (`Msg "couldn't find user"))
+    | Ok user ->
+      let salt' = Rng.generate 16 in
+      let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
+      let user' =
+        { user with salt = Cstruct.to_string salt' ;
+                    digest = Cstruct.to_string digest' }
+      in
+      write_user t user'
+
 
   let provision t ~unlock ~admin _time =
     if t.state <> `Unprovisioned then begin
