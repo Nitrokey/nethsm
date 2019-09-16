@@ -249,7 +249,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       let unlock_salt = Rng.generate 16 in
       let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
       let domain_key = Rng.generate (Crypto.key_len * 2) in
-      t.domain_key <- domain_key ;
+      t.domain_key <- domain_key;
       let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
       t.auth_store <- Some (Kv_crypto.connect ~prefix:"auth" ~key:auth_store_key t.kv);
       t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv);
