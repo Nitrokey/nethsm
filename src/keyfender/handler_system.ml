@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
@@ -37,11 +39,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
 
     method! is_authorized rd =
-      let auth, rd' = Access.is_authorized hsm_state rd in
+      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
 
     method! forbidden rd =
-      let auth = Access.forbidden hsm_state Hsm.Administrator rd in
+      Access.forbidden hsm_state Hsm.Administrator rd >>= fun auth ->
       Wm.continue auth rd
 
     method !process_post rd =

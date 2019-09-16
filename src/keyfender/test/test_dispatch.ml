@@ -24,7 +24,8 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
 let operational_mock () =
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.make >>= fun state ->
-    Hsm.provision state ~unlock:"" ~admin:"" Ptime.epoch >|= fun _ ->
+    Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >>= fun _ ->
+    Hsm.add_user state ~role:Hsm.Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
     state)
 
 let empty () =

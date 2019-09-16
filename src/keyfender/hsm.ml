@@ -26,8 +26,6 @@ module type S = sig
 
   type role = Administrator | Operator | Metrics | Backup
 
-  type user = { name : string ; password : string ; role : role }
-
   type t
 
   val info : t -> info
@@ -38,9 +36,9 @@ module type S = sig
 
   val certificate : t -> Tls.Config.own_cert Lwt.t
 
-  val is_authenticated : t -> username:string -> password:string -> bool
+  val is_authenticated : t -> username:string -> passphrase:string -> bool Lwt.t
 
-  val is_authorized : t -> string -> role -> bool
+  val is_authorized : t -> string -> role -> bool Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -50,6 +48,9 @@ module type S = sig
   val shutdown : unit -> unit
 
   val reset : unit -> unit
+
+  val add_user : t -> role:role -> passphrase:string -> name:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
 end
 
 open Lwt.Infix
@@ -80,18 +81,19 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     hardwareVersion : string ;
   }[@@deriving yojson]
 
-  type role = Administrator | Operator | Metrics | Backup
-  type user = { name : string ; password : string ; role : role }
-  type users = user list
+  type role = Administrator | Operator | Metrics | Backup [@@deriving yojson]
+  type user = { name : string ; salt : string ; digest : string ; role : role } [@@deriving yojson]
+
+  module Kv_crypto = Kv_crypto.Make(Rng)(KV)
 
   type t = {
     mutable state : state ;
     kv : KV.t ;
-    mutable auth_store_key : Crypto.GCM.key option ;
-    mutable key_store_key : Crypto.GCM.key option ;
+    mutable domain_key : Cstruct.t ; (* needed when unlockpassphrase changes / unattended boot *)
+    mutable auth_store : Kv_crypto.t option ;
+    mutable key_store : Kv_crypto.t option ;
     info : info ;
     system_info : system_info ;
-    users : users ;
   }
 
   module Key = Mirage_kv.Key
@@ -120,12 +122,10 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       {
         state = `Unprovisioned ;
         kv ;
-        auth_store_key = None ; key_store_key = None ;
+        domain_key = Cstruct.empty ;
+        auth_store = None ; key_store = None ;
         info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
         system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
-        (* TODO these are dummies *)
-        users = [ { name = "admin" ; password = "test1" ; role = Administrator } ;
-                  { name = "operator" ; password = "test2" ; role = Operator } ] ;
       }
     in
     (* if unlock-salt is present, go to locked *)
@@ -198,13 +198,48 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
                   KV.pp_error e);
       assert false
 
-  let is_authenticated t ~username ~password =
-    List.exists (fun u -> u.name = username && u.password = password) t.users
+  let decode_user data =
+    let open Rresult.R.Infix in
+    (try Ok (Yojson.Safe.from_string data) with _ -> Error `Json_decode) >>= fun json ->
+    (match user_of_yojson json with Ok user -> Ok user | Error _ -> Error `Json_decode)
+
+  let find_user t username =
+    match t.auth_store with
+    | None -> Lwt.return (Error `Not_unlocked)
+    | Some auth ->
+      Kv_crypto.get auth (Key.v username) >|= function
+      | Error _ -> Error `Not_found (* TODO other errors? *)
+      | Ok data -> decode_user data
+
+  let is_authenticated t ~username ~passphrase =
+    find_user t username >|= function
+    | Error _ -> false (* TODO write log *)
+    | Ok user ->
+      let pass = Crypto.key_of_passphrase ~salt:(Cstruct.of_string user.salt) passphrase in
+      Cstruct.equal pass (Cstruct.of_string user.digest)
 
   let is_authorized t username role =
-    List.exists (fun u -> u.name = username && u.role = role) t.users
+    find_user t username >|= function
+    | Error _ -> false
+    | Ok user -> user.role = role
 
-  let provision t ~unlock ~admin:_ _time =
+  (* TODO: handle conflict (user already exists), validate usename/id, generate id *)
+  let add_user t ~role ~passphrase ~name =
+    match t.auth_store with
+    | None -> Lwt.return (Error (`Msg "not unlocked"))
+    | Some auth_store ->
+      let user =
+        let salt = Rng.generate 16 in
+        let digest = Crypto.key_of_passphrase ~salt passphrase in
+        { name ; salt = Cstruct.to_string salt ;
+          digest = Cstruct.to_string digest ; role }
+      in
+      let user_str = Yojson.Safe.to_string (user_to_yojson user) in
+      Kv_crypto.set auth_store (Key.v name) user_str >|=
+      Rresult.R.reword_error
+        (fun e -> `Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
+
+  let provision t ~unlock ~admin _time =
     if t.state <> `Unprovisioned then begin
       Log.err (fun m -> m "HSM is already provisioned");
       Lwt.return (Error (`Msg "HSM already provisioned"))
@@ -214,16 +249,17 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       let unlock_salt = Rng.generate 16 in
       let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
       let domain_key = Rng.generate (Crypto.key_len * 2) in
+      t.domain_key <- domain_key ;
       let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
-      t.auth_store_key <- Some (Crypto.GCM.of_secret auth_store_key);
-      t.key_store_key <- Some (Crypto.GCM.of_secret key_store_key);
+      t.auth_store <- Some (Kv_crypto.connect ~prefix:"auth" ~key:auth_store_key t.kv);
+      t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv);
       let enc_domain_key = Crypto.encrypt_domain_key Rng.generate ~unlock_key domain_key in
       (* TODO handle write errors *)
       write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
-      write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >|= fun _ ->
+      write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >>= fun _ ->
+      add_user t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
       Ok ()
       (* TODO:
-         - generate administrator account (another salt, passphrase hash (admin), role (admin), name, id), store in auth_store
          - compute "time - our_current_idea_of_now", store offset in configuration store *)
     end
 

@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 module Make (Hsm : Hsm.S) = struct
   (* Headers *)
   let get_authorization headers = Cohttp.Header.get headers "Authorization"
@@ -22,25 +24,25 @@ module Make (Hsm : Hsm.S) = struct
 
   let is_authorized hsm_state rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
-    | None -> (`Basic "NitroHSM"), rd
-    | Some auth -> 
+    | None -> Lwt.return (`Basic "NitroHSM", rd)
+    | Some auth ->
       match decode_auth auth with
-      | Ok (username, password) -> 
-        if Hsm.is_authenticated hsm_state ~username ~password
-        then 
+      | Ok (username, passphrase) ->
+        Hsm.is_authenticated hsm_state ~username ~passphrase >|= fun auth ->
+        if auth then
           let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
           `Authorized, rd'
         else
-          (`Basic "invalid authorization"), rd
+          `Basic "invalid authorization", rd
       | Error (`Msg msg) ->
         Logs.warn (fun m -> m "is_authorized failed with header value %s and message %s" auth msg);
-        (`Basic "invalid authorization"), rd
+        Lwt.return (`Basic "invalid authorization", rd)
 
   let is_in_state hsm_state state =
     Hsm.state hsm_state = state
 
   let forbidden hsm_state role rd =
     let user = get_user rd.Webmachine.Rd.req_headers in
-    let granted = Hsm.is_authorized hsm_state user role in
+    Hsm.is_authorized hsm_state user role >|= fun granted ->
     not granted
 end

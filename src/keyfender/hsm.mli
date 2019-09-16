@@ -26,8 +26,6 @@ module type S = sig
 
   type role = Administrator | Operator | Metrics | Backup
 
-  type user = { name : string ; password : string ; role : role }
-
   type t
 
   val info : t -> info
@@ -38,9 +36,9 @@ module type S = sig
 
   val certificate : t -> Tls.Config.own_cert Lwt.t
 
-  val is_authenticated : t -> username:string -> password:string -> bool
+  val is_authenticated : t -> username:string -> passphrase:string -> bool Lwt.t
 
-  val is_authorized : t -> string -> role -> bool
+  val is_authorized : t -> string -> role -> bool Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -50,6 +48,9 @@ module type S = sig
   val shutdown : unit -> unit
 
   val reset : unit -> unit
+
+  val add_user : t -> role:role -> passphrase:string -> name:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
 end
 
 module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
