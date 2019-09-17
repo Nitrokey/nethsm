@@ -28,6 +28,13 @@ let operational_mock () =
     Hsm.add_user state ~role:Hsm.Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
     state)
 
+let locked_mock () =
+  Lwt_main.run (
+    Kv_mem.connect () >>= fun kv ->
+    Hsm.make kv >>= fun state ->
+    Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun _ ->
+    Hsm.make kv)
+
 let empty () =
   "a request for / will produce no result"
     @? begin match request "/" with
@@ -130,6 +137,16 @@ let system_info_error_forbidden () =
       | _ -> false
    end
 
+let unlock_json = {|{ "passphrase": "test1234" }|}
+
+let unlock_ok () =
+  "a request for /unlock unlocks the HSM"
+  @? begin match request ~body:(`String unlock_json) ~hsm_state:(locked_mock ())
+                   ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+  | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
+  | _ -> false
+  end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -156,6 +173,7 @@ let () =
     "/system/info" >:: system_info_error_authentication_required;
     "/system/info" >:: system_info_error_precondition_failed;
     "/system/info" >:: system_info_error_forbidden;
+    "/unlock" >:: unlock_ok;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
