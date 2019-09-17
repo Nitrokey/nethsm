@@ -43,6 +43,9 @@ module type S = sig
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  val unlock : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
   val reboot : unit -> unit
 
   val shutdown : unit -> unit
@@ -304,6 +307,30 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
          - compute "time - our_current_idea_of_now", store offset in configuration store *)
     end
 
+  let unlock t ~passphrase =
+    let data = Cstruct.empty in (* TODO whats the right store? *)
+    if t.state = `Unprovisioned then begin
+      Log.err (fun m -> m "HSM is not provisioned");
+      Lwt.return (Error (`Msg "HSM is not provisioned"))
+    end else if t.state = `Operational then begin
+      Log.err (fun m -> m "HSM is already unlocked");
+      Lwt.return (Error (`Msg "HSM already unlocked"))
+    end else begin
+      let unlock_key = Cstruct.of_string passphrase in
+      match Crypto.decrypt_domain_key ~unlock_key data with
+      | Ok _msg -> 
+        begin
+        (* TODO we need a lock? (avoid multiple /unlock being executed) *)
+        t.state <- `Operational; 
+        (* TODO put it where? *)
+        (*write_domain_key t ... msg*)
+        Lwt.return (Ok ())
+        end
+      | Error _e ->
+        Log.err (fun m -> m "HSM unlock failed");
+        Lwt.return (Error (`Msg "HSM unlock failed"))
+    end 
+ 
   let reboot () = ()
 
   let shutdown () = ()

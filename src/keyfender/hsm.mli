@@ -43,6 +43,8 @@ module type S = sig
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  val unlock : t -> passphrase:string -> (unit, [> `Msg of string ]) result Lwt.t
+
   val reboot : unit -> unit
 
   val shutdown : unit -> unit
