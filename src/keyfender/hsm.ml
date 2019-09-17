@@ -121,7 +121,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let domain_key_name = function
     | `Passphrase -> "0"
 
-  let _read_domain_key t key =
+  let read_domain_key t key =
     KV.get t.kv (Key.add domain_key (domain_key_name key))
 
   let write_domain_key t key value =
@@ -282,6 +282,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       in
       write_user t user'
 
+  let set_domain_key t domain_key =
+    t.domain_key <- domain_key;
+    let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
+    t.auth_store <- Some (Kv_crypto.connect ~prefix:"auth" ~key:auth_store_key t.kv);
+    t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv)
 
   let provision t ~unlock ~admin _time =
     if t.state <> `Unprovisioned then begin
@@ -293,10 +298,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       let unlock_salt = Rng.generate 16 in
       let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
       let domain_key = Rng.generate (Crypto.key_len * 2) in
-      t.domain_key <- domain_key;
-      let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
-      t.auth_store <- Some (Kv_crypto.connect ~prefix:"auth" ~key:auth_store_key t.kv);
-      t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv);
+      set_domain_key t domain_key;
       let enc_domain_key = Crypto.encrypt_domain_key Rng.generate ~unlock_key domain_key in
       (* TODO handle write errors *)
       write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
@@ -308,29 +310,36 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     end
 
   let unlock t ~passphrase =
-    let data = Cstruct.empty in (* TODO whats the right store? *)
-    if t.state = `Unprovisioned then begin
+    match t.state with
+    | `Unprovisioned ->
       Log.err (fun m -> m "HSM is not provisioned");
       Lwt.return (Error (`Msg "HSM is not provisioned"))
-    end else if t.state = `Operational then begin
+    | `Operational ->
       Log.err (fun m -> m "HSM is already unlocked");
       Lwt.return (Error (`Msg "HSM already unlocked"))
-    end else begin
-      let unlock_key = Cstruct.of_string passphrase in
-      match Crypto.decrypt_domain_key ~unlock_key data with
-      | Ok _msg -> 
-        begin
-        (* TODO we need a lock? (avoid multiple /unlock being executed) *)
-        t.state <- `Operational; 
-        (* TODO put it where? *)
-        (*write_domain_key t ... msg*)
-        Lwt.return (Ok ())
-        end
-      | Error _e ->
-        Log.err (fun m -> m "HSM unlock failed");
-        Lwt.return (Error (`Msg "HSM unlock failed"))
-    end 
- 
+    | `Locked ->
+      read_config t "unlock-salt" >>= function
+      | Error e ->
+        (* TODO handle this error properly!? *)
+        Log.err (fun m -> m "couldn't read salt %a" KV.pp_error e);
+        Lwt.return (Error (`Msg "couldn't read salt"))
+      | Ok salt ->
+        let unlock_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase in
+        read_domain_key t `Passphrase >|= function
+        | Error e ->
+          (* TODO handle this error properly!? *)
+          Log.err (fun m -> m "couldn't read domain key %a" KV.pp_error e);
+          Error (`Msg "couldn't read domain key")
+        | Ok enc_domain_key ->
+          match Crypto.decrypt_domain_key ~unlock_key (Cstruct.of_string enc_domain_key) with
+          | Error (`Msg str) ->
+            Log.err (fun m -> m "decryption of domain key failed %s" str);
+            Error (`Msg str)
+          | Ok domain_key ->
+            set_domain_key t domain_key;
+            t.state <- `Operational;
+            Ok ()
+
   let reboot () = ()
 
   let shutdown () = ()
