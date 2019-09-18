@@ -1301,7 +1301,7 @@ types:
           description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
         409:
           description: Conflict - Major version downgrade is not allowed.
-   /commit-update:
+  /commit-update:
     post:
       securedBy: basic # R-Administrator
       description: Commit update of NitroHSM software.
@@ -1314,7 +1314,7 @@ types:
           description: Access denied.
         412:
           description: Precondition failed (NitroHSM was not <i>Unlocked</i> or update image is not present - call /update first).
-   /cancel-update:
+  /cancel-update:
     post:
       securedBy: basic # R-Administrator
       description: Cancel update of NitroHSM software.
