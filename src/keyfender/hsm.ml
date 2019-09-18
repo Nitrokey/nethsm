@@ -286,28 +286,30 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     t.domain_key <- domain_key;
     let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
     t.auth_store <- Some (Kv_crypto.connect ~prefix:"auth" ~key:auth_store_key t.kv);
-    t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv)
+    t.key_store <- Some (Kv_crypto.connect ~prefix:"key" ~key:key_store_key t.kv);
+    t.state <- `Operational
+
+  let provision_mutex = Lwt_mutex.create ()
 
   let provision t ~unlock ~admin _time =
-    if t.state <> `Unprovisioned then begin
-      Log.err (fun m -> m "HSM is already provisioned");
-      Lwt.return (Error (`Msg "HSM already provisioned"))
-    end else begin
-      (* TODO we need a lock? (avoid multiple /provision being executed) *)
-      t.state <- `Operational;
-      let unlock_salt = Rng.generate 16 in
-      let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-      let domain_key = Rng.generate (Crypto.key_len * 2) in
-      set_domain_key t domain_key;
-      let enc_domain_key = Crypto.encrypt_domain_key Rng.generate ~unlock_key domain_key in
-      (* TODO handle write errors *)
-      write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
-      write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >>= fun _ ->
-      add_user t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
-      Ok ()
-      (* TODO:
-         - compute "time - our_current_idea_of_now", store offset in configuration store *)
-    end
+    Lwt_mutex.with_lock provision_mutex (fun () ->
+        if t.state <> `Unprovisioned then begin
+          Log.err (fun m -> m "HSM is already provisioned");
+          Lwt.return (Error (`Msg "HSM already provisioned"))
+        end else begin
+          let unlock_salt = Rng.generate 16 in
+          let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+          let domain_key = Rng.generate (Crypto.key_len * 2) in
+          set_domain_key t domain_key;
+          let enc_domain_key = Crypto.encrypt_domain_key Rng.generate ~unlock_key domain_key in
+          (* TODO handle write errors *)
+          write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
+          write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >>= fun _ ->
+          add_user t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
+          Ok ()
+          (* TODO:
+             - compute "time - our_current_idea_of_now", store offset in configuration store *)
+        end)
 
   let unlock t ~passphrase =
     match t.state with
@@ -337,7 +339,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
             Error (`Msg str)
           | Ok domain_key ->
             set_domain_key t domain_key;
-            t.state <- `Operational;
             Ok ()
 
   let reboot () = ()
