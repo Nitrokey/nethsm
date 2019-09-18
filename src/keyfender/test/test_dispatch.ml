@@ -25,7 +25,7 @@ let operational_mock () =
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.make >>= fun state ->
     Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >>= fun _ ->
-    Hsm.add_user state ~role:Hsm.Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
+    Hsm.add_user state ~id:"operator" ~role:Hsm.Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
     state)
 
 let locked_mock () =

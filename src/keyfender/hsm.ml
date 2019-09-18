@@ -54,12 +54,12 @@ module type S = sig
 
   val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
 
-  val add_user : t -> role:role -> passphrase:string -> name:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+  val add_user : ?id:string -> t -> role:role -> passphrase:string ->
+    name:string -> (unit, [> `Msg of string ]) result Lwt.t
 
   val remove_user : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_user_passphrase : t -> name:string -> passphrase:string ->
+  val change_user_passphrase : t -> id:string -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 end
 
@@ -213,11 +213,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     (try Ok (Yojson.Safe.from_string data) with _ -> Error `Json_decode) >>= fun json ->
     (match user_of_yojson json with Ok user -> Ok user | Error _ -> Error `Json_decode)
 
-  let find_user t username =
+  let find_user t id =
     match t.auth_store with
     | None -> Lwt.return (Error `Not_unlocked)
     | Some auth ->
-      Kv_crypto.get auth (Key.v username) >|= function
+      Kv_crypto.get auth (Key.v id) >|= function
       | Error _ -> Error `Not_found (* TODO other errors? *)
       | Ok data -> decode_user data
 
@@ -233,24 +233,34 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | Error _ -> false
     | Ok user -> user.role = role
 
-  let write_user t user =
+  let write_user t id user =
     match t.auth_store with
     | None -> Lwt.return (Error (`Msg "not unlocked"))
     | Some auth_store ->
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      Kv_crypto.set auth_store (Key.v user.name) user_str >|=
+      Kv_crypto.set auth_store (Key.v id) user_str >|=
       Rresult.R.reword_error
         (fun e -> `Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
 
-  (* TODO: handle conflict (user already exists), validate usename/id, generate id *)
-  let add_user t ~role ~passphrase ~name =
+  (* TODO: validate username/id *)
+  let add_user ?id t ~role ~passphrase ~name =
+    let id = match id with
+      | Some id -> id
+      | None ->
+        let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+        id
+    in
     let user =
       let salt = Rng.generate 16 in
       let digest = Crypto.key_of_passphrase ~salt passphrase in
       { name ; salt = Cstruct.to_string salt ;
         digest = Cstruct.to_string digest ; role }
     in
-    write_user t user
+    find_user t id >>= function
+    | Error `Not_found -> write_user t id user
+    | Ok _ -> Lwt.return (Error (`Msg "user already exists"))
+    | Error `Not_unlocked -> Lwt.return (Error (`Msg "HSM not unlocked"))
+    | Error `Json_decode -> Lwt.return (Error (`Msg "json decoding failure"))
 
   let list_users t =
     match t.auth_store with
@@ -270,8 +280,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       | Ok () -> Ok ()
       | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
 
-  let change_user_passphrase t ~name ~passphrase =
-    find_user t name >>= function
+  let change_user_passphrase t ~id ~passphrase =
+    find_user t id >>= function
     | Error _ -> Lwt.return (Error (`Msg "couldn't find user"))
     | Ok user ->
       let salt' = Rng.generate 16 in
@@ -280,7 +290,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         { user with salt = Cstruct.to_string salt' ;
                     digest = Cstruct.to_string digest' }
       in
-      write_user t user'
+      write_user t id user'
 
   let set_domain_key t domain_key =
     t.domain_key <- domain_key;
@@ -305,7 +315,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           (* TODO handle write errors *)
           write_config t "unlock-salt" (Cstruct.to_string unlock_salt) >>= fun _ ->
           write_domain_key t `Passphrase (Cstruct.to_string enc_domain_key) >>= fun _ ->
-          add_user t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
+          add_user ~id:"admin" t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
           Ok ()
           (* TODO:
              - compute "time - our_current_idea_of_now", store offset in configuration store *)

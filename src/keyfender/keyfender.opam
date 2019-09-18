@@ -32,6 +32,7 @@ depends: [
   "ppx_deriving_yojson"
   "pbkdf"
   "mirage-kv-lwt"
+  "hex"
   "mirage-clock-unix" {with-test}
   "mirage-random-test" {with-test}
   "mirage-kv-mem" {with-test}
