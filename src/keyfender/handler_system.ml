@@ -25,7 +25,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.shutdown () ;
         Wm.continue true rd
       | Some "reset" ->
-        Hsm.reset () ;
+        Hsm.reset hsm_state ;
         Wm.continue true rd
       | Some "update" ->  Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
       | Some "backup" ->  Wm.respond (Cohttp.Code.code_of_status `Not_found) rd

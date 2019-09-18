@@ -50,7 +50,7 @@ module type S = sig
 
   val shutdown : unit -> unit
 
-  val reset : unit -> unit
+  val reset : t -> unit
 
   val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
 
@@ -345,5 +345,5 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let shutdown () = ()
 
-  let reset () = ()
+  let reset _t = ()
 end

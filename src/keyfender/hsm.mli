@@ -49,7 +49,7 @@ module type S = sig
 
   val shutdown : unit -> unit
 
-  val reset : unit -> unit
+  val reset : t -> unit
 
   val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
 
