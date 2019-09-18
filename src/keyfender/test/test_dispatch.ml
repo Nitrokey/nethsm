@@ -30,9 +30,12 @@ let operational_mock () =
 
 let locked_mock () =
   Lwt_main.run (
+    (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
     Hsm.make kv >>= fun state ->
+    (* provision HSM, leading to state operational (and writes to the kv store) *)
     Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun _ ->
+    (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     Hsm.make kv)
 
 let empty () =
