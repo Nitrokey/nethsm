@@ -24,8 +24,6 @@ module type S = sig
 
   val system_info_to_yojson : system_info -> Yojson.Safe.t
 
-  type role = Administrator | Operator | Metrics | Backup
-
   type t
 
   val info : t -> info
@@ -35,10 +33,6 @@ module type S = sig
   val state : t -> state
 
   val certificate : t -> Tls.Config.own_cert Lwt.t
-
-  val is_authenticated : t -> username:string -> passphrase:string -> bool Lwt.t
-
-  val is_authorized : t -> string -> role -> bool Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -55,15 +49,24 @@ module type S = sig
 
   val reset : t -> unit
 
-  val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
+  module User : sig
+    type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 
-  val add_user : ?id:string -> t -> role:role -> passphrase:string ->
-    name:string -> (unit, [> `Msg of string ]) result Lwt.t
+    val is_authenticated : t -> username:string -> passphrase:string ->
+      bool Lwt.t
 
-  val remove_user : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+    val is_authorized : t -> string -> role -> bool Lwt.t
 
-  val change_user_passphrase : t -> id:string -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val list : t -> (string list, [> `Msg of string ]) result Lwt.t
+
+    val add : ?id:string -> t -> role:role -> passphrase:string ->
+      name:string -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val change_passphrase : t -> id:string -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
+  end
 end
 
 open Lwt.Infix
@@ -93,9 +96,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     softwareVersion : string ;
     hardwareVersion : string ;
   }[@@deriving yojson]
-
-  type role = Administrator | Operator | Metrics | Backup [@@deriving yojson]
-  type user = { name : string ; salt : string ; digest : string ; role : role } [@@deriving yojson]
 
   module Kv_config = Kv_config.Make(KV)
   module Kv_domain = Kv_domain_key.Make(Rng)(KV)
@@ -196,89 +196,94 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
                   KV.pp_error e);
       assert false
 
-  let decode_user data =
-    let open Rresult.R.Infix in
-    (try Ok (Yojson.Safe.from_string data) with _ -> Error `Json_decode) >>= fun json ->
-    (match user_of_yojson json with Ok user -> Ok user | Error _ -> Error `Json_decode)
+  module User = struct
+    type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
+    type user = { name : string ; salt : string ; digest : string ; role : role } [@@deriving yojson]
 
-  let find_user t id =
-    match t.auth_store with
-    | None -> Lwt.return (Error `Not_unlocked)
-    | Some auth ->
-      Kv_crypto.get auth (Mirage_kv.Key.v id) >|= function
-      | Error _ -> Error `Not_found (* TODO other errors? *)
-      | Ok data -> decode_user data
+    let decode data =
+      let open Rresult.R.Infix in
+      (try Ok (Yojson.Safe.from_string data) with _ -> Error `Json_decode) >>= fun json ->
+      (match user_of_yojson json with Ok user -> Ok user | Error _ -> Error `Json_decode)
 
-  let is_authenticated t ~username ~passphrase =
-    find_user t username >|= function
-    | Error _ -> false (* TODO write log *)
-    | Ok user ->
-      let pass = Crypto.key_of_passphrase ~salt:(Cstruct.of_string user.salt) passphrase in
-      Cstruct.equal pass (Cstruct.of_string user.digest)
+    let find t id =
+      match t.auth_store with
+      | None -> Lwt.return (Error `Not_unlocked)
+      | Some auth ->
+        Kv_crypto.get auth (Mirage_kv.Key.v id) >|= function
+        | Error _ -> Error `Not_found (* TODO other errors? *)
+        | Ok data -> decode data
 
-  let is_authorized t username role =
-    find_user t username >|= function
-    | Error _ -> false
-    | Ok user -> user.role = role
+    let is_authenticated t ~username ~passphrase =
+      find t username >|= function
+      | Error _ -> false (* TODO write log *)
+      | Ok user ->
+        let pass = Crypto.key_of_passphrase ~salt:(Cstruct.of_string user.salt) passphrase in
+        Cstruct.equal pass (Cstruct.of_string user.digest)
 
-  let write_user t id user =
-    match t.auth_store with
-    | None -> Lwt.return (Error (`Msg "not unlocked"))
-    | Some auth_store ->
-      let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      Kv_crypto.set auth_store (Mirage_kv.Key.v id) user_str >|=
-      Rresult.R.reword_error
-        (fun e -> `Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
+    let is_authorized t username role =
+      find t username >|= function
+      | Error _ -> false
+      | Ok user -> user.role = role
 
-  (* TODO: validate username/id *)
-  let add_user ?id t ~role ~passphrase ~name =
-    let id = match id with
-      | Some id -> id
-      | None ->
-        let `Hex id = Hex.of_cstruct (Rng.generate 10) in
-        id
-    in
-    let user =
-      let salt = Rng.generate 16 in
-      let digest = Crypto.key_of_passphrase ~salt passphrase in
-      { name ; salt = Cstruct.to_string salt ;
-        digest = Cstruct.to_string digest ; role }
-    in
-    find_user t id >>= function
-    | Error `Not_found -> write_user t id user
-    | Ok _ -> Lwt.return (Error (`Msg "user already exists"))
-    | Error `Not_unlocked -> Lwt.return (Error (`Msg "HSM not unlocked"))
-    | Error `Json_decode -> Lwt.return (Error (`Msg "json decoding failure"))
+    let write t id user =
+      match t.auth_store with
+      | None -> Lwt.return (Error (`Msg "not unlocked"))
+      | Some auth_store ->
+        let user_str = Yojson.Safe.to_string (user_to_yojson user) in
+        Kv_crypto.set auth_store (Mirage_kv.Key.v id) user_str >|=
+        Rresult.R.reword_error
+          (fun e -> `Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
 
-  let list_users t =
-    match t.auth_store with
-    | None -> Lwt.return (Error (`Msg "no auth store"))
-    | Some auth_store ->
-      Kv_crypto.list auth_store Mirage_kv.Key.empty >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_error e))
-      | Ok xs ->
-        let ids = List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs) in
-        Ok ids
-
-  let remove_user t name =
-    match t.auth_store with
-    | None -> Lwt.return (Error (`Msg "no auth store"))
-    | Some auth_store ->
-      Kv_crypto.remove auth_store (Mirage_kv.Key.v name) >|= function
-      | Ok () -> Ok ()
-      | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
-
-  let change_user_passphrase t ~id ~passphrase =
-    find_user t id >>= function
-    | Error _ -> Lwt.return (Error (`Msg "couldn't find user"))
-    | Ok user ->
-      let salt' = Rng.generate 16 in
-      let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
-      let user' =
-        { user with salt = Cstruct.to_string salt' ;
-                    digest = Cstruct.to_string digest' }
+    (* TODO: validate username/id *)
+    let add ?id t ~role ~passphrase ~name =
+      let id = match id with
+        | Some id -> id
+        | None ->
+          let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+          id
       in
-      write_user t id user'
+      let user =
+        let salt = Rng.generate 16 in
+        let digest = Crypto.key_of_passphrase ~salt passphrase in
+        { name ; salt = Cstruct.to_string salt ;
+          digest = Cstruct.to_string digest ; role }
+      in
+      find t id >>= function
+      | Error `Not_found -> write t id user
+      | Ok _ -> Lwt.return (Error (`Msg "user already exists"))
+      | Error `Not_unlocked -> Lwt.return (Error (`Msg "HSM not unlocked"))
+      | Error `Json_decode -> Lwt.return (Error (`Msg "json decoding failure"))
+
+    let list t =
+      match t.auth_store with
+      | None -> Lwt.return (Error (`Msg "no auth store"))
+      | Some auth_store ->
+        Kv_crypto.list auth_store Mirage_kv.Key.empty >|= function
+        | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_error e))
+        | Ok xs ->
+          let ids = List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs) in
+          Ok ids
+
+    let remove t name =
+      match t.auth_store with
+      | None -> Lwt.return (Error (`Msg "no auth store"))
+      | Some auth_store ->
+        Kv_crypto.remove auth_store (Mirage_kv.Key.v name) >|= function
+        | Ok () -> Ok ()
+        | Error e -> Error (`Msg (Fmt.to_to_string Kv_crypto.pp_write_error e))
+
+    let change_passphrase t ~id ~passphrase =
+      find t id >>= function
+      | Error _ -> Lwt.return (Error (`Msg "couldn't find user"))
+      | Ok user ->
+        let salt' = Rng.generate 16 in
+        let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
+        let user' =
+          { user with salt = Cstruct.to_string salt' ;
+                      digest = Cstruct.to_string digest' }
+        in
+        write t id user'
+  end
 
   let transition_to_operational t domain_key =
     t.domain_key <- domain_key;
@@ -302,7 +307,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           transition_to_operational t domain_key;
           Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >>= fun _ ->
           Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= fun _ ->
-          add_user ~id:"admin" t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
+          User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
           Ok ()
           (* TODO compute "time - our_current_idea_of_now", store offset in configuration store *)
         end)

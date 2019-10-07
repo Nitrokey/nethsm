@@ -24,8 +24,6 @@ module type S = sig
 
   val system_info_to_yojson : system_info -> Yojson.Safe.t
 
-  type role = Administrator | Operator | Metrics | Backup
-
   type t
 
   val info : t -> info
@@ -35,10 +33,6 @@ module type S = sig
   val state : t -> state
 
   val certificate : t -> Tls.Config.own_cert Lwt.t
-
-  val is_authenticated : t -> username:string -> passphrase:string -> bool Lwt.t
-
-  val is_authorized : t -> string -> role -> bool Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -54,15 +48,24 @@ module type S = sig
 
   val reset : t -> unit
 
-  val list_users : t -> (string list, [> `Msg of string ]) result Lwt.t
+  module User : sig
+    type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 
-  val add_user : ?id:string -> t -> role:role -> passphrase:string ->
-    name:string -> (unit, [> `Msg of string ]) result Lwt.t
+    val is_authenticated : t -> username:string -> passphrase:string ->
+      bool Lwt.t
 
-  val remove_user : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+    val is_authorized : t -> string -> role -> bool Lwt.t
 
-  val change_user_passphrase : t -> id:string -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val list : t -> (string list, [> `Msg of string ]) result Lwt.t
+
+    val add : ?id:string -> t -> role:role -> passphrase:string ->
+      name:string -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val change_passphrase : t -> id:string -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
+  end
 end
 
 module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig

@@ -28,7 +28,7 @@ module Make (Hsm : Hsm.S) = struct
     | Some auth ->
       match decode_auth auth with
       | Ok (username, passphrase) ->
-        Hsm.is_authenticated hsm_state ~username ~passphrase >|= fun auth ->
+        Hsm.User.is_authenticated hsm_state ~username ~passphrase >|= fun auth ->
         if auth then
           let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
           `Authorized, rd'
@@ -43,6 +43,6 @@ module Make (Hsm : Hsm.S) = struct
 
   let forbidden hsm_state role rd =
     let user = get_user rd.Webmachine.Rd.req_headers in
-    Hsm.is_authorized hsm_state user role >|= fun granted ->
+    Hsm.User.is_authorized hsm_state user role >|= fun granted ->
     not granted
 end

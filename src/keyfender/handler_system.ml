@@ -43,7 +43,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state Hsm.Administrator rd >>= fun auth ->
+      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
       Wm.continue auth rd
 
     method !process_post rd =
