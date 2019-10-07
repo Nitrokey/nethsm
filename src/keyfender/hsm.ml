@@ -46,6 +46,9 @@ module type S = sig
   val unlock : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  val change_unlock_passphrase : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
   val reboot : unit -> unit
 
   val shutdown : unit -> unit
@@ -143,15 +146,17 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let cert =
       X509.Signing_request.sign csr ~valid_from ~valid_until priv dn
     in
-    (* TODO error handling! *)
+    (* TODO write error handling! *)
     let pem_cert = Cstruct.to_string (X509.Certificate.encode_pem cert) in
     Kv_config.set t.kv `Certificate pem_cert >|= fun _ ->
     cert
 
   let certificate t =
+    (* TODO private key generation and certificate issuing should be a transaction! *)
     Kv_config.get t.kv `Private_key >>= function
     | Ok priv_pem ->
       begin
+        (* TODO handle decode and read errors below *)
         let priv, raw_priv =
           match X509.Private_key.decode_pem (Cstruct.of_string priv_pem) with
           | Ok (`RSA priv) -> `RSA priv, priv
@@ -285,6 +290,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let provision_mutex = Lwt_mutex.create ()
 
   let provision t ~unlock ~admin _time =
+    (* TODO writes to KV (config + domain) should be a transaction! *)
     Lwt_mutex.with_lock provision_mutex (fun () ->
         if t.state <> `Unprovisioned then begin
           Log.err (fun m -> m "HSM is already provisioned");
@@ -294,16 +300,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
           let domain_key = Rng.generate (Crypto.key_len * 2) in
           transition_to_operational t domain_key;
-          (* TODO handle write errors *)
           Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >>= fun _ ->
           Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= fun _ ->
           add_user ~id:"admin" t ~role:Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
           Ok ()
-          (* TODO:
-             - compute "time - our_current_idea_of_now", store offset in configuration store *)
+          (* TODO compute "time - our_current_idea_of_now", store offset in configuration store *)
         end)
 
   let unlock t ~passphrase =
+    (* TODO handle read errors in this function properly! *)
     match t.state with
     | `Unprovisioned ->
       Log.err (fun m -> m "HSM is not provisioned");
@@ -314,19 +319,30 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | `Locked ->
       Kv_config.get t.kv `Unlock_salt >>= function
       | Error e ->
-        (* TODO handle this error properly!? *)
         Log.err (fun m -> m "couldn't read salt %a" KV.pp_error e);
         Lwt.return (Error (`Msg "couldn't read salt"))
       | Ok salt ->
         let unlock_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase in
         Kv_domain.get t.kv `Passphrase ~unlock_key >|= function
         | Error (`Msg e) ->
-          (* TODO handle this error properly!? *)
           Log.err (fun m -> m "couldn't read domain key %s" e);
           Error (`Msg "couldn't read domain key")
         | Ok domain_key ->
           transition_to_operational t domain_key;
           Ok ()
+
+  let change_unlock_passphrase t ~passphrase =
+    match t.state with
+    | `Unprovisioned | `Locked ->
+      Log.warn (fun m -> m "attempted to change unlock passphrase while not unlocked");
+      Lwt.return (Error (`Msg "NitroHSM needs to be unlocked to change unlock passphrase"))
+    | `Operational ->
+      let unlock_salt = Rng.generate 16 in
+      let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
+      (* TODO (a) write error handling (b) the two writes below should be a transaction *)
+      Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >>= fun _ ->
+      Kv_domain.set t.kv `Passphrase ~unlock_key t.domain_key >|= fun _ ->
+      Ok ()
 
   let reboot () = ()
 

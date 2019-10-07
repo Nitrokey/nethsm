@@ -45,6 +45,9 @@ module type S = sig
 
   val unlock : t -> passphrase:string -> (unit, [> `Msg of string ]) result Lwt.t
 
+  val change_unlock_passphrase : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
   val reboot : unit -> unit
 
   val shutdown : unit -> unit
@@ -64,5 +67,6 @@ end
 
 module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
   include S
+
   val make : KV.t -> t Lwt.t
 end
