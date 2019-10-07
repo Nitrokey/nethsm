@@ -8,8 +8,6 @@ module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm
 
 let now () = Ptime.v (Pclock.now_d_ps ())
 
-let kv = Kv_mem.connect ()
-
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
   let hsm_state' = match hsm_state with
     | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.make)

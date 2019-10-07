@@ -43,29 +43,23 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     KV.get t.kv key' >|= function
     | Error e -> Error e
     | Ok data ->
-      (* TODO handle reading of too few bytes (< iv_size + block_size) *)
-      let iv, data' = Cstruct.split (Cstruct.of_string data) Crypto.iv_size in
-      let ctag, data'' = Cstruct.split data' Crypto.GCM.block_size in
-      let { Crypto.GCM.message ; tag } =
-        let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
-        Crypto.GCM.decrypt ~key:t.key ~iv ~adata data''
-      in
-      if Cstruct.equal tag ctag then
-        Ok (Cstruct.to_string message)
-      else
-        Error (`Not_found key') (* `Not_authenticated *)
+      let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
+      match Crypto.decrypt ~key:t.key ~adata (Cstruct.of_string data) with
+      | Ok decrypted -> Ok (Cstruct.to_string decrypted)
+      | Error _ -> Error (`Not_found key') (* TODO: better error! *)
 
   let set t key value =
     let key' = prefix t key in
-    let iv = R.generate Crypto.iv_size in
-    let { Crypto.GCM.message ; tag } =
-      let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
-      Crypto.GCM.encrypt ~key:t.key ~iv ~adata (Cstruct.of_string value)
-    in
-    let value' = Cstruct.(to_string (concat [ iv ; tag ; message ])) in
-    KV.set t.kv key' value'
+    let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
+    let data = Cstruct.of_string value in
+    let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
+    KV.set t.kv key' (Cstruct.to_string encrypted)
 
-  let connect ?(prefix = "/") ~key kv =
+  let connect store ~key kv =
+    let prefix = match store with
+      | `Authentication -> "authentication"
+      | `Key -> "keys"
+    in
     let prefix = Mirage_kv.Key.v prefix
     and key = Crypto.GCM.of_secret key
     in
