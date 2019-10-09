@@ -10,13 +10,15 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     key : Crypto.GCM.key
   }
 
-  (* TODO fix/extend errors (may need tweaks to mirage-kv!?) *)
-  type error = KV.error (* [ `Kv of Mirage_kv.error | `Not_authenticated ] *)
+  type error =
+    [ Mirage_kv.error | `Kv of KV.error | `Crypto of Crypto.decrypt_error ]
 
   type write_error = KV.write_error
 
-  let pp_error = KV.pp_error
-  (* | `Not_authenticated -> Fmt.pf ppf "not authenticated" *)
+  let pp_error ppf = function
+    | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
+    | `Kv e -> KV.pp_error ppf e
+    | `Crypto e -> Crypto.pp_decryption_error ppf e
 
   let pp_write_error = KV.pp_write_error
 
@@ -24,15 +26,19 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   type value = string (* maybe Cstruct.t *)
 
+  let lift_kv_err = function
+    | Ok x -> Ok x
+    | Error e -> Error (`Kv e)
+
   let prefix t key = Mirage_kv.Key.append t.prefix key
 
-  let exists t key = KV.exists t.kv (prefix t key)
+  let exists t key = KV.exists t.kv (prefix t key) >|= lift_kv_err
 
-  let list t key = KV.list t.kv (prefix t key)
+  let list t key = KV.list t.kv (prefix t key) >|= lift_kv_err
 
-  let last_modified t key = KV.last_modified t.kv (prefix t key)
+  let last_modified t key = KV.last_modified t.kv (prefix t key) >|= lift_kv_err
 
-  let digest t key = KV.digest t.kv (prefix t key)
+  let digest t key = KV.digest t.kv (prefix t key) >|= lift_kv_err
 
   let batch t ?retries:_ f = f t
 
@@ -41,12 +47,12 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let get t key =
     let key' = prefix t key in
     KV.get t.kv key' >|= function
-    | Error e -> Error e
+    | Error e -> Error (`Kv e)
     | Ok data ->
       let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
       match Crypto.decrypt ~key:t.key ~adata (Cstruct.of_string data) with
       | Ok decrypted -> Ok (Cstruct.to_string decrypted)
-      | Error _ -> Error (`Not_found key') (* TODO: better error! *)
+      | Error e -> Error (`Crypto e)
 
   let set t key value =
     let key' = prefix t key in

@@ -18,7 +18,8 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | Error _ -> Error (`Msg "domain key not found")
     | Ok data ->
       let key = Crypto.GCM.of_secret unlock_key in
-      Crypto.decrypt ~key ~adata:(adata slot) (Cstruct.of_string data)
+      Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
+        (Crypto.decrypt ~key ~adata:(adata slot) (Cstruct.of_string data))
 
   let set t slot ~unlock_key data =
     let adata = Cstruct.of_string (dk_prefix ^ name slot) in

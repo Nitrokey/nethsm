@@ -23,11 +23,13 @@ let encrypt rng ~key ~adata data =
   let { GCM.message ; tag } = GCM.encrypt ~key ~iv ~adata data in
   Cstruct.concat [ iv ; tag ; message ]
 
+type decrypt_error = [ `Insufficient_data | `Not_authenticated ]
+
 let decrypt ~key ~adata data =
   (* data is a cstruct (IV + tag + encrypted data)
      IV is iv_size long, tag is block_size, and data of at least block_size *)
   if Cstruct.len data < iv_size + 2 * GCM.block_size then
-    Error (`Msg "data too small")
+    Error `Insufficient_data
   else
     let iv, data' = Cstruct.split data iv_size in
     let stored_tag, data'' = Cstruct.split data' GCM.block_size in
@@ -35,4 +37,9 @@ let decrypt ~key ~adata data =
     if Cstruct.equal tag stored_tag then
       Ok message
     else
-      Error (`Msg "not authenticated")
+      Error `Not_authenticated
+
+let pp_decryption_error ppf e=
+  Fmt.string ppf (match e with
+      | `Insufficient_data -> "insufficient data"
+      | `Not_authenticated -> "not authenticated")
