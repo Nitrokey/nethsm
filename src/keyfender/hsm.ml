@@ -111,6 +111,19 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     system_info : system_info ;
   }
 
+  type version = V0
+
+  let compare_version a b = match a, b with
+    | V0, V0 -> `Equal
+
+  let version_to_string = function V0 -> "0"
+
+  let version_of_string = function
+    | "0" -> Ok V0
+    | s -> Error (`Msg ("unknown version " ^ s))
+
+  let my_version = V0
+
   let make kv =
     let t =
       {
@@ -122,14 +135,45 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
       }
     in
-    (* if unlock-salt is present, go to locked *)
-    Kv_config.get t.kv `Unlock_salt >|= function
-    | Ok _ -> t.state <- `Locked; t
-    | Error (`Not_found _) -> t
+    Kv_config.get t.kv `Version >>= function
+    | Error `Not_found _ ->
+      (* uninitialised / unprovisioned device, write version *)
+      begin Kv_config.set t.kv `Version (version_to_string my_version) >|= function
+        | Ok () -> t
+        | Error e ->
+          Logs.err (fun m -> m "error %a while writing version to store"
+                       KV.pp_write_error e);
+          (* there's really nothing we can do here, the KV is broken *)
+          assert false
+      end
     | Error e ->
-      Log.err (fun m -> m "unexpected %a while reading unlock-salt"
-                  KV.pp_error e);
+      Logs.err (fun m -> m "unexpected %a while reading version"
+                   KV.pp_error e);
+      (* this should not happen! *)
       assert false
+    | Ok data -> match version_of_string data with
+      | Error `Msg e ->
+        Logs.err (fun m -> m "couldn't parse version %s" e);
+        (* this may happen with a new kv-store and old software, the only safe
+           way to handle is to reset the store (we won't be able to retrieve any
+           data) *)
+        assert false
+      | Ok version ->
+        match compare_version version my_version with
+        (* here's the place to embed migration code (in case my_version is
+           greater than version), at least for the configuration store *)
+        | `Equal ->
+          begin
+            (* if unlock-salt is present, go to locked *)
+            Kv_config.get t.kv `Unlock_salt >|= function
+            | Ok _ -> t.state <- `Locked; t
+            | Error (`Not_found _) -> t
+            | Error e ->
+              Log.err (fun m -> m "unexpected %a while reading unlock-salt"
+                          KV.pp_error e);
+              (* this should not happen *)
+              assert false
+          end
 
   let info t = t.info
 

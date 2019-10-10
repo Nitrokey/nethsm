@@ -9,6 +9,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | `Unlock_salt -> "unlock-salt"
     | `Certificate -> "public.pem"
     | `Private_key -> "key.pem"
+    | `Version -> "version"
 
   let key_path key = Mirage_kv.Key.(add (v config_prefix) (name key))
 
