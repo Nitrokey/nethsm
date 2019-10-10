@@ -15,8 +15,12 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
         | `Crypto of Crypto.decrypt_error
       ]
 
-  val connect : [ `Authentication | `Key ] -> key:Cstruct.t -> KV.t -> t
-  (** [connect typ ~key kv] initializes a store, using [kv] as persistent
+  val connect : ?init:bool -> [ `Authentication | `Key ] -> key:Cstruct.t ->
+    KV.t -> (t, [ `Msg of string ]) result Lwt.t
+  (** [connect ~init typ ~key kv] connects to a store, using [kv] as persistent
       storage, [typ] is the prefix for all keys read and written to [kv],
-      and [key] is the symmetric secret for encryption and decryption. *)
+      and [key] is the symmetric secret for encryption and decryption. If [init]
+      is provided and [true] (defaults to [false]), a stub file is written.
+      Otherwise, this stub file is read to verify that the key is appropriate.
+ *)
 end

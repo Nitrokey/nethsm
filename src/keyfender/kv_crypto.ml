@@ -61,7 +61,7 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
     KV.set t.kv key' (Cstruct.to_string encrypted)
 
-  let connect store ~key kv =
+  let connect ?(init = false) store ~key kv =
     let prefix = match store with
       | `Authentication -> "authentication"
       | `Key -> "keys"
@@ -69,7 +69,18 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let prefix = Mirage_kv.Key.v prefix
     and key = Crypto.GCM.of_secret key
     in
-    { kv ; prefix ; key }
+    let t = { kv ; prefix ; key } in
+    let init_filename = Mirage_kv.Key.v ".initialized" in
+    (if init then
+       set t init_filename (Cstruct.to_string (R.generate Crypto.key_len)) >|=
+       Rresult.R.error_to_msg ~pp_error:pp_write_error
+     else
+       (get t init_filename >|= function
+         | Ok _ -> Ok ()
+         | Error e -> Error e) >|=
+       Rresult.R.error_to_msg ~pp_error) >|= function
+    | Ok () -> Ok t
+    | Error e -> Error e
 
   let disconnect _t = Lwt.return_unit
 end

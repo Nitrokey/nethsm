@@ -135,7 +135,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
      KV inconsistency).
 
      TODO this is temporary and may instead result in a HSM that:
-     (a) reports a more detailed error (if available)
+     (a) reports a more detailed error (if available) -- already done at call site using Logs
      (b) can be reset to factory defaults (and then be provisioned)
      (c) can be backed up? or sent in for recovery / hardware replacement
   *)
@@ -175,8 +175,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         match compare_version my_version version with
         | `Smaller -> fatal ()
         | `Greater ->
-          (* here's the place to embed migration code (in case my_version is
-             greater than version), at least for the configuration store *)
+          (* here's the place to embed migration code, at least for the
+             configuration store *)
           fatal ()
         | `Equal ->
           begin
@@ -351,11 +351,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         write t id user'
   end
 
-  let transition_to_operational t domain_key =
+  let transition_to_operational ~init t domain_key =
     t.domain_key <- domain_key;
     let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
-    t.auth_store <- Some (Kv_crypto.connect `Authentication ~key:auth_store_key t.kv);
-    t.key_store <- Some (Kv_crypto.connect `Key ~key:key_store_key t.kv);
+    (Kv_crypto.connect ~init `Authentication ~key:auth_store_key t.kv >|= function
+      | Error `Msg e -> Log.err (fun m -> m "error %s connection auth store" e); fatal ()
+      | Ok kv_auth -> t.auth_store <- Some kv_auth) >>= fun () ->
+    (Kv_crypto.connect ~init `Key ~key:key_store_key t.kv >|= function
+      | Error `Msg e -> Log.err (fun m -> m "error %s connection key store" e); fatal ()
+      | Ok kv_key -> t.key_store <- Some kv_key) >|= fun () ->
     t.state <- `Operational
 
   let provision_mutex = Lwt_mutex.create ()
@@ -369,7 +373,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           let unlock_salt = Rng.generate 16 in
           let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
           let domain_key = Rng.generate (Crypto.key_len * 2) in
-          transition_to_operational t domain_key;
+          transition_to_operational ~init:true t domain_key >>= fun () ->
           (* to avoid dangerous persistent states, do the exact sequence:
              (1) write admin user
              (2) write domain key
@@ -412,13 +416,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         fatal ()
       | Ok salt ->
         let unlock_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase in
-        Kv_domain.get t.kv `Passphrase ~unlock_key >|= function
+        Kv_domain.get t.kv `Passphrase ~unlock_key >>= function
         | Error `Msg e ->
           (* cannot happen: domain key is written before unlock-salt *)
           Log.err (fun m -> m "couldn't read domain key %s" e);
           fatal ()
         | Ok domain_key ->
-          transition_to_operational t domain_key;
+          transition_to_operational ~init:false t domain_key >|= fun () ->
           Ok ()
 
   let change_unlock_passphrase t ~passphrase =
