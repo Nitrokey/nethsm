@@ -87,6 +87,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | `Locked
   ][@@deriving yojson]
 
+  let pp_state ppf s =
+    Fmt.string ppf (match s with
+        | `Unprovisioned -> "unprovisioned"
+        | `Operational -> "operational"
+        | `Locked -> "locked")
+
+
   let state_to_yojson state =
     `Assoc [ ("state", match state_to_yojson state with
         `List [l] -> l | _ -> assert false) ]
@@ -124,6 +131,16 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let my_version = V0
 
+  (* fatal is called on error conditions we do not expect (hardware failure,
+     KV inconsistency).
+
+     TODO this is temporary and may instead result in a HSM that:
+     (a) reports a more detailed error (if available)
+     (b) can be reset to factory defaults (and then be provisioned)
+     (c) can be backed up? or sent in for recovery / hardware replacement
+  *)
+  let fatal () = assert false
+
   let make kv =
     let t =
       {
@@ -141,27 +158,26 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       begin Kv_config.set t.kv `Version (version_to_string my_version) >|= function
         | Ok () -> t
         | Error e ->
-          Logs.err (fun m -> m "error %a while writing version to store"
-                       KV.pp_write_error e);
-          (* there's really nothing we can do here, the KV is broken *)
-          assert false
+          Log.err (fun m -> m "error %a while writing version to store"
+                      KV.pp_write_error e);
+          fatal ()
       end
     | Error e ->
-      Logs.err (fun m -> m "unexpected %a while reading version"
-                   KV.pp_error e);
-      (* this should not happen! *)
-      assert false
+      Log.err (fun m -> m "unexpected %a while reading version"
+                  KV.pp_error e);
+      fatal ()
     | Ok data -> match version_of_string data with
       | Error `Msg e ->
-        Logs.err (fun m -> m "couldn't parse version %s" e);
-        (* this may happen with a new kv-store and old software, the only safe
-           way to handle is to reset the store (we won't be able to retrieve any
-           data) *)
-        assert false
+        Log.err (fun m -> m "couldn't parse version %s" e);
+        (* happens with a new kv-store and old software, which we disallow *)
+        fatal ()
       | Ok version ->
-        match compare_version version my_version with
-        (* here's the place to embed migration code (in case my_version is
-           greater than version), at least for the configuration store *)
+        match compare_version my_version version with
+        | `Smaller -> fatal ()
+        | `Greater ->
+          (* here's the place to embed migration code (in case my_version is
+             greater than version), at least for the configuration store *)
+          fatal ()
         | `Equal ->
           begin
             (* if unlock-salt is present, go to locked *)
@@ -171,8 +187,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
             | Error e ->
               Log.err (fun m -> m "unexpected %a while reading unlock-salt"
                           KV.pp_error e);
-              (* this should not happen *)
-              assert false
+              fatal ()
           end
 
   let info t = t.info
@@ -182,6 +197,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let state t = t.state
 
   let generate_cert t priv =
+    (* this is before provisioning, our posix time may be not accurate *)
     let valid_from = Ptime.epoch
     and valid_until = Ptime.max
     in
@@ -190,23 +206,24 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let cert =
       X509.Signing_request.sign csr ~valid_from ~valid_until priv dn
     in
-    (* TODO write error handling! *)
     let pem_cert = Cstruct.to_string (X509.Certificate.encode_pem cert) in
-    Kv_config.set t.kv `Certificate pem_cert >|= fun _ ->
-    cert
+    Kv_config.set t.kv `Certificate pem_cert >|= function
+    | Error e ->
+      Log.err (fun m -> m "couldn't write certificate %a" KV.pp_write_error e);
+      fatal ()
+    | Ok () -> cert
 
   let certificate t =
-    (* TODO private key generation and certificate issuing should be a transaction! *)
     Kv_config.get t.kv `Private_key >>= function
     | Ok priv_pem ->
       begin
-        (* TODO handle decode and read errors below *)
-        let priv, raw_priv =
+        let raw_priv =
+          (* TODO once x509 0.8.1 is released, use DER instead of PEM *)
           match X509.Private_key.decode_pem (Cstruct.of_string priv_pem) with
-          | Ok (`RSA priv) -> `RSA priv, priv
-          | Error (`Msg msg) ->
+          | Ok `RSA priv -> priv
+          | Error `Msg msg ->
             Log.err (fun m -> m "%s while decoding TLS private key" msg);
-            assert false
+            fatal ()
         in
         Kv_config.get t.kv `Certificate >>= function
         | Ok cert_pem ->
@@ -215,30 +232,35 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
             | Ok certs -> certs
             | Error (`Msg msg) ->
               Log.err (fun m -> m "%s while decoding certificates" msg);
-              assert false
+              fatal ()
           in
           Lwt.return (`Single (certs, raw_priv))
         | Error (`Not_found _) ->
-          (* private key present, certificate absent *)
-          generate_cert t priv >>= fun cert ->
-          Lwt.return (`Single ([ cert ], raw_priv))
+          (* this cannot happen: certificate is written first, private key afterwards *)
+          Log.err (fun m -> m "unexpected not found reading TLS certificate");
+          fatal ()
         | Error e ->
           Log.err (fun m -> m "unexpected %a while reading TLS certificate"
                       KV.pp_error e);
-          assert false
+          fatal ()
       end
     | Error (`Not_found _) ->
-      (* no key -> generate, generate certificate *)
-      let priv, raw_priv = let p = Nocrypto.Rsa.generate 4096 in `RSA p, p in
-      (* TODO handle write error *)
-      let priv_pem = Cstruct.to_string (X509.Private_key.encode_pem priv) in
-      Kv_config.set t.kv `Private_key priv_pem >>= fun _ ->
-      generate_cert t priv >>= fun cert ->
-      Lwt.return (`Single ([ cert ], raw_priv))
+      begin
+        (* no key -> generate, generate certificate *)
+        let priv, raw_priv = let p = Nocrypto.Rsa.generate 4096 in `RSA p, p in
+        let priv_pem = Cstruct.to_string (X509.Private_key.encode_pem priv) in
+        generate_cert t priv >>= fun cert ->
+        Kv_config.set t.kv `Private_key priv_pem >>= function
+        | Error e ->
+          Log.err (fun m -> m "error writing private key %a"
+                      KV.pp_write_error e);
+          fatal ()
+        | Ok () -> Lwt.return (`Single ([ cert ], raw_priv))
+      end
     | Error e ->
       Log.err (fun m -> m "unexpected %a while reading TLS private key"
                   KV.pp_error e);
-      assert false
+      fatal ()
 
   module User = struct
     type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
@@ -339,7 +361,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let provision_mutex = Lwt_mutex.create ()
 
   let provision t ~unlock ~admin _time =
-    (* TODO writes to KV (config + domain) should be a transaction! *)
     Lwt_mutex.with_lock provision_mutex (fun () ->
         if t.state <> `Unprovisioned then begin
           Log.err (fun m -> m "HSM is already provisioned");
@@ -349,33 +370,53 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
           let domain_key = Rng.generate (Crypto.key_len * 2) in
           transition_to_operational t domain_key;
-          Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >>= fun _ ->
-          Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= fun _ ->
-          User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >|= fun _ ->
-          Ok ()
-          (* TODO compute "time - our_current_idea_of_now", store offset in configuration store *)
+          (* to avoid dangerous persistent states, do the exact sequence:
+             (1) write admin user
+             (2) write domain key
+             (3) write unlock-salt
+
+             reading back on system start first reads unlock-salt, if this
+             fails, the HSM is in unprovisioned state
+             TODO: use explicit unprovisioned vs provisioned information by
+                   writing an empty file (config/provisioned) *)
+          User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= function
+          | Error `Msg msg ->
+            Log.err (fun m -> m "error writing admin user %s" msg);
+            fatal ()
+          | Ok () ->
+            Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= function
+            | Error e ->
+              Log.err (fun m -> m "error writing domain_key %a"
+                          KV.pp_write_error e);
+              fatal ()
+            | Ok () ->
+              Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >|= function
+              | Error e ->
+                Log.err (fun m -> m "error writing unlock-salt %a"
+                            KV.pp_write_error e);
+                fatal ()
+              | Ok () -> Ok ()
+              (* TODO compute "time - our_current_idea_of_now", store offset
+                 in configuration store *)
         end)
 
   let unlock t ~passphrase =
-    (* TODO handle read errors in this function properly! *)
     match t.state with
-    | `Unprovisioned ->
-      Log.err (fun m -> m "HSM is not provisioned");
-      Lwt.return (Error (`Msg "HSM is not provisioned"))
-    | `Operational ->
-      Log.err (fun m -> m "HSM is already unlocked");
-      Lwt.return (Error (`Msg "HSM already unlocked"))
+    | `Unprovisioned | `Operational ->
+      Log.err (fun m -> m "expected locked NitroHSM, found %a" pp_state t.state);
+      Lwt.return (Error (`Msg "NitroHSM is not locked"))
     | `Locked ->
       Kv_config.get t.kv `Unlock_salt >>= function
       | Error e ->
         Log.err (fun m -> m "couldn't read salt %a" KV.pp_error e);
-        Lwt.return (Error (`Msg "couldn't read salt"))
+        fatal ()
       | Ok salt ->
         let unlock_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase in
         Kv_domain.get t.kv `Passphrase ~unlock_key >|= function
-        | Error (`Msg e) ->
+        | Error `Msg e ->
+          (* cannot happen: domain key is written before unlock-salt *)
           Log.err (fun m -> m "couldn't read domain key %s" e);
-          Error (`Msg "couldn't read domain key")
+          fatal ()
         | Ok domain_key ->
           transition_to_operational t domain_key;
           Ok ()
@@ -383,8 +424,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let change_unlock_passphrase t ~passphrase =
     match t.state with
     | `Unprovisioned | `Locked ->
-      Log.warn (fun m -> m "attempted to change unlock passphrase while not unlocked");
-      Lwt.return (Error (`Msg "NitroHSM needs to be unlocked to change unlock passphrase"))
+      Log.warn (fun m -> m "expected operational NitroHSM, found %a" pp_state t.state);
+      Lwt.return (Error (`Msg "NitroHSM is not operational"))
     | `Operational ->
       let unlock_salt = Rng.generate 16 in
       let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
