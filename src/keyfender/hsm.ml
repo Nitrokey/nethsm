@@ -247,7 +247,10 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | Error (`Not_found _) ->
       begin
         (* no key -> generate, generate certificate *)
-        let priv, raw_priv = let p = Nocrypto.Rsa.generate 4096 in `RSA p, p in
+        let priv, raw_priv =
+          let p = Nocrypto.Rsa.generate Crypto.initial_key_rsa_bits in
+          `RSA p, p
+        in
         let priv_pem = Cstruct.to_string (X509.Private_key.encode_pem priv) in
         generate_cert t priv >>= fun cert ->
         Kv_config.set t.kv `Private_key priv_pem >>= function
@@ -309,7 +312,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           id
       in
       let user =
-        let salt = Rng.generate 16 in
+        let salt = Rng.generate Crypto.salt_len in
         let digest = Crypto.key_of_passphrase ~salt passphrase in
         { name ; salt = Cstruct.to_string salt ;
           digest = Cstruct.to_string digest ; role }
@@ -342,7 +345,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       find t id >>= function
       | Error _ -> Lwt.return (Error (`Msg "couldn't find user"))
       | Ok user ->
-        let salt' = Rng.generate 16 in
+        let salt' = Rng.generate Crypto.salt_len in
         let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
         let user' =
           { user with salt = Cstruct.to_string salt' ;
@@ -370,7 +373,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           Log.err (fun m -> m "HSM is already provisioned");
           Lwt.return (Error (`Msg "HSM already provisioned"))
         end else begin
-          let unlock_salt = Rng.generate 16 in
+          let unlock_salt = Rng.generate Crypto.salt_len in
           let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
           let domain_key = Rng.generate (Crypto.key_len * 2) in
           transition_to_operational ~init:true t domain_key >>= fun () ->
@@ -431,7 +434,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       Log.warn (fun m -> m "expected operational NitroHSM, found %a" pp_state t.state);
       Lwt.return (Error (`Msg "NitroHSM is not operational"))
     | `Operational ->
-      let unlock_salt = Rng.generate 16 in
+      let unlock_salt = Rng.generate Crypto.salt_len in
       let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
       (* TODO (a) write error handling (b) the two writes below should be a transaction *)
       Kv_config.set t.kv `Unlock_salt (Cstruct.to_string unlock_salt) >>= fun _ ->
