@@ -384,9 +384,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
              (3) write unlock-salt
 
              reading back on system start first reads unlock-salt, if this
-             fails, the HSM is in unprovisioned state
-             TODO: use explicit unprovisioned vs provisioned information by
-                   writing an empty file (config/provisioned) *)
+             fails, the HSM is in unprovisioned state *)
           User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= function
           | Error `Msg msg ->
             Log.err (fun m -> m "error writing admin user %s" msg);
