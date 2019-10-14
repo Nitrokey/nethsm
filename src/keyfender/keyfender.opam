@@ -35,6 +35,7 @@ depends: [
   "tls"
   "x509"
   "hex"
+  "gmap" {>= "0.3.0"}
   "mirage-clock-unix" {with-test}
   "mirage-random-test" {with-test}
   "mirage-kv-mem" {with-test}
