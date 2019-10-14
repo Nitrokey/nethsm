@@ -3,7 +3,18 @@ open OUnit
 let data = Mirage_random_test.generate 32
 let adata = Cstruct.of_string "my additional data"
 
-let basic_enc_dec_ok () =
+let basic_enc_dec_ok_1_byte () =
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let data = Cstruct.create 1 in
+  let encrypted =
+    Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
+  in
+  "decrypting an encrypted data works" @?
+  match Keyfender.Crypto.decrypt ~key ~adata encrypted with
+  | Ok data' -> Cstruct.equal data data'
+  | _ -> false
+
+let basic_enc_dec_ok_multiple_bytes () =
   let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
   let encrypted =
     Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
@@ -65,8 +76,13 @@ let rec ounit_success =
         false
 
 let () =
+  Printexc.record_backtrace true;
+  Fmt_tty.setup_std_outputs ();
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level (Some Debug);
   let tests = [
-    "basic encryption and decryption" >:: basic_enc_dec_ok;
+    "basic encryption and decryption of a single byte" >:: basic_enc_dec_ok_1_byte;
+    "basic encryption and decryption of multiple bytes" >:: basic_enc_dec_ok_multiple_bytes;
     "basic encryption and decryption fail (not authenticated)" >:: basic_enc_dec_fail_not_authenticated;
     "basic encryption and decryption fail (bad adata)" >:: basic_enc_dec_fail_bad_adata;
       "basic encryption and decryption fail (data too small)" >:: basic_enc_dec_fail_too_small;

@@ -32,8 +32,9 @@ let locked_mock () =
     Kv_mem.connect () >>= fun kv ->
     Hsm.make kv >>= fun state ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
-    Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun _ ->
+    Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
+    assert (r = Ok ());
     Hsm.make kv)
 
 let empty () =
@@ -160,7 +161,11 @@ let rec ounit_success =
     | RTodo _::_ ->
         false
 
-let () = 
+let () =
+  Printexc.record_backtrace true;
+  Fmt_tty.setup_std_outputs ();
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level (Some Debug);
   let tests = [
     "/" >:: empty;
     "/health/alive" >:: health_alive_ok;

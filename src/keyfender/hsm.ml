@@ -118,19 +118,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     system_info : system_info ;
   }
 
-  type version = V0
-
-  let compare_version a b = match a, b with
-    | V0, V0 -> `Equal
-
-  let version_to_string = function V0 -> "0"
-
-  let version_of_string = function
-    | "0" -> Ok V0
-    | s -> Error (`Msg ("unknown version " ^ s))
-
-  let my_version = V0
-
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 
@@ -155,7 +142,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     Kv_config.get t.kv `Version >>= function
     | Error `Not_found _ ->
       (* uninitialised / unprovisioned device, write version *)
-      begin Kv_config.set t.kv `Version (version_to_string my_version) >|= function
+      begin Kv_config.set t.kv `Version Version.(to_string current) >|= function
         | Ok () -> t
         | Error e ->
           Log.err (fun m -> m "error %a while writing version to store"
@@ -166,13 +153,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       Log.err (fun m -> m "unexpected %a while reading version"
                   KV.pp_error e);
       fatal ()
-    | Ok data -> match version_of_string data with
+    | Ok data -> match Version.of_string data with
       | Error `Msg e ->
         Log.err (fun m -> m "couldn't parse version %s" e);
         (* happens with a new kv-store and old software, which we disallow *)
         fatal ()
       | Ok version ->
-        match compare_version my_version version with
+        match Version.(compare current version) with
         | `Smaller -> fatal ()
         | `Greater ->
           (* here's the place to embed migration code, at least for the
@@ -356,12 +343,26 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let transition_to_operational ~init t domain_key =
     t.domain_key <- domain_key;
-    let auth_store_key, key_store_key = Cstruct.split domain_key Crypto.key_len in
-    (Kv_crypto.connect ~init `Authentication ~key:auth_store_key t.kv >|= function
-      | Error `Msg e -> Log.err (fun m -> m "error %s connection auth store" e); fatal ()
+    let auth_store_key, key_store_key =
+      Cstruct.split domain_key Crypto.key_len
+    in
+    (Kv_crypto.connect ~init Version.current `Authentication ~key:auth_store_key t.kv >|= function
+      | Error `Msg e ->
+        Log.err (fun m -> m "error %s connection auth store" e); fatal ()
+      | Error `Different_version (_t, stored) ->
+        (* here should the code for data upgrades be! *)
+        Log.err (fun m -> m "different version: current %s, stored %s"
+                    Version.(to_string current) (Version.to_string stored));
+        fatal ()
       | Ok kv_auth -> t.auth_store <- Some kv_auth) >>= fun () ->
-    (Kv_crypto.connect ~init `Key ~key:key_store_key t.kv >|= function
-      | Error `Msg e -> Log.err (fun m -> m "error %s connection key store" e); fatal ()
+    (Kv_crypto.connect ~init Version.current `Key ~key:key_store_key t.kv >|= function
+      | Error `Msg e ->
+        Log.err (fun m -> m "error %s connection key store" e); fatal ()
+      | Error `Different_version (_t, stored) ->
+        (* here should the code for data upgrades be! *)
+        Log.err (fun m -> m "different version: current %s, stored %s"
+                    Version.(to_string current) (Version.to_string stored));
+        fatal ()
       | Ok kv_key -> t.key_store <- Some kv_key) >|= fun () ->
     t.state <- `Operational
 

@@ -61,7 +61,7 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
     KV.set t.kv key' (Cstruct.to_string encrypted)
 
-  let connect ?(init = false) store ~key kv =
+  let connect ?(init = false) version store ~key kv =
     let prefix = match store with
       | `Authentication -> "authentication"
       | `Key -> "keys"
@@ -70,15 +70,18 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     and key = Crypto.GCM.of_secret key
     in
     let t = { kv ; prefix ; key } in
-    let init_filename = Mirage_kv.Key.v ".initialized" in
+    let version_filename = Mirage_kv.Key.v ".version" in
     (if init then
-       set t init_filename (Cstruct.to_string (R.generate Crypto.key_len)) >|=
+       set t version_filename (Version.to_string version) >|=
        Rresult.R.error_to_msg ~pp_error:pp_write_error
      else
-       (get t init_filename >|= function
-         | Ok _ -> Ok ()
-         | Error e -> Error e) >|=
-       Rresult.R.error_to_msg ~pp_error) >|= function
+       (get t version_filename >|= function
+         | Error e -> Rresult.R.error_msgf "%a" pp_error e
+         | Ok stored_version -> match Version.of_string stored_version with
+           | Error e -> Error e
+           | Ok v -> match Version.compare version v with
+             | `Equal -> Ok ()
+             | _ -> Error (`Different_version (t, v)))) >|= function
     | Ok () -> Ok t
     | Error e -> Error e
 

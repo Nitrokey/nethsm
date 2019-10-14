@@ -1,11 +1,11 @@
 (test
-  (libraries lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
+  (libraries logs.fmt fmt.tty lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
   (modules test_dispatch)
   (name test_dispatch)
   (package keyfender))
 
 (test
-  (libraries keyfender mirage-random-test oUnit)
+  (libraries logs.fmt fmt.tty keyfender mirage-random-test oUnit)
   (modules test_crypto)
   (name test_crypto)
   (package keyfender))
