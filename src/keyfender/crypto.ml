@@ -4,7 +4,8 @@ module GCM = Nocrypto.Cipher_block.AES.GCM
 let initial_key_rsa_bits = 4096
 
 (* parameters for PBKDF2 *)
-let count = 100_000
+(* TODO increase for deployment to 100_000, for testing 1000 is fine! *)
+let count = 1_000
 let salt_len = 16
 
 (* key length for AES128 is 16 byte = 128 bit *)
