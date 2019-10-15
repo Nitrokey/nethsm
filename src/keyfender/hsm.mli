@@ -37,12 +37,10 @@ module type S = sig
 
   val unlock : t -> passphrase:string -> (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_unlock_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
-
   (* /config *)
 
-  val unlock_passphrase : unit -> unit
+  val change_unlock_passphrase : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
 
   val unattended_boot : unit -> unit
 

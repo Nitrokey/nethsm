@@ -38,12 +38,10 @@ module type S = sig
   val unlock : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_unlock_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
-
   (* /config *)
 
-  val unlock_passphrase : unit -> unit
+  val change_unlock_passphrase : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
 
   val unattended_boot : unit -> unit
 
@@ -428,6 +426,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           transition_to_operational ~init:false t domain_key >|= fun () ->
           Ok ()
 
+  (* /config *)
+
   let change_unlock_passphrase t ~passphrase =
     match t.state with
     | `Unprovisioned | `Locked ->
@@ -440,10 +440,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       Kv_config.set t.kv Unlock_salt unlock_salt >>= fun _ ->
       Kv_domain.set t.kv `Passphrase ~unlock_key t.domain_key >|= fun _ ->
       Ok ()
-
-  (* /config *)
-
-  let unlock_passphrase () = ()
 
   let unattended_boot () = ()
 
