@@ -28,8 +28,6 @@ module type S = sig
 
   val info : t -> info
 
-  val system_info : t -> system_info
-
   val state : t -> state
 
   val certificate : t -> Tls.Config.own_cert Lwt.t
@@ -42,11 +40,41 @@ module type S = sig
   val change_unlock_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  (* /config *)
+
+  val unlock_passphrase : unit -> unit
+
+  val unattended_boot : unit -> unit
+
+  val tls_public_pem : unit -> unit
+
+  val tls_cert_pem : unit -> unit
+
+  val tls_csr_pem : unit -> unit
+
+  val network : unit -> unit
+
+  val logging : unit -> unit
+
+  val backup_passphrase : unit -> unit
+
+  val time : unit -> unit
+
+  (* /system *)
+
+  val system_info : t -> system_info
+
   val reboot : unit -> unit
 
   val shutdown : unit -> unit
 
   val reset : t -> unit
+
+  val update : unit -> unit
+
+  val backup : unit -> unit
+
+  val restore : unit -> unit
 
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]

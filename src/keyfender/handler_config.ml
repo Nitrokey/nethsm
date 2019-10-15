@@ -7,34 +7,51 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private system_info rd =
+    method private get rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "info" -> 
-        let open Hsm in
-        let json = Yojson.Safe.to_string (system_info_to_yojson @@ system_info hsm_state) in
+      | Some "unattended-boot" -> 
+        let json = "TODO: GET unattended-boot" in
+        Wm.continue (`String json) rd
+      | Some "tls/public-pem" -> 
+        let json = "TODO: GET public.pem" in
+        Wm.continue (`String json) rd
+      | Some "tls/cert-pem" -> 
+        let json = "TODO: GET cert.pem" in
+        Wm.continue (`String json) rd
+      | Some "network" -> 
+        let json = "TODO: GET network.pem" in
+        Wm.continue (`String json) rd
+      | Some "logging" -> 
+        let json = "TODO: GET logging" in
+        Wm.continue (`String json) rd
+      | Some "time" -> 
+        let json = "todo: GET time" in
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-       
+ 
     (* TODO we get 500 instead of 200 when we post to reset etc *)
-    method private system rd =
+    method private config rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "reboot" -> 
-        Hsm.reboot () ;
+      | Some "unlock-passphrase" -> 
+        Hsm.unlock_passphrase () ;
         Wm.continue true rd
-      | Some "shutdown" -> 
-        Hsm.shutdown () ;
+      | Some "unattended-boot" -> 
+        Hsm.unattended_boot () ;
         Wm.continue true rd
-      | Some "reset" ->
-        Hsm.reset hsm_state ;
+      (* not sure how to match on deep path *)
+      | Some "tls" -> assert false
+      (* tls/public.pem supports get only *)
+      | Some "network" ->
+        Hsm.network () ;
         Wm.continue true rd
-      | Some "update" ->  
-        Hsm.update () ;
+      | Some "logging" ->
+        Hsm.logging () ;
         Wm.continue true rd
-      | Some "backup" ->  
-        Hsm.backup () ;
+      | Some "backup-passphrase" ->
+        Hsm.backup_passphrase () ;
         Wm.continue true rd
-      | Some "restore" -> 
-        Hsm.restore () ;
+      | Some "time" ->
+        Hsm.time () ;
         Wm.continue true rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
@@ -59,10 +76,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ `GET ; `POST ] rd
  
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#system_info) ] rd
+      Wm.continue [ ("application/json", self#get) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [ ("application/json", self#system) ] rd
+      Wm.continue [ ("application/json", self#config) ] rd
 
   end
 
