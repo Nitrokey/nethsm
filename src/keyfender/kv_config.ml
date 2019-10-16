@@ -88,6 +88,12 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Ok data -> of_string key data
     | Error e -> Error (`Kv e)
 
+  let get_opt kv key =
+    get kv key >|= function
+    | Error (`Kv (`Not_found _)) -> Ok None
+    | Ok data -> Ok (Some data)
+    | Error e -> Error e
+
   let set kv key value =
     let data = to_string key value in
     KV.set kv (key_path key) data
