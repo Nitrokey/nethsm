@@ -13,7 +13,8 @@ struct
 
   let start _random _clock _assets store http =
     Hsm.make store >>= fun hsm_state ->
-    Hsm.certificate hsm_state >>= fun certificates ->
+    Hsm.certificate_chain hsm_state >>= fun (cert, chain, `RSA priv) ->
+    let certificates = `Single (cert :: chain, priv) in
     let tls_cfg = Tls.Config.server ~certificates () in
     let https_port = Key_gen.https_port () in
     let tls = `TLS (tls_cfg, `TCP https_port) in

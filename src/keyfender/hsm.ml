@@ -30,7 +30,8 @@ module type S = sig
 
   val state : t -> state
 
-  val certificate : t -> Tls.Config.own_cert Lwt.t
+  val certificate_chain : t ->
+    (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -45,11 +46,14 @@ module type S = sig
 
   val unattended_boot : unit -> unit
 
-  val tls_public_pem : unit -> unit
+  val tls_public_pem : t -> string Lwt.t
 
-  val tls_cert_pem : unit -> unit
+  val tls_cert_pem : t -> string Lwt.t
 
-  val tls_csr_pem : unit -> unit
+  val change_tls_cert_pem : t -> string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
+  val tls_csr_pem : t -> string Lwt.t
 
   val network : unit -> unit
 
@@ -134,6 +138,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   module Kv_domain = Kv_domain_key.Make(Rng)(KV)
   module Kv_crypto = Kv_crypto.Make(Rng)(KV)
 
+  (* TODO instead of mutable and option, push kvs + dk into state polyvar!? *)
   type t = {
     mutable state : state ;
     kv : KV.t ;
@@ -143,6 +148,16 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     info : info ;
     system_info : system_info ;
   }
+
+  let expect_state t state =
+    let r =
+      if t.state = state then
+        Ok ()
+      else
+        Rresult.R.error_msgf "expected HSM in %a, but it is %a"
+          pp_state state pp_state t.state
+    in
+    Lwt.return r
 
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
@@ -200,13 +215,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let state t = t.state
 
+  let generate_csr ?(dn = X509.Distinguished_name.singleton CN "keyfender") priv =
+    X509.Signing_request.create dn priv, dn
+
   let generate_cert t priv =
     (* this is before provisioning, our posix time may be not accurate *)
     let valid_from = Ptime.epoch
     and valid_until = Ptime.max
     in
-    let dn = X509.Distinguished_name.singleton CN "keyfender" in
-    let csr = X509.Signing_request.create dn priv in
+    let csr, dn = generate_csr priv in
     let cert =
       X509.Signing_request.sign csr ~valid_from ~valid_until priv dn
     in
@@ -216,12 +233,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       fatal ()
     | Ok () -> cert
 
-  let certificate t =
+  let certificate_chain t =
     Kv_config.get t.kv Private_key >>= function
-    | Ok `RSA priv ->
+    | Ok priv ->
       begin
         Kv_config.get t.kv Certificate >>= function
-        | Ok (certs, chain) -> Lwt.return (`Single (certs :: chain, priv))
+        | Ok (certs, chain) -> Lwt.return (certs, chain, priv)
         | Error `Kv `Not_found _ ->
           (* cannot happen: certificate is written first, private key afterwards *)
           Log.err (fun m -> m "unexpected not found reading TLS certificate");
@@ -234,17 +251,14 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     | Error `Kv `Not_found _ ->
       begin
         (* no key -> generate, generate certificate *)
-        let priv, raw_priv =
-          let p = Nocrypto.Rsa.generate Crypto.initial_key_rsa_bits in
-          `RSA p, p
-        in
+        let priv = `RSA (Nocrypto.Rsa.generate Crypto.initial_key_rsa_bits) in
         generate_cert t priv >>= fun cert ->
         Kv_config.set t.kv Private_key priv >>= function
         | Error e ->
           Log.err (fun m -> m "error writing private key %a"
                       KV.pp_write_error e);
           fatal ()
-        | Ok () -> Lwt.return (`Single ([ cert ], raw_priv))
+        | Ok () -> Lwt.return (cert, [], priv)
       end
     | Error e ->
       Log.err (fun m -> m "unexpected %a reading TLS private key"
@@ -345,6 +359,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
+    (* TODO this may fail unexpectedly: auth_store set to Some h, but neither
+            key_store nor state being updated ~> inconsistency *)
     (Kv_crypto.connect ~init Version.current `Authentication ~key:auth_store_key t.kv >|= function
       | Error `Msg e ->
         Log.err (fun m -> m "error %s connection auth store" e); fatal ()
@@ -369,85 +385,116 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let provision t ~unlock ~admin _time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
-        if t.state <> `Unprovisioned then begin
-          Log.err (fun m -> m "HSM is already provisioned");
-          Lwt.return (Error (`Msg "HSM already provisioned"))
-        end else begin
-          let unlock_salt = Rng.generate Crypto.salt_len in
-          let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-          let domain_key = Rng.generate (Crypto.key_len * 2) in
-          transition_to_operational ~init:true t domain_key >>= fun () ->
-          (* to avoid dangerous persistent states, do the exact sequence:
-             (1) write admin user
-             (2) write domain key
-             (3) write unlock-salt
+        let open Lwt_result.Infix in
+        expect_state t `Unprovisioned >>= fun () ->
+        let open Lwt.Infix in
+        let unlock_salt = Rng.generate Crypto.salt_len in
+        let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+        let domain_key = Rng.generate (Crypto.key_len * 2) in
+        transition_to_operational ~init:true t domain_key >>= fun () ->
+        (* to avoid dangerous persistent states, do the exact sequence:
+           (1) write admin user
+           (2) write domain key
+           (3) write unlock-salt
 
-             reading back on system start first reads unlock-salt, if this
-             fails, the HSM is in unprovisioned state *)
-          User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= function
-          | Error `Msg msg ->
-            Log.err (fun m -> m "error writing admin user %s" msg);
+           reading back on system start first reads unlock-salt, if this fails,
+           the HSM is in unprovisioned state *)
+        User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= function
+        | Error `Msg msg ->
+          Log.err (fun m -> m "error writing admin user %s" msg);
+          fatal ()
+        | Ok () ->
+          Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= function
+          | Error e ->
+            Log.err (fun m -> m "error writing domain_key %a"
+                        KV.pp_write_error e);
             fatal ()
           | Ok () ->
-            Kv_domain.set t.kv `Passphrase ~unlock_key domain_key >>= function
+            Kv_config.set t.kv Unlock_salt unlock_salt >|= function
             | Error e ->
-              Log.err (fun m -> m "error writing domain_key %a"
+              Log.err (fun m -> m "error writing unlock-salt %a"
                           KV.pp_write_error e);
               fatal ()
-            | Ok () ->
-              Kv_config.set t.kv Unlock_salt unlock_salt >|= function
-              | Error e ->
-                Log.err (fun m -> m "error writing unlock-salt %a"
-                            KV.pp_write_error e);
-                fatal ()
-              | Ok () -> Ok ()
-              (* TODO compute "time - our_current_idea_of_now", store offset
-                 in configuration store *)
-        end)
+            | Ok () -> Ok ()
+            (* TODO compute "time - our_current_idea_of_now", store offset in
+                    configuration store *)
+      )
 
   let unlock t ~passphrase =
-    match t.state with
-    | `Unprovisioned | `Operational ->
-      Log.err (fun m -> m "expected locked NitroHSM, found %a" pp_state t.state);
-      Lwt.return (Error (`Msg "NitroHSM is not locked"))
-    | `Locked ->
-      Kv_config.get t.kv Unlock_salt >>= function
-      | Error e ->
-        Log.err (fun m -> m "couldn't read salt %a" Kv_config.pp_error e);
+    let open Lwt_result.Infix in
+    expect_state t `Locked >>= fun () ->
+    let open Lwt.Infix in
+    Kv_config.get t.kv Unlock_salt >>= function
+    | Error e ->
+      Log.err (fun m -> m "couldn't read salt %a" Kv_config.pp_error e);
+      fatal ()
+    | Ok salt ->
+      let unlock_key = Crypto.key_of_passphrase ~salt passphrase in
+      Kv_domain.get t.kv `Passphrase ~unlock_key >>= function
+      | Error `Msg e ->
+        (* cannot happen: domain key is written before unlock-salt *)
+        Log.err (fun m -> m "couldn't read domain key %s" e);
         fatal ()
-      | Ok salt ->
-        let unlock_key = Crypto.key_of_passphrase ~salt passphrase in
-        Kv_domain.get t.kv `Passphrase ~unlock_key >>= function
-        | Error `Msg e ->
-          (* cannot happen: domain key is written before unlock-salt *)
-          Log.err (fun m -> m "couldn't read domain key %s" e);
-          fatal ()
-        | Ok domain_key ->
-          transition_to_operational ~init:false t domain_key >|= fun () ->
-          Ok ()
+      | Ok domain_key ->
+        transition_to_operational ~init:false t domain_key >|= fun () ->
+        Ok ()
 
   (* /config *)
 
   let change_unlock_passphrase t ~passphrase =
-    match t.state with
-    | `Unprovisioned | `Locked ->
-      Log.warn (fun m -> m "expected operational NitroHSM, found %a" pp_state t.state);
-      Lwt.return (Error (`Msg "NitroHSM is not operational"))
-    | `Operational ->
-      let unlock_salt = Rng.generate Crypto.salt_len in
-      let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
-      (* TODO (a) write error handling (b) the two writes below should be a transaction *)
-      Kv_config.set t.kv Unlock_salt unlock_salt >>= fun _ ->
-      Kv_domain.set t.kv `Passphrase ~unlock_key t.domain_key >|= fun _ ->
-      Ok ()
+    let open Lwt_result.Infix in
+    expect_state t `Operational >>= fun () ->
+    let open Lwt.Infix in
+    let unlock_salt = Rng.generate Crypto.salt_len in
+    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
+    (* TODO (a) write error handling (b) the two writes below should be a transaction *)
+    Kv_config.set t.kv Unlock_salt unlock_salt >>= fun _ ->
+    Kv_domain.set t.kv `Passphrase ~unlock_key t.domain_key >|= fun _ ->
+    Ok ()
 
   let unattended_boot () = ()
 
-  let tls_public_pem () = ()
+  let tls_public_pem t =
+    certificate_chain t >|= fun (certificate, _, _) ->
+    let public = X509.Certificate.public_key certificate in
+    Cstruct.to_string (X509.Public_key.encode_pem public)
 
-  let tls_cert_pem () = ()
+  let tls_cert_pem t =
+    certificate_chain t >|= fun (cert, chain, _) ->
+    Cstruct.to_string (X509.Certificate.encode_pem_multiple (cert :: chain))
 
-  let tls_csr_pem () = ()
+  let change_tls_cert_pem t cert_data =
+    (* validate the incoming chain (we'll use it for the TLS server):
+       - there's one server certificate at either end (matching our private key)
+       - the chain itself is properly signed (i.e. a full chain missing the TA)
+         --> take the last element as TA (unchecked), and verify the chain!
+       - TODO use current system time for verification
+    *)
+    match X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data) with
+    | Error e -> Lwt.return (Error e)
+    | Ok [] -> Lwt.return (Error (`Msg "empty certificate chain"))
+    | Ok (cert :: chain) ->
+      certificate_chain t >>= fun (_, _, `RSA priv) ->
+      if `RSA (Nocrypto.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
+        let valid = match List.rev chain with
+          | [] -> Ok cert
+          | ta :: chain' ->
+            let our_chain = cert :: List.rev chain' in
+            Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
+              (X509.Validation.verify_chain ~anchors:[ta] our_chain)
+        in
+        match valid with
+        | Error e -> Lwt.return (Error e)
+        | Ok _ ->
+          Kv_config.set t.kv Certificate (cert, chain) >|=
+          Rresult.R.error_to_msg ~pp_error:KV.pp_write_error
+      else
+        Lwt.return (Error (`Msg "public key in certificate does not match private key"))
+
+  let tls_csr_pem t =
+    certificate_chain t >|= fun (_, _, priv) ->
+    let csr, _ = generate_csr priv in
+    Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
   let network () = ()
 

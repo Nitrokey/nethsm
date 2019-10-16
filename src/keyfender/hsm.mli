@@ -30,12 +30,14 @@ module type S = sig
 
   val state : t -> state
 
-  val certificate : t -> Tls.Config.own_cert Lwt.t
+  val certificate_chain : t ->
+    (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  val unlock : t -> passphrase:string -> (unit, [> `Msg of string ]) result Lwt.t
+  val unlock : t -> passphrase:string ->
+    (unit, [> `Msg of string ]) result Lwt.t
 
   (* /config *)
 
@@ -44,11 +46,14 @@ module type S = sig
 
   val unattended_boot : unit -> unit
 
-  val tls_public_pem : unit -> unit
+  val tls_public_pem : t -> string Lwt.t
 
-  val tls_cert_pem : unit -> unit
+  val tls_cert_pem : t -> string Lwt.t
 
-  val tls_csr_pem : unit -> unit
+  val change_tls_cert_pem : t -> string ->
+    (unit, [> `Msg of string ]) result Lwt.t
+
+  val tls_csr_pem : t -> string Lwt.t
 
   val network : unit -> unit
 
