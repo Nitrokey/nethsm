@@ -1,5 +1,13 @@
+(* -*- tuareg -*- *)
+
+let bisect = try Sys.getenv "BISECT_ENABLE" = "yes" with _ -> false
+
+let () =
+  Jbuild_plugin.V1.send @@ Printf.sprintf {|
 (library
   (name        keyfender)
   (public_name keyfender)
-  (preprocess (pps ppx_deriving_yojson))
+  (preprocess (pps ppx_deriving_yojson %s))
   (libraries astring logs lwt ptime cohttp rresult nocrypto webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf mirage-kv-lwt tls x509 hex gmap))
+  |}
+ (if bisect then "bisect_ppx -conditional" else "")
