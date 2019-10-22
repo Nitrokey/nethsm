@@ -10,6 +10,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
+    | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
 
   module K = struct
     type 'a t = 'a k
@@ -20,7 +21,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       | Unlock_salt, Unlock_salt -> Eq | Unlock_salt, _ -> Lt | _, Unlock_salt -> Gt
       | Certificate, Certificate -> Eq | Certificate, _ -> Lt | _, Certificate -> Gt
       | Private_key, Private_key -> Eq | Private_key, _ -> Lt | _, Private_key -> Gt
-      | Version, Version -> Eq (* | Version, _ -> Lt | _, Version -> Gt *)
+      | Version, Version -> Eq | Version, _ -> Lt | _, Version -> Gt
+      | Ip_config, Ip_config -> Eq (* | Ip_config, _ -> Lt | _, Ip_config -> Gt *)
   end
 
   include Gmap.Make(K)
@@ -30,6 +32,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Certificate -> "certificate"
     | Private_key -> "private-key"
     | Version -> "version"
+    | Ip_config -> "ip-config"
 
   let to_string : type a. a k -> a -> string = fun k v ->
     match k, v with
@@ -47,9 +50,18 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       (* TODO encode_der (x509 0.8.1) *)
       Cstruct.to_string (X509.Private_key.encode_pem key)
     | Version, v -> Version.to_string v
+    | Ip_config, (ip, prefix, route) ->
+      let route' = match route with None -> Ipaddr.V4.any | Some x -> x in
+      String.concat "" [
+        Ipaddr.V4.to_octets route' ;
+        Ipaddr.V4.to_octets ip ;
+        Ipaddr.V4.to_octets (Ipaddr.V4.Prefix.netmask prefix)
+      ]
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
     fun key data ->
+    let open Rresult.R.Infix in
+    let guard p err = if p then Ok () else Error (`Msg err) in
     match key with
     | Unlock_salt -> Ok (Cstruct.of_string data)
     | Certificate ->
@@ -58,24 +70,41 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
           let total = Cstruct.len data in
           if total = 0 then
             Ok (List.rev acc)
-          else if total < 4 then
-            Error (`Msg "invalid data (no length field)")
           else
+            guard (total >= 4) "invalid data (no length field)" >>= fun () ->
             let len = Int32.to_int (Cstruct.BE.get_uint32 data 0) in
-            if total - 4 < len then
-              Error (`Msg "invalid data (too short)")
-            else
-              match X509.Certificate.decode_der (Cstruct.sub data 4 len) with
-              | Ok cert -> decode (Cstruct.shift data (len + 4)) (cert :: acc)
-              | Error e -> Error e
+            guard (total - 4 >= len) "invalid data (too short)" >>= fun () ->
+            match X509.Certificate.decode_der (Cstruct.sub data 4 len) with
+            | Ok cert -> decode (Cstruct.shift data (len + 4)) (cert :: acc)
+            | Error e -> Error e
         in
         match decode (Cstruct.of_string data) [] with
         | Ok (server :: chain) -> Ok (server, chain)
-        | Ok [] -> Error (`Msg "empty certificate")
+        | Ok [] -> Error (`Msg "empty certificate chain")
         | Error e -> Error e
       end
     | Private_key -> X509.Private_key.decode_pem (Cstruct.of_string data)
     | Version -> Version.of_string data
+    | Ip_config ->
+      guard (String.length data = 12) "expected exactly 12 bytes for IP configuration" >>= fun () ->
+      let route_str, ip_str, netmask_str =
+        String.sub data 0 4, String.sub data 4 4, String.sub data 8 4
+      in
+      Ipaddr.V4.of_octets route_str >>= fun route ->
+      Ipaddr.V4.of_octets ip_str >>= fun ip ->
+      Ipaddr.V4.of_octets netmask_str >>= fun netmask ->
+      (try
+         Ok (Ipaddr.V4.Prefix.of_netmask netmask ip)
+       with
+         Ipaddr.Parse_error (err, packet) ->
+         Rresult.R.error_msgf "error %s while parsing netmask %s" err packet) >>= fun prefix ->
+      (if Ipaddr.V4.compare route Ipaddr.V4.any = 0 then
+         Ok None
+       else if Ipaddr.V4.Prefix.mem route prefix then
+         Ok (Some route)
+       else
+         Error (`Msg "route not on local network")) >>| fun route' ->
+      (ip, prefix, route')
 
   let key_path key = Mirage_kv.Key.(add (v config_prefix) (name key))
 

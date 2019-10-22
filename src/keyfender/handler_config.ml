@@ -19,7 +19,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let json = "TODO: GET cert.pem" in
         Wm.continue (`String json) rd
       | Some "network" -> 
-        let json = "TODO: GET network.pem" in
+        Hsm.Config.network hsm_state >>= fun _network ->
+        (* TODO serialise network to json and a string *)
+        let json = "TODO: GET network" in
         Wm.continue (`String json) rd
       | Some "logging" -> 
         let json = "TODO: GET logging" in
@@ -43,7 +45,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "tls" -> assert false
       (* tls/public.pem supports get only *)
       | Some "network" ->
-        Hsm.Config.network () ;
+        (* TODO decode network configuration from user data *)
+        let network =
+          Ipaddr.V4.{ Hsm.Config.ipAddress = localhost ;
+                      netmask = Prefix.(netmask loopback) ;
+                      gateway = localhost }
+        in
+        Hsm.Config.change_network hsm_state network >>= fun _ ->
         Wm.continue true rd
       | Some "logging" ->
         Hsm.Config.logging () ;

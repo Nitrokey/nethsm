@@ -33,6 +33,9 @@ module type S = sig
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
+  val network_configuration : t ->
+    (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
@@ -54,7 +57,20 @@ module type S = sig
 
     val tls_csr_pem : t -> string Lwt.t
 
-    val network : unit -> unit
+    type network = {
+      ipAddress : Ipaddr.V4.t ;
+      netmask : Ipaddr.V4.t ;
+      gateway : Ipaddr.V4.t ;
+    }
+
+    val network_to_yojson : network -> Yojson.Safe.t
+
+    val network_of_yojson : Yojson.Safe.t -> (network, string) result
+
+    val network : t -> network Lwt.t
+
+    val change_network : t -> network ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val logging : unit -> unit
 
@@ -268,6 +284,19 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
            ~pp_error:KV.pp_write_error
            (Kv_config.set t.kv Private_key priv >|= fun () ->
             (cert, [], priv)))
+
+  let default_network_configuration =
+    let ip = Ipaddr.V4.of_string_exn "192.168.1.1" in
+    ip, Ipaddr.V4.Prefix.make 24 ip, None
+
+  let network_configuration t =
+    let open Lwt.Infix in
+    Kv_config.(get t.kv Ip_config) >|= function
+    | Ok cfg -> cfg
+    | Error e ->
+      Log.warn (fun m -> m "error %a while retrieving IP, using default"
+                   Kv_config.pp_error e);
+      default_network_configuration
 
   module User = struct
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
@@ -529,7 +558,44 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       let csr, _ = generate_csr priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
-    let network () = ()
+    type ip = Ipaddr.V4.t
+    let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
+    let ip_of_yojson = function
+      | `String ip_str ->
+        Rresult.R.reword_error (function `Msg msg -> msg)
+          (Ipaddr.V4.of_string ip_str)
+      | _ -> Error "expected string for IP"
+
+    type network = {
+      ipAddress : ip ;
+      netmask : ip ;
+      gateway : ip ;
+    }[@@deriving yojson]
+
+    let network t =
+      let open Lwt.Infix in
+      network_configuration t >|= fun (ipAddress, prefix, route) ->
+      let netmask = Ipaddr.V4.Prefix.netmask prefix
+      and gateway = match route with None -> Ipaddr.V4.any | Some ip -> ip
+      in
+      { ipAddress ; netmask ; gateway }
+
+    let change_network t network =
+      let open Lwt_result.Infix in
+      Lwt.return (
+        try
+          Ok (Ipaddr.V4.Prefix.of_netmask network.netmask network.ipAddress)
+        with
+          Ipaddr.Parse_error (err, packet) ->
+          Rresult.R.error_msgf "error %s parsing netmask %s" err packet) >>= fun prefix ->
+      let route =
+        if Ipaddr.V4.compare network.gateway Ipaddr.V4.any = 0 then
+          None
+        else
+          Some network.gateway
+      in
+      lwt_error_to_msg ~pp_error:KV.pp_write_error
+        Kv_config.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
     let logging () = ()
 

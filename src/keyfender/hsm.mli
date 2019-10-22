@@ -33,6 +33,9 @@ module type S = sig
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
+  val network_configuration : t ->
+    (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
@@ -54,7 +57,20 @@ module type S = sig
 
     val tls_csr_pem : t -> string Lwt.t
 
-    val network : unit -> unit
+    type network = {
+      ipAddress : Ipaddr.V4.t ;
+      netmask : Ipaddr.V4.t ;
+      gateway : Ipaddr.V4.t ;
+    }
+
+    val network_to_yojson : network -> Yojson.Safe.t
+
+    val network_of_yojson : Yojson.Safe.t -> (network, string) result
+
+    val network : t -> network Lwt.t
+
+    val change_network : t -> network ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val logging : unit -> unit
 
