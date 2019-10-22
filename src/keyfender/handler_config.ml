@@ -34,25 +34,25 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "unlock-passphrase" -> 
         let passphrase = "TODO" in
-        Hsm.change_unlock_passphrase hsm_state ~passphrase >>= fun _res ->
+        Hsm.Config.change_unlock_passphrase hsm_state ~passphrase >>= fun _res ->
         Wm.continue true rd
       | Some "unattended-boot" -> 
-        Hsm.unattended_boot () ;
+        Hsm.Config.unattended_boot () ;
         Wm.continue true rd
       (* TODO elegant way to match on deep path *)
       | Some "tls" -> assert false
       (* tls/public.pem supports get only *)
       | Some "network" ->
-        Hsm.network () ;
+        Hsm.Config.network () ;
         Wm.continue true rd
       | Some "logging" ->
-        Hsm.logging () ;
+        Hsm.Config.logging () ;
         Wm.continue true rd
       | Some "backup-passphrase" ->
-        Hsm.backup_passphrase () ;
+        Hsm.Config.backup_passphrase () ;
         Wm.continue true rd
       | Some "time" ->
-        Hsm.time () ;
+        Hsm.Config.time () ;
         Wm.continue true rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 

@@ -39,45 +39,45 @@ module type S = sig
   val unlock : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  (* /config *)
+  module Config : sig
+    val change_unlock_passphrase : t -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_unlock_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val unattended_boot : unit -> unit
 
-  val unattended_boot : unit -> unit
+    val tls_public_pem : t -> string Lwt.t
 
-  val tls_public_pem : t -> string Lwt.t
+    val tls_cert_pem : t -> string Lwt.t
 
-  val tls_cert_pem : t -> string Lwt.t
+    val change_tls_cert_pem : t -> string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_tls_cert_pem : t -> string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val tls_csr_pem : t -> string Lwt.t
 
-  val tls_csr_pem : t -> string Lwt.t
+    val network : unit -> unit
 
-  val network : unit -> unit
+    val logging : unit -> unit
 
-  val logging : unit -> unit
+    val backup_passphrase : unit -> unit
 
-  val backup_passphrase : unit -> unit
+    val time : unit -> unit
+  end
 
-  val time : unit -> unit
+  module System : sig
+    val system_info : t -> system_info
 
-  (* /system *)
+    val reboot : unit -> unit
 
-  val system_info : t -> system_info
+    val shutdown : unit -> unit
 
-  val reboot : unit -> unit
+    val reset : t -> unit
 
-  val shutdown : unit -> unit
+    val update : unit -> unit
 
-  val reset : t -> unit
+    val backup : unit -> unit
 
-  val update : unit -> unit
-
-  val backup : unit -> unit
-
-  val restore : unit -> unit
+    val restore : unit -> unit
+  end
 
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]

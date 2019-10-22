@@ -39,45 +39,45 @@ module type S = sig
   val unlock : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  (* /config *)
+  module Config : sig
+    val change_unlock_passphrase : t -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_unlock_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val unattended_boot : unit -> unit
 
-  val unattended_boot : unit -> unit
+    val tls_public_pem : t -> string Lwt.t
 
-  val tls_public_pem : t -> string Lwt.t
+    val tls_cert_pem : t -> string Lwt.t
 
-  val tls_cert_pem : t -> string Lwt.t
+    val change_tls_cert_pem : t -> string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_tls_cert_pem : t -> string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val tls_csr_pem : t -> string Lwt.t
 
-  val tls_csr_pem : t -> string Lwt.t
+    val network : unit -> unit
 
-  val network : unit -> unit
+    val logging : unit -> unit
 
-  val logging : unit -> unit
+    val backup_passphrase : unit -> unit
 
-  val backup_passphrase : unit -> unit
+    val time : unit -> unit
+  end
 
-  val time : unit -> unit
+  module System : sig
+    val system_info : t -> system_info
 
-  (* /system *)
+    val reboot : unit -> unit
 
-  val system_info : t -> system_info
+    val shutdown : unit -> unit
 
-  val reboot : unit -> unit
+    val reset : t -> unit
 
-  val shutdown : unit -> unit
+    val update : unit -> unit
 
-  val reset : t -> unit
+    val backup : unit -> unit
 
-  val update : unit -> unit
-
-  val backup : unit -> unit
-
-  val restore : unit -> unit
+    val restore : unit -> unit
+  end
 
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]
@@ -464,93 +464,93 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let keys = { domain_key ; auth_store ; key_store } in
     t.state <- Operational keys
 
-  (* /config *)
+  module Config = struct
+    let change_unlock_passphrase t ~passphrase =
+      match t.state with
+      | Operational keys ->
+        let open Lwt_result.Infix in
+        let unlock_salt = Rng.generate Crypto.salt_len in
+        let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
+        (* TODO the two writes below should be a transaction *)
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_domain.set t.kv `Passphrase ~unlock_key keys.domain_key)
+      | _ ->
+        Lwt.return
+          (Rresult.R.error_msgf "expected operation HSM, found %a"
+             pp_state (state t))
 
-  let change_unlock_passphrase t ~passphrase =
-    match t.state with
-    | Operational keys ->
-      let open Lwt_result.Infix in
-      let unlock_salt = Rng.generate Crypto.salt_len in
-      let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
-      (* TODO the two writes below should be a transaction *)
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
-        (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
-        (Kv_domain.set t.kv `Passphrase ~unlock_key keys.domain_key)
-    | _ ->
-      Lwt.return
-        (Rresult.R.error_msgf "expected operation HSM, found %a"
-           pp_state (state t))
+    let unattended_boot () = ()
 
-  let unattended_boot () = ()
-
-  let tls_public_pem t =
-    let open Lwt.Infix in
-    certificate_chain t >|= fun (certificate, _, _) ->
-    let public = X509.Certificate.public_key certificate in
-    Cstruct.to_string (X509.Public_key.encode_pem public)
-
-  let tls_cert_pem t =
-    let open Lwt.Infix in
-    certificate_chain t >|= fun (cert, chain, _) ->
-    Cstruct.to_string (X509.Certificate.encode_pem_multiple (cert :: chain))
-
-  let change_tls_cert_pem t cert_data =
-    (* validate the incoming chain (we'll use it for the TLS server):
-       - there's one server certificate at either end (matching our private key)
-       - the chain itself is properly signed (i.e. a full chain missing the TA)
-         --> take the last element as TA (unchecked), and verify the chain!
-       - TODO use current system time for verification
-    *)
-    match X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data) with
-    | Error e -> Lwt.return (Error e)
-    | Ok [] -> Lwt.return (Error (`Msg "empty certificate chain"))
-    | Ok (cert :: chain) ->
+    let tls_public_pem t =
       let open Lwt.Infix in
-      certificate_chain t >>= fun (_, _, `RSA priv) ->
-      if `RSA (Nocrypto.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
-        let valid = match List.rev chain with
-          | [] -> Ok cert
-          | ta :: chain' ->
-            let our_chain = cert :: List.rev chain' in
-            Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
-              (X509.Validation.verify_chain ~anchors:[ta] our_chain)
-        in
-        match valid with
-        | Error e -> Lwt.return (Error e)
-        | Ok _ ->
-          lwt_error_to_msg ~pp_error:KV.pp_write_error
-            (Kv_config.set t.kv Certificate (cert, chain))
-      else
-        Lwt.return (Error (`Msg "public key in certificate does not match private key"))
+      certificate_chain t >|= fun (certificate, _, _) ->
+      let public = X509.Certificate.public_key certificate in
+      Cstruct.to_string (X509.Public_key.encode_pem public)
 
-  let tls_csr_pem t =
-    let open Lwt.Infix in
-    certificate_chain t >|= fun (_, _, priv) ->
-    let csr, _ = generate_csr priv in
-    Cstruct.to_string (X509.Signing_request.encode_pem csr)
+    let tls_cert_pem t =
+      let open Lwt.Infix in
+      certificate_chain t >|= fun (cert, chain, _) ->
+      Cstruct.to_string (X509.Certificate.encode_pem_multiple (cert :: chain))
 
-  let network () = ()
+    let change_tls_cert_pem t cert_data =
+      (* validate the incoming chain (we'll use it for the TLS server):
+         - there's one server certificate at either end (matching our private key)
+         - the chain itself is properly signed (i.e. a full chain missing the TA)
+         --> take the last element as TA (unchecked), and verify the chain!
+         - TODO use current system time for verification
+      *)
+      match X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data) with
+      | Error e -> Lwt.return (Error e)
+      | Ok [] -> Lwt.return (Error (`Msg "empty certificate chain"))
+      | Ok (cert :: chain) ->
+        let open Lwt.Infix in
+        certificate_chain t >>= fun (_, _, `RSA priv) ->
+        if `RSA (Nocrypto.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
+          let valid = match List.rev chain with
+            | [] -> Ok cert
+            | ta :: chain' ->
+              let our_chain = cert :: List.rev chain' in
+              Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
+                (X509.Validation.verify_chain ~anchors:[ta] our_chain)
+          in
+          match valid with
+          | Error e -> Lwt.return (Error e)
+          | Ok _ ->
+            lwt_error_to_msg ~pp_error:KV.pp_write_error
+              (Kv_config.set t.kv Certificate (cert, chain))
+        else
+          Lwt.return (Error (`Msg "public key in certificate does not match private key"))
 
-  let logging () = ()
+    let tls_csr_pem t =
+      let open Lwt.Infix in
+      certificate_chain t >|= fun (_, _, priv) ->
+      let csr, _ = generate_csr priv in
+      Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
-  let backup_passphrase () = ()
+    let network () = ()
 
-  let time () = ()
+    let logging () = ()
 
-  (* /system *)
+    let backup_passphrase () = ()
 
-  let system_info t = t.system_info
+    let time () = ()
+  end
 
-  let reboot () = ()
+  module System = struct
+    let system_info t = t.system_info
 
-  let shutdown () = ()
+    let reboot () = ()
 
-  let reset _t = ()
+    let shutdown () = ()
 
-  let update () = ()
+    let reset _t = ()
 
-  let backup () = ()
+    let update () = ()
 
-  let restore () = ()
+    let backup () = ()
+
+    let restore () = ()
+  end
 end

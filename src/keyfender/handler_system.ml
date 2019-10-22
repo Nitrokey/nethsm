@@ -11,7 +11,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "info" -> 
         let open Hsm in
-        let json = Yojson.Safe.to_string (system_info_to_yojson @@ system_info hsm_state) in
+        let json = Yojson.Safe.to_string (system_info_to_yojson @@ System.system_info hsm_state) in
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
        
@@ -19,22 +19,22 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private system rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "reboot" -> 
-        Hsm.reboot () ;
+        Hsm.System.reboot () ;
         Wm.continue true rd
       | Some "shutdown" -> 
-        Hsm.shutdown () ;
+        Hsm.System.shutdown () ;
         Wm.continue true rd
       | Some "reset" ->
-        Hsm.reset hsm_state ;
+        Hsm.System.reset hsm_state ;
         Wm.continue true rd
       | Some "update" ->  
-        Hsm.update () ;
+        Hsm.System.update () ;
         Wm.continue true rd
       | Some "backup" ->  
-        Hsm.backup () ;
+        Hsm.System.backup () ;
         Wm.continue true rd
       | Some "restore" -> 
-        Hsm.restore () ;
+        Hsm.System.restore () ;
         Wm.continue true rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
