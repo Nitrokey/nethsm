@@ -123,7 +123,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         | `Operational -> "operational"
         | `Locked -> "locked")
 
-
   let state_to_yojson state =
     `Assoc [ ("state", match state_to_yojson state with
         `List [l] -> l | _ -> assert false) ]

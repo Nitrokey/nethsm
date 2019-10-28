@@ -74,7 +74,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue true rd 
 
     method !allowed_methods rd =
-      Wm.continue [ `GET ; `POST ] rd
+      Wm.continue [ `GET ; `POST ; `PUT ] rd
  
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#get) ] rd
