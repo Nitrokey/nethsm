@@ -61,29 +61,46 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
     KV.set t.kv key' (Cstruct.to_string encrypted)
 
-  let connect ?(init = false) version store ~key kv =
-    let prefix = match store with
+  let version_filename = Mirage_kv.Key.v ".version"
+
+  let prefix store =
+    let p = match store with
       | `Authentication -> "authentication"
       | `Key -> "keys"
     in
-    let prefix = Mirage_kv.Key.v prefix
+    Mirage_kv.Key.v p
+
+  let initialize version store ~key kv =
+    let open Lwt_result.Infix in
+    let prefix = prefix store
     and key = Crypto.GCM.of_secret key
     in
     let t = { kv ; prefix ; key } in
-    let version_filename = Mirage_kv.Key.v ".version" in
-    (if init then
-       set t version_filename (Version.to_string version) >|=
-       Rresult.R.error_to_msg ~pp_error:pp_write_error
-     else
-       (get t version_filename >|= function
-         | Error e -> Rresult.R.error_msgf "%a" pp_error e
-         | Ok stored_version -> match Version.of_string stored_version with
-           | Error e -> Error e
-           | Ok v -> match Version.compare version v with
-             | `Equal -> Ok ()
-             | _ -> Error (`Different_version (t, v)))) >|= function
-    | Ok () -> Ok t
-    | Error e -> Error e
+    set t version_filename (Version.to_string version) >|= fun () ->
+    t
+
+  type connect_error =
+    [ error | `Msg of string | `Version_smaller of Version.t * Version.t ]
+
+  let pp_connect_error ppf = function
+    | #error as e -> pp_error ppf e
+    | `Msg msg -> Fmt.string ppf msg
+    | `Version_smaller (current, stored) ->
+      Fmt.pf ppf "current version %a smaller than stored version %a"
+        Version.pp current Version.pp stored
+
+  let connect version store ~key kv =
+    let open Lwt_result.Infix in
+    let prefix = prefix store
+    and key = Crypto.GCM.of_secret key
+    in
+    let t = { kv ; prefix ; key } in
+    get t version_filename >>= fun stored_version ->
+    Lwt.return (Version.of_string stored_version) >>= fun v ->
+    Lwt.return (match Version.compare version v with
+        | `Equal -> Ok (`Kv t)
+        | `Greater -> Ok (`Version_greater (v, t))
+        | `Smaller -> Error (`Version_smaller (version, v)))
 
   let disconnect _t = Lwt.return_unit
 end

@@ -6,4 +6,6 @@ val to_string : t -> string
 
 val of_string : string -> (t, [> `Msg of string ]) result
 
+val pp : t Fmt.t
+
 val current : t

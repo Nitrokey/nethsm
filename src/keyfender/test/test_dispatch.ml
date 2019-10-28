@@ -114,7 +114,7 @@ let authorization_header user pass =
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
    @? begin match request ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/info" with
-      | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.system_info_to_yojson @@ Hsm.system_info hsm_state
+      | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.system_info_to_yojson @@ Hsm.System.system_info hsm_state
       | _ -> false
    end
 

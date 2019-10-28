@@ -15,13 +15,29 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
         | `Crypto of Crypto.decrypt_error
       ]
 
-  val connect : ?init:bool -> Version.t -> [ `Authentication | `Key ] ->
-    key:Cstruct.t -> KV.t ->
-    (t, [ `Msg of string | `Different_version of t * Version.t ]) result Lwt.t
-  (** [connect ~init version typ ~key kv] connects to a store, using [kv] as
+  val initialize : Version.t -> [ `Authentication | `Key ] ->
+    key:Cstruct.t -> KV.t -> (t, write_error) result Lwt.t
+  (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
-      [kv], and [key] is the symmetric secret for encryption and decryption. If
-      [init] is provided and [true] (defaults to [false]), its version is
-      written. Otherwise, the version is read to verify that the key is
-      appropriate, and the version is the same. *)
+      [kv], and [key] is the symmetric secret for encryption and decryption. The
+      version is written encrypted and authenticated to the store. *)
+
+  type connect_error =
+    [ error | `Msg of string | `Version_smaller of Version.t * Version.t ]
+  (** The type of connection failures. *)
+
+  val pp_connect_error : connect_error Fmt.t
+  (** [pp_connect_error ppf err] pretty-prints the connect error [err] on [ppf]. *)
+
+  val connect : Version.t -> [ `Authentication | `Key ] ->
+    key:Cstruct.t -> KV.t ->
+    ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result Lwt.t
+  (** [connect version typ ~key kv] connects to a store, using [kv] as
+      persistent storage, [typ] is the prefix for all keys read and written to
+      [kv], and [key] is the symmetric secret for encryption and decryption. The
+      [stored_version] is read and authenticated from the store, to verify that
+      the key is correct. The [stored_version] and [version] are compared. If
+      they are equal [`Kv kv] is returned, if [version] is greater,
+      [`Version_greater (stored, t)] is returned. An error otherwise. *)
+
 end

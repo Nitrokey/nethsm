@@ -5,8 +5,10 @@ let compare ours stored = match ours, stored with
 
 let to_string = function V0 -> "0"
 
+let pp ppf v = Fmt.string ppf (to_string v)
+
 let of_string = function
   | "0" -> Ok V0
-  | s -> Error (`Msg ("unknown version " ^ s))
+  | s -> Rresult.R.error_msgf "unknown version %S" s
 
 let current = V0

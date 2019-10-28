@@ -33,51 +33,67 @@ module type S = sig
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
+  val network_configuration : t ->
+    (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
   val unlock : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  (* /config *)
+  module Config : sig
+    val change_unlock_passphrase : t -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_unlock_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val unattended_boot : unit -> unit
 
-  val unattended_boot : unit -> unit
+    val tls_public_pem : t -> string Lwt.t
 
-  val tls_public_pem : t -> string Lwt.t
+    val tls_cert_pem : t -> string Lwt.t
 
-  val tls_cert_pem : t -> string Lwt.t
+    val change_tls_cert_pem : t -> string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  val change_tls_cert_pem : t -> string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    val tls_csr_pem : t -> string Lwt.t
 
-  val tls_csr_pem : t -> string Lwt.t
+    type network = {
+      ipAddress : Ipaddr.V4.t ;
+      netmask : Ipaddr.V4.t ;
+      gateway : Ipaddr.V4.t ;
+    }
 
-  val network : unit -> unit
+    val network_to_yojson : network -> Yojson.Safe.t
 
-  val logging : unit -> unit
+    val network_of_yojson : Yojson.Safe.t -> (network, string) result
 
-  val backup_passphrase : unit -> unit
+    val network : t -> network Lwt.t
 
-  val time : unit -> unit
+    val change_network : t -> network ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
-  (* /system *)
+    val logging : unit -> unit
 
-  val system_info : t -> system_info
+    val backup_passphrase : unit -> unit
 
-  val reboot : unit -> unit
+    val time : unit -> unit
+  end
 
-  val shutdown : unit -> unit
+  module System : sig
+    val system_info : t -> system_info
 
-  val reset : t -> unit
+    val reboot : unit -> unit
 
-  val update : unit -> unit
+    val shutdown : unit -> unit
 
-  val backup : unit -> unit
+    val reset : t -> unit
 
-  val restore : unit -> unit
+    val update : unit -> unit
+
+    val backup : unit -> unit
+
+    val restore : unit -> unit
+  end
 
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]
