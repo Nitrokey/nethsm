@@ -149,6 +149,42 @@ let unlock_ok () =
   | _ -> false
   end
 
+let unlock_twice () =
+  "the first request for /unlock unlocks the HSM, the second fails"
+  @? begin match request ~body:(`String unlock_json) ~hsm_state:(locked_mock ())
+                   ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+  | hsm_state, Some (`No_content, _, _, _) ->
+    begin
+      match request ~body:(`String unlock_json) ~hsm_state
+              ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+      | hsm', Some (`Precondition_failed, _, _, _) -> Hsm.state hsm' = `Operational
+      | _ -> false
+    end
+  | _ -> false
+  end
+
+let invalid_config_version () =
+  assert_raises (Invalid_argument "fatal!")
+    (fun () ->
+       Lwt_main.run (
+         Kv_mem.connect () >>= fun data ->
+         Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
+         Hsm.make data)) ;
+  assert_raises (Invalid_argument "fatal!")
+    (fun () ->
+       Lwt_main.run (
+         Kv_mem.connect () >>= fun data ->
+         Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
+         Hsm.make data))
+
+let config_version_but_no_salt () =
+  Lwt_main.run (
+    Kv_mem.connect () >>= fun data ->
+    Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
+    Hsm.make data >|= fun hsm ->
+    assert_bool "hsm state is unprovisioned if only config/version is present"
+      (Hsm.state hsm = `Unprovisioned))
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -180,6 +216,9 @@ let () =
     "/system/info" >:: system_info_error_precondition_failed;
     "/system/info" >:: system_info_error_forbidden;
     "/unlock" >:: unlock_ok;
+    "/unlock" >:: unlock_twice;
+    "invalid config version" >:: invalid_config_version;
+    "config version but no unlock salt" >:: config_version_but_no_salt;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
