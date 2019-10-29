@@ -1,5 +1,14 @@
 open Lwt.Infix
 
+type passphrase_req = { passphrase : string } [@@deriving yojson]
+
+let decode_passphrase s =
+  let open Rresult.R.Infix in
+  Json.try_parse s >>= fun json ->
+  Json.parse passphrase_req_of_yojson json >>= fun passphrase ->
+  Json.nonempty passphrase.passphrase >>| fun () ->
+  passphrase.passphrase 
+
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
@@ -13,16 +22,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let json = "TODO: GET unattended-boot" in
         Wm.continue (`String json) rd
       | Some "tls/public-pem" -> 
-        let json = "TODO: GET public.pem" in
-        Wm.continue (`String json) rd
+        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
+        Wm.continue (`String pk_pem) rd
       | Some "tls/cert-pem" -> 
-        let json = "TODO: GET cert.pem" in
-        Wm.continue (`String json) rd
+        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
+        Wm.continue (`String cert_pem) rd
       | Some "network" -> 
-        Hsm.Config.network hsm_state >>= fun _network ->
-        (* TODO serialise network to json and a string *)
-        let json = "TODO: GET network" in
-        Wm.continue (`String json) rd
+        Hsm.Config.network hsm_state >>= fun network ->
+        let json = Hsm.Config.network_to_yojson network in
+        Wm.continue (`String (Yojson.Safe.to_string json)) rd
       | Some "logging" -> 
         let json = "TODO: GET logging" in
         Wm.continue (`String json) rd
@@ -33,11 +41,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
  
     (* TODO we get 500 instead of 200 when we post to reset etc *)
     method private config rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "unlock-passphrase" -> 
-        let passphrase = "TODO" in
-        Hsm.Config.change_unlock_passphrase hsm_state ~passphrase >>= fun _res ->
-        Wm.continue true rd
+        begin
+          match decode_passphrase content with
+          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+          | Ok passphrase -> 
+             Hsm.Config.change_unlock_passphrase hsm_state ~passphrase >>= function
+             | Ok () -> Wm.continue true rd
+             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
       | Some "unattended-boot" -> 
         Hsm.Config.unattended_boot () ;
         Wm.continue true rd

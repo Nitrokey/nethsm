@@ -2,25 +2,12 @@ open Lwt.Infix
 
 type req_body = { unlockPassphrase : string ; adminPassphrase : string ; time : string }[@@deriving yojson]
 
-let nonempty s =
-  if String.length s == 0
-  then Error `Bad_request
-  else Ok ()
- 
-let try_parse_json content = 
-  try 
-    Ok (Yojson.Safe.from_string content)
-  with _ -> Error `Bad_request
-
-let parse_req_body json =
-  Rresult.R.reword_error (fun _ -> `Bad_request) @@ req_body_of_yojson json
- 
 let decode_json content =
   let open Rresult.R.Infix in
-  try_parse_json content >>= fun json ->
-  parse_req_body json >>= fun b ->
-  nonempty b.unlockPassphrase >>= fun () ->
-  nonempty b.adminPassphrase >>= fun () ->
+  Json.try_parse content >>= fun json ->
+  Json.parse req_body_of_yojson json >>= fun b ->
+  Json.nonempty b.unlockPassphrase >>= fun () ->
+  Json.nonempty b.adminPassphrase >>= fun () ->
   (* since ~sub:true is _not_ passed to of_rfc3339,
      no trailing bytes (third return value will be String.length b.time) *)
   Ptime.of_rfc3339 b.time >>= fun (time, off, _) ->
