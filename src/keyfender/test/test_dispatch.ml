@@ -163,6 +163,23 @@ let unlock_twice () =
   | _ -> false
   end
 
+let change_unlock_passphrase () =
+  "change unlock passphrase succeeds"
+  @? begin 
+  let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+  let passphrase = {|{ "passphrase" : "new passphrase" }|} in
+  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
+                   ~meth:`PUT ~headers "/config/unlock-passphrase" with
+  | hsm_state, Some (`No_content, _, _, _) -> 
+    Hsm.lock hsm_state;
+    begin match request ~body:(`String passphrase) ~hsm_state
+                     ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+    | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
+    | _ -> false
+    end
+  | _ -> false
+  end
+
 let invalid_config_version () =
   assert_raises (Invalid_argument "fatal!")
     (fun () ->
@@ -217,6 +234,7 @@ let () =
     "/system/info" >:: system_info_error_forbidden;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_twice;
+    "/config/unlock-passphrase" >:: change_unlock_passphrase;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
   ] in

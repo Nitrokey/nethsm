@@ -30,6 +30,8 @@ module type S = sig
 
   val state : t -> state
 
+  val lock : t -> unit 
+
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
@@ -198,6 +200,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   }
 
   let state t = to_external_state t.state
+
+  let lock t = t.state <- Locked
 
   let expect_state t desired_state =
     let st = state t in

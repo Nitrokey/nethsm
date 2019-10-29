@@ -30,6 +30,8 @@ module type S = sig
 
   val state : t -> state
 
+  val lock : t -> unit
+
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
 
