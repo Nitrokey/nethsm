@@ -1,16 +1,21 @@
 open Lwt.Infix
-
-type passphrase_req = { passphrase : string } [@@deriving yojson]
-
-let decode_passphrase s =
-  let open Rresult.R.Infix in
-  Json.try_parse s >>= fun json ->
-  Json.parse passphrase_req_of_yojson json >>= fun passphrase ->
-  Json.nonempty passphrase.passphrase >>| fun () ->
-  passphrase.passphrase 
-
+ 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
+  type passphrase_req = { passphrase : string } [@@deriving yojson]
+  
+  let decode_passphrase s =
+    let open Rresult.R.Infix in
+    Json.try_parse s >>= fun json ->
+    Json.parse passphrase_req_of_yojson json >>= fun passphrase ->
+    Json.nonempty passphrase.passphrase >>| fun () ->
+    passphrase.passphrase 
+  
+  let decode_network s =
+    let open Rresult.R.Infix in
+    Json.try_parse s >>= fun json ->
+    Json.parse Hsm.Config.network_of_yojson json
+ 
   module Access = Access.Make(Hsm)
 
   class handler hsm_state = object(self)
@@ -39,7 +44,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
  
-    (* TODO we get 500 instead of 200 when we post to reset etc *)
     method private config rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
@@ -60,14 +64,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "tls" -> assert false
       (* tls/public.pem supports get only *)
       | Some "network" ->
-        (* TODO decode network configuration from user data *)
-        let network =
-          Ipaddr.V4.{ Hsm.Config.ipAddress = localhost ;
-                      netmask = Prefix.(netmask loopback) ;
-                      gateway = localhost }
-        in
-        Hsm.Config.change_network hsm_state network >>= fun _ ->
-        Wm.continue true rd
+        begin
+          match decode_network content with
+          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+          | Ok network -> 
+             Hsm.Config.change_network hsm_state network >>= function
+             | Ok () -> Wm.continue true rd
+             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
       | Some "logging" ->
         Hsm.Config.logging () ;
         Wm.continue true rd
