@@ -213,6 +213,22 @@ let get_config_tls_cert_pem () =
   | _ -> false
   end
 
+let post_config_tls_cert_pem () =
+  "post tls cert pem file succeeds"
+  @? begin 
+  let headers = authorization_header "admin" "test1" in 
+  match request ~hsm_state:(operational_mock ())
+                   ~meth:`GET ~headers "/config/tls/cert.pem" with
+  | hsm_state, Some (`OK, _, `String body, _) -> 
+    begin
+      let headers = Header.add headers "content-type" "application/x-pem-file" in 
+      match request ~hsm_state ~meth:`PUT ~headers ~body:(`String body) "/config/tls/cert.pem" with
+      | _, Some (`No_content, _, _, _) -> true 
+      | _ -> false
+    end
+  | _ -> false
+  end
+
 let post_config_tls_csr_pem () =
   "post tls csr pem file succeeds"
   @? begin 
@@ -291,6 +307,7 @@ let () =
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;
     "/config/tls/public.pem" >:: get_config_tls_public_pem;
     "/config/tls/cert.pem" >:: get_config_tls_cert_pem;
+    "/config/tls/cert.pem" >:: post_config_tls_cert_pem;
     "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
