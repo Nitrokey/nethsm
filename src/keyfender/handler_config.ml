@@ -15,6 +15,59 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
  
   module Access = Access.Make(Hsm)
 
+  class handler_tls hsm_state = object(self)
+    inherit [Cohttp_lwt.Body.t] Wm.resource
+
+    method private get_pem rd =
+      match Webmachine.Rd.lookup_path_info "ep" rd with
+      | Some "public.pem" -> 
+        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
+        Wm.continue (`String pk_pem) rd
+      | Some "cert.pem" -> 
+        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
+        Wm.continue (`String cert_pem) rd
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+ 
+    method private set_pem rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Webmachine.Rd.lookup_path_info "ep" rd with
+      | Some "cert.pem" -> 
+        begin 
+          Hsm.Config.change_tls_cert_pem hsm_state content >>= function
+          | Ok () -> Wm.continue true rd
+          | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+
+    (* we use this not for the service, but to check the internal state before processing requests *)
+    method! service_available rd =
+      if Access.is_in_state hsm_state `Operational
+      then Wm.continue true rd
+      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method! is_authorized rd =
+      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
+      Wm.continue auth rd'
+
+    method! forbidden rd =
+      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
+      Wm.continue auth rd
+
+    method !process_post rd =
+      Wm.continue true rd 
+
+    method !allowed_methods rd =
+      Wm.continue [ `GET ; `POST ; `PUT ] rd
+ 
+    method content_types_provided rd =
+      Wm.continue [ ("application/x-pem-file", self#get_pem) ] rd
+
+    method content_types_accepted rd =
+      Wm.continue [ ("application/x-pem-file", self#set_pem) ] rd
+
+  end
+
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
@@ -33,16 +86,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "time" -> 
         let json = "todo: GET time" in
         Wm.continue (`String json) rd
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
- 
-    method private get_pem rd =
-      match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "tls/public-pem" -> 
-        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
-        Wm.continue (`String pk_pem) rd
-      | Some "tls/cert-pem" -> 
-        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
-        Wm.continue (`String cert_pem) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
  
     method private set_json rd =
@@ -84,15 +127,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue true rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
-    method private set_pem rd =
-      let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      match Webmachine.Rd.lookup_path_info "ep" rd with
-      (* TODO elegant way to match on deep path *)
-      | Some "tls" -> assert false
-      (* tls/public.pem supports get only *)
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
       if Access.is_in_state hsm_state `Operational
@@ -114,14 +148,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ `GET ; `POST ; `PUT ] rd
  
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get_json) ;
-                    ("application/x-pem-file", self#get_pem) ] rd
+      Wm.continue [ ("application/json", self#get_json) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [ ("application/json", self#set_json) ;
-                    ("application/x-pem-file", self#set_pem) ] rd
+      Wm.continue [ ("application/json", self#set_json) ] rd
 
 
   end
+
 
 end
