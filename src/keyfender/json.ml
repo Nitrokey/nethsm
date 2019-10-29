@@ -1,3 +1,17 @@
+(* request data *)
+
+type subject_req = { 
+    countryName : string ;
+    stateOrProvinceName : string ;
+    localityName : string ;
+    organizationName : string ;
+    organizationalUnitName : string ;
+    commonName : string ;
+    emailAddress : string ;
+} [@@deriving yojson]
+
+
+
 let nonempty s =
   if String.length s == 0
   then Error `Bad_request

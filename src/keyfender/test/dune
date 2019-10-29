@@ -1,5 +1,5 @@
 (test
-  (libraries logs.fmt fmt.tty lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
+  (libraries logs.fmt fmt.tty nocrypto.lwt lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
   (modules test_dispatch)
   (name test_dispatch)
   (package keyfender))

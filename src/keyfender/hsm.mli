@@ -57,7 +57,7 @@ module type S = sig
     val change_tls_cert_pem : t -> string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val tls_csr_pem : t -> string Lwt.t
+    val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
     type network = {
       ipAddress : Ipaddr.V4.t ;

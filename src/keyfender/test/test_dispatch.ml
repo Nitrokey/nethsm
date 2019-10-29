@@ -163,6 +163,8 @@ let unlock_twice () =
   | _ -> false
   end
 
+(* /config *)
+
 let change_unlock_passphrase () =
   "change unlock passphrase succeeds"
   @? begin 
@@ -181,7 +183,7 @@ let change_unlock_passphrase () =
   end
 
 let change_unlock_passphrase_empty () =
-  "change unlock passphrase succeeds"
+  "change to empty unlock passphrase fails"
   @? begin 
   let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
   let passphrase = {|{ "passphrase" : "" }|} in
@@ -191,6 +193,25 @@ let change_unlock_passphrase_empty () =
   | _ -> false
   end
 
+let get_config_tls_public_pem () =
+  "get tls public pem file succeeds"
+  @? begin 
+  let headers = authorization_header "admin" "test1" in 
+  match request ~hsm_state:(operational_mock ())
+                   ~meth:`GET ~headers "/config/tls/public.pem" with
+  | _, Some (`OK, _, _, _) -> true 
+  | _ -> false
+  end
+
+let get_config_tls_cert_pem () =
+  "get tls cert pem file succeeds"
+  @? begin 
+  let headers = authorization_header "admin" "test1" in 
+  match request ~hsm_state:(operational_mock ())
+                   ~meth:`GET ~headers "/config/tls/cert.pem" with
+  | _, Some (`OK, _, _, _) -> true 
+  | _ -> false
+  end
 
 let invalid_config_version () =
   assert_raises (Invalid_argument "fatal!")
@@ -231,6 +252,7 @@ let () =
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug);
+  Lwt_main.run @@ Nocrypto_entropy_lwt.initialize ();
   let tests = [
     "/" >:: empty;
     "/health/alive" >:: health_alive_ok;
@@ -248,6 +270,8 @@ let () =
     "/unlock" >:: unlock_twice;
     "/config/unlock-passphrase" >:: change_unlock_passphrase;
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;
+    "/config/tls/public.pem" >:: get_config_tls_public_pem;
+    "/config/tls/cert.pem" >:: get_config_tls_cert_pem;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
   ] in

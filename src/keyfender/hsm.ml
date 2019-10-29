@@ -57,7 +57,7 @@ module type S = sig
     val change_tls_cert_pem : t -> string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val tls_csr_pem : t -> string Lwt.t
+    val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
     type network = {
       ipAddress : Ipaddr.V4.t ;
@@ -555,10 +555,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         else
           Lwt.return (Error (`Msg "public key in certificate does not match private key"))
 
-    let tls_csr_pem t =
+    let tls_csr_pem t subject =
       let open Lwt.Infix in
       certificate_chain t >|= fun (_, _, priv) ->
-      let csr, _ = generate_csr priv in
+      let dn = X509.Distinguished_name.singleton CN subject.Json.commonName in
+      let csr, _ = generate_csr ~dn priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
     type ip = Ipaddr.V4.t

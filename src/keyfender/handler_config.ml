@@ -10,6 +10,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     Json.nonempty passphrase.passphrase >>| fun () ->
     passphrase.passphrase 
   
+  let decode_subject json =
+    let open Rresult.R.Infix in
+    Json.parse Json.subject_req_of_yojson json >>= fun subject ->
+    Json.nonempty subject.Json.commonName >>| fun () ->
+    subject
+ 
   let decode_network json =
     Json.parse Hsm.Config.network_of_yojson json
  
@@ -38,6 +44,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Ok () -> Wm.continue true rd
           | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
         end
+       | Some "csr.pem" -> 
+        begin 
+          match Json.try_parse content with
+          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd 
+          | Ok json ->
+            match decode_subject json with
+            | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+            | Ok subject -> 
+              Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
+              Wm.continue true { rd with resp_body = `String csr_pem }
+        end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -64,7 +81,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/x-pem-file", self#get_pem) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [ ("application/x-pem-file", self#set_pem) ] rd
+      Wm.continue [ ("application/x-pem-file", self#set_pem) ;
+                    ("application/json", self#set_pem) ] rd
 
   end
 
