@@ -4,16 +4,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   type passphrase_req = { passphrase : string } [@@deriving yojson]
   
-  let decode_passphrase s =
+  let decode_passphrase json =
     let open Rresult.R.Infix in
-    Json.try_parse s >>= fun json ->
     Json.parse passphrase_req_of_yojson json >>= fun passphrase ->
     Json.nonempty passphrase.passphrase >>| fun () ->
     passphrase.passphrase 
   
-  let decode_network s =
-    let open Rresult.R.Infix in
-    Json.try_parse s >>= fun json ->
+  let decode_network json =
     Json.parse Hsm.Config.network_of_yojson json
  
   module Access = Access.Make(Hsm)
@@ -21,18 +18,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get rd =
+    method private get_json rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "unattended-boot" -> 
         let json = "TODO: GET unattended-boot" in
         Wm.continue (`String json) rd
-      | Some "tls/public-pem" -> 
-        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
-        Wm.continue (`String pk_pem) rd
-      | Some "tls/cert-pem" -> 
-        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
-        Wm.continue (`String cert_pem) rd
-      | Some "network" -> 
+     | Some "network" -> 
         Hsm.Config.network hsm_state >>= fun network ->
         let json = Hsm.Config.network_to_yojson network in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
@@ -44,13 +35,26 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
  
-    method private config rd =
+    method private get_pem rd =
+      match Webmachine.Rd.lookup_path_info "ep" rd with
+      | Some "tls/public-pem" -> 
+        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
+        Wm.continue (`String pk_pem) rd
+      | Some "tls/cert-pem" -> 
+        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
+        Wm.continue (`String cert_pem) rd
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+ 
+    method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Json.try_parse content with
+      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd 
+      | Ok json ->
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "unlock-passphrase" -> 
         begin
-          match decode_passphrase content with
+          match decode_passphrase json with
           | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
           | Ok passphrase -> 
              Hsm.Config.change_unlock_passphrase hsm_state ~passphrase >>= function
@@ -60,12 +64,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "unattended-boot" -> 
         Hsm.Config.unattended_boot () ;
         Wm.continue true rd
-      (* TODO elegant way to match on deep path *)
-      | Some "tls" -> assert false
-      (* tls/public.pem supports get only *)
       | Some "network" ->
         begin
-          match decode_network content with
+          match decode_network json with
           | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
           | Ok network -> 
              Hsm.Config.change_network hsm_state network >>= function
@@ -81,6 +82,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "time" ->
         Hsm.Config.time () ;
         Wm.continue true rd
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+
+    method private set_pem rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun _content ->
+      match Webmachine.Rd.lookup_path_info "ep" rd with
+      (* TODO elegant way to match on deep path *)
+      | Some "tls" -> assert false
+      (* tls/public.pem supports get only *)
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -104,10 +114,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ `GET ; `POST ; `PUT ] rd
  
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get) ] rd
+      Wm.continue [ ("application/json", self#get_json) ;
+                    ("application/x-pem-file", self#get_pem) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [ ("application/json", self#config) ] rd
+      Wm.continue [ ("application/json", self#set_json) ;
+                    ("application/x-pem-file", self#set_pem) ] rd
+
 
   end
 
