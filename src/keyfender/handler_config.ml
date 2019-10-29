@@ -45,15 +45,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
         end
        | Some "csr.pem" -> 
+        (* TODO CSR is POST according to raml, but only PUT works with webmachine for some reason *)
         begin 
           match Json.try_parse content with
-          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd 
+          | Error e -> 
+            Wm.respond (Cohttp.Code.code_of_status e) rd 
           | Ok json ->
             match decode_subject json with
-            | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+            | Error e -> 
+              Wm.respond (Cohttp.Code.code_of_status e) rd
             | Ok subject -> 
               Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
-              Wm.continue true { rd with resp_body = `String csr_pem }
+              Wm.respond 200 ~body:(`String csr_pem) rd
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 

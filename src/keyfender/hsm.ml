@@ -558,6 +558,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let tls_csr_pem t subject =
       let open Lwt.Infix in
       certificate_chain t >|= fun (_, _, priv) ->
+      (* TODO add entire subject here *)
       let dn = X509.Distinguished_name.singleton CN subject.Json.commonName in
       let csr, _ = generate_csr ~dn priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)

@@ -213,6 +213,25 @@ let get_config_tls_cert_pem () =
   | _ -> false
   end
 
+let post_config_tls_csr_pem () =
+  "post tls csr pem file succeeds"
+  @? begin 
+  let subject = {|{ 
+    "countryName": "DE",
+    "stateOrProvinceName": "",
+    "localityName": "Berlin",
+    "organizationName": "Nitrokey",
+    "organizationalUnitName": "",
+    "commonName": "nitrohsm.local",
+    "emailAddress": "info@nitrokey.com"
+  }|} in
+  let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+  match request ~hsm_state:(operational_mock ())
+                   ~meth:`PUT ~headers ~body:(`String subject) "/config/tls/csr.pem" with
+  | _, Some (`OK, _, _, _) -> true 
+  | _ -> false
+  end
+
 let invalid_config_version () =
   assert_raises (Invalid_argument "fatal!")
     (fun () ->
@@ -272,6 +291,7 @@ let () =
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;
     "/config/tls/public.pem" >:: get_config_tls_public_pem;
     "/config/tls/cert.pem" >:: get_config_tls_cert_pem;
+    "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
   ] in
