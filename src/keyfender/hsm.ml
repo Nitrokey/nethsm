@@ -134,7 +134,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   *)
   let fatal prefix ~pp_error e =
     Log.err (fun m -> m "fatal in %s %a" prefix pp_error e);
-    assert false
+    invalid_arg "fatal!"
 
   let lwt_error_fatal prefix ~pp_error thing =
     let open Lwt.Infix in
@@ -593,6 +593,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         else
           Some network.gateway
       in
+      (* TODO if successful, reboot (or set the IP address) after responding *)
       lwt_error_to_msg ~pp_error:KV.pp_write_error
         Kv_config.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
