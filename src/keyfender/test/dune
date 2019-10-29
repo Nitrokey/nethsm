@@ -9,3 +9,10 @@
   (modules test_crypto)
   (name test_crypto)
   (package keyfender))
+
+(executable
+  (libraries logs.fmt fmt.tty nocrypto.lwt keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test io-page-unix)
+  (modules test_server)
+  (name test_server)
+  (public_name test_server)
+  (package keyfender))
