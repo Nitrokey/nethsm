@@ -115,7 +115,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Error `Msg m ->
             Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
         end
-     | Some "network" -> 
+     | Some "network" ->
         Hsm.Config.network hsm_state >>= fun network ->
         let json = Hsm.Config.network_to_yojson network in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
@@ -123,10 +123,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
        Hsm.Config.log hsm_state >>= fun log_config ->
        let json = Hsm.Config.log_to_yojson log_config in
        Wm.continue (`String (Yojson.Safe.to_string json)) rd
-      | Some "time" -> 
-        let json = "todo: GET time" in
-        Wm.continue (`String json) rd
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+     | Some "time" ->
+       Hsm.Config.time hsm_state >>= fun timestamp ->
+       let time_str = Ptime.to_rfc3339 timestamp in
+       Wm.continue (`String (Yojson.Safe.to_string (`String time_str))) rd
+     | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     method private change_passphrase rd write json =
       match decode_passphrase json with
@@ -175,8 +176,22 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let write = Hsm.Config.backup_passphrase in
         self#change_passphrase rd write json
       | Some "time" ->
-        Hsm.Config.time () ;
-        Wm.continue true rd
+        let data =
+          let open Rresult.R.Infix in
+          (match json with
+           | `String ts -> Ok ts
+           | _ -> Error (`Msg "invalid json timestamp")) >>= fun ts ->
+          match Ptime.of_rfc3339 ts with
+          | Ok (t, (None | Some 0), _) -> Ok t
+          | _ -> Error (`Msg "invalid timestamp")
+        in
+        begin match data with
+          | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+          | Ok ts ->
+            Hsm.Config.set_time hsm_state ts >>= function
+            | Ok () -> Wm.continue true rd
+            | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)

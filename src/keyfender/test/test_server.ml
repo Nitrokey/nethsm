@@ -8,7 +8,7 @@ module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket)
 module Http = Cohttp_mirage.Server_with_conduit
 
 module Store = Mirage_kv_mem.Make(Pclock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Pclock)
 module Webserver = Keyfender.Server.Make(Mirage_random_test)(Pclock)(Http)(Hsm)
 
 let () =

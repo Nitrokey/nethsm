@@ -92,7 +92,9 @@ module type S = sig
     val backup_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val time : unit -> unit
+    val time : t -> Ptime.t Lwt.t
+
+    val set_time : t -> Ptime.t -> (unit, [> `Msg of string ]) result Lwt.t
   end
 
   module System : sig
@@ -131,7 +133,7 @@ module type S = sig
   end
 end
 
-module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
+module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clock.PCLOCK) : sig
   include S
 
   val boot : KV.t -> t Lwt.t

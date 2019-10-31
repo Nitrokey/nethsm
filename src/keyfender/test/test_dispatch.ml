@@ -3,7 +3,7 @@ open Cohttp
 open Lwt.Infix
 
 module Kv_mem = Mirage_kv_mem.Make(Pclock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Pclock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
 
 let now () = Ptime.v (Pclock.now_d_ps ())
@@ -385,6 +385,43 @@ let config_logging_set_fail () =
     | _ -> false
   end
 
+let config_time_ok () =
+  "GET on /config/time succeeds"
+  @? begin
+    let headers = authorization_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/time" with
+  | _, Some (`OK, _, `String body, _) ->
+    let without_ticks = String.sub body 1 (String.length body - 2) in
+    begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
+  | _ -> false
+  end
+
+let config_time_set_ok () =
+  "PUT on /config/time succeeds"
+  @? begin
+    let new_time = {|"1970-01-01T00:00:00-00:00"|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_time) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/time" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      begin match request ~hsm_state ~meth:`GET ~headers "/config/time" with
+        | _, Some (`OK, _, `String body, _) ->
+          let without_ticks = String.sub body 1 (String.length body - 2) in
+          begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
+        | _ -> false
+      end
+  | _ -> false
+  end
+
+let config_time_set_fail () =
+  "PUT with invalid logLevel on /config/time fails"
+  @? begin
+    let new_time = {|"1234"|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_time) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/time" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
@@ -479,6 +516,9 @@ let () =
     "/config/logging" >:: config_logging_ok;
     "/config/logging" >:: config_logging_set_ok;
     "/config/logging" >:: config_logging_set_fail;
+    "/config/time" >:: config_time_ok;
+    "/config/time" >:: config_time_set_ok;
+    "/config/time" >:: config_time_set_fail;
     "/config/backup-passphrase" >:: set_backup_passphrase;
     "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;

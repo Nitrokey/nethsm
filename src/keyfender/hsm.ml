@@ -92,7 +92,9 @@ module type S = sig
     val backup_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val time : unit -> unit
+    val time : t -> Ptime.t Lwt.t
+
+    val set_time : t -> Ptime.t -> (unit, [> `Msg of string ]) result Lwt.t
   end
 
   module System : sig
@@ -139,7 +141,7 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
+module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clock.PCLOCK) = struct
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 
@@ -735,8 +737,26 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           (Rresult.R.error_msgf "expected operation HSM, found %a"
              pp_state (state t))
 
+    let time t =
+      let open Lwt.Infix in
+      Kv_config.get_opt t.kv Time_offset >|= fun offset ->
+      let span = match offset with
+        | Ok None -> Ptime.Span.zero
+        | Ok Some span -> span
+        | Error e ->
+          Log.warn (fun m -> m "error %a getting time offset" Kv_config.pp_error e);
+          Ptime.Span.zero
+      in
+      let now = Ptime.v (Pclock.now_d_ps ()) in
+      match Ptime.add_span now span with
+      | None -> Ptime.epoch
+      | Some ts -> ts
 
-    let time () = ()
+    let set_time t timestamp =
+      let now = Ptime.v (Pclock.now_d_ps ()) in
+      let span = Ptime.diff timestamp now in
+      lwt_error_to_msg ~pp_error:KV.pp_write_error
+        (Kv_config.set t.kv Time_offset span)
   end
 
   module System = struct

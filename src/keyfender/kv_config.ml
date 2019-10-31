@@ -16,6 +16,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Backup_salt : Cstruct.t k (* TODO needs to be an unencrypted part of the backup for successful restore *)
     | Backup_key : Cstruct.t k
     | Log_config : (Ipaddr.V4.t * int * Logs.level) k
+    | Time_offset : Ptime.span k
     | Unattended_boot : bool k
 
   module K = struct
@@ -33,6 +34,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       | Backup_salt, Backup_salt -> Eq | Backup_salt, _ -> Lt | _, Backup_salt -> Gt
       | Backup_key, Backup_key -> Eq | Backup_key, _ -> Lt | _, Backup_key -> Gt
       | Log_config, Log_config -> Eq | Log_config, _ -> Lt | _, Log_config -> Gt
+      | Time_offset, Time_offset -> Eq | Time_offset, _ -> Lt | _, Time_offset -> Gt
       | Unattended_boot, Unattended_boot -> Eq (* | Unattended_boot, _ -> Lt | _, Unattended_boot -> Gt *)
   end
 
@@ -48,6 +50,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Backup_salt -> "backup-salt"
     | Backup_key -> "backup-key"
     | Log_config -> "log-config"
+    | Time_offset -> "time-offset"
     | Unattended_boot -> "unattended-boot"
 
   let to_string : type a. a k -> a -> string = fun k v ->
@@ -83,6 +86,11 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
         Cstruct.to_string port_cs ;
         Logs.level_to_string (Some level)
       ]
+    | Time_offset, span ->
+      begin match Ptime.Span.to_int_s span with
+        | Some s -> string_of_int s
+        | None -> "0"
+      end
     | Unattended_boot, b -> if b then "1" else "0"
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
@@ -148,6 +156,11 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
         | Error (`Msg msg) -> Error (`Msg msg)
         | Ok None -> Error (`Msg "invalid log level")
         | Ok Some level -> Ok (ip, port, level)
+      end
+    | Time_offset ->
+      begin try
+          Ok (Ptime.Span.of_int_s (int_of_string data))
+        with Failure _ -> Error (`Msg "invalid time offset")
       end
     | Unattended_boot ->
       begin match data with
