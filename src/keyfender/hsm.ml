@@ -561,8 +561,10 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
              pp_state (state t))
 
     let unattended_boot t =
+      let open Lwt_result.Infix in
       lwt_error_to_msg ~pp_error:Kv_config.pp_error
-        (Kv_config.get t.kv Unattended_boot)
+        (Kv_config.get_opt t.kv Unattended_boot >|=
+         function None -> false | Some v -> v)
 
     let set_unattended_boot t status =
       let open Lwt_result.Infix in

@@ -175,6 +175,15 @@ let unlock_twice () =
   | _ -> false
   end
 
+let get_unattended_boot_ok () =
+  "GET /config/unattended-boot succeeds"
+  @? begin
+    let headers = authorization_header "admin" "test1" in
+    match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/unattended-boot" with
+    | _hsm_state', Some (`OK, _, `String body, _) -> body = {|{"status":"off"}|}
+    | _ -> false
+  end
+
 let unattended_boot_succeeds () =
   "unattended boot succeeds"
   @? begin
@@ -308,6 +317,40 @@ let post_config_tls_csr_pem () =
   | _ -> false
   end
 
+let config_network_ok () =
+  "GET on /config/network succeeds"
+  @? begin
+    let headers = authorization_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/network" with
+  | _, Some (`OK, _, `String body, _) ->
+    body = {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
+  | _ -> false
+  end
+
+let config_network_set_ok () =
+  "PUT on /config/network succeeds"
+  @? begin
+    let new_network = {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_network) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/network" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      begin match request ~hsm_state ~meth:`GET ~headers "/config/network" with
+        | _, Some (`OK, _, `String body, _) -> body = new_network
+        | _ -> false
+      end
+  | _ -> false
+  end
+
+let config_network_set_fail () =
+  "PUT with invalid IP address on /config/network fails"
+  @? begin
+    let new_network = {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_network) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/network" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
@@ -386,6 +429,7 @@ let () =
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;
+    "/config/unattended_boot" >:: get_unattended_boot_ok;
     "/config/unattended_boot" >:: unattended_boot_succeeds;
     "/config/unattended_boot" >:: unattended_boot_failed;
     "/config/unlock-passphrase" >:: change_unlock_passphrase;
@@ -395,6 +439,9 @@ let () =
     "/config/tls/cert.pem" >:: post_config_tls_cert_pem;
     "/config/tls/cert.pem" >:: post_config_tls_cert_pem_fail;
     "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
+    "/config/network" >:: config_network_ok;
+    "/config/network" >:: config_network_set_ok;
+    "/config/network" >:: config_network_set_fail;
     "/config/backup-passphrase" >:: set_backup_passphrase;
     "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;
