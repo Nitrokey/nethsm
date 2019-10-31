@@ -14,6 +14,8 @@ module type S = sig
     | `Locked
   ]
 
+  val pp_state : state Fmt.t
+
   val state_to_yojson : state -> Yojson.Safe.t
 
   type system_info = {

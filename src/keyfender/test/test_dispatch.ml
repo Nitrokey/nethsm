@@ -17,7 +17,9 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
   let request = Request.make ~meth ~headers uri in
   match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' now) ~body ~request with
   | None -> hsm_state', None
-  | Some (status, _, _, _) as r -> Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ; hsm_state', r
+  | Some (status, _, _, _) as r ->
+    Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ;
+    hsm_state', r
 
 let operational_mock () =
   Lwt_main.run (
@@ -149,6 +151,16 @@ let unlock_ok () =
   | _ -> false
   end
 
+let unlock_failed () =
+  "a request for /unlock with the wrong passphrase fails"
+  @? begin
+    let wrong_passphrase = {|{ "passphrase": "wrong" }|} in
+    match request ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ())
+                   ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+  | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Locked
+  | _ -> false
+  end
+
 let unlock_twice () =
   "the first request for /unlock unlocks the HSM, the second fails"
   @? begin match request ~body:(`String unlock_json) ~hsm_state:(locked_mock ())
@@ -161,6 +173,23 @@ let unlock_twice () =
       | _ -> false
     end
   | _ -> false
+  end
+
+let unattended_boot_succeeds () =
+  "unattended boot succeeds"
+  @? begin
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in
+    let store, hsm_state =
+      Lwt_main.run (
+        Kv_mem.connect () >>= fun store ->
+        Hsm.boot store >>= fun state ->
+        Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
+        store, state)
+    in
+    match request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state ~meth:`POST ~headers "/config/unattended-boot" with
+    | _hsm_state', Some (`No_content, _, _, _) ->
+      Lwt_main.run (Hsm.boot store >|= fun hsm_state -> Hsm.state hsm_state = `Operational)
+    | _ -> false
   end
 
 (* /config *)
@@ -335,7 +364,9 @@ let () =
     "/system/info" >:: system_info_error_precondition_failed;
     "/system/info" >:: system_info_error_forbidden;
     "/unlock" >:: unlock_ok;
+    "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;
+    "/config/unattended_boot" >:: unattended_boot_succeeds;
     "/config/unlock-passphrase" >:: change_unlock_passphrase;
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;
     "/config/tls/public.pem" >:: get_config_tls_public_pem;

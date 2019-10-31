@@ -87,7 +87,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd
 
     method !process_post rd =
-      Wm.continue true rd 
+      self#set_pem rd
 
     method !allowed_methods rd =
       Wm.continue [ `GET ; `POST ; `PUT ] rd
@@ -188,7 +188,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd
 
     method !process_post rd =
-      Wm.continue true rd 
+      self#set_json rd
 
     method !allowed_methods rd =
       Wm.continue [ `GET ; `POST ; `PUT ] rd

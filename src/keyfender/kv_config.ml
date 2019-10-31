@@ -74,8 +74,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Backup_salt, s -> Cstruct.to_string s
     | Backup_key, s -> Cstruct.to_string s
     | Unattended_boot, b ->
-      let value = if b then char_of_int 1 else char_of_int 0 in
-      String.make 1 value
+      if b then "1" else "0"
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
     fun key data ->

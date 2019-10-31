@@ -14,6 +14,8 @@ module type S = sig
     | `Locked
   ]
 
+  val pp_state : state Fmt.t
+
   val state_to_yojson : state -> Yojson.Safe.t
 
   type system_info = {
@@ -30,7 +32,7 @@ module type S = sig
 
   val state : t -> state
 
-  val lock : t -> unit 
+  val lock : t -> unit
 
   val certificate_chain : t ->
     (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
@@ -218,6 +220,70 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     in
     Lwt.return r
 
+  let prepare_keys t slot credentials =
+    let open Lwt_result.Infix in
+    let get_salt_key = function
+      | Kv_domain.Passphrase -> Kv_config.Unlock_salt
+      | Kv_domain.Device_id -> Kv_config.Device_id_salt
+    in
+    lwt_error_to_msg ~pp_error:Kv_config.pp_error
+      (Kv_config.get t.kv (get_salt_key slot)) >>= fun salt ->
+    let unlock_key = Crypto.key_of_passphrase ~salt credentials in
+    Kv_domain.get t.kv slot ~unlock_key >|= fun domain_key ->
+    let auth_store_key, key_store_key =
+      Cstruct.split domain_key Crypto.key_len
+    in
+    (domain_key, auth_store_key, key_store_key)
+
+  let unlock_store kv slot key =
+    let open Lwt_result.Infix in
+    let slot_str = Kv_crypto.slot_to_string slot in
+    lwt_error_fatal
+      ("connecting to " ^ slot_str ^ " store")
+      ~pp_error:Kv_crypto.pp_connect_error
+      (Kv_crypto.unlock Version.current slot ~key kv)
+    >>= (function
+        | `Version_greater (stored, _t) ->
+          (* upgrade code for authentication store *)
+          fatal (slot_str ^ " store too old, no migration code")
+            ~pp_error:Version.pp stored
+        | `Kv store -> Lwt.return (Ok store))
+
+  (* credential is passphrase or device id, depending on boot mode *)
+  let unlock t slot credentials =
+    let open Lwt_result.Infix in
+    expect_state t `Locked >>= fun () ->
+    prepare_keys t slot credentials >>= fun (domain_key, as_key, ks_key) ->
+    unlock_store t.kv Authentication as_key >>= fun auth_store ->
+    unlock_store t.kv Key ks_key >|= fun key_store ->
+    let keys = { domain_key ; auth_store ; key_store } in
+    t.state <- Operational keys
+
+  let unlock_with_device_id t ~device_id = unlock t Device_id device_id
+
+  let unlock_with_passphrase t ~passphrase = unlock t Passphrase passphrase
+
+  let boot_config_store t =
+    let open Lwt_result.Infix in
+    (* if unlock-salt is present, go to locked *)
+    lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
+      (Kv_config.get_opt t.kv Unlock_salt) >>= function
+        | None -> Lwt.return (Ok t)
+        | Some _ ->
+          t.state <- Locked;
+          lwt_error_fatal "get unattended boot" ~pp_error:Kv_config.pp_error
+            (Kv_config.get_opt t.kv Unattended_boot) >>= function
+          | Some true ->
+            Lwt.catch (fun () ->
+                let device_id = "my device id, psst" in
+                unlock_with_device_id t ~device_id >|= fun () ->
+                t)
+              (fun exn ->
+                 Log.err (fun m -> m "failed unattended boot %s"
+                             (Printexc.to_string exn));
+                 Lwt.return (Ok t))
+          | None | Some false -> Lwt.return (Ok t)
+
   let boot kv =
     let t =
       {
@@ -239,19 +305,14 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
                (Kv_config.set t.kv Version Version.current >|= fun () -> t)
            | Some version ->
              match Version.(compare current version) with
-             | `Equal ->
-               (* TODO unattended boot vs locked vs unprovisioned *)
-               (* if unlock-salt is present, go to locked *)
-               lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
-                 (Kv_config.get_opt t.kv Unlock_salt >|= function
-                   | Some _ -> t.state <- Locked; t
-                   | None -> t)
+             | `Equal -> boot_config_store t
              | `Smaller ->
-               fatal "configuration version smaller" ~pp_error:Fmt.string "exiting"
+               fatal "store has higher version than software, please update software version"
+                 ~pp_error:Fmt.string "exiting"
              | `Greater ->
                (* here's the place to embed migration code, at least for the
                   configuration store *)
-               fatal "configuration version greater"
+               fatal "store has smaller version than software, data will be migrated!"
                  ~pp_error:Fmt.string "no migration code available"))
 
   let info t = t.info
@@ -468,50 +529,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           (* TODO compute "time - our_current_idea_of_now", store offset in
                   configuration store *)
       )
-
-  let prepare_keys t slot credentials =
-    let open Lwt_result.Infix in
-    let get_salt_key = function
-      | Kv_domain.Passphrase -> Kv_config.Unlock_salt
-      | Kv_domain.Device_id -> Kv_config.Device_id_salt
-    in
-    lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
-      (Kv_config.get t.kv (get_salt_key slot)) >>= fun salt ->
-    let unlock_key = Crypto.key_of_passphrase ~salt credentials in
-    lwt_error_fatal "get domain key" ~pp_error:Rresult.R.pp_msg
-      (Kv_domain.get t.kv slot ~unlock_key) >|= fun domain_key ->
-    let auth_store_key, key_store_key =
-      Cstruct.split domain_key Crypto.key_len
-    in
-    (domain_key, auth_store_key, key_store_key)
-
-  let unlock_store kv slot key =
-    let open Lwt_result.Infix in
-    let slot_str = Kv_crypto.slot_to_string slot in
-    lwt_error_fatal
-      ("connecting to " ^ slot_str ^ " store")
-      ~pp_error:Kv_crypto.pp_connect_error
-      (Kv_crypto.unlock Version.current slot ~key kv)
-    >>= (function
-        | `Version_greater (stored, _t) ->
-          (* upgrade code for authentication store *)
-          fatal (slot_str ^ " store too old, no migration code")
-            ~pp_error:Version.pp stored
-        | `Kv store -> Lwt.return (Ok store))
-
-  (* credential is passphrase or device id, depending on boot mode *)
-  let unlock t slot credentials =
-    let open Lwt_result.Infix in
-    expect_state t `Locked >>= fun () ->
-    prepare_keys t slot credentials >>= fun (domain_key, as_key, ks_key) ->
-    unlock_store t.kv Authentication as_key >>= fun auth_store ->
-    unlock_store t.kv Key ks_key >|= fun key_store ->
-    let keys = { domain_key ; auth_store ; key_store } in
-    t.state <- Operational keys
-
-  let _unlock_with_device_id t ~device_id = unlock t Device_id device_id
-
-  let unlock_with_passphrase t ~passphrase = unlock t Passphrase passphrase
 
   module Config = struct
 
