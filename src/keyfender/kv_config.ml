@@ -1,6 +1,7 @@
 open Lwt.Infix
 
 (* unencrypted configuration store *)
+(* contains everything that is needed for booting *)
 module Make (KV : Mirage_kv_lwt.RW) = struct
 
   let config_prefix = "config"
@@ -11,6 +12,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
     | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
+    | Backup_salt : Cstruct.t k (* TODO needs to be an unencrypted part of the backup for successful restore *)
+    | Backup_key : Cstruct.t k
 
   module K = struct
     type 'a t = 'a k
@@ -22,7 +25,9 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       | Certificate, Certificate -> Eq | Certificate, _ -> Lt | _, Certificate -> Gt
       | Private_key, Private_key -> Eq | Private_key, _ -> Lt | _, Private_key -> Gt
       | Version, Version -> Eq | Version, _ -> Lt | _, Version -> Gt
-      | Ip_config, Ip_config -> Eq (* | Ip_config, _ -> Lt | _, Ip_config -> Gt *)
+      | Ip_config, Ip_config -> Eq | Ip_config, _ -> Lt | _, Ip_config -> Gt
+      | Backup_salt, Backup_salt -> Eq | Backup_salt, _ -> Lt | _, Backup_salt -> Gt
+      | Backup_key, Backup_key -> Eq (* | Backup_key, _ -> Lt | _, Backup_key -> Gt *)
   end
 
   include Gmap.Make(K)
@@ -33,6 +38,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Private_key -> "private-key"
     | Version -> "version"
     | Ip_config -> "ip-config"
+    | Backup_salt -> "backup-salt"
+    | Backup_key -> "backup-key"
 
   let to_string : type a. a k -> a -> string = fun k v ->
     match k, v with
@@ -57,6 +64,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
         Ipaddr.V4.to_octets ip ;
         Ipaddr.V4.to_octets (Ipaddr.V4.Prefix.netmask prefix)
       ]
+    | Backup_salt, s -> Cstruct.to_string s
+    | Backup_key, s -> Cstruct.to_string s
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
     fun key data ->
@@ -105,6 +114,8 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
        else
          Error (`Msg "route not on local network")) >>| fun route' ->
       (ip, prefix, route')
+    | Backup_salt -> Ok (Cstruct.of_string data)
+    | Backup_key -> Ok (Cstruct.of_string data)
 
   let key_path key = Mirage_kv.Key.(add (v config_prefix) (name key))
 

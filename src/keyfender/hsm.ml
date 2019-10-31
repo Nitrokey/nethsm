@@ -76,7 +76,8 @@ module type S = sig
 
     val logging : unit -> unit
 
-    val backup_passphrase : unit -> unit
+    val backup_passphrase : t -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val time : unit -> unit
   end
@@ -497,12 +498,17 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     t.state <- Operational keys
 
   module Config = struct
+
+    let salted passphrase =
+      let salt = Rng.generate Crypto.salt_len in
+      let key = Crypto.key_of_passphrase ~salt passphrase in
+      salt, key
+
     let change_unlock_passphrase t ~passphrase =
       match t.state with
       | Operational keys ->
         let open Lwt_result.Infix in
-        let unlock_salt = Rng.generate Crypto.salt_len in
-        let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt passphrase in
+        let unlock_salt, unlock_key = salted passphrase in
         (* TODO the two writes below should be a transaction *)
         lwt_error_to_msg ~pp_error:KV.pp_write_error
           (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
@@ -605,7 +611,21 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
     let logging () = ()
 
-    let backup_passphrase () = ()
+    let backup_passphrase t ~passphrase =
+      match t.state with
+      | Operational _keys ->
+        let open Lwt_result.Infix in
+        let backup_salt, backup_key = salted passphrase in
+        (* TODO the two writes below should be a transaction *)
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_config.set t.kv Backup_salt backup_salt) >>= fun () ->
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_config.set t.kv Backup_key backup_key)
+      | _ ->
+        Lwt.return
+          (Rresult.R.error_msgf "expected operation HSM, found %a"
+             pp_state (state t))
+
 
     let time () = ()
   end

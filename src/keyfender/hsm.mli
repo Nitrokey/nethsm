@@ -76,7 +76,8 @@ module type S = sig
 
     val logging : unit -> unit
 
-    val backup_passphrase : unit -> unit
+    val backup_passphrase : t -> passphrase:string ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val time : unit -> unit
   end

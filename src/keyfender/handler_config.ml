@@ -108,7 +108,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let json = "todo: GET time" in
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
- 
+
+    method private change_passphrase rd write json =
+      match decode_passphrase json with
+      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+      | Ok passphrase ->
+        write hsm_state ~passphrase >>= function
+        | Ok () -> Wm.continue true rd
+        | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
@@ -116,15 +124,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd 
       | Ok json ->
       match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "unlock-passphrase" -> 
-        begin
-          match decode_passphrase json with
-          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
-          | Ok passphrase -> 
-             Hsm.Config.change_unlock_passphrase hsm_state ~passphrase >>= function
-             | Ok () -> Wm.continue true rd
-             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
-        end
+        | Some "unlock-passphrase" ->
+          let write = Hsm.Config.change_unlock_passphrase in
+          self#change_passphrase rd write json
       | Some "unattended-boot" -> 
         Hsm.Config.unattended_boot () ;
         Wm.continue true rd
@@ -141,8 +143,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Config.logging () ;
         Wm.continue true rd
       | Some "backup-passphrase" ->
-        Hsm.Config.backup_passphrase () ;
-        Wm.continue true rd
+        let write = Hsm.Config.backup_passphrase in
+        self#change_passphrase rd write json
       | Some "time" ->
         Hsm.Config.time () ;
         Wm.continue true rd

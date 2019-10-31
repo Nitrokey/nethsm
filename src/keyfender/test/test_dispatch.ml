@@ -259,6 +259,28 @@ let post_config_tls_csr_pem () =
   | _ -> false
   end
 
+let set_backup_passphrase () =
+  "set backup passphrase succeeds"
+  @? begin
+  let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+  let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
+  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
+                   ~meth:`PUT ~headers "/config/backup-passphrase" with
+  | _, Some (`No_content, _, _, _) -> true 
+  | _ -> false
+  end
+
+let set_backup_passphrase_empty () =
+  "set empty backup passphrase fails"
+  @? begin
+  let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+  let passphrase = {|{ "passphrase" : "" }|} in
+  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
+                   ~meth:`PUT ~headers "/config/backup-passphrase" with
+  | _, Some (`Bad_request, _, _, _) -> true 
+  | _ -> false
+  end
+
 let invalid_config_version () =
   assert_raises (Invalid_argument "fatal!")
     (fun () ->
@@ -321,6 +343,8 @@ let () =
     "/config/tls/cert.pem" >:: post_config_tls_cert_pem;
     "/config/tls/cert.pem" >:: post_config_tls_cert_pem_fail;
     "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
+    "/config/backup-passphrase" >:: set_backup_passphrase;
+    "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
   ] in
