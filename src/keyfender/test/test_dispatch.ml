@@ -229,6 +229,17 @@ let post_config_tls_cert_pem () =
   | _ -> false
   end
 
+let post_config_tls_cert_pem_fail () =
+  "post tls cert pem file fail"
+  @? begin 
+    let headers = authorization_header "admin" "test1" in 
+    let headers = Header.add headers "content-type" "application/x-pem-file" in 
+    let not_a_pem = "hello this is not pem format" in
+    match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~body:(`String not_a_pem) "/config/tls/cert.pem" with
+    | _, Some (`Bad_request, _, _, _) -> true 
+    | _ -> false
+  end
+
 let post_config_tls_csr_pem () =
   "post tls csr pem file succeeds"
   @? begin 
@@ -308,6 +319,7 @@ let () =
     "/config/tls/public.pem" >:: get_config_tls_public_pem;
     "/config/tls/cert.pem" >:: get_config_tls_cert_pem;
     "/config/tls/cert.pem" >:: post_config_tls_cert_pem;
+    "/config/tls/cert.pem" >:: post_config_tls_cert_pem_fail;
     "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;

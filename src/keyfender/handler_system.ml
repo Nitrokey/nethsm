@@ -30,6 +30,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "update" ->  
         Hsm.System.update () ;
         Wm.continue true rd
+      | Some "commit-update" -> 
+        Hsm.System.restore () ;
+        Wm.continue true rd
+      | Some "cancel-update" -> 
+        Hsm.System.restore () ;
+        Wm.continue true rd
       | Some "backup" ->  
         Hsm.System.backup () ;
         Wm.continue true rd
