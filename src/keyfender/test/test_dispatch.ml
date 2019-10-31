@@ -351,6 +351,40 @@ let config_network_set_fail () =
     | _ -> false
   end
 
+let config_logging_ok () =
+  "GET on /config/logging succeeds"
+  @? begin
+    let headers = authorization_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/logging" with
+  | _, Some (`OK, _, `String body, _) ->
+    body = {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
+  | _ -> false
+  end
+
+let config_logging_set_ok () =
+  "PUT on /config/logging succeeds"
+  @? begin
+    let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"error"}|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_logging) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/logging" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      begin match request ~hsm_state ~meth:`GET ~headers "/config/logging" with
+        | _, Some (`OK, _, `String body, _) -> body = new_logging
+        | _ -> false
+      end
+  | _ -> false
+  end
+
+let config_logging_set_fail () =
+  "PUT with invalid logLevel on /config/logging fails"
+  @? begin
+    let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"nonexisting"}|} in
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in 
+    match request ~body:(`String new_logging) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/logging" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
@@ -442,6 +476,9 @@ let () =
     "/config/network" >:: config_network_ok;
     "/config/network" >:: config_network_set_ok;
     "/config/network" >:: config_network_set_fail;
+    "/config/logging" >:: config_logging_ok;
+    "/config/logging" >:: config_logging_set_ok;
+    "/config/logging" >:: config_logging_set_fail;
     "/config/backup-passphrase" >:: set_backup_passphrase;
     "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;

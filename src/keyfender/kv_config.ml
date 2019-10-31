@@ -15,6 +15,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
     | Backup_salt : Cstruct.t k (* TODO needs to be an unencrypted part of the backup for successful restore *)
     | Backup_key : Cstruct.t k
+    | Log_config : (Ipaddr.V4.t * int * Logs.level) k
     | Unattended_boot : bool k
 
   module K = struct
@@ -31,6 +32,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       | Ip_config, Ip_config -> Eq | Ip_config, _ -> Lt | _, Ip_config -> Gt
       | Backup_salt, Backup_salt -> Eq | Backup_salt, _ -> Lt | _, Backup_salt -> Gt
       | Backup_key, Backup_key -> Eq | Backup_key, _ -> Lt | _, Backup_key -> Gt
+      | Log_config, Log_config -> Eq | Log_config, _ -> Lt | _, Log_config -> Gt
       | Unattended_boot, Unattended_boot -> Eq (* | Unattended_boot, _ -> Lt | _, Unattended_boot -> Gt *)
   end
 
@@ -45,6 +47,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     | Ip_config -> "ip-config"
     | Backup_salt -> "backup-salt"
     | Backup_key -> "backup-key"
+    | Log_config -> "log-config"
     | Unattended_boot -> "unattended-boot"
 
   let to_string : type a. a k -> a -> string = fun k v ->
@@ -73,8 +76,14 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       ]
     | Backup_salt, s -> Cstruct.to_string s
     | Backup_key, s -> Cstruct.to_string s
-    | Unattended_boot, b ->
-      if b then "1" else "0"
+    | Log_config, (ip, port, level) ->
+      let port_cs = Cstruct.create 2 in Cstruct.BE.set_uint16 port_cs 0 port ;
+      String.concat "" [
+        Ipaddr.V4.to_octets ip ;
+        Cstruct.to_string port_cs ;
+        Logs.level_to_string (Some level)
+      ]
+    | Unattended_boot, b -> if b then "1" else "0"
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
     fun key data ->
@@ -126,6 +135,20 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       (ip, prefix, route')
     | Backup_salt -> Ok (Cstruct.of_string data)
     | Backup_key -> Ok (Cstruct.of_string data)
+    | Log_config ->
+      begin
+        let ip, port, level =
+          String.sub data 0 4,
+          String.sub data 4 2,
+          String.sub data 6 (String.length data - 6)
+        in
+        Ipaddr.V4.of_octets ip >>= fun ip ->
+        let port = Cstruct.BE.get_uint16 (Cstruct.of_string port) 0 in
+        match Logs.level_of_string level with
+        | Error (`Msg msg) -> Error (`Msg msg)
+        | Ok None -> Error (`Msg "invalid log level")
+        | Ok Some level -> Ok (ip, port, level)
+      end
     | Unattended_boot ->
       begin match data with
         | "0" -> Ok false

@@ -47,7 +47,7 @@ module type S = sig
     (unit, [> `Msg of string ]) result Lwt.t
 
   module Config : sig
-    val change_unlock_passphrase : t -> passphrase:string ->
+    val set_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
     val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
@@ -59,7 +59,7 @@ module type S = sig
 
     val tls_cert_pem : t -> string Lwt.t
 
-    val change_tls_cert_pem : t -> string ->
+    val set_tls_cert_pem : t -> string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
@@ -76,10 +76,18 @@ module type S = sig
 
     val network : t -> network Lwt.t
 
-    val change_network : t -> network ->
+    val set_network : t -> network ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val logging : unit -> unit
+    type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
+
+    val log_to_yojson : log -> Yojson.Safe.t
+
+    val log_of_yojson : Yojson.Safe.t -> (log, string) result
+
+    val log : t -> log Lwt.t
+
+    val set_log : t -> log -> (unit, [> `Msg of string ]) result Lwt.t
 
     val backup_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
@@ -118,7 +126,7 @@ module type S = sig
 
     val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
 
-    val change_passphrase : t -> id:string -> passphrase:string ->
+    val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
   end
 end

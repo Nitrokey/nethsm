@@ -47,7 +47,7 @@ module type S = sig
     (unit, [> `Msg of string ]) result Lwt.t
 
   module Config : sig
-    val change_unlock_passphrase : t -> passphrase:string ->
+    val set_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
     val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
@@ -59,7 +59,7 @@ module type S = sig
 
     val tls_cert_pem : t -> string Lwt.t
 
-    val change_tls_cert_pem : t -> string ->
+    val set_tls_cert_pem : t -> string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
@@ -76,10 +76,18 @@ module type S = sig
 
     val network : t -> network Lwt.t
 
-    val change_network : t -> network ->
+    val set_network : t -> network ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val logging : unit -> unit
+    type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
+
+    val log_to_yojson : log -> Yojson.Safe.t
+
+    val log_of_yojson : Yojson.Safe.t -> (log, string) result
+
+    val log : t -> log Lwt.t
+
+    val set_log : t -> log -> (unit, [> `Msg of string ]) result Lwt.t
 
     val backup_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
@@ -118,7 +126,7 @@ module type S = sig
 
     val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
 
-    val change_passphrase : t -> id:string -> passphrase:string ->
+    val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
   end
 end
@@ -484,7 +492,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 
-    let change_passphrase t ~id ~passphrase =
+    let set_passphrase t ~id ~passphrase =
       let open Lwt_result.Infix in
       Lwt.return (in_store t) >>= fun store ->
       lwt_error_to_msg ~pp_error:pp_find_error
@@ -545,7 +553,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       let key = Crypto.key_of_passphrase ~salt passphrase in
       salt, key
 
-    let change_unlock_passphrase t ~passphrase =
+    let set_unlock_passphrase t ~passphrase =
       match t.state with
       | Operational keys ->
         let open Lwt_result.Infix in
@@ -603,7 +611,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       certificate_chain t >|= fun (cert, chain, _) ->
       Cstruct.to_string (X509.Certificate.encode_pem_multiple (cert :: chain))
 
-    let change_tls_cert_pem t cert_data =
+    let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
          - there's one server certificate at either end (matching our private key)
          - the chain itself is properly signed (i.e. a full chain missing the TA)
@@ -662,7 +670,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       in
       { ipAddress ; netmask ; gateway }
 
-    let change_network t network =
+    let set_network t network =
       let open Lwt_result.Infix in
       Lwt.return (
         try
@@ -680,7 +688,37 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       lwt_error_to_msg ~pp_error:KV.pp_write_error
         Kv_config.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
-    let logging () = ()
+    type log_level = Logs.level
+    let log_level_to_string l = Logs.level_to_string (Some l)
+    let log_level_of_string str = match Logs.level_of_string str with
+      | Ok Some lvl -> Ok lvl
+      | Ok None -> Error "parse error for log level"
+      | Error (`Msg msg) -> Error msg
+
+    let log_level_to_yojson l = `String (log_level_to_string l)
+
+    let log_level_of_yojson = function
+      | `String l -> log_level_of_string l
+      | _ -> Error "expected string as log level"
+
+    type log =
+      { ipAddress : ip ; port : int ; logLevel : log_level } [@@deriving yojson]
+
+    let default_log = { ipAddress = Ipaddr.V4.any ; port = 514 ; logLevel = Info }
+
+    let log t =
+      let open Lwt.Infix in
+      Kv_config.get_opt t.kv Log_config >|= function
+      | Ok None -> default_log
+      | Ok Some (ipAddress, port, logLevel) -> { ipAddress ; port ; logLevel }
+      | Error e ->
+        Log.warn (fun m -> m "error %a while getting log configuration"
+                     Kv_config.pp_error e);
+        default_log
+
+    let set_log t log =
+      lwt_error_to_msg ~pp_error:KV.pp_write_error
+        (Kv_config.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
 
     let backup_passphrase t ~passphrase =
       match t.state with

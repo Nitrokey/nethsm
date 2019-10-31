@@ -30,7 +30,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       then Ok false
       else Error (`Msg "invalid status data, expected 'on' or 'off'")
     | _ -> Error (`Msg "invalid status data, expected a dictionary with one entry 'status'")
- 
+
   module Access = Access.Make(Hsm)
 
   class handler_tls hsm_state = object(self)
@@ -52,7 +52,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "cert.pem" -> 
         begin 
-          Hsm.Config.change_tls_cert_pem hsm_state content >>= function
+          Hsm.Config.set_tls_cert_pem hsm_state content >>= function
           | Ok () -> Wm.continue true rd
           | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
         end
@@ -119,9 +119,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Config.network hsm_state >>= fun network ->
         let json = Hsm.Config.network_to_yojson network in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
-      | Some "logging" -> 
-        let json = "TODO: GET logging" in
-        Wm.continue (`String json) rd
+     | Some "logging" ->
+       Hsm.Config.log hsm_state >>= fun log_config ->
+       let json = Hsm.Config.log_to_yojson log_config in
+       Wm.continue (`String (Yojson.Safe.to_string json)) rd
       | Some "time" -> 
         let json = "todo: GET time" in
         Wm.continue (`String json) rd
@@ -143,7 +144,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok json ->
       match Webmachine.Rd.lookup_path_info "ep" rd with
         | Some "unlock-passphrase" ->
-          let write = Hsm.Config.change_unlock_passphrase in
+          let write = Hsm.Config.set_unlock_passphrase in
           self#change_passphrase rd write json
         | Some "unattended-boot" ->
           begin match is_unattended_boot_of_yojson json with
@@ -158,13 +159,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           match decode_network json with
           | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
           | Ok network -> 
-             Hsm.Config.change_network hsm_state network >>= function
+             Hsm.Config.set_network hsm_state network >>= function
              | Ok () -> Wm.continue true rd
              | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
         end
       | Some "logging" ->
-        Hsm.Config.logging () ;
-        Wm.continue true rd
+        begin match Json.parse Hsm.Config.log_of_yojson json with
+          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+          | Ok log_config ->
+             Hsm.Config.set_log hsm_state log_config >>= function
+             | Ok () -> Wm.continue true rd
+             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
       | Some "backup-passphrase" ->
         let write = Hsm.Config.backup_passphrase in
         self#change_passphrase rd write json
