@@ -265,7 +265,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let boot_config_store t =
     let open Lwt_result.Infix in
-    (* if unlock-salt is present, go to locked *)
     lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
       (Kv_config.get_opt t.kv Unlock_salt) >>= function
         | None -> Lwt.return (Ok t)
@@ -274,18 +273,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
           lwt_error_fatal "get unattended boot" ~pp_error:Kv_config.pp_error
             (Kv_config.get_opt t.kv Unattended_boot) >>= function
           | Some true ->
-            Lwt.catch (fun () ->
-                let open Lwt.Infix in
-                let device_id = "my device id, psst" in
-                unlock_with_device_id t ~device_id >|= function
-                | Ok () -> Ok t
+            begin
+              let open Lwt.Infix in
+              let device_id = "my device id, psst" in
+              (unlock_with_device_id t ~device_id >|= function
+                | Ok () -> ()
                 | Error `Msg msg ->
-                  Log.err (fun m -> m "unattended boot failed with %s" msg);
-                  Ok t)
-              (fun exn ->
-                 Log.err (fun m -> m "failed unattended boot %s"
-                             (Printexc.to_string exn));
-                 Lwt.return (Ok t))
+                  Log.err (fun m -> m "unattended boot failed with %s" msg)) >|= fun () ->
+              Ok t
+            end
           | None | Some false -> Lwt.return (Ok t)
 
   let boot kv =
