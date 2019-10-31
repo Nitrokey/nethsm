@@ -8,12 +8,14 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
 
   type _ k =
     | Unlock_salt : Cstruct.t k
+    | Device_id_salt : Cstruct.t k
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
     | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
     | Backup_salt : Cstruct.t k (* TODO needs to be an unencrypted part of the backup for successful restore *)
     | Backup_key : Cstruct.t k
+    | Unattended_boot : bool k
 
   module K = struct
     type 'a t = 'a k
@@ -22,28 +24,33 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       let open Gmap.Order in
       match t, t' with
       | Unlock_salt, Unlock_salt -> Eq | Unlock_salt, _ -> Lt | _, Unlock_salt -> Gt
+      | Device_id_salt, Device_id_salt -> Eq | Device_id_salt, _ -> Lt | _, Device_id_salt -> Gt
       | Certificate, Certificate -> Eq | Certificate, _ -> Lt | _, Certificate -> Gt
       | Private_key, Private_key -> Eq | Private_key, _ -> Lt | _, Private_key -> Gt
       | Version, Version -> Eq | Version, _ -> Lt | _, Version -> Gt
       | Ip_config, Ip_config -> Eq | Ip_config, _ -> Lt | _, Ip_config -> Gt
       | Backup_salt, Backup_salt -> Eq | Backup_salt, _ -> Lt | _, Backup_salt -> Gt
-      | Backup_key, Backup_key -> Eq (* | Backup_key, _ -> Lt | _, Backup_key -> Gt *)
+      | Backup_key, Backup_key -> Eq | Backup_key, _ -> Lt | _, Backup_key -> Gt
+      | Unattended_boot, Unattended_boot -> Eq (* | Unattended_boot, _ -> Lt | _, Unattended_boot -> Gt *)
   end
 
   include Gmap.Make(K)
 
   let name : type a. a k -> string = function
     | Unlock_salt -> "unlock-salt"
+    | Device_id_salt -> "device-id-salt"
     | Certificate -> "certificate"
     | Private_key -> "private-key"
     | Version -> "version"
     | Ip_config -> "ip-config"
     | Backup_salt -> "backup-salt"
     | Backup_key -> "backup-key"
+    | Unattended_boot -> "unattended-boot"
 
   let to_string : type a. a k -> a -> string = fun k v ->
     match k, v with
     | Unlock_salt, salt -> Cstruct.to_string salt
+    | Device_id_salt, salt -> Cstruct.to_string salt
     | Certificate, (server, chain) ->
       (* maybe upstream/extend X509.Certificate *)
       let encode_one crt =
@@ -66,6 +73,9 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       ]
     | Backup_salt, s -> Cstruct.to_string s
     | Backup_key, s -> Cstruct.to_string s
+    | Unattended_boot, b ->
+      let value = if b then char_of_int 1 else char_of_int 0 in
+      String.make 1 value
 
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
     fun key data ->
@@ -73,6 +83,7 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
     let guard p err = if p then Ok () else Error (`Msg err) in
     match key with
     | Unlock_salt -> Ok (Cstruct.of_string data)
+    | Device_id_salt -> Ok (Cstruct.of_string data)
     | Certificate ->
       begin
         let rec decode data acc =
@@ -116,6 +127,12 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
       (ip, prefix, route')
     | Backup_salt -> Ok (Cstruct.of_string data)
     | Backup_key -> Ok (Cstruct.of_string data)
+    | Unattended_boot ->
+      begin match data with
+        | "0" -> Ok false
+        | "1" -> Ok true
+        | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x
+      end
 
   let key_path key = Mirage_kv.Key.(add (v config_prefix) (name key))
 
@@ -137,4 +154,6 @@ module Make (KV : Mirage_kv_lwt.RW) = struct
   let set kv key value =
     let data = to_string key value in
     KV.set kv (key_path key) data
+
+  let remove kv key = KV.remove kv (key_path key)
 end

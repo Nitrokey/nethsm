@@ -6,8 +6,11 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let dk_prefix = "domain-key"
 
+  type slot = Passphrase | Device_id
+
   let name = function
-    | `Passphrase -> "0"
+    | Passphrase -> "0"
+    | Device_id -> "1"
 
   let key_path slot = Mirage_kv.Key.(add (v dk_prefix) (name slot))
 
@@ -26,4 +29,6 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     let key = Crypto.GCM.of_secret unlock_key in
     let enc_data = Crypto.encrypt R.generate ~key ~adata data in
     KV.set t (key_path slot) (Cstruct.to_string enc_data)
+
+  let remove t slot = KV.remove t (key_path slot)
 end

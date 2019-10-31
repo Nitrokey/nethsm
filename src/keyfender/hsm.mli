@@ -41,14 +41,17 @@ module type S = sig
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  val unlock : t -> passphrase:string ->
+  val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
   module Config : sig
     val change_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val unattended_boot : unit -> unit
+    val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
+
+    val set_unattended_boot : t -> bool ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val tls_public_pem : t -> string Lwt.t
 
@@ -121,5 +124,5 @@ end
 module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
   include S
 
-  val make : KV.t -> t Lwt.t
+  val boot : KV.t -> t Lwt.t
 end

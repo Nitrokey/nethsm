@@ -10,6 +10,14 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     key : Crypto.GCM.key
   }
 
+  type slot = Authentication | Key
+
+  let slot_to_string = function
+    | Authentication -> "authentication"
+    | Key -> "key"
+
+  let pp_slot ppf slot = Fmt.string ppf (slot_to_string slot)
+
   type error =
     [ Mirage_kv.error | `Kv of KV.error | `Crypto of Crypto.decrypt_error ]
 
@@ -63,11 +71,8 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let version_filename = Mirage_kv.Key.v ".version"
 
-  let prefix store =
-    let p = match store with
-      | `Authentication -> "authentication"
-      | `Key -> "keys"
-    in
+  let prefix slot =
+    let p = slot_to_string slot in
     Mirage_kv.Key.v p
 
   let initialize version store ~key kv =
@@ -89,7 +94,7 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
       Fmt.pf ppf "current version %a smaller than stored version %a"
         Version.pp current Version.pp stored
 
-  let connect version store ~key kv =
+  let unlock version store ~key kv =
     let open Lwt_result.Infix in
     let prefix = prefix store
     and key = Crypto.GCM.of_secret key

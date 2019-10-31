@@ -34,7 +34,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
         match decode_json content with
-        | Ok passphrase -> Hsm.unlock hsm_state ~passphrase
+        | Ok passphrase -> Hsm.unlock_with_passphrase hsm_state ~passphrase
         | Error _ -> Lwt.return (Error `Bad_request)
       end >>= function
       | Ok () -> Wm.continue true rd

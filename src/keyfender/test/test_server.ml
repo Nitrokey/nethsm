@@ -20,7 +20,7 @@ let () =
   begin
     Nocrypto_entropy_lwt.initialize () >>= fun () ->
     Store.connect () >>= fun store ->
-    Hsm.make store >>= fun hsm_state ->
+    Hsm.boot store >>= fun hsm_state ->
     Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->
     Tcpv4_socket.connect (Some ip) >>= fun tcp ->
     Udpv4_socket.connect (Some ip) >>= fun udp ->

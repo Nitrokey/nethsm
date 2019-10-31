@@ -41,14 +41,17 @@ module type S = sig
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
     (unit, [> `Msg of string ]) result Lwt.t
 
-  val unlock : t -> passphrase:string ->
+  val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
   module Config : sig
     val change_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
 
-    val unattended_boot : unit -> unit
+    val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
+
+    val set_unattended_boot : t -> bool ->
+      (unit, [> `Msg of string ]) result Lwt.t
 
     val tls_public_pem : t -> string Lwt.t
 
@@ -215,7 +218,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
     in
     Lwt.return r
 
-  let make kv =
+  let boot kv =
     let t =
       {
         state = Unprovisioned ;
@@ -237,6 +240,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
            | Some version ->
              match Version.(compare current version) with
              | `Equal ->
+               (* TODO unattended boot vs locked vs unprovisioned *)
                (* if unlock-salt is present, go to locked *)
                lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
                  (Kv_config.get_opt t.kv Unlock_salt >|= function
@@ -440,11 +444,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         in
         lwt_error_fatal
           "initializing authentication store" ~pp_error:Kv_crypto.pp_write_error
-          (Kv_crypto.initialize Version.current `Authentication ~key:auth_store_key t.kv)
+          (Kv_crypto.initialize Version.current Authentication ~key:auth_store_key t.kv)
         >>= fun auth_store ->
         lwt_error_fatal
           "initializing key store" ~pp_error:Kv_crypto.pp_write_error
-          (Kv_crypto.initialize Version.current `Key ~key:key_store_key t.kv)
+          (Kv_crypto.initialize Version.current Key ~key:key_store_key t.kv)
         >>= fun key_store ->
         let keys = { domain_key ; auth_store ; key_store } in
         t.state <- Operational keys;
@@ -458,44 +462,56 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         lwt_error_fatal "set admin user" ~pp_error:Rresult.R.pp_msg
           (User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin") >>= fun () ->
         lwt_error_fatal "set domain key" ~pp_error:KV.pp_write_error
-          (Kv_domain.set t.kv `Passphrase ~unlock_key domain_key) >>= fun () ->
+          (Kv_domain.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
         lwt_error_fatal "set unlock-salt" ~pp_error:KV.pp_write_error
           (Kv_config.set t.kv Unlock_salt unlock_salt)
           (* TODO compute "time - our_current_idea_of_now", store offset in
                   configuration store *)
       )
 
-  let unlock t ~passphrase =
+  let prepare_keys t slot credentials =
     let open Lwt_result.Infix in
-    expect_state t `Locked >>= fun () ->
+    let get_salt_key = function
+      | Kv_domain.Passphrase -> Kv_config.Unlock_salt
+      | Kv_domain.Device_id -> Kv_config.Device_id_salt
+    in
     lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
-      (Kv_config.get t.kv Unlock_salt) >>= fun salt ->
-    let unlock_key = Crypto.key_of_passphrase ~salt passphrase in
+      (Kv_config.get t.kv (get_salt_key slot)) >>= fun salt ->
+    let unlock_key = Crypto.key_of_passphrase ~salt credentials in
     lwt_error_fatal "get domain key" ~pp_error:Rresult.R.pp_msg
-      (Kv_domain.get t.kv `Passphrase ~unlock_key) >>= fun domain_key ->
+      (Kv_domain.get t.kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
+    (domain_key, auth_store_key, key_store_key)
+
+  let unlock_store kv slot key =
+    let open Lwt_result.Infix in
+    let slot_str = Kv_crypto.slot_to_string slot in
     lwt_error_fatal
-      "connecting to authentication store" ~pp_error:Kv_crypto.pp_connect_error
-      (Kv_crypto.connect Version.current `Authentication ~key:auth_store_key t.kv)
+      ("connecting to " ^ slot_str ^ " store")
+      ~pp_error:Kv_crypto.pp_connect_error
+      (Kv_crypto.unlock Version.current slot ~key kv)
     >>= (function
         | `Version_greater (stored, _t) ->
           (* upgrade code for authentication store *)
-          fatal "authentication store too old, no migration code"
+          fatal (slot_str ^ " store too old, no migration code")
             ~pp_error:Version.pp stored
-        | `Kv auth_store -> Lwt.return (Ok auth_store)) >>= fun auth_store ->
-    lwt_error_fatal
-      "connecting to key store" ~pp_error:Kv_crypto.pp_connect_error
-      (Kv_crypto.connect Version.current `Key ~key:key_store_key t.kv)
-    >>= (function
-        | `Version_greater (stored, _t) ->
-          (* upgrade code for key store *)
-          fatal "key store too old, no migration code"
-            ~pp_error:Version.pp stored
-        | `Kv key_store -> Lwt.return (Ok key_store)) >|= fun key_store ->
+        | `Kv store -> Lwt.return (Ok store))
+
+  (* credential is passphrase or device id, depending on boot mode *)
+  let unlock t slot credentials =
+    let open Lwt_result.Infix in
+    expect_state t `Locked >>= fun () ->
+    prepare_keys t slot credentials >>= fun (domain_key, as_key, ks_key) ->
+    unlock_store t.kv Authentication as_key >>= fun auth_store ->
+    unlock_store t.kv Key ks_key >|= fun key_store ->
     let keys = { domain_key ; auth_store ; key_store } in
     t.state <- Operational keys
+
+  let _unlock_with_device_id t ~device_id = unlock t Device_id device_id
+
+  let unlock_with_passphrase t ~passphrase = unlock t Passphrase passphrase
 
   module Config = struct
 
@@ -513,13 +529,41 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         lwt_error_to_msg ~pp_error:KV.pp_write_error
           (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
         lwt_error_to_msg ~pp_error:KV.pp_write_error
-          (Kv_domain.set t.kv `Passphrase ~unlock_key keys.domain_key)
+          (Kv_domain.set t.kv Passphrase ~unlock_key keys.domain_key)
       | _ ->
         Lwt.return
           (Rresult.R.error_msgf "expected operation HSM, found %a"
              pp_state (state t))
 
-    let unattended_boot () = ()
+    let unattended_boot t =
+      lwt_error_to_msg ~pp_error:Kv_config.pp_error
+        (Kv_config.get t.kv Unattended_boot)
+
+    let set_unattended_boot t status =
+      let open Lwt_result.Infix in
+      (* (a) change setting in configuration store *)
+      (* (b) add or remove salt in configuration store *)
+      (* (c) add or remove to domain_key store *)
+      match t.state with
+      | Operational keys ->
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_config.set t.kv Unattended_boot status) >>= fun () ->
+        if status then begin
+          let salt, unlock_key = salted "my device id, psst" in
+          lwt_error_to_msg ~pp_error:KV.pp_write_error
+            (Kv_config.set t.kv Device_id_salt salt) >>= fun () ->
+          lwt_error_to_msg ~pp_error:KV.pp_write_error
+            (Kv_domain.set t.kv Device_id ~unlock_key keys.domain_key)
+        end else begin
+          lwt_error_to_msg ~pp_error:KV.pp_write_error
+            (Kv_config.remove t.kv Device_id_salt) >>= fun () ->
+          lwt_error_to_msg ~pp_error:KV.pp_write_error
+            (Kv_domain.remove t.kv Device_id)
+        end
+      | _ ->
+        Lwt.return
+          (Rresult.R.error_msgf "expected operation HSM, found %a"
+             pp_state (state t))
 
     let tls_public_pem t =
       let open Lwt.Infix in

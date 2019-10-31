@@ -10,7 +10,7 @@ let now () = Ptime.v (Pclock.now_d_ps ())
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
   let hsm_state' = match hsm_state with
-    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.make)
+    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot)
     | Some x -> x
   in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path () in
@@ -21,7 +21,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
 
 let operational_mock () =
   Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.make >>= fun state ->
+    Kv_mem.connect () >>= Hsm.boot >>= fun state ->
     Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
     state)
@@ -30,12 +30,12 @@ let locked_mock () =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
-    Hsm.make kv >>= fun state ->
+    Hsm.boot kv >>= fun state ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
     Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
-    Hsm.make kv)
+    Hsm.boot kv)
 
 let empty () =
   "a request for / will produce no result"
@@ -287,19 +287,19 @@ let invalid_config_version () =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
-         Hsm.make data)) ;
+         Hsm.boot data)) ;
   assert_raises (Invalid_argument "fatal!")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
-         Hsm.make data))
+         Hsm.boot data))
 
 let config_version_but_no_salt () =
   Lwt_main.run (
     Kv_mem.connect () >>= fun data ->
     Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
-    Hsm.make data >|= fun hsm ->
+    Hsm.boot data >|= fun hsm ->
     assert_bool "hsm state is unprovisioned if only config/version is present"
       (Hsm.state hsm = `Unprovisioned))
 

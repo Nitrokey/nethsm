@@ -18,6 +18,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
  
   let decode_network json =
     Json.parse Hsm.Config.network_of_yojson json
+
+  let is_unattended_boot_to_yojson r =
+    `Assoc [ ("status", `String (if r then "on" else "off")) ]
+
+  let is_unattended_boot_of_yojson = function
+    | `Assoc [ ("status", `String r) ] ->
+      if r = "on"
+      then Ok true
+      else if r = "off"
+      then Ok false
+      else Error (`Msg "invalid status data, expected 'on' or 'off'")
+    | _ -> Error (`Msg "invalid status data, expected a dictionary with one entry 'status'")
  
   module Access = Access.Make(Hsm)
 
@@ -94,9 +106,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get_json rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "unattended-boot" -> 
-        let json = "TODO: GET unattended-boot" in
-        Wm.continue (`String json) rd
+      | Some "unattended-boot" ->
+        begin
+          Hsm.Config.unattended_boot hsm_state >>= function
+          | Ok is_unattended_boot ->
+            let json = is_unattended_boot_to_yojson is_unattended_boot in
+            Wm.continue (`String (Yojson.Safe.to_string json)) rd
+          | Error `Msg m ->
+            Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        end
      | Some "network" -> 
         Hsm.Config.network hsm_state >>= fun network ->
         let json = Hsm.Config.network_to_yojson network in
@@ -127,9 +145,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Some "unlock-passphrase" ->
           let write = Hsm.Config.change_unlock_passphrase in
           self#change_passphrase rd write json
-      | Some "unattended-boot" -> 
-        Hsm.Config.unattended_boot () ;
-        Wm.continue true rd
+        | Some "unattended-boot" ->
+          begin match is_unattended_boot_of_yojson json with
+            | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+            | Ok unattended_boot ->
+              Hsm.Config.set_unattended_boot hsm_state unattended_boot >>= function
+              | Ok () -> Wm.continue true rd
+              | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+          end
       | Some "network" ->
         begin
           match decode_network json with

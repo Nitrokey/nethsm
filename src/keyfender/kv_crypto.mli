@@ -15,7 +15,13 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
         | `Crypto of Crypto.decrypt_error
       ]
 
-  val initialize : Version.t -> [ `Authentication | `Key ] ->
+  type slot = Authentication | Key
+
+  val pp_slot : slot Fmt.t
+
+  val slot_to_string : slot -> string
+
+  val initialize : Version.t -> slot ->
     key:Cstruct.t -> KV.t -> (t, write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
@@ -29,10 +35,10 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
   val pp_connect_error : connect_error Fmt.t
   (** [pp_connect_error ppf err] pretty-prints the connect error [err] on [ppf]. *)
 
-  val connect : Version.t -> [ `Authentication | `Key ] ->
+  val unlock : Version.t -> slot ->
     key:Cstruct.t -> KV.t ->
     ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result Lwt.t
-  (** [connect version typ ~key kv] connects to a store, using [kv] as
+  (** [unlock version typ ~key kv] connects to a store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
       [stored_version] is read and authenticated from the store, to verify that
