@@ -275,9 +275,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
             (Kv_config.get_opt t.kv Unattended_boot) >>= function
           | Some true ->
             Lwt.catch (fun () ->
+                let open Lwt.Infix in
                 let device_id = "my device id, psst" in
-                unlock_with_device_id t ~device_id >|= fun () ->
-                t)
+                unlock_with_device_id t ~device_id >|= function
+                | Ok () -> Ok t
+                | Error `Msg msg ->
+                  Log.err (fun m -> m "unattended boot failed with %s" msg);
+                  Ok t)
               (fun exn ->
                  Log.err (fun m -> m "failed unattended boot %s"
                              (Printexc.to_string exn));
@@ -293,27 +297,35 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
         system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
       }
     in
-    let open Lwt_result.Infix in
-    Lwt_result.get_exn
-      (lwt_error_fatal "get version from configuration store"
-         ~pp_error:Kv_config.pp_error
-         (Kv_config.get_opt t.kv Version >>= function
-           | None ->
-             (* uninitialized / unprovisioned device, write version *)
-             lwt_error_fatal "set version to configuration store"
-               ~pp_error:KV.pp_write_error
-               (Kv_config.set t.kv Version Version.current >|= fun () -> t)
-           | Some version ->
-             match Version.(compare current version) with
-             | `Equal -> boot_config_store t
-             | `Smaller ->
-               fatal "store has higher version than software, please update software version"
-                 ~pp_error:Fmt.string "exiting"
-             | `Greater ->
-               (* here's the place to embed migration code, at least for the
-                  configuration store *)
-               fatal "store has smaller version than software, data will be migrated!"
-                 ~pp_error:Fmt.string "no migration code available"))
+    let open Lwt.Infix in
+    begin
+      let open Lwt_result.Infix in
+      lwt_error_to_msg ~pp_error:Kv_config.pp_error
+        (Kv_config.get_opt t.kv Version) >>= function
+      | None ->
+        (* uninitialized / unprovisioned device, write version *)
+        lwt_error_to_msg ~pp_error:KV.pp_write_error
+          (Kv_config.set t.kv Version Version.current >|= fun () -> t)
+      | Some version ->
+        match Version.(compare current version) with
+        | `Equal -> boot_config_store t
+        | `Smaller ->
+          let msg =
+            "store has higher version than software, please update software version"
+          in
+        Lwt.return (Error (`Msg msg))
+        | `Greater ->
+          (* here's the place to embed migration code, at least for the
+              configuration store *)
+          let msg =
+            "store has smaller version than software, data will be migrated!"
+          in
+          Lwt.return (Error (`Msg msg))
+    end >|= function
+    | Ok t -> t
+    | Error `Msg msg ->
+      Log.err (fun m -> m "error booting %s" msg);
+      invalid_arg "broken NitroHSM"
 
   let info t = t.info
 

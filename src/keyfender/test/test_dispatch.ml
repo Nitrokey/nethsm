@@ -192,6 +192,26 @@ let unattended_boot_succeeds () =
     | _ -> false
   end
 
+let unattended_boot_failed () =
+  "unattended boot fails to unlock"
+  @? begin
+    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in
+    let store, hsm_state =
+      Lwt_main.run (
+        Kv_mem.connect () >>= fun store ->
+        Hsm.boot store >>= fun state ->
+        Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
+        store, state)
+    in
+    match request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state ~meth:`POST ~headers "/config/unattended-boot" with
+    | _hsm_state', Some (`No_content, _, _, _) ->
+      Lwt_main.run (
+        Kv_mem.remove store (Mirage_kv.Key.v "/config/device-id-salt") >>= fun _ ->
+        Hsm.boot store >|= fun hsm_state ->
+        Hsm.state hsm_state = `Locked)
+    | _ -> false
+  end
+
 (* /config *)
 
 let change_unlock_passphrase () =
@@ -311,13 +331,13 @@ let set_backup_passphrase_empty () =
   end
 
 let invalid_config_version () =
-  assert_raises (Invalid_argument "fatal!")
+  assert_raises (Invalid_argument "broken NitroHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
          Hsm.boot data)) ;
-  assert_raises (Invalid_argument "fatal!")
+  assert_raises (Invalid_argument "broken NitroHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
@@ -367,6 +387,7 @@ let () =
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;
     "/config/unattended_boot" >:: unattended_boot_succeeds;
+    "/config/unattended_boot" >:: unattended_boot_failed;
     "/config/unlock-passphrase" >:: change_unlock_passphrase;
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;
     "/config/tls/public.pem" >:: get_config_tls_public_pem;
