@@ -191,8 +191,23 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     `Assoc [ ("state", match state_to_yojson state with
         `List [l] -> l | _ -> assert false) ]
 
-  type version = int * int [@@deriving yojson]
- 
+  type version = int * int 
+
+  let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
+  let version_of_string s = match Astring.String.cut ~sep:"." s with
+    | None -> Error (`Msg "Failed to parse version: no separator (.)")
+    | Some (major, minor) -> 
+      try 
+        let ma = int_of_string major
+        and mi = int_of_string minor
+        in
+        Ok (ma, mi) 
+      with Failure _ -> Error (`Msg "Failed to parse version")                  
+
+  let version_to_yojson v = `String (version_to_string v)
+  let version_of_yojson _ = Error "Cannot convert version"
+  let version_is_upgrade ~current ~update = fst current <= fst update
+
   type system_info = {
     firmwareVersion : string ;
     softwareVersion : version ;
@@ -307,19 +322,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
               Ok t
             end
           | None | Some false -> Lwt.return (Ok t)
-
-  let _version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
-  let version_of_string s = match Astring.String.cut ~sep:"." s with
-    | None -> Error (`Msg "Failed to parse version: no separator (.)")
-    | Some (major, minor) -> 
-      try 
-        let ma = int_of_string major
-        and mi = int_of_string minor
-        in
-        Ok (ma, mi) 
-      with Failure _ -> Error (`Msg "Failed to parse version")                  
-
-  let version_is_upgrade ~current ~update = fst current <= fst update
 
   let boot kv =
     let t =
