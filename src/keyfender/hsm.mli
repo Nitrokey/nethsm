@@ -12,6 +12,7 @@ module type S = sig
     | `Unprovisioned
     | `Operational
     | `Locked
+    | `Busy
   ]
 
   val pp_state : state Fmt.t
@@ -100,9 +101,9 @@ module type S = sig
   module System : sig
     val system_info : t -> system_info
 
-    val reboot : unit -> unit
+    val reboot : t -> unit
 
-    val shutdown : unit -> unit
+    val shutdown : t -> unit
 
     val reset : t -> unit
 

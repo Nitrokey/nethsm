@@ -19,10 +19,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private system rd =
       match Webmachine.Rd.lookup_path_info "ep" rd with
       | Some "reboot" -> 
-        Hsm.System.reboot () ;
+        Hsm.System.reboot hsm_state ;
         Wm.continue true rd
       | Some "shutdown" -> 
-        Hsm.System.shutdown () ;
+        Hsm.System.shutdown hsm_state ;
         Wm.continue true rd
       | Some "reset" ->
         Hsm.System.reset hsm_state ;

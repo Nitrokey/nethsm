@@ -141,6 +141,20 @@ let system_info_error_forbidden () =
       | _ -> false
    end
 
+let system_reboot_ok () =
+  "a request for /system/reboot with authenticated user returns 200"
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/reboot" with
+      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
+      | _ -> false
+   end
+
+let system_shutdown_ok () =
+  "a request for /system/shutdown with authenticated user returns 200"
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/shutdown" with
+      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
+      | _ -> false
+   end
+
 let unlock_json = {|{ "passphrase": "test1234" }|}
 
 let unlock_ok () =
@@ -497,6 +511,8 @@ let () =
     "/system/info" >:: system_info_error_authentication_required;
     "/system/info" >:: system_info_error_precondition_failed;
     "/system/info" >:: system_info_error_forbidden;
+    "/system/reboot" >:: system_reboot_ok;
+    "/system/shutdown" >:: system_shutdown_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;

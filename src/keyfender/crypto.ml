@@ -1,7 +1,7 @@
 
 module GCM = Nocrypto.Cipher_block.AES.GCM
 
-let initial_key_rsa_bits = 4096
+let initial_key_rsa_bits = 1024 (*TODO up it*)
 
 (* parameters for PBKDF2 *)
 (* TODO increase for deployment to 100_000, for testing 1000 is fine! *)

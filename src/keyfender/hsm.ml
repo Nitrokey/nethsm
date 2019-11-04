@@ -12,6 +12,7 @@ module type S = sig
     | `Unprovisioned
     | `Operational
     | `Locked
+    | `Busy
   ]
 
   val pp_state : state Fmt.t
@@ -100,9 +101,9 @@ module type S = sig
   module System : sig
     val system_info : t -> system_info
 
-    val reboot : unit -> unit
+    val reboot : t -> unit
 
-    val shutdown : unit -> unit
+    val shutdown : t -> unit
 
     val reset : t -> unit
 
@@ -170,13 +171,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     | `Unprovisioned
     | `Operational
     | `Locked
+    | `Busy
   ][@@deriving yojson]
 
   let pp_state ppf s =
     Fmt.string ppf (match s with
         | `Unprovisioned -> "unprovisioned"
         | `Operational -> "operational"
-        | `Locked -> "locked")
+        | `Locked -> "locked"
+        | `Busy -> "busy")
 
   let state_to_yojson state =
     `Assoc [ ("state", match state_to_yojson state with
@@ -200,13 +203,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
   type internal_state =
     | Unprovisioned
-    | Locked
     | Operational of keys
+    | Locked
+    | Busy
 
   let to_external_state = function
     | Unprovisioned -> `Unprovisioned
-    | Locked -> `Locked
     | Operational _ -> `Operational
+    | Locked -> `Locked
+    | Busy -> `Busy
 
   type t = {
     mutable state : internal_state ;
@@ -762,9 +767,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
   module System = struct
     let system_info t = t.system_info
 
-    let reboot () = ()
+    (* TODO call hardware *)
+    let reboot t = 
+      t.state <- Busy
 
-    let shutdown () = ()
+    (* TODO call hardware *)
+    let shutdown t =
+      t.state <- Busy
 
     let reset _t = ()
 
