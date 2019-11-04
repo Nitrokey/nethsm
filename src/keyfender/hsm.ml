@@ -111,6 +111,10 @@ module type S = sig
 
     val update : t -> string Lwt_stream.t -> (string, [> `Msg of string ]) result Lwt.t
 
+    val commit_update : t -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val cancel_update : t -> unit
+
     val backup : unit -> unit
 
     val restore : unit -> unit
@@ -867,6 +871,16 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       end
       else
         Lwt.return (Error (`Msg "Software version downgrade not allowed."))
+
+    let commit_update t =
+      match t.has_changes with
+      | None -> Lwt.return @@ Error (`Msg "No update available")
+      | Some _changes ->
+      (* TODO commit update *)
+      Lwt.return @@ Ok ()
+
+    let cancel_update t =
+      t.has_changes <- None
 
     let backup () = ()
 

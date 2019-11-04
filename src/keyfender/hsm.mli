@@ -111,6 +111,10 @@ module type S = sig
 
     val update : t -> string Lwt_stream.t -> (string, [> `Msg of string ]) result Lwt.t
 
+    val commit_update : t -> (unit, [> `Msg of string ]) result Lwt.t
+
+    val cancel_update : t -> unit
+
     val backup : unit -> unit
 
     val restore : unit -> unit

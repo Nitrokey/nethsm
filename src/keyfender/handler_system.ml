@@ -40,10 +40,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
         end
       | Some "commit-update" -> 
-        Hsm.System.restore () ;
-        Wm.continue true rd
+        begin
+        Hsm.System.commit_update hsm_state >>= function
+        | Ok () -> Wm.continue true rd
+        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        end
       | Some "cancel-update" -> 
-        Hsm.System.restore () ;
+        Hsm.System.cancel_update hsm_state ;
         Wm.continue true rd
       | Some "backup" ->  
         Hsm.System.backup () ;
