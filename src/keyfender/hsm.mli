@@ -105,7 +105,7 @@ module type S = sig
 
     val shutdown : t -> unit
 
-    val reset : t -> unit
+    val reset : t -> (unit, [> `Msg of string ]) result Lwt.t
 
     val update : unit -> unit
 

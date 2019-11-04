@@ -105,7 +105,7 @@ module type S = sig
 
     val shutdown : t -> unit
 
-    val reset : t -> unit
+    val reset : t -> (unit, [> `Msg of string ]) result Lwt.t 
 
     val update : unit -> unit
 
@@ -775,7 +775,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let shutdown t =
       t.state <- Busy
 
-    let reset _t = ()
+    let reset t =
+      t.state <- Unprovisioned;
+      lwt_error_to_msg ~pp_error:KV.pp_write_error
+        (KV.remove t.kv Mirage_kv.Key.empty)
+      (* TODO reboot the hardware *)
 
     let update () = ()
 

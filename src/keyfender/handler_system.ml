@@ -25,8 +25,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.System.shutdown hsm_state ;
         Wm.continue true rd
       | Some "reset" ->
-        Hsm.System.reset hsm_state ;
-        Wm.continue true rd
+        begin
+        Hsm.System.reset hsm_state >>= function
+        | Ok () -> Wm.continue true rd
+        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        end
       | Some "update" ->  
         Hsm.System.update () ;
         Wm.continue true rd
