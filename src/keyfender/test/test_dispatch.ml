@@ -193,7 +193,7 @@ let system_update_version_downgrade () =
 let system_update_commit_ok () =
   let headers = authorization_header "admin" "test1" in
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
-  "a request for /system/update-commit with authenticated user returns 200"
+  "a request for /system/commit-update with authenticated user returns 200"
    @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) -> 
         begin match request ~meth:`POST ~hsm_state ~headers "/system/commit-update" with
@@ -203,10 +203,18 @@ let system_update_commit_ok () =
       | _ -> false
    end
 
+let system_update_commit_fail () =
+  let headers = authorization_header "admin" "test1" in
+  "a request for /system/commit-update without an image previously uploaded fails."
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers "/system/commit-update" with
+      | _ , Some (`Precondition_failed, _, _, _) -> true
+      | _ -> false
+   end
+
 let system_update_cancel_ok () =
   let headers = authorization_header "admin" "test1" in
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
-  "a request for /system/update-cancel with authenticated user returns 200"
+  "a request for /system/cancel-update with authenticated user returns 200"
    @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) -> 
         begin match request ~meth:`POST ~hsm_state ~headers "/system/cancel-update" with
@@ -578,8 +586,9 @@ let () =
     "/system/update" >:: system_update_ok;
     "/system/update" >:: system_update_invalid_data;
     "/system/update" >:: system_update_version_downgrade;
-    "/system/update" >:: system_update_commit_ok;
-    "/system/update" >:: system_update_cancel_ok;
+    "/system/commit-update" >:: system_update_commit_ok;
+    "/system/commit-update" >:: system_update_commit_fail;
+    "/system/cancel-update" >:: system_update_cancel_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;

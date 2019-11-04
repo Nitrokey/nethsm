@@ -31,7 +31,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
         end
       | Some "update" ->  
-        (* TODO get image + changelog from request *)
         begin
         let body = rd.Webmachine.Rd.req_body in
         let content = Cohttp_lwt.Body.to_stream body in
@@ -43,7 +42,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         begin
         Hsm.System.commit_update hsm_state >>= function
         | Ok () -> Wm.continue true rd
-        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Precondition_failed) rd
         end
       | Some "cancel-update" -> 
         Hsm.System.cancel_update hsm_state ;

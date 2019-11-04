@@ -876,7 +876,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       match t.has_changes with
       | None -> Lwt.return @@ Error (`Msg "No update available")
       | Some _changes ->
-      (* TODO commit update *)
+      (* TODO commit update, do we cover all error variants? *)
       Lwt.return @@ Ok ()
 
     let cancel_update t =
