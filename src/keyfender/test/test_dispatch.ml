@@ -162,6 +162,14 @@ let system_reset_ok () =
       | _ -> false
    end
 
+let system_update_ok () =
+  let body = `String "A new system image" in
+  "a request for /system/update with authenticated user returns 200"
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
+      | _ -> false
+   end
+
 let unlock_json = {|{ "passphrase": "test1234" }|}
 
 let unlock_ok () =
@@ -521,6 +529,7 @@ let () =
     "/system/reboot" >:: system_reboot_ok;
     "/system/shutdown" >:: system_shutdown_ok;
     "/system/reset" >:: system_reset_ok;
+    "/system/update" >:: system_update_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;

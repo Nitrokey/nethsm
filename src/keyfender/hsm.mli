@@ -107,7 +107,7 @@ module type S = sig
 
     val reset : t -> (unit, [> `Msg of string ]) result Lwt.t
 
-    val update : unit -> unit
+    val update : t -> string Lwt_stream.t -> (unit, [> `Msg of string ]) result Lwt.t
 
     val backup : unit -> unit
 

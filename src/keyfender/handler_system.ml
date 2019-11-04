@@ -31,8 +31,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
         end
       | Some "update" ->  
-        Hsm.System.update () ;
-        Wm.continue true rd
+        (* TODO get image + changelog from request *)
+        begin
+        let body = rd.Webmachine.Rd.req_body in
+        let content = Cohttp_lwt.Body.to_stream body in
+        Hsm.System.update hsm_state content >>= function
+        | Ok () -> Wm.continue true rd
+        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        end
       | Some "commit-update" -> 
         Hsm.System.restore () ;
         Wm.continue true rd
