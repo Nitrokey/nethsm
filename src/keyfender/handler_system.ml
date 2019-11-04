@@ -34,8 +34,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         begin
         let body = rd.Webmachine.Rd.req_body in
         let content = Cohttp_lwt.Body.to_stream body in
+        let add_content_type h = Cohttp.Header.add h "Content-Type" "application/json" in
         Hsm.System.update hsm_state content >>= function
-        | Ok changes -> Wm.respond ~body:(`String changes) (Cohttp.Code.code_of_status `OK) rd
+        | Ok changes -> 
+          let json = Yojson.Safe.to_string (`String changes) in
+          let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
+          Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
         | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
         end
       | Some "commit-update" -> 
