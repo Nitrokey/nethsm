@@ -109,7 +109,7 @@ module type S = sig
 
     val reset : t -> (unit, [> `Msg of string ]) result Lwt.t 
 
-    val update : t -> string Lwt_stream.t -> (unit, [> `Msg of string ]) result Lwt.t
+    val update : t -> string Lwt_stream.t -> (string, [> `Msg of string ]) result Lwt.t
 
     val backup : unit -> unit
 
@@ -863,7 +863,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       begin
         (* store changelog *)
         t.has_changes <- Some changes;
-        Lwt.return (Ok ())
+        Lwt.return (Ok changes)
       end
       else
         Lwt.return (Error (`Msg "Software version downgrade not allowed."))

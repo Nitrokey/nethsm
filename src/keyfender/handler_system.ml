@@ -36,7 +36,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let body = rd.Webmachine.Rd.req_body in
         let content = Cohttp_lwt.Body.to_stream body in
         Hsm.System.update hsm_state content >>= function
-        | Ok () -> Wm.continue true rd
+        | Ok changes -> Wm.respond ~body:(`String changes) (Cohttp.Code.code_of_status `OK) rd
         | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
         end
       | Some "commit-update" -> 

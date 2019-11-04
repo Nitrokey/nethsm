@@ -166,7 +166,7 @@ let system_update_ok () =
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/update with authenticated user returns 200"
    @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
-      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
+      | hsm_state, Some (`OK, _, _, _) -> Hsm.state hsm_state = `Operational
       | _ -> false
    end
 
