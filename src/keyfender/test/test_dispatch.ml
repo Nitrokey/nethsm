@@ -170,6 +170,26 @@ let system_update_ok () =
       | _ -> false
    end
 
+let system_update_invalid_data () =
+  let body = `String "\000\003signature too long\000\018A new system image\000\0032.0binary data is here" in
+  "a request for /system/update with invalid data fails."
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+      | hsm_state, Some (`Bad_request, _, `String body, _) -> 
+        Logs.info (fun m -> m "Update with invalid data returned %s" body); 
+        Hsm.state hsm_state = `Operational
+      | _ -> false
+   end
+
+let system_update_version_downgrade () =
+  let body = `String "\000\003sig\000\018A new system image\000\0030.5binary data is here" in
+  "a request for /system/update trying to send an older software fails."
+   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+      | hsm_state, Some (`Bad_request, _, `String body, _) -> 
+        Logs.info (fun m -> m "Update with older software version returned %s" body); 
+        Hsm.state hsm_state = `Operational
+      | _ -> false
+   end
+
 let unlock_json = {|{ "passphrase": "test1234" }|}
 
 let unlock_ok () =
@@ -530,6 +550,8 @@ let () =
     "/system/shutdown" >:: system_shutdown_ok;
     "/system/reset" >:: system_reset_ok;
     "/system/update" >:: system_update_ok;
+    "/system/update" >:: system_update_invalid_data;
+    "/system/update" >:: system_update_version_downgrade;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;

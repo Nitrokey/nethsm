@@ -324,7 +324,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         has_changes = None ;
         kv ;
         info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
-        system_info = { firmwareVersion = "1" ; softwareVersion = (0, 7) ; hardwareVersion = "2.2.2" } ;
+        system_info = { firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" } ;
       }
     in
     let open Lwt.Infix in
