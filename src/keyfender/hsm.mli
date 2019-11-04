@@ -49,6 +49,8 @@ module type S = sig
   val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  val random : int -> string
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t

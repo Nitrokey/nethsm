@@ -20,6 +20,7 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : 
   module Health = Handler_health.Make(Wm)(Hsm)
   module Provision = Handler_provision.Make(Wm)(Hsm)
   module Unlock = Handler_unlock.Make(Wm)(Hsm)
+  module Random = Handler_random.Make(Wm)(Hsm)
   module Config = Handler_config.Make(Wm)(Hsm)
   module System = Handler_system.Make(Wm)(Hsm)
   module Users = Handler_users.Make(Wm)
@@ -29,6 +30,7 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : 
     ("/health/:ep", fun () -> new Health.handler hsm_state) ;
     ("/provision", fun () -> new Provision.handler hsm_state) ;
     ("/unlock", fun () -> new Unlock.handler hsm_state) ;
+    ("/random", fun () -> new Random.handler hsm_state) ;
     ("/users/:id", fun () -> new Users.handler now) ;
     ("/config/tls/:ep", fun () -> new Config.handler_tls hsm_state) ;
     ("/config/:ep", fun () -> new Config.handler hsm_state) ;

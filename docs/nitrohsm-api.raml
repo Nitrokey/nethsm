@@ -186,7 +186,7 @@ types:
 
 /random:
   description: "Role: <b>R-Operator</b>"
-  get:
+  post:
     description: Retrieve cryptographically strong random bytes from NitroHSM. Precondition: NitroHSM is <i>Unlocked</i> and a <b>R-Operator</b> can be authenticated.
     securedBy: basic # R-Operator
     body:

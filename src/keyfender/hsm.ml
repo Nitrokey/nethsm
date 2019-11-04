@@ -49,6 +49,8 @@ module type S = sig
   val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
 
+  val random : int -> string
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, [> `Msg of string ]) result Lwt.t
@@ -219,7 +221,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
   module Kv_crypto = Kv_crypto.Make(Rng)(KV)
 
   type keys = {
-    domain_key : Cstruct.t ; (* needed when unloc kpassphrase changes and likely for unattended boot *)
+    domain_key : Cstruct.t ; (* needed when unlock passphrase changes and likely for unattended boot *)
     auth_store : Kv_crypto.t ;
     key_store : Kv_crypto.t ;
   }
@@ -414,6 +416,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       Log.warn (fun m -> m "error %a while retrieving IP, using default"
                    Kv_config.pp_error e);
       default_network_configuration
+
+  let random n = Cstruct.to_string @@ Nocrypto.Base64.encode @@ Rng.generate n
 
   module User = struct
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
