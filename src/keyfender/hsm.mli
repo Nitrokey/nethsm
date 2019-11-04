@@ -19,9 +19,11 @@ module type S = sig
 
   val state_to_yojson : state -> Yojson.Safe.t
 
+  type version = int * int
+
   type system_info = {
     firmwareVersion : string ;
-    softwareVersion : string ;
+    softwareVersion : version ;
     hardwareVersion : string ;
   }
 

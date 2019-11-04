@@ -19,9 +19,11 @@ module type S = sig
 
   val state_to_yojson : state -> Yojson.Safe.t
 
+  type version = int * int
+
   type system_info = {
     firmwareVersion : string ;
-    softwareVersion : string ;
+    softwareVersion : version ;
     hardwareVersion : string ;
   }
 
@@ -185,9 +187,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     `Assoc [ ("state", match state_to_yojson state with
         `List [l] -> l | _ -> assert false) ]
 
+  type version = int * int [@@deriving yojson]
+ 
   type system_info = {
     firmwareVersion : string ;
-    softwareVersion : string ;
+    softwareVersion : version ;
     hardwareVersion : string ;
   }[@@deriving yojson]
 
@@ -300,6 +304,19 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
             end
           | None | Some false -> Lwt.return (Ok t)
 
+  let _version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
+  let version_of_string s = match Astring.String.cut ~sep:"." s with
+    | None -> Error (`Msg "Failed to parse version: no separator (.)")
+    | Some (major, minor) -> 
+      try 
+        let ma = int_of_string major
+        and mi = int_of_string minor
+        in
+        Ok (ma, mi) 
+      with Failure _ -> Error (`Msg "Failed to parse version")                  
+
+  let version_is_upgrade ~current ~update = fst current <= fst update
+
   let boot kv =
     let t =
       {
@@ -307,7 +324,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         has_changes = None ;
         kv ;
         info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
-        system_info = { firmwareVersion = "1" ; softwareVersion = "0.7rc3" ; hardwareVersion = "2.2.2" } ;
+        system_info = { firmwareVersion = "1" ; softwareVersion = (0, 7) ; hardwareVersion = "2.2.2" } ;
       }
     in
     let open Lwt.Infix in
@@ -783,20 +800,73 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         (KV.remove t.kv Mirage_kv.Key.empty)
       (* TODO reboot the hardware *)
 
+    let put_back stream chunk = Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
+
+    let read_n stream n =
+      let rec read prefix =
+        let open Lwt.Infix in
+        Lwt_stream.get stream >>= function
+        | None -> Lwt.return @@ Error (`Msg "Malformed update")
+        | Some data ->
+          let str = prefix ^ data in
+          if String.length str >= n
+          then 
+            let data, rest = Astring.String.span ~min:n ~max:n str in
+            Lwt.return @@ Ok (data, put_back stream rest)
+          else read str
+      in
+      read ""
+ 
+    let get_length stream = 
+      let open Lwt_result.Infix in
+      read_n stream 2 >|= fun (data, stream') ->
+      let length = Cstruct.BE.get_uint16 (Cstruct.of_string data) 0 in
+      (length, stream')
+ 
+    let get_data (l, s) = read_n s l
+ 
+    let get_field s =
+      let open Lwt_result.Infix in
+      get_length s >>=
+      get_data
+
     let update t s =
       let empty = Cstruct.empty in
       let update t _data = t in
       let get t = t in
-      let open Lwt.Infix in
-      Lwt_stream.fold_s (fun chunk hash -> 
-        (*TODO stream to s_update*) 
-        let hash' = update hash chunk in
-        Lwt.return hash') s empty >>= fun hash ->
+      let open Lwt_result.Infix in
+      (* stream contains:
+         - signature (hash of the rest)
+         - changelog
+         - version number
+         - software image,
+         first three are prefixed by 4 byte length *)
+      get_field s >>= fun (_signature, s') ->
+      let hash = empty in
+      get_field s' >>= fun (changes, s'') ->
+      let hash' = update hash changes in
+      get_field s'' >>= fun (version, s''') ->
+      Lwt.return (version_of_string version) >>= fun version' ->
+      let hash'' = update hash' version in
+      Lwt_stream.fold_s (fun chunk acc -> 
+        match acc with
+        | Error e -> Lwt.return (Error e)
+        | Ok hash -> 
+          (*TODO stream to s_update*) 
+          let hash' = update hash chunk in
+          Lwt.return @@ Ok hash') 
+        s''' (Ok hash'') >>= fun hash ->
       let _final = get hash in
-      (* TODO verify signature and version number, extract changelog *)
-      (* store changelog *)
-      t.has_changes <- Some "";
-      Lwt.return (Ok ())
+      (* TODO verify signature *)
+      let current = t.system_info.softwareVersion in
+      if version_is_upgrade ~current ~update:version' then
+      begin
+        (* store changelog *)
+        t.has_changes <- Some changes;
+        Lwt.return (Ok ())
+      end
+      else
+        Lwt.return (Error (`Msg "Software version downgrade not allowed."))
 
     let backup () = ()
 
