@@ -8,12 +8,12 @@ module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm
 
 let now () = Ptime.v (Pclock.now_d_ps ())
 
-let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") path =
+let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_with "accept" "application/json") ?query path =
   let hsm_state' = match hsm_state with
     | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot)
     | Some x -> x
   in
-  let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path () in
+  let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
   match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' now) ~body ~request with
   | None -> hsm_state', None
@@ -258,9 +258,12 @@ let system_backup_ok () =
           let backup_key = Keyfender.Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase in
           let adata = Cstruct.of_string "backup" in
           let decrypted_data = List.map (fun d ->
-              match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret backup_key) ~adata (Cstruct.of_string d) with
-              | Ok data -> Cstruct.to_string data
-              | Error _ -> assert false) data'
+              match Astring.String.cut ~sep:":" d with
+              | None -> assert false
+              | Some (_, data) ->
+                match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret backup_key) ~adata (Cstruct.of_string data) with
+                | Ok data -> Cstruct.to_string data
+                | Error _ -> assert false) data'
           in
           let kvs = List.map separate_kv decrypted_data in
           let unlock_salt =
@@ -305,6 +308,29 @@ let system_backup_ok () =
             Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit " -> ") string string))
             kvs;
           r
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let system_restore_ok () =
+  let headers = authorization_header "admin" "test1" in
+  "a request for /system/restore succeeds"
+  @? begin
+    let headers' = Header.add headers "content-type" "application/json" in
+    let backup_passphrase = "backup passphrase" in
+    let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+    match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:headers' ~body:(`String passphrase) "/config/backup-passphrase" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+        | _hsm_state, Some (`OK, _, `Stream s, _) ->
+          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+          let headers = Header.init_with "content-type" "application/octet-stream" in
+          let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
+          begin match request ~meth:`POST ~headers ~body:(`String data) ~query "/system/restore" with
+            | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Locked
+            | _ -> false
+          end
         | _ -> false
       end
     | _ -> false
@@ -676,6 +702,7 @@ let () =
     "/system/commit-update" >:: system_update_commit_fail;
     "/system/cancel-update" >:: system_update_cancel_ok;
     "/system/backup" >:: system_backup_ok;
+    "/system/restore" >:: system_restore_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;

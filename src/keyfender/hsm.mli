@@ -119,7 +119,7 @@ module type S = sig
 
     val backup : t -> (string option -> unit) -> unit Lwt.t
 
-    val restore : unit -> unit
+    val restore : t -> Uri.t -> string Lwt_stream.t -> unit Lwt.t
   end
 
   module User : sig

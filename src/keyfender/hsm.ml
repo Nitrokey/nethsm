@@ -119,7 +119,7 @@ module type S = sig
 
     val backup : t -> (string option -> unit) -> unit Lwt.t
 
-    val restore : unit -> unit
+    val restore : t -> Uri.t -> string Lwt_stream.t -> unit Lwt.t
   end
 
   module User : sig
@@ -840,6 +840,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       get_length s >>=
       get_data
 
+    (* TODO encode like backup *)
     let update t s =
       let empty = Cstruct.empty in
       let update t _data = t in
@@ -921,7 +922,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
                         let data = prefix_len key_str ^ prefix_len data in
                         let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
                         let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key' ~adata (Cstruct.of_string data) in
-                        push (Some (Cstruct.to_string encrypted_data))
+                        push (Some (prefix_len (Cstruct.to_string encrypted_data)))
                       | Error _ -> assert false
                     end
                   | `Dictionary -> backup_directory key)
@@ -931,6 +932,64 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           backup_directory Mirage_kv.Key.empty >|= fun () ->
           push None
 
-    let restore () = ()
+    let restore t uri (stream : string Lwt_stream.t) =
+      let open Lwt.Infix in
+      match Uri.get_query_param uri "backupPassphrase" with
+      | None -> assert false
+      | Some backup_passphrase ->
+        (* (a) retrieve backup_salt *)
+        let char_stream = Lwt_stream.(concat (map of_string stream)) in
+        (* TODO size-bound the get_while *)
+        let to_str xs = List.to_seq xs |> String.of_seq in
+        (Lwt_stream.get_while
+           (function ':' -> false | '0'..'9' -> true | _ -> assert false)
+           char_stream >|= to_str) >>= fun length_str ->
+        match int_of_string length_str with
+        | exception Failure _ -> assert false
+        | n ->
+          Lwt_stream.junk char_stream >>= fun () ->
+          (Lwt_stream.nget n char_stream >|= to_str) >>= fun backup_salt ->
+          (* (b) derive backup key *)
+          let backup_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase in
+          let key = Crypto.GCM.of_secret backup_key in
+          (* (c) read stream, decrypt with backup key, store into KV *)
+          let get_kv s =
+            (Lwt_stream.get_while
+               (function ':' -> false | '0'..'9' -> true | _ -> assert false)
+               s >|= to_str) >>= fun length_str ->
+            match int_of_string length_str with
+            | exception Failure _ -> assert false
+            | n ->
+              Lwt_stream.junk s >>= fun () ->
+              (Lwt_stream.nget n s >|= to_str) >>= fun encrypted_data ->
+              let adata = Cstruct.of_string "backup" in
+              match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
+              | Ok kv ->
+                (* len:key len:value *)
+                begin match Astring.String.cut ~sep:":" (Cstruct.to_string kv) with
+                  | None -> assert false
+                  | Some (len_str, rest) ->
+                    let len = int_of_string len_str in
+                    let key = String.sub rest 0 len in
+                    match Astring.String.cut ~sep:":" (String.sub rest len (String.length rest - len)) with
+                    | None -> assert false
+                    | Some (len, data) ->
+                      assert (String.length data = int_of_string len);
+                      Lwt.return (key, data)
+                end
+              | Error _ -> assert false
+          in
+          let rec next () =
+            Lwt_stream.is_empty char_stream >>= function
+            | true -> Lwt.return_unit
+            | false ->
+              get_kv char_stream >>= fun (k, v) ->
+              KV.set t.kv (Mirage_kv.Key.v k) v >>= fun _ -> (* TODO write error *)
+              next ()
+          in
+          next () >|= fun () ->
+          (* (d) state = Locked *)
+          t.state <- Locked
+
   end
 end
