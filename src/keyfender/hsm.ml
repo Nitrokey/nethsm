@@ -117,9 +117,11 @@ module type S = sig
 
     val cancel_update : t -> unit
 
-    val backup : t -> (string option -> unit) -> unit Lwt.t
+    val backup : t -> (string option -> unit) ->
+      (unit, [> `Internal_server_error | `Precondition_failed ]) result Lwt.t
 
-    val restore : t -> Uri.t -> string Lwt_stream.t -> unit Lwt.t
+    val restore : t -> Uri.t -> string Lwt_stream.t ->
+      (unit, [> `Bad_request | `Internal_server_error ]) result Lwt.t
   end
 
   module User : sig
@@ -889,107 +891,130 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let cancel_update t =
       t.has_changes <- None
 
+    let prefix_len s = string_of_int (String.length s) ^ ":" ^ s
+
+    let rec backup_directory kv push backup_key path =
+      let open Lwt.Infix in
+      KV.list kv path >>= function
+      | Error e ->
+        Log.err (fun m -> m "error %a while listing path %a during backup"
+                    KV.pp_error e Mirage_kv.Key.pp path);
+        Lwt.return_unit
+      | Ok entries ->
+        (* for each key, retrieve value and call push *)
+        Lwt_list.iter_s (fun (subpath, kind) ->
+            let key = Mirage_kv.Key.(path / subpath) in
+            match kind with
+            | `Value ->
+              begin
+                KV.get kv key >|= function
+                | Ok data ->
+                  let key_str = Mirage_kv.Key.to_string key in
+                  (* TODO is it ok to encrypt each entry individually? *)
+                  (* encrypt the stream instead *)
+                  let data = prefix_len key_str ^ prefix_len data in
+                  let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
+                  let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key ~adata (Cstruct.of_string data) in
+                  push (Some (prefix_len (Cstruct.to_string encrypted_data)))
+                | Error e ->
+                  Log.err (fun m -> m "error %a while retrieving value %a during backup"
+                              KV.pp_error e Mirage_kv.Key.pp key)
+              end
+            | `Dictionary -> backup_directory kv push backup_key key)
+          entries
+
     let backup t push =
       let open Lwt.Infix in
       Kv_config.get_opt t.kv Backup_key >>= function
-      | Error _ -> assert false (* TODO reply with precondition failed *)
-      | Ok None -> assert false (* TODO same *)
+      | Error e ->
+        Log.err (fun m -> m "error %a while reading backup key" Kv_config.pp_error e);
+        Lwt.return (Error `Internal_server_error)
+      | Ok None -> Lwt.return (Error `Precondition_failed)
       | Ok Some backup_key ->
-        (* iterate over keys in KV store *)
+        (* iteratae over keys in KV store *)
         let backup_key' = Crypto.GCM.of_secret backup_key in
         Kv_config.get t.kv Backup_salt >>= function
-        | Error _ -> assert false
+        | Error e ->
+          Log.err (fun m -> m "error %a while reading backup salt" Kv_config.pp_error e);
+          Lwt.return (Error `Internal_server_error)
         | Ok backup_salt ->
-          let prefix_len s =
-            string_of_int (String.length s) ^ ":" ^ s
-          in
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
-          let rec backup_directory path =
-            KV.list t.kv path >>= function
-            | Error _ -> assert false
-            | Ok entries ->
-              (* for each key, retrieve value and call push *)
-              Lwt_list.iter_s (fun (subpath, kind) ->
-                  let key = Mirage_kv.Key.(path / subpath) in
-                  match kind with
-                  | `Value ->
-                    begin
-                      KV.get t.kv key >|= function
-                      | Ok data ->
-                        let key_str = Mirage_kv.Key.to_string key in
-                        (* TODO is it ok to encrypt each entry individually? *)
-                        (* encrypt the stream instead *)
-                        let data = prefix_len key_str ^ prefix_len data in
-                        let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
-                        let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key' ~adata (Cstruct.of_string data) in
-                        push (Some (prefix_len (Cstruct.to_string encrypted_data)))
-                      | Error _ -> assert false
-                    end
-                  | `Dictionary -> backup_directory key)
-                entries
-          in
-          (* TODO encrypted with backup key *)
-          backup_directory Mirage_kv.Key.empty >|= fun () ->
-          push None
+          backup_directory t.kv push backup_key' Mirage_kv.Key.empty >|= fun () ->
+          push None;
+          Ok ()
 
-    let restore t uri (stream : string Lwt_stream.t) =
+    exception Decoding_error
+
+    let decode_value char_stream =
       let open Lwt.Infix in
-      match Uri.get_query_param uri "backupPassphrase" with
-      | None -> assert false
-      | Some backup_passphrase ->
-        (* (a) retrieve backup_salt *)
-        let char_stream = Lwt_stream.(concat (map of_string stream)) in
-        (* TODO size-bound the get_while *)
-        let to_str xs = List.to_seq xs |> String.of_seq in
-        (Lwt_stream.get_while
-           (function ':' -> false | '0'..'9' -> true | _ -> assert false)
-           char_stream >|= to_str) >>= fun length_str ->
-        match int_of_string length_str with
-        | exception Failure _ -> assert false
-        | n ->
+      (* the char stream contains an integer (length of value), followed by ":",
+         followed by value *)
+      let to_str xs = List.to_seq xs |> String.of_seq in
+      (* TODO size-bound the get_while *)
+      Lwt.catch (fun () ->
+          (Lwt_stream.get_while
+             (function ':' -> false | '0'..'9' -> true | _ -> raise Decoding_error)
+             char_stream >|= to_str >|= int_of_string) >>= fun n ->
           Lwt_stream.junk char_stream >>= fun () ->
-          (Lwt_stream.nget n char_stream >|= to_str) >>= fun backup_salt ->
-          (* (b) derive backup key *)
-          let backup_key = Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase in
-          let key = Crypto.GCM.of_secret backup_key in
-          (* (c) read stream, decrypt with backup key, store into KV *)
-          let get_kv s =
-            (Lwt_stream.get_while
-               (function ':' -> false | '0'..'9' -> true | _ -> assert false)
-               s >|= to_str) >>= fun length_str ->
-            match int_of_string length_str with
-            | exception Failure _ -> assert false
-            | n ->
-              Lwt_stream.junk s >>= fun () ->
-              (Lwt_stream.nget n s >|= to_str) >>= fun encrypted_data ->
-              let adata = Cstruct.of_string "backup" in
-              match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
-              | Ok kv ->
-                (* len:key len:value *)
-                begin match Astring.String.cut ~sep:":" (Cstruct.to_string kv) with
-                  | None -> assert false
-                  | Some (len_str, rest) ->
-                    let len = int_of_string len_str in
-                    let key = String.sub rest 0 len in
-                    match Astring.String.cut ~sep:":" (String.sub rest len (String.length rest - len)) with
-                    | None -> assert false
-                    | Some (len, data) ->
-                      assert (String.length data = int_of_string len);
-                      Lwt.return (key, data)
-                end
-              | Error _ -> assert false
+          Lwt_stream.nget n char_stream >|= to_str >|= fun data ->
+          Ok data)
+        (function
+          | Failure _ | Decoding_error ->
+            Lwt.return (Error "failed to parse integer")
+          | e -> raise e)
+
+    let split_kv data =
+      (* len:key len:value *)
+      match Astring.String.cut ~sep:":" data with
+      | None -> Error `Bad_request
+      | Some (len_str, rest) ->
+        let len = int_of_string len_str in
+        let key = String.sub rest 0 len in
+        match Astring.String.cut ~sep:":" (String.sub rest len (String.length rest - len)) with
+        | None -> Error `Bad_request
+        | Some (len, data) ->
+          if String.length data = int_of_string len then
+            Ok (key, data)
+          else
+            Error `Bad_request
+
+    let read_and_decrypt char_stream key =
+      let open Lwt.Infix in
+      decode_value char_stream >|= function
+      | Error _ -> Error `Bad_request
+      | Ok encrypted_data ->
+        let adata = Cstruct.of_string "backup" in
+        match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
+        | Ok kv -> split_kv (Cstruct.to_string kv)
+        | Error _ -> Error `Bad_request
+
+    let restore t uri stream =
+      let open Lwt.Infix in
+      let char_stream = Lwt_stream.(concat (map of_string stream)) in
+      match Uri.get_query_param uri "backupPassphrase" with
+      | None -> Lwt.return (Error `Bad_request)
+      | Some backup_passphrase ->
+        decode_value char_stream >>= function
+        | Error _ -> Lwt.return (Error `Bad_request)
+        | Ok backup_salt ->
+          let backup_key =
+            Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
           in
+          let key = Crypto.GCM.of_secret backup_key in
           let rec next () =
             Lwt_stream.is_empty char_stream >>= function
-            | true -> Lwt.return_unit
+            | true -> t.state <- Locked ; Lwt.return (Ok ())
             | false ->
-              get_kv char_stream >>= fun (k, v) ->
-              KV.set t.kv (Mirage_kv.Key.v k) v >>= fun _ -> (* TODO write error *)
-              next ()
+              read_and_decrypt char_stream key >>= function
+              | Error e -> Lwt.return (Error e)
+              | Ok (k, v) ->
+                KV.set t.kv (Mirage_kv.Key.v k) v >>= function
+                | Ok () -> next ()
+                | Error e ->
+                  Log.err (fun m -> m "error %a restoring backup (writing to KV)"
+                              KV.pp_write_error e);
+                  Lwt.return (Error `Internal_server_error)
           in
-          next () >|= fun () ->
-          (* (d) state = Locked *)
-          t.state <- Locked
-
+          next ()
   end
 end
