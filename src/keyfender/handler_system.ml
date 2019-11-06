@@ -51,9 +51,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "cancel-update" -> 
         Hsm.System.cancel_update hsm_state ;
         Wm.continue true rd
-      | Some "backup" ->  
-        Hsm.System.backup () ;
-        Wm.continue true rd
+      | Some "backup" ->
+        let add_content_type h = Cohttp.Header.add h "Content-Type" "application/octet-stream" in
+        let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
+        let stream, push = Lwt_stream.create () in
+        Hsm.System.backup hsm_state push >>= fun () ->
+        Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd'
       | Some "restore" -> 
         Hsm.System.restore () ;
         Wm.continue true rd

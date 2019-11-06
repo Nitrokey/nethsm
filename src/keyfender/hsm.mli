@@ -117,7 +117,7 @@ module type S = sig
 
     val cancel_update : t -> unit
 
-    val backup : unit -> unit
+    val backup : t -> (string option -> unit) -> unit Lwt.t
 
     val restore : unit -> unit
   end

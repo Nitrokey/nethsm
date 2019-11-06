@@ -117,7 +117,7 @@ module type S = sig
 
     val cancel_update : t -> unit
 
-    val backup : unit -> unit
+    val backup : t -> (string option -> unit) -> unit Lwt.t
 
     val restore : unit -> unit
   end
@@ -888,7 +888,48 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let cancel_update t =
       t.has_changes <- None
 
-    let backup () = ()
+    let backup t push =
+      let open Lwt.Infix in
+      Kv_config.get_opt t.kv Backup_key >>= function
+      | Error _ -> assert false (* TODO reply with precondition failed *)
+      | Ok None -> assert false (* TODO same *)
+      | Ok Some backup_key ->
+        (* iterate over keys in KV store *)
+        let backup_key' = Crypto.GCM.of_secret backup_key in
+        Kv_config.get t.kv Backup_salt >>= function
+        | Error _ -> assert false
+        | Ok backup_salt ->
+          let prefix_len s =
+            string_of_int (String.length s) ^ ":" ^ s
+          in
+          push (Some (prefix_len (Cstruct.to_string backup_salt)));
+          let rec backup_directory path =
+            KV.list t.kv path >>= function
+            | Error _ -> assert false
+            | Ok entries ->
+              (* for each key, retrieve value and call push *)
+              Lwt_list.iter_s (fun (subpath, kind) ->
+                  let key = Mirage_kv.Key.(path / subpath) in
+                  match kind with
+                  | `Value ->
+                    begin
+                      KV.get t.kv key >|= function
+                      | Ok data ->
+                        let key_str = Mirage_kv.Key.to_string key in
+                        (* TODO is it ok to encrypt each entry individually? *)
+                        (* encrypt the stream instead *)
+                        let data = prefix_len key_str ^ prefix_len data in
+                        let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
+                        let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key' ~adata (Cstruct.of_string data) in
+                        push (Some (Cstruct.to_string encrypted_data))
+                      | Error _ -> assert false
+                    end
+                  | `Dictionary -> backup_directory key)
+                entries
+          in
+          (* TODO encrypted with backup key *)
+          backup_directory Mirage_kv.Key.empty >|= fun () ->
+          push None
 
     let restore () = ()
   end

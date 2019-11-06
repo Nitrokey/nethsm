@@ -24,7 +24,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init_w
 let operational_mock () =
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.boot >>= fun state ->
-    Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >>= fun _ ->
+    Hsm.provision state ~unlock:"unlock" ~admin:"test1" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
     state)
 
@@ -223,6 +223,92 @@ let system_update_cancel_ok () =
         end
       | _ -> false
    end
+
+let get_field data =
+  match Astring.String.cut ~sep:":" data with
+  | None -> assert false
+  | Some (len, rest) ->
+    match int_of_string len with
+    | exception Failure _ -> Printf.printf "parse error, expected length!\n" ; assert false
+    | l ->
+      let key = String.sub rest 0 l in
+      key, String.sub rest l (String.length rest - l)
+
+let separate_kv input =
+  let key, rest = get_field input in
+  let value, rest' = get_field rest in
+  assert (rest' = "");
+  (key, value)
+
+let system_backup_ok () =
+  let headers = authorization_header "admin" "test1" in
+  "a request for /system/backup with authenticated user returns a good backup"
+  @? begin
+    let headers' = Header.add headers "content-type" "application/json" in
+    let backup_passphrase = "backup passphrase" in
+    let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+    match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:headers' ~body:(`String passphrase) "/config/backup-passphrase" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+        | _hsm_state, Some (`OK, _, `Stream s, _) ->
+          let data = Lwt_main.run (Lwt_stream.to_list s) in
+          let backup_salt_len_prefix, data' = match data with hd :: tl -> hd, tl | _ -> assert false in
+          let backup_salt, rest = get_field backup_salt_len_prefix in
+          assert (rest = "");
+          let backup_key = Keyfender.Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase in
+          let adata = Cstruct.of_string "backup" in
+          let decrypted_data = List.map (fun d ->
+              match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret backup_key) ~adata (Cstruct.of_string d) with
+              | Ok data -> Cstruct.to_string data
+              | Error _ -> assert false) data'
+          in
+          let kvs = List.map separate_kv decrypted_data in
+          let unlock_salt =
+            match List.partition (fun (key, _) -> String.equal key "/config/unlock-salt") kvs with
+            | [ (_, v) ], _ -> v
+            | _ -> assert false
+          in
+          let unlock_key = Keyfender.Crypto.key_of_passphrase ~salt:(Cstruct.of_string unlock_salt) "unlock" in
+          let encrypted_domain_key =
+            match List.partition (fun (key, _) -> String.equal key "/domain-key/0") kvs with
+            | [ _, v ], _ -> v
+            | _ -> assert false
+          in
+          let adata = Cstruct.of_string "domain-key0" in
+          let domain_key =
+            match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret unlock_key) ~adata (Cstruct.of_string encrypted_domain_key) with
+            | Ok domain_key -> domain_key
+            | Error _ -> assert false
+          in
+          let auth_store_key, _key_store_key = Cstruct.split domain_key Keyfender.Crypto.key_len in
+          let encrypted_admin =
+            match List.partition (fun (key, _) -> String.equal key "/authentication/admin") kvs with
+            | [ _, v ], _ -> v
+            | _ -> assert false
+          in
+          let adata = Cstruct.of_string "/authentication/admin" in
+          let r =
+            match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret auth_store_key) ~adata (Cstruct.of_string encrypted_admin) with
+            | Ok admin ->
+              begin match Keyfender.Json.try_parse (Cstruct.to_string admin) with
+                | Error _ -> false
+                | Ok json ->
+                  let alist = Yojson.Safe.Util.to_assoc json in
+                  let name = List.find_opt (fun (key, _) -> String.equal key "name") alist in
+                  match name with
+                  | Some (_, `String v) -> String.equal v "admin"
+                  | _ -> false
+              end
+            | Error _ -> false
+          in
+          Format.printf "data is %a\n"
+            Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit " -> ") string string))
+            kvs;
+          r
+        | _ -> false
+      end
+    | _ -> false
+  end
 
 let unlock_json = {|{ "passphrase": "test1234" }|}
 
@@ -589,6 +675,7 @@ let () =
     "/system/commit-update" >:: system_update_commit_ok;
     "/system/commit-update" >:: system_update_commit_fail;
     "/system/cancel-update" >:: system_update_cancel_ok;
+    "/system/backup" >:: system_backup_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;
