@@ -55,7 +55,7 @@ module type S = sig
     (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    (unit, error) result Lwt.t
 
   val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t

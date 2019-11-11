@@ -3,10 +3,7 @@ open Lwt.Infix
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
-
-  let wm_respond_error (e, body) rd = 
-    let code = Hsm.error_to_code e in
-    Wm.respond ~body:(`String body) code rd  
+  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
@@ -32,7 +29,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         begin
         Hsm.System.reset hsm_state >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> wm_respond_error e rd
+        | Error e -> Utils.respond_error e rd
         end
       | Some "update" ->  
         begin
@@ -44,16 +41,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           let json = Yojson.Safe.to_string (`String changes) in
           let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
           Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
-        | Error e -> wm_respond_error e rd
+        | Error e -> Utils.respond_error e rd
         end
       | Some "commit-update" -> 
         begin match Hsm.System.commit_update hsm_state with
-        | Error e -> wm_respond_error e rd
+        | Error e -> Utils.respond_error e rd
         | Ok () -> Wm.continue true rd
         end
       | Some "cancel-update" -> 
         begin match Hsm.System.cancel_update hsm_state with
-        | Error e -> wm_respond_error e rd
+        | Error e -> Utils.respond_error e rd
         | Ok () -> Wm.continue true rd
         end
       | Some "backup" ->
@@ -62,7 +59,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
         begin 
           Hsm.System.backup hsm_state push >>= function
-          | Error e -> wm_respond_error e rd
+          | Error e -> Utils.respond_error e rd
           | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd' (* TODO or Wm.continue? *)
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
@@ -105,7 +102,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       let content = Cohttp_lwt.Body.to_stream body in
       Hsm.System.restore hsm_state rd.Webmachine.Rd.uri content >>= function
-      | Error e -> wm_respond_error e rd
+      | Error e -> Utils.respond_error e rd
       | Ok () -> Wm.continue true rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)

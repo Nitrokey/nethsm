@@ -55,7 +55,7 @@ module type S = sig
     (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
 
   val provision : t -> unlock:string -> admin:string -> Ptime.t ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    (unit, error) result Lwt.t
 
   val unlock_with_passphrase : t -> passphrase:string ->
     (unit, [> `Msg of string ]) result Lwt.t
@@ -576,22 +576,31 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
   let provision_mutex = Lwt_mutex.create ()
 
+  let internal_server_error context pp_err f =
+    let open Lwt.Infix in
+    f >|= function
+    | Ok x -> Ok x
+    | Error e -> 
+      Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
+      Error (Internal_server_error, "Could not write to disk. Check hardware.")
+
   let provision t ~unlock ~admin _time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
         let open Lwt_result.Infix in
-        expect_state t `Unprovisioned >>= fun () ->
+        (* state already checked in Handler_provision.service_available *)
+        assert (state t = `Unprovisioned);
         let unlock_salt = Rng.generate Crypto.salt_len in
         let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
         let domain_key = Rng.generate (Crypto.key_len * 2) in
         let auth_store_key, key_store_key =
           Cstruct.split domain_key Crypto.key_len
         in
-        lwt_error_fatal
-          "initializing authentication store" ~pp_error:Kv_crypto.pp_write_error
+        internal_server_error
+          "Initializing authentication store" Kv_crypto.pp_write_error
           (Kv_crypto.initialize Version.current Authentication ~key:auth_store_key t.kv)
         >>= fun auth_store ->
-        lwt_error_fatal
-          "initializing key store" ~pp_error:Kv_crypto.pp_write_error
+        internal_server_error
+          "Initializing key store" Kv_crypto.pp_write_error
           (Kv_crypto.initialize Version.current Key ~key:key_store_key t.kv)
         >>= fun key_store ->
         let keys = { domain_key ; auth_store ; key_store } in
@@ -603,11 +612,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
            reading back on system start first reads unlock-salt, if this fails,
            the HSM is in unprovisioned state *)
-        lwt_error_fatal "set admin user" ~pp_error:Rresult.R.pp_msg
+        internal_server_error "set admin user" Rresult.R.pp_msg
           (User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin") >>= fun () ->
-        lwt_error_fatal "set domain key" ~pp_error:KV.pp_write_error
+        internal_server_error "set domain key" KV.pp_write_error
           (Kv_domain.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
-        lwt_error_fatal "set unlock-salt" ~pp_error:KV.pp_write_error
+        internal_server_error "set unlock-salt" KV.pp_write_error
           (Kv_config.set t.kv Unlock_salt unlock_salt)
           (* TODO compute "time - our_current_idea_of_now", store offset in
                   configuration store *)
@@ -825,12 +834,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
   end
 
   module System = struct
-    let internal_server_error = function
-    | Ok () -> Ok ()
-    | Error e -> 
-      Log.err (fun m -> m "Error: %a while writing to key-value store on disk." KV.pp_write_error e);
-      Error (Internal_server_error, "Could not write to disk. Check hardware.")
-
     let system_info t = t.system_info
 
     (* TODO call hardware *)
@@ -842,9 +845,9 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       t.state <- Busy
 
     let reset t =
-      let open Lwt.Infix in
       t.state <- Unprovisioned;
-      KV.remove t.kv Mirage_kv.Key.empty >|= internal_server_error
+      internal_server_error "Reset" KV.pp_write_error
+        (KV.remove t.kv Mirage_kv.Key.empty)
       (* TODO reboot the hardware *)
 
     let put_back stream chunk = Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
