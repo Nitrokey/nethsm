@@ -4,6 +4,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Access = Access.Make(Hsm)
 
+  let wm_respond_error (e, body) rd = 
+    let code = Hsm.error_to_code e in
+    Wm.respond ~body:(`String body) code rd  
+
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
@@ -57,7 +61,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
         begin
           Hsm.System.backup hsm_state push >>= function
-          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+          | Error e -> wm_respond_error e rd
           | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd'
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
@@ -100,7 +104,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       let content = Cohttp_lwt.Body.to_stream body in
       Hsm.System.restore hsm_state rd.Webmachine.Rd.uri content >>= function
-      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+      | Error e -> wm_respond_error e rd
       | Ok () -> Wm.continue true rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)

@@ -1,5 +1,15 @@
 module type S = sig
 
+  type status_code =  
+               | Internal_server_error 
+               | Bad_request
+               | Precondition_failed
+  
+  (* string is the body, which may contain error message *)
+  type error = status_code * string
+
+  val error_to_code : status_code -> int
+
   type info = {
     vendor : string ;
     product : string ;
@@ -118,10 +128,10 @@ module type S = sig
     val cancel_update : t -> unit
 
     val backup : t -> (string option -> unit) ->
-      (unit, [> `Internal_server_error | `Precondition_failed ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val restore : t -> Uri.t -> string Lwt_stream.t ->
-      (unit, [> `Bad_request | `Internal_server_error ]) result Lwt.t
+      (unit, error) result Lwt.t
   end
 
   module User : sig
@@ -170,6 +180,21 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     thing >|= function
     | Ok a -> Ok a
     | Error e -> fatal prefix ~pp_error e
+
+  type status_code =  
+               | Internal_server_error 
+               | Bad_request
+               | Precondition_failed
+  
+  (* string is the body, which may contain error message *)
+  type error = status_code * string
+
+  let error_to_code code =
+    let status = match code with
+    | Internal_server_error -> `Internal_server_error
+    | Bad_request -> `Bad_request
+    | Precondition_failed -> `Precondition_failed in
+    Cohttp.Code.code_of_status status
 
   type info = {
     vendor : string ;
@@ -897,7 +922,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       let open Lwt.Infix in
       KV.list kv path >>= function
       | Error e ->
-        Log.err (fun m -> m "error %a while listing path %a during backup"
+        Log.err (fun m -> m "Error %a while listing path %a during backup."
                     KV.pp_error e Mirage_kv.Key.pp path);
         Lwt.return_unit
       | Ok entries ->
@@ -917,7 +942,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
                   let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key ~adata (Cstruct.of_string data) in
                   push (Some (prefix_len (Cstruct.to_string encrypted_data)))
                 | Error e ->
-                  Log.err (fun m -> m "error %a while retrieving value %a during backup"
+                  Log.err (fun m -> m "Error %a while retrieving value %a during backup."
                               KV.pp_error e Mirage_kv.Key.pp key)
               end
             | `Dictionary -> backup_directory kv push backup_key key)
@@ -927,16 +952,16 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       let open Lwt.Infix in
       Kv_config.get_opt t.kv Backup_key >>= function
       | Error e ->
-        Log.err (fun m -> m "error %a while reading backup key" Kv_config.pp_error e);
-        Lwt.return (Error `Internal_server_error)
-      | Ok None -> Lwt.return (Error `Precondition_failed)
+        Log.err (fun m -> m "Error %a while reading backup key." Kv_config.pp_error e);
+        Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
+      | Ok None -> Lwt.return (Error (Precondition_failed, "Please configure backup key before doing a backup."))
       | Ok Some backup_key ->
         (* iteratae over keys in KV store *)
         let backup_key' = Crypto.GCM.of_secret backup_key in
         Kv_config.get t.kv Backup_salt >>= function
         | Error e ->
           Log.err (fun m -> m "error %a while reading backup salt" Kv_config.pp_error e);
-          Lwt.return (Error `Internal_server_error)
+          Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
         | Ok backup_salt ->
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
           backup_directory t.kv push backup_key' Mirage_kv.Key.empty >|= fun () ->
@@ -960,42 +985,44 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           Ok data)
         (function
           | Failure _ | Decoding_error ->
-            Lwt.return (Error "failed to parse integer")
+            Lwt.return (Error (Bad_request, "Malformed length field in backup data. Backup not readable, try another one."))
           | e -> raise e)
 
     let split_kv data =
       (* len:key len:value *)
+      let msg = "Missing length field in backup data. Backup not readable, try another one." in
       match Astring.String.cut ~sep:":" data with
-      | None -> Error `Bad_request
+      | None -> Error (Bad_request, msg)
       | Some (len_str, rest) ->
         let len = int_of_string len_str in
         let key = String.sub rest 0 len in
         match Astring.String.cut ~sep:":" (String.sub rest len (String.length rest - len)) with
-        | None -> Error `Bad_request
+        | None -> Error (Bad_request, msg)
         | Some (len, data) ->
           if String.length data = int_of_string len then
             Ok (key, data)
           else
-            Error `Bad_request
+            Error (Bad_request, "Unexpected length in backup data. Backup not readable, try another one.")
 
     let read_and_decrypt char_stream key =
       let open Lwt.Infix in
       decode_value char_stream >|= function
-      | Error _ -> Error `Bad_request
+      | Error e -> Error e
       | Ok encrypted_data ->
         let adata = Cstruct.of_string "backup" in
         match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
         | Ok kv -> split_kv (Cstruct.to_string kv)
-        | Error _ -> Error `Bad_request
+        | Error `Insufficient_data -> Error (Bad_request, "Could not decrypt backup. Backup incomplete, try another one.")
+        | Error `Not_authenticated -> Error (Bad_request, "Could not decrypt backup, authentication failed. Is the passphrase correct?")
 
     let restore t uri stream =
       let open Lwt.Infix in
       let char_stream = Lwt_stream.(concat (map of_string stream)) in
       match Uri.get_query_param uri "backupPassphrase" with
-      | None -> Lwt.return (Error `Bad_request)
+      | None -> Lwt.return (Error (Bad_request, "Request is missing backup passphrase."))
       | Some backup_passphrase ->
         decode_value char_stream >>= function
-        | Error _ -> Lwt.return (Error `Bad_request)
+        | Error e -> Lwt.return (Error e)
         | Ok backup_salt ->
           let backup_key =
             Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
@@ -1013,7 +1040,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
                 | Error e ->
                   Log.err (fun m -> m "error %a restoring backup (writing to KV)"
                               KV.pp_write_error e);
-                  Lwt.return (Error `Internal_server_error)
+                  Lwt.return (Error (Internal_server_error, "Could not restore backup, disk failure? Check the hardware."))
           in
           next ()
   end

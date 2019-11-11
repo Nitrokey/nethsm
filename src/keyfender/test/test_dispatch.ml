@@ -304,9 +304,6 @@ let system_backup_ok () =
               end
             | Error _ -> false
           in
-          Format.printf "data is %a\n"
-            Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit " -> ") string string))
-            kvs;
           r
         | _ -> false
       end

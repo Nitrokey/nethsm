@@ -1,5 +1,15 @@
 module type S = sig
 
+  type status_code =  
+               | Internal_server_error 
+               | Bad_request
+               | Precondition_failed
+  
+  (* string is the body, which may contain error message *)
+  type error = status_code * string
+
+  val error_to_code : status_code -> int
+
   type info = {
     vendor : string ;
     product : string ;
@@ -118,10 +128,10 @@ module type S = sig
     val cancel_update : t -> unit
 
     val backup : t -> (string option -> unit) ->
-      (unit, [> `Internal_server_error | `Precondition_failed ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val restore : t -> Uri.t -> string Lwt_stream.t ->
-      (unit, [> `Bad_request | `Internal_server_error ]) result Lwt.t
+      (unit, error) result Lwt.t
   end
 
   module User : sig
