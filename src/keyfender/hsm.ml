@@ -58,7 +58,7 @@ module type S = sig
     (unit, error) result Lwt.t
 
   val unlock_with_passphrase : t -> passphrase:string ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    (unit, error) result Lwt.t
 
   val random : int -> string
 
@@ -281,16 +281,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
   let lock t = t.state <- Locked
 
-  let expect_state t desired_state =
-    let st = state t in
-    let r =
-      if st = desired_state then
-        Ok ()
-      else
-        Rresult.R.error_msgf "expected HSM in %a, but it is %a"
-          pp_state desired_state pp_state st
-    in
-    Lwt.return r
+  let internal_server_error context pp_err f =
+    let open Lwt.Infix in
+    f >|= function
+    | Ok x -> Ok x
+    | Error e -> 
+      Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
+      Error (Internal_server_error, "Could not write to disk. Check hardware.")
 
   let prepare_keys t slot credentials =
     let open Lwt_result.Infix in
@@ -298,10 +295,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       | Kv_domain.Passphrase -> Kv_config.Unlock_salt
       | Kv_domain.Device_id -> Kv_config.Device_id_salt
     in
-    lwt_error_to_msg ~pp_error:Kv_config.pp_error
+    internal_server_error "Prepare keys" Kv_config.pp_error
       (Kv_config.get t.kv (get_salt_key slot)) >>= fun salt ->
     let unlock_key = Crypto.key_of_passphrase ~salt credentials in
-    Kv_domain.get t.kv slot ~unlock_key >|= fun domain_key ->
+    Lwt_result.map_err (function `Msg m -> Bad_request, m)
+      (Kv_domain.get t.kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
@@ -310,21 +308,21 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
   let unlock_store kv slot key =
     let open Lwt_result.Infix in
     let slot_str = Kv_crypto.slot_to_string slot in
-    lwt_error_fatal
+    internal_server_error
       ("connecting to " ^ slot_str ^ " store")
-      ~pp_error:Kv_crypto.pp_connect_error
+      Kv_crypto.pp_connect_error
       (Kv_crypto.unlock Version.current slot ~key kv)
-    >>= (function
+    >>= function
         | `Version_greater (stored, _t) ->
           (* upgrade code for authentication store *)
-          fatal (slot_str ^ " store too old, no migration code")
-            ~pp_error:Version.pp stored
-        | `Kv store -> Lwt.return (Ok store))
+          Lwt.return @@ Error (Internal_server_error, Fmt.strf "%s store too old (%a), no migration code" slot_str Version.pp stored)
+        | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device id, depending on boot mode *)
   let unlock t slot credentials =
     let open Lwt_result.Infix in
-    expect_state t `Locked >>= fun () ->
+    (* state is already checked in Handler_unlock.service_available *)
+    assert (state t = `Locked) ;
     prepare_keys t slot credentials >>= fun (domain_key, as_key, ks_key) ->
     unlock_store t.kv Authentication as_key >>= fun auth_store ->
     unlock_store t.kv Key ks_key >|= fun key_store ->
@@ -350,7 +348,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
               let device_id = "my device id, psst" in
               (unlock_with_device_id t ~device_id >|= function
                 | Ok () -> ()
-                | Error `Msg msg ->
+                | Error (_, msg) ->
                   Log.err (fun m -> m "unattended boot failed with %s" msg)) >|= fun () ->
               Ok t
             end
@@ -576,14 +574,6 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
   let provision_mutex = Lwt_mutex.create ()
 
-  let internal_server_error context pp_err f =
-    let open Lwt.Infix in
-    f >|= function
-    | Ok x -> Ok x
-    | Error e -> 
-      Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
-      Error (Internal_server_error, "Could not write to disk. Check hardware.")
-
   let provision t ~unlock ~admin _time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
         let open Lwt_result.Infix in
@@ -641,7 +631,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           (Kv_domain.set t.kv Passphrase ~unlock_key keys.domain_key)
       | _ ->
         Lwt.return
-          (Rresult.R.error_msgf "expected operation HSM, found %a"
+          (Rresult.R.error_msgf "expected operational HSM, found %a"
              pp_state (state t))
 
     let unattended_boot t =
@@ -673,7 +663,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         end
       | _ ->
         Lwt.return
-          (Rresult.R.error_msgf "expected operation HSM, found %a"
+          (Rresult.R.error_msgf "expected operational HSM, found %a"
              pp_state (state t))
 
     let tls_public_pem t =
@@ -808,7 +798,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           (Kv_config.set t.kv Backup_key backup_key)
       | _ ->
         Lwt.return
-          (Rresult.R.error_msgf "expected operation HSM, found %a"
+          (Rresult.R.error_msgf "expected operational HSM, found %a"
              pp_state (state t))
 
     let time t =

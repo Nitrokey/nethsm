@@ -1,44 +1,31 @@
 open Lwt.Infix
 
+(* TODO encode as string or object? *)
 type req_body = { passphrase : string }[@@deriving yojson]
 
-let nonempty s =
-  if String.length s == 0
-  then Error `Bad_request
-  else Ok ()
- 
-let try_parse_json content = 
-  try 
-    Ok (Yojson.Safe.from_string content)
-  with _ -> Error `Bad_request
-
-let parse_req_body json =
-  Rresult.R.reword_error (fun _ -> `Bad_request) @@ req_body_of_yojson json
- 
 let decode_json content =
   let open Rresult.R.Infix in
-  try_parse_json content >>= fun json ->
-  parse_req_body json >>= fun b ->
-  nonempty b.passphrase >>= fun () ->
-  Ok b.passphrase
+  Json.decode req_body_of_yojson content >>= fun b ->
+  Json.nonempty_new ~name:"passphrase" b.passphrase >>| fun () ->
+  b.passphrase
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
+  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private unlock rd =
-      begin
-        let body = rd.Webmachine.Rd.req_body in
-        Cohttp_lwt.Body.to_string body >>= fun content ->
-        match decode_json content with
-        | Ok passphrase -> Hsm.unlock_with_passphrase hsm_state ~passphrase
-        | Error _ -> Lwt.return (Error `Bad_request)
-      end >>= function
-      | Ok () -> Wm.continue true rd
-      | Error _ -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) rd
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match decode_json content with
+      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Ok passphrase -> 
+        Hsm.unlock_with_passphrase hsm_state ~passphrase >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Utils.respond_error e rd
 
     method private noop rd =
       Wm.continue `Empty rd
