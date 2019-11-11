@@ -6,7 +6,7 @@ type req_body = { passphrase : string }[@@deriving yojson]
 let decode_json content =
   let open Rresult.R.Infix in
   Json.decode req_body_of_yojson content >>= fun b ->
-  Json.nonempty_new ~name:"passphrase" b.passphrase >>| fun () ->
+  Json.nonempty ~name:"passphrase" b.passphrase >>| fun () ->
   b.passphrase
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct

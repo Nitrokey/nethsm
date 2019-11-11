@@ -10,8 +10,7 @@ type subject_req = {
     emailAddress : string ;
 } [@@deriving yojson]
 
-(* TODO *)
-let nonempty_new ~name s =
+let nonempty ~name s =
   if String.length s == 0
   then Error (Printf.sprintf "JSON field %s is empty." name)
   else Ok ()
@@ -23,16 +22,13 @@ let decode parse data =
   Rresult.R.reword_error (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m) 
     @@ parse json
 
-(* TODO remove these *)
-let nonempty s =
-  if String.length s == 0
-  then Error `Bad_request
-  else Ok ()
- 
-let try_parse content =
-  try
-    Ok (Yojson.Safe.from_string content)
-  with _ -> Error `Bad_request
-
-let parse json_parser json =
-  Rresult.R.reword_error (fun _ -> `Bad_request) @@ json_parser json
+let decode_time s = 
+  let open Rresult.R.Infix in
+  (* since ~sub:true is _not_ passed to of_rfc3339,
+     no trailing bytes (third return value will be String.length b.time) *)
+  Rresult.R.reword_error (function `RFC3339 ((start, stop), e) -> 
+    Fmt.strf "Failed to decode timestamp: %a at position %d to %d." Ptime.pp_rfc3339_error e start stop) 
+    (Ptime.of_rfc3339 s) >>= fun (time, off, _) ->
+  (* according to spec, we accept only UTC timestamps! *)
+  (match off with None | Some 0 -> Ok () | _ -> Error "Error while parsing timestamp. Offset must be 0.") >>| fun () ->
+  time

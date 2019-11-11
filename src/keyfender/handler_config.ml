@@ -8,13 +8,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   let decode_passphrase json =
     let open Rresult.R.Infix in
     Json.decode passphrase_req_of_yojson json >>= fun passphrase ->
-    Json.nonempty_new ~name:"passphrase" passphrase.passphrase >>| fun () ->
+    Json.nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
     passphrase.passphrase 
   
   let decode_subject json =
     let open Rresult.R.Infix in
     Json.decode Json.subject_req_of_yojson json >>= fun subject ->
-    Json.nonempty_new ~name:"commonName" subject.Json.commonName >>| fun () ->
+    Json.nonempty ~name:"commonName" subject.Json.commonName >>| fun () ->
     subject
  
   let decode_network json =
@@ -175,9 +175,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           (match json with
            | `String ts -> Ok ts
            | _ -> Error "Invalid JSON timestamp.") >>= fun ts ->
-          match Ptime.of_rfc3339 ts with
-          | Ok (t, (None | Some 0), _) -> Ok t
-          | _ -> Error "Invalid timestamp, contains non-zero timezone offset."
+          Json.decode_time ts
         in
         begin match Json.decode parse content with
           | Error e -> Utils.respond_error (Bad_request, e) rd

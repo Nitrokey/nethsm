@@ -5,15 +5,9 @@ type req_body = { unlockPassphrase : string ; adminPassphrase : string ; time : 
 let decode_json content =
   let open Rresult.R.Infix in
   Json.decode req_body_of_yojson content >>= fun b ->
-  Json.nonempty_new ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
-  Json.nonempty_new ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
-  (* since ~sub:true is _not_ passed to of_rfc3339,
-     no trailing bytes (third return value will be String.length b.time) *)
-  Rresult.R.reword_error (function `RFC3339 ((start, stop), e) -> 
-    Fmt.strf "Failed to decode timestamp: %a at position %d to %d." Ptime.pp_rfc3339_error e start stop) 
-    (Ptime.of_rfc3339 b.time) >>= fun (time, off, _) ->
-  (* according to spec, we accept only UTC timestamps! *)
-  (match off with None | Some 0 -> Ok () | _ -> Error "Error while parsing timestamp. Offset must be 0.") >>| fun () ->
+  Json.nonempty ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
+  Json.nonempty ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
+  Json.decode_time b.time >>| fun time ->
   (b.unlockPassphrase, b.adminPassphrase, time)
 
 
