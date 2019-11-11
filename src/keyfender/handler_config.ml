@@ -2,36 +2,41 @@ open Lwt.Infix
  
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
+  (* TODO json object or string? *)
   type passphrase_req = { passphrase : string } [@@deriving yojson]
   
   let decode_passphrase json =
     let open Rresult.R.Infix in
-    Json.parse passphrase_req_of_yojson json >>= fun passphrase ->
-    Json.nonempty passphrase.passphrase >>| fun () ->
+    Json.decode passphrase_req_of_yojson json >>= fun passphrase ->
+    Json.nonempty_new ~name:"passphrase" passphrase.passphrase >>| fun () ->
     passphrase.passphrase 
   
   let decode_subject json =
     let open Rresult.R.Infix in
-    Json.parse Json.subject_req_of_yojson json >>= fun subject ->
-    Json.nonempty subject.Json.commonName >>| fun () ->
+    Json.decode Json.subject_req_of_yojson json >>= fun subject ->
+    Json.nonempty_new ~name:"commonName" subject.Json.commonName >>| fun () ->
     subject
  
   let decode_network json =
-    Json.parse Hsm.Config.network_of_yojson json
+    Json.decode Hsm.Config.network_of_yojson json
 
   let is_unattended_boot_to_yojson r =
     `Assoc [ ("status", `String (if r then "on" else "off")) ]
 
-  let is_unattended_boot_of_yojson = function
+  let is_unattended_boot_of_yojson content = 
+    let parse = function
     | `Assoc [ ("status", `String r) ] ->
       if r = "on"
       then Ok true
       else if r = "off"
       then Ok false
-      else Error (`Msg "invalid status data, expected 'on' or 'off'")
-    | _ -> Error (`Msg "invalid status data, expected a dictionary with one entry 'status'")
+      else Error "Invalid status data, expected 'on' or 'off'."
+    | _ -> Error "Invalid status data, expected a dictionary with one entry 'status'."
+    in 
+    Json.decode parse content
 
   module Access = Access.Make(Hsm)
+  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class handler_tls hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
@@ -54,21 +59,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         begin 
           Hsm.Config.set_tls_cert_pem hsm_state content >>= function
           | Ok () -> Wm.continue true rd
-          | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+          | Error e -> Utils.respond_error e rd
         end
        | Some "csr.pem" -> 
         (* TODO CSR is POST according to raml, but only PUT works with webmachine for some reason *)
-        begin 
-          match Json.try_parse content with
-          | Error e -> 
-            Wm.respond (Cohttp.Code.code_of_status e) rd 
-          | Ok json ->
-            match decode_subject json with
-            | Error e -> 
-              Wm.respond (Cohttp.Code.code_of_status e) rd
-            | Ok subject -> 
-              Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
-              Wm.respond 200 ~body:(`String csr_pem) rd
+        begin match decode_subject content with
+          | Error e -> Utils.respond_error (Bad_request, e) rd 
+          | Ok subject -> 
+            Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
+            Wm.respond 200 ~body:(`String csr_pem) rd
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
@@ -112,8 +111,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Ok is_unattended_boot ->
             let json = is_unattended_boot_to_yojson is_unattended_boot in
             Wm.continue (`String (Yojson.Safe.to_string json)) rd
-          | Error `Msg m ->
-            Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+          | Error e -> Utils.respond_error e rd
         end
      | Some "network" ->
         Hsm.Config.network hsm_state >>= fun network ->
@@ -131,66 +129,62 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private change_passphrase rd write json =
       match decode_passphrase json with
-      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+      | Error e -> Utils.respond_error (Bad_request, e) rd
       | Ok passphrase ->
         write hsm_state ~passphrase >>= function
         | Ok () -> Wm.continue true rd
-        | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        | Error e -> Utils.respond_error e rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Json.try_parse content with
-      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd 
-      | Ok json ->
       match Webmachine.Rd.lookup_path_info "ep" rd with
         | Some "unlock-passphrase" ->
           let write = Hsm.Config.set_unlock_passphrase in
-          self#change_passphrase rd write json
+          self#change_passphrase rd write content
         | Some "unattended-boot" ->
-          begin match is_unattended_boot_of_yojson json with
-            | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+          begin match is_unattended_boot_of_yojson content with
+            | Error e -> Utils.respond_error (Bad_request, e) rd
             | Ok unattended_boot ->
               Hsm.Config.set_unattended_boot hsm_state unattended_boot >>= function
               | Ok () -> Wm.continue true rd
-              | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+              | Error e -> Utils.respond_error e rd
           end
       | Some "network" ->
-        begin
-          match decode_network json with
-          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+        begin match decode_network content with
+          | Error e -> Utils.respond_error (Bad_request, e) rd
           | Ok network -> 
              Hsm.Config.set_network hsm_state network >>= function
              | Ok () -> Wm.continue true rd
-             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+             | Error e -> Utils.respond_error e rd
         end
       | Some "logging" ->
-        begin match Json.parse Hsm.Config.log_of_yojson json with
-          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+        begin match Json.decode Hsm.Config.log_of_yojson content with
+          | Error e -> Utils.respond_error (Bad_request, e) rd
           | Ok log_config ->
              Hsm.Config.set_log hsm_state log_config >>= function
              | Ok () -> Wm.continue true rd
-             | Error (`Msg m) -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+             | Error e -> Utils.respond_error e rd
         end
       | Some "backup-passphrase" ->
         let write = Hsm.Config.backup_passphrase in
-        self#change_passphrase rd write json
+        self#change_passphrase rd write content
       | Some "time" ->
-        let data =
+        let parse json =
           let open Rresult.R.Infix in
           (match json with
            | `String ts -> Ok ts
-           | _ -> Error (`Msg "invalid json timestamp")) >>= fun ts ->
+           | _ -> Error "Invalid JSON timestamp.") >>= fun ts ->
           match Ptime.of_rfc3339 ts with
           | Ok (t, (None | Some 0), _) -> Ok t
-          | _ -> Error (`Msg "invalid timestamp")
+          | _ -> Error "Invalid timestamp, contains non-zero timezone offset."
         in
-        begin match data with
-          | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+        begin match Json.decode parse content with
+          | Error e -> Utils.respond_error (Bad_request, e) rd
           | Ok ts ->
             Hsm.Config.set_time hsm_state ts >>= function
             | Ok () -> Wm.continue true rd
-            | Error `Msg m -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) ~body:(`String m) rd
+            | Error e -> Utils.respond_error e rd
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 

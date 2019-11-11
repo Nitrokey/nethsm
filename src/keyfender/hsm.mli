@@ -64,19 +64,19 @@ module type S = sig
 
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
-    val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
+    val unattended_boot : t -> (bool, error) result Lwt.t
 
     val set_unattended_boot : t -> bool ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val tls_public_pem : t -> string Lwt.t
 
     val tls_cert_pem : t -> string Lwt.t
 
     val set_tls_cert_pem : t -> string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
@@ -93,7 +93,7 @@ module type S = sig
     val network : t -> network Lwt.t
 
     val set_network : t -> network ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
 
@@ -103,14 +103,14 @@ module type S = sig
 
     val log : t -> log Lwt.t
 
-    val set_log : t -> log -> (unit, [> `Msg of string ]) result Lwt.t
+    val set_log : t -> log -> (unit, error) result Lwt.t
 
     val backup_passphrase : t -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t
 
-    val set_time : t -> Ptime.t -> (unit, [> `Msg of string ]) result Lwt.t
+    val set_time : t -> Ptime.t -> (unit, error) result Lwt.t
   end
 
   module System : sig

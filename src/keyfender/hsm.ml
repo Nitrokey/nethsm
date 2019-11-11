@@ -64,19 +64,19 @@ module type S = sig
 
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
-    val unattended_boot : t -> (bool, [> `Msg of string ]) result Lwt.t
+    val unattended_boot : t -> (bool, error) result Lwt.t
 
     val set_unattended_boot : t -> bool ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val tls_public_pem : t -> string Lwt.t
 
     val tls_cert_pem : t -> string Lwt.t
 
     val set_tls_cert_pem : t -> string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
@@ -93,7 +93,7 @@ module type S = sig
     val network : t -> network Lwt.t
 
     val set_network : t -> network ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
 
@@ -103,14 +103,14 @@ module type S = sig
 
     val log : t -> log Lwt.t
 
-    val set_log : t -> log -> (unit, [> `Msg of string ]) result Lwt.t
+    val set_log : t -> log -> (unit, error) result Lwt.t
 
     val backup_passphrase : t -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t
 
-    val set_time : t -> Ptime.t -> (unit, [> `Msg of string ]) result Lwt.t
+    val set_time : t -> Ptime.t -> (unit, error) result Lwt.t
   end
 
   module System : sig
@@ -625,18 +625,15 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         let open Lwt_result.Infix in
         let unlock_salt, unlock_key = salted passphrase in
         (* TODO the two writes below should be a transaction *)
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
+        internal_server_error "Write unlock salt" KV.pp_write_error
           (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
+        internal_server_error "Write passphrase" KV.pp_write_error
           (Kv_domain.set t.kv Passphrase ~unlock_key keys.domain_key)
-      | _ ->
-        Lwt.return
-          (Rresult.R.error_msgf "expected operational HSM, found %a"
-             pp_state (state t))
+      | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
       let open Lwt_result.Infix in
-      lwt_error_to_msg ~pp_error:Kv_config.pp_error
+      internal_server_error "Read unattended boot" Kv_config.pp_error
         (Kv_config.get_opt t.kv Unattended_boot >|=
          function None -> false | Some v -> v)
 
@@ -647,24 +644,21 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       (* (c) add or remove to domain_key store *)
       match t.state with
       | Operational keys ->
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
+        internal_server_error "Write unattended boot" KV.pp_write_error
           (Kv_config.set t.kv Unattended_boot status) >>= fun () ->
         if status then begin
           let salt, unlock_key = salted "my device id, psst" in
-          lwt_error_to_msg ~pp_error:KV.pp_write_error
+          internal_server_error "Write device ID salt" KV.pp_write_error
             (Kv_config.set t.kv Device_id_salt salt) >>= fun () ->
-          lwt_error_to_msg ~pp_error:KV.pp_write_error
+          internal_server_error "Write device ID" KV.pp_write_error
             (Kv_domain.set t.kv Device_id ~unlock_key keys.domain_key)
         end else begin
-          lwt_error_to_msg ~pp_error:KV.pp_write_error
+          internal_server_error "Remove device ID salt" KV.pp_write_error
             (Kv_config.remove t.kv Device_id_salt) >>= fun () ->
-          lwt_error_to_msg ~pp_error:KV.pp_write_error
+          internal_server_error "Remove device ID" KV.pp_write_error
             (Kv_domain.remove t.kv Device_id)
         end
-      | _ ->
-        Lwt.return
-          (Rresult.R.error_msgf "expected operational HSM, found %a"
-             pp_state (state t))
+      | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let tls_public_pem t =
       let open Lwt.Infix in
@@ -685,8 +679,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
          - TODO use current system time for verification
       *)
       match X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data) with
-      | Error e -> Lwt.return (Error e)
-      | Ok [] -> Lwt.return (Error (`Msg "empty certificate chain"))
+      | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
+      | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
         let open Lwt.Infix in
         certificate_chain t >>= fun (_, _, `RSA priv) ->
@@ -699,12 +693,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
                 (X509.Validation.verify_chain ~anchors:[ta] our_chain)
           in
           match valid with
-          | Error e -> Lwt.return (Error e)
+          | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
           | Ok _ ->
-            lwt_error_to_msg ~pp_error:KV.pp_write_error
+            internal_server_error "Write certificate" KV.pp_write_error
               (Kv_config.set t.kv Certificate (cert, chain))
         else
-          Lwt.return (Error (`Msg "public key in certificate does not match private key"))
+          Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key")
 
     let tls_csr_pem t subject =
       let open Lwt.Infix in
@@ -743,7 +737,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           Ok (Ipaddr.V4.Prefix.of_netmask network.netmask network.ipAddress)
         with
           Ipaddr.Parse_error (err, packet) ->
-          Rresult.R.error_msgf "error %s parsing netmask %s" err packet) >>= fun prefix ->
+          Error (Bad_request, Fmt.strf "error %s parsing netmask %s" err packet)) >>= fun prefix ->
       let route =
         if Ipaddr.V4.compare network.gateway Ipaddr.V4.any = 0 then
           None
@@ -751,7 +745,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           Some network.gateway
       in
       (* TODO if successful, reboot (or set the IP address) after responding *)
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
+      internal_server_error "Write network configuration" KV.pp_write_error
         Kv_config.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
     type log_level = Logs.level
@@ -783,7 +777,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         default_log
 
     let set_log t log =
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
+      internal_server_error "Write log config" KV.pp_write_error
         (Kv_config.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
 
     let backup_passphrase t ~passphrase =
@@ -792,14 +786,11 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         let open Lwt_result.Infix in
         let backup_salt, backup_key = salted passphrase in
         (* TODO the two writes below should be a transaction *)
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
+        internal_server_error "Write backup salt" KV.pp_write_error
           (Kv_config.set t.kv Backup_salt backup_salt) >>= fun () ->
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
+        internal_server_error "Write backup key" KV.pp_write_error
           (Kv_config.set t.kv Backup_key backup_key)
-      | _ ->
-        Lwt.return
-          (Rresult.R.error_msgf "expected operational HSM, found %a"
-             pp_state (state t))
+      | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let time t =
       let open Lwt.Infix in
@@ -819,7 +810,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let set_time t timestamp =
       let now = Ptime.v (Pclock.now_d_ps ()) in
       let span = Ptime.diff timestamp now in
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
+      internal_server_error "Write time offset" KV.pp_write_error
         (Kv_config.set t.kv Time_offset span)
   end
 
