@@ -32,7 +32,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         begin
         Hsm.System.reset hsm_state >>= function
         | Ok () -> Wm.continue true rd
-        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        | Error e -> wm_respond_error e rd
         end
       | Some "update" ->  
         begin
@@ -44,25 +44,26 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           let json = Yojson.Safe.to_string (`String changes) in
           let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
           Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
-        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Bad_request) rd
+        | Error e -> wm_respond_error e rd
         end
       | Some "commit-update" -> 
-        begin
-        Hsm.System.commit_update hsm_state >>= function
+        begin match Hsm.System.commit_update hsm_state with
+        | Error e -> wm_respond_error e rd
         | Ok () -> Wm.continue true rd
-        | Error `Msg m -> Wm.respond ~body:(`String m) (Cohttp.Code.code_of_status `Precondition_failed) rd
         end
       | Some "cancel-update" -> 
-        Hsm.System.cancel_update hsm_state ;
-        Wm.continue true rd
+        begin match Hsm.System.cancel_update hsm_state with
+        | Error e -> wm_respond_error e rd
+        | Ok () -> Wm.continue true rd
+        end
       | Some "backup" ->
         let add_content_type h = Cohttp.Header.add h "Content-Type" "application/octet-stream" in
         let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
         let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
-        begin
+        begin 
           Hsm.System.backup hsm_state push >>= function
           | Error e -> wm_respond_error e rd
-          | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd'
+          | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd' (* TODO or Wm.continue? *)
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 

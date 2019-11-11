@@ -1,9 +1,10 @@
 module type S = sig
 
   type status_code =  
-               | Internal_server_error 
-               | Bad_request
-               | Precondition_failed
+    | Internal_server_error 
+    | Bad_request
+    | Precondition_failed
+    | Conflict
   
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -119,13 +120,13 @@ module type S = sig
 
     val shutdown : t -> unit
 
-    val reset : t -> (unit, [> `Msg of string ]) result Lwt.t
+    val reset : t -> (unit, error) result Lwt.t
 
-    val update : t -> string Lwt_stream.t -> (string, [> `Msg of string ]) result Lwt.t
+    val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
-    val commit_update : t -> (unit, [> `Msg of string ]) result Lwt.t
+    val commit_update : t -> (unit, error) result
 
-    val cancel_update : t -> unit
+    val cancel_update : t -> (unit, error) result
 
     val backup : t -> (string option -> unit) ->
       (unit, error) result Lwt.t

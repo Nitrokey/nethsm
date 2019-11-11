@@ -1,9 +1,10 @@
 module type S = sig
 
   type status_code =  
-               | Internal_server_error 
-               | Bad_request
-               | Precondition_failed
+    | Internal_server_error 
+    | Bad_request
+    | Precondition_failed
+    | Conflict
   
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -119,13 +120,13 @@ module type S = sig
 
     val shutdown : t -> unit
 
-    val reset : t -> (unit, [> `Msg of string ]) result Lwt.t 
+    val reset : t -> (unit, error) result Lwt.t 
 
-    val update : t -> string Lwt_stream.t -> (string, [> `Msg of string ]) result Lwt.t
+    val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
-    val commit_update : t -> (unit, [> `Msg of string ]) result Lwt.t
+    val commit_update : t -> (unit, error) result
 
-    val cancel_update : t -> unit
+    val cancel_update : t -> (unit, error) result
 
     val backup : t -> (string option -> unit) ->
       (unit, error) result Lwt.t
@@ -182,9 +183,10 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     | Error e -> fatal prefix ~pp_error e
 
   type status_code =  
-               | Internal_server_error 
-               | Bad_request
-               | Precondition_failed
+    | Internal_server_error 
+    | Bad_request
+    | Precondition_failed
+    | Conflict
   
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -193,7 +195,9 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let status = match code with
     | Internal_server_error -> `Internal_server_error
     | Bad_request -> `Bad_request
-    | Precondition_failed -> `Precondition_failed in
+    | Precondition_failed -> `Precondition_failed
+    | Conflict -> `Conflict
+    in
     Cohttp.Code.code_of_status status
 
   type info = {
@@ -224,14 +228,14 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
   let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
   let version_of_string s = match Astring.String.cut ~sep:"." s with
-    | None -> Error (`Msg "Failed to parse version: no separator (.)")
+    | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
     | Some (major, minor) -> 
       try 
         let ma = int_of_string major
         and mi = int_of_string minor
         in
         Ok (ma, mi) 
-      with Failure _ -> Error (`Msg "Failed to parse version")                  
+      with Failure _ -> Error (Bad_request, "Failed to parse version: Not a number. A valid version would be '4.2'.")                  
 
   let version_to_yojson v = `String (version_to_string v)
   let version_of_yojson _ = Error "Cannot convert version"
@@ -821,6 +825,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
   end
 
   module System = struct
+    let internal_server_error = function
+    | Ok () -> Ok ()
+    | Error e -> 
+      Log.err (fun m -> m "Error: %a while writing to key-value store on disk." KV.pp_write_error e);
+      Error (Internal_server_error, "Could not write to disk. Check hardware.")
+
     let system_info t = t.system_info
 
     (* TODO call hardware *)
@@ -832,9 +842,9 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       t.state <- Busy
 
     let reset t =
+      let open Lwt.Infix in
       t.state <- Unprovisioned;
-      lwt_error_to_msg ~pp_error:KV.pp_write_error
-        (KV.remove t.kv Mirage_kv.Key.empty)
+      KV.remove t.kv Mirage_kv.Key.empty >|= internal_server_error
       (* TODO reboot the hardware *)
 
     let put_back stream chunk = Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
@@ -843,7 +853,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       let rec read prefix =
         let open Lwt.Infix in
         Lwt_stream.get stream >>= function
-        | None -> Lwt.return @@ Error (`Msg "Malformed update")
+        | None -> Lwt.return @@ Error (Bad_request, "Malformed update")
         | Some data ->
           let str = prefix ^ data in
           if String.length str >= n
@@ -904,17 +914,18 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         Lwt.return (Ok changes)
       end
       else
-        Lwt.return (Error (`Msg "Software version downgrade not allowed."))
+        Lwt.return (Error (Conflict, "Software version downgrade not allowed."))
 
     let commit_update t =
       match t.has_changes with
-      | None -> Lwt.return @@ Error (`Msg "No update available")
-      | Some _changes ->
+      | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
+      | Some _changes -> Ok ()
       (* TODO commit update, do we cover all error variants? *)
-      Lwt.return @@ Ok ()
 
     let cancel_update t =
-      t.has_changes <- None
+      match t.has_changes with
+      | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
+      | Some _changes -> t.has_changes <- None; Ok ()
 
     let prefix_len s = string_of_int (String.length s) ^ ":" ^ s
 

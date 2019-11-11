@@ -184,7 +184,7 @@ let system_update_version_downgrade () =
   let body = `String "\000\003sig\000\018A new system image\000\0030.5binary data is here" in
   "a request for /system/update trying to send an older software fails."
    @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
-      | hsm_state, Some (`Bad_request, _, `String body, _) -> 
+      | hsm_state, Some (`Conflict, _, `String body, _) -> 
         Logs.info (fun m -> m "Update with older software version returned %s" body); 
         Hsm.state hsm_state = `Operational
       | _ -> false
