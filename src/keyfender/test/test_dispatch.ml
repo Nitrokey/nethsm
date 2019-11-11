@@ -293,14 +293,9 @@ let system_backup_ok () =
           let r =
             match Keyfender.Crypto.decrypt ~key:(Keyfender.Crypto.GCM.of_secret auth_store_key) ~adata (Cstruct.of_string encrypted_admin) with
             | Ok admin ->
-              begin match Keyfender.Json.try_parse (Cstruct.to_string admin) with
+              begin match Keyfender.Json.decode Hsm.User.user_of_yojson (Cstruct.to_string admin) with
                 | Error _ -> false
-                | Ok json ->
-                  let alist = Yojson.Safe.Util.to_assoc json in
-                  let name = List.find_opt (fun (key, _) -> String.equal key "name") alist in
-                  match name with
-                  | Some (_, `String v) -> String.equal v "admin"
-                  | _ -> false
+                | Ok user -> String.equal "admin" user.Hsm.User.name
               end
             | Error _ -> false
           in

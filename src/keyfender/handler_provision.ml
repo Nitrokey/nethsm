@@ -20,14 +20,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private provision rd =
+      let ok (unlock, admin, time) =
+          Hsm.provision hsm_state ~unlock ~admin time >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Utils.respond_error e rd
+      in 
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match decode_json content with
-      | Error m -> Utils.respond_error (Bad_request, m) rd
-      | Ok (unlock, admin, time) -> 
-        Hsm.provision hsm_state ~unlock ~admin time >>= function
-        | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+      decode_json content |> Utils.err_to_bad_request ok rd
+
 
     method private noop rd =
       Wm.continue `Empty rd

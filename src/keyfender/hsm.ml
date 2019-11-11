@@ -138,6 +138,10 @@ module type S = sig
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 
+    type user = { name : string ; salt : string ; digest : string ; role : role }
+
+    val user_of_yojson : Yojson.Safe.t -> (user, string) result
+
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
