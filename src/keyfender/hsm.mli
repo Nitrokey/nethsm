@@ -117,9 +117,11 @@ module type S = sig
 
     val cancel_update : t -> unit
 
-    val backup : unit -> unit
+    val backup : t -> (string option -> unit) ->
+      (unit, [> `Internal_server_error | `Precondition_failed ]) result Lwt.t
 
-    val restore : unit -> unit
+    val restore : t -> Uri.t -> string Lwt_stream.t ->
+      (unit, [> `Bad_request | `Internal_server_error ]) result Lwt.t
   end
 
   module User : sig

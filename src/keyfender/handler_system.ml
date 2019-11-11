@@ -51,12 +51,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Some "cancel-update" -> 
         Hsm.System.cancel_update hsm_state ;
         Wm.continue true rd
-      | Some "backup" ->  
-        Hsm.System.backup () ;
-        Wm.continue true rd
-      | Some "restore" -> 
-        Hsm.System.restore () ;
-        Wm.continue true rd
+      | Some "backup" ->
+        let add_content_type h = Cohttp.Header.add h "Content-Type" "application/octet-stream" in
+        let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
+        let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
+        begin
+          Hsm.System.backup hsm_state push >>= function
+          | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+          | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd'
+        end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -78,12 +81,45 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method !allowed_methods rd =
       Wm.continue [ `GET ; `POST ] rd
- 
+
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#system_info) ] rd
 
     method content_types_accepted rd =
       Wm.continue [ ("application/json", self#system) ] rd
+
+  end
+
+  class handler_restore hsm_state = object(self)
+    inherit [Cohttp_lwt.Body.t] Wm.resource
+
+    method private get rd =
+      Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+
+    method private restore rd =
+      let body = rd.Webmachine.Rd.req_body in
+      let content = Cohttp_lwt.Body.to_stream body in
+      Hsm.System.restore hsm_state rd.Webmachine.Rd.uri content >>= function
+      | Error e -> Wm.respond (Cohttp.Code.code_of_status e) rd
+      | Ok () -> Wm.continue true rd
+
+    (* we use this not for the service, but to check the internal state before processing requests *)
+    method! service_available rd =
+      if Access.is_in_state hsm_state `Unprovisioned
+      then Wm.continue true rd
+      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method !process_post rd =
+      self#restore rd
+
+    method !allowed_methods rd =
+      Wm.continue [ `POST ] rd
+
+    method content_types_provided rd =
+      Wm.continue [ ("application/octet-stream", self#get) ] rd
+
+    method content_types_accepted rd =
+      Wm.continue [ ("application/octet-stream", self#restore) ] rd
 
   end
 
