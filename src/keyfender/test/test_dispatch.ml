@@ -113,6 +113,11 @@ let authorization_header user pass =
   let base64 = Cstruct.to_string (Nocrypto.Base64.encode (Cstruct.of_string (user ^ ":" ^ pass))) in
   Header.init_with "authorization" ("Basic " ^ base64)
 
+let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?(content_type = "application/json") ?query path =
+  let headers = authorization_header "admin" "test1" in
+  let headers = Header.add headers "content-type" content_type in
+  request ~meth:`POST ~hsm_state ~headers ~body ?query path
+ 
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
    @? begin match request ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/info" with
@@ -143,21 +148,21 @@ let system_info_error_forbidden () =
 
 let system_reboot_ok () =
   "a request for /system/reboot with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/reboot" with
+   @? begin match admin_post_request "/system/reboot" with
       | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
       | _ -> false
    end
 
 let system_shutdown_ok () =
   "a request for /system/shutdown with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/shutdown" with
+   @? begin match admin_post_request "/system/shutdown" with
       | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
       | _ -> false
    end
 
 let system_reset_ok () =
   "a request for /system/reset with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") "/system/reset" with
+   @? begin match admin_post_request "/system/reset" with
       | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Unprovisioned
       | _ -> false
    end
@@ -165,7 +170,7 @@ let system_reset_ok () =
 let system_update_ok () =
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/update with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+   @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) -> Hsm.state hsm_state = `Operational
       | _ -> false
    end
@@ -173,7 +178,7 @@ let system_update_ok () =
 let system_update_invalid_data () =
   let body = `String "\000\003signature too long\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/update with invalid data fails."
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+   @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`Bad_request, _, `String body, _) -> 
         Logs.info (fun m -> m "Update with invalid data returned %s" body); 
         Hsm.state hsm_state = `Operational
@@ -183,7 +188,7 @@ let system_update_invalid_data () =
 let system_update_version_downgrade () =
   let body = `String "\000\003sig\000\018A new system image\000\0030.5binary data is here" in
   "a request for /system/update trying to send an older software fails."
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:(authorization_header "admin" "test1") ~body "/system/update" with
+   @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`Conflict, _, `String body, _) -> 
         Logs.info (fun m -> m "Update with older software version returned %s" body); 
         Hsm.state hsm_state = `Operational
@@ -191,12 +196,11 @@ let system_update_version_downgrade () =
    end
 
 let system_update_commit_ok () =
-  let headers = authorization_header "admin" "test1" in
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/commit-update with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers ~body "/system/update" with
+   @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) -> 
-        begin match request ~meth:`POST ~hsm_state ~headers "/system/commit-update" with
+        begin match admin_post_request ~hsm_state "/system/commit-update" with
         | _ , Some (`No_content, _, _, _) -> true
         | _ -> false
         end
@@ -204,20 +208,18 @@ let system_update_commit_ok () =
    end
 
 let system_update_commit_fail () =
-  let headers = authorization_header "admin" "test1" in
   "a request for /system/commit-update without an image previously uploaded fails."
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers "/system/commit-update" with
+   @? begin match admin_post_request "/system/commit-update" with
       | _ , Some (`Precondition_failed, _, _, _) -> true
       | _ -> false
    end
 
 let system_update_cancel_ok () =
-  let headers = authorization_header "admin" "test1" in
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/cancel-update with authenticated user returns 200"
-   @? begin match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers ~body "/system/update" with
+   @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) -> 
-        begin match request ~meth:`POST ~hsm_state ~headers "/system/cancel-update" with
+        begin match admin_post_request ~hsm_state "/system/cancel-update" with
         | _ , Some (`No_content, _, _, _) -> true
         | _ -> false
         end
@@ -241,15 +243,13 @@ let separate_kv input =
   (key, value)
 
 let system_backup_ok () =
-  let headers = authorization_header "admin" "test1" in
   "a request for /system/backup with authenticated user returns a good backup"
   @? begin
-    let headers' = Header.add headers "content-type" "application/json" in
     let backup_passphrase = "backup passphrase" in
     let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
-    match request ~meth:`POST ~hsm_state:(operational_mock ()) ~headers:headers' ~body:(`String passphrase) "/config/backup-passphrase" with
+    match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+      begin match admin_post_request ~hsm_state "/system/backup" with
         | _hsm_state, Some (`OK, _, `Stream s, _) ->
           let data = Lwt_main.run (Lwt_stream.to_list s) in
           let backup_salt_len_prefix, data' = match data with hd :: tl -> hd, tl | _ -> assert false in
@@ -374,7 +374,6 @@ let get_unattended_boot_ok () =
 let unattended_boot_succeeds () =
   "unattended boot succeeds"
   @? begin
-    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
@@ -382,7 +381,7 @@ let unattended_boot_succeeds () =
         Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
         store, state)
     in
-    match request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state ~meth:`POST ~headers "/config/unattended-boot" with
+    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (Hsm.boot store >|= fun hsm_state -> Hsm.state hsm_state = `Operational)
     | _ -> false
@@ -391,7 +390,6 @@ let unattended_boot_succeeds () =
 let unattended_boot_failed () =
   "unattended boot fails to unlock"
   @? begin
-    let headers = Header.add (authorization_header "admin" "test1") "content-type" "application/json" in
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
@@ -399,7 +397,7 @@ let unattended_boot_failed () =
         Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
         store, state)
     in
-    match request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state ~meth:`POST ~headers "/config/unattended-boot" with
+    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (
         Kv_mem.remove store (Mirage_kv.Key.v "/config/device-id-salt") >>= fun _ ->
