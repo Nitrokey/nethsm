@@ -32,3 +32,12 @@ let decode_time s =
   (* according to spec, we accept only UTC timestamps! *)
   (match off with None | Some 0 -> Ok () | _ -> Error "Error while parsing timestamp. Offset must be 0.") >>| fun () ->
   time
+
+ (* TODO json object or string? *)
+type passphrase_req = { passphrase : string } [@@deriving yojson]
+  
+let decode_passphrase json =
+  let open Rresult.R.Infix in
+  decode passphrase_req_of_yojson json >>= fun passphrase ->
+  nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
+  passphrase.passphrase 

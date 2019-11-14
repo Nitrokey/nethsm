@@ -2,16 +2,7 @@ open Lwt.Infix
  
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  (* TODO json object or string? *)
-  type passphrase_req = { passphrase : string } [@@deriving yojson]
-  
-  let decode_passphrase json =
-    let open Rresult.R.Infix in
-    Json.decode passphrase_req_of_yojson json >>= fun passphrase ->
-    Json.nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
-    passphrase.passphrase 
-  
-  let decode_subject json =
+ let decode_subject json =
     let open Rresult.R.Infix in
     Json.decode Json.subject_req_of_yojson json >>= fun subject ->
     Json.nonempty ~name:"commonName" subject.Json.commonName >>| fun () ->
@@ -128,7 +119,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     method private change_passphrase rd write json =
-      match decode_passphrase json with
+      match Json.decode_passphrase json with
       | Error e -> Utils.respond_error (Bad_request, e) rd
       | Ok passphrase ->
         write hsm_state ~passphrase >>= function

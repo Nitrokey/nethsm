@@ -699,7 +699,55 @@ let user_operator_get () =
   | _ -> false
   end
 
+let user_operator_get_not_found () =
+  "GET on /users/op returns not found"
+  @? begin
+    let headers = auth_header "admin" "test1"in
+  match request ~hsm_state:(operational_mock ()) ~headers "/users/op" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
 
+let user_passphrase_post () =
+  "POST on /users/admin/passphrase succeeds"
+  @? begin
+    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
+    let new_passphrase = "my super new passphrase" in
+    match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
+  | hsm_state, Some (`No_content, _, _, _) ->
+     begin
+       match request ~hsm_state ~meth:`GET ~headers "/users/admin" with
+       | _, Some (`Unauthorized, _, _, _) ->
+          begin
+            let headers = auth_header "admin" new_passphrase in
+            match request ~hsm_state ~meth:`GET ~headers "/users/admin" with
+            | _, Some (`OK, _, _, _) -> true
+            | _ -> false 
+          end
+       | _ -> false
+     end
+  | _ -> false
+  end
+
+let user_passphrase_operator_post () =
+  "POST on /users/operator/passphrase succeeds"
+  @? begin
+    let headers = Header.add (auth_header "operator" "test2") "content-type" "application/json" in
+    let new_passphrase = "my super new passphrase" in
+    match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/operator/passphrase" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_passphrase_administrator_post () =
+  "POST on /users/admin/passphrase fails as operator"
+  @? begin
+    let headers = Header.add (auth_header "operator" "test2") "content-type" "application/json" in
+    let new_passphrase = "my super new passphrase" in
+    match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+  end
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -774,6 +822,10 @@ let () =
     "/users/operator" >:: user_operator_delete_fails;
     "/users/operator" >:: user_op_delete_fails;
     "/users/operator" >:: user_operator_get;
+    "/users/operator" >:: user_operator_get_not_found;
+    "/users/admin/passphrase" >:: user_passphrase_post;
+    "/users/operator/passphrase" >:: user_passphrase_operator_post;
+    "/users/admin/passphrase" >:: user_passphrase_administrator_post;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

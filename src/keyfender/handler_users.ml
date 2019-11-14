@@ -37,20 +37,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
             Wm.continue (`String body) rd
 
     method private set_json rd =
-      let uri = rd.Webmachine.Rd.uri in
-      let path = Uri.path uri in
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Astring.String.cuts ~sep:"/" path with
-       | [ userid ] ->
+      match Webmachine.Rd.lookup_path_info "id" rd with
+       | Some userid ->
           let ok (user : user_req) =
             Hsm.User.add ~id:userid hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
             | Ok () -> Wm.continue true rd
             | Error e -> Utils.respond_error e rd
           in
           decode_user content |> Utils.err_to_bad_request ok rd
-       | [ _userid ; "passphrase" ] -> Wm.continue true rd
-       | _ -> Wm.continue false rd
+       | None -> Wm.continue false rd
 
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info "id" rd with
@@ -99,17 +96,75 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
       (if not_an_admin then
          (* R-Operator may GET (all!) users, and POST their own passphrase *)
-         let uri = rd.Webmachine.Rd.uri in
-         let path = Uri.path uri in
-         let segments = Astring.String.cuts ~sep:"/" path in
-         let user, passphrase = match segments with
-           | [ a ; b ] -> a, b
-           | _ -> "", ""
-         in
+         match rd.Webmachine.Rd.meth with
+         | `GET -> Access.forbidden hsm_state `Operator rd
+         | _ -> Lwt.return not_an_admin
+       else
+         Lwt.return not_an_admin) >>= fun forbidden ->
+      Wm.continue forbidden rd
+  end
+
+  class handler_passphrase hsm_state = object(self)
+    inherit [Cohttp_lwt.Body.t] Wm.resource
+
+    method private set_json rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Webmachine.Rd.lookup_path_info "id" rd with
+       | None -> Wm.continue false rd
+       | Some userid ->
+          (* extract passphrase from body! *)
+          (* call Hsm.User.change_passphrase *)
+          let ok passphrase =
+            Hsm.User.set_passphrase hsm_state ~id:userid ~passphrase >>= function
+            | Ok () -> Wm.continue true rd
+            | Error e -> Utils.respond_error e rd
+          in
+          Json.decode_passphrase content |> Utils.err_to_bad_request ok rd
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some user_id -> Hsm.User.exists hsm_state user_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
+
+    method! allowed_methods rd =
+      Wm.continue [`POST] rd
+
+    method! known_methods rd =
+      Wm.continue [`POST] rd
+
+    method content_types_provided rd =
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
+
+    method content_types_accepted rd =
+      Wm.continue [
+        ("application/json", self#set_json)
+      ] rd
+
+    method !process_post rd =
+      self#set_json rd
+
+    (* we use this not for the service, but to check the internal state before processing requests *)
+    method! service_available rd =
+      if Access.is_in_state hsm_state `Operational
+      then Wm.continue true rd
+      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method! is_authorized rd =
+      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
+      Wm.continue auth rd'
+
+    method! forbidden rd =
+      (* R-Administrator may GET/PUT/DELETE/POST everything *)
+      (* /users/:UserID and /users/:UserID/passphrase *)
+      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
+      (if not_an_admin then
+         (* R-Operator may GET (all!) users, and POST their own passphrase *)
          (* TODO do we need to decouple userid from username? *)
-         match rd.Webmachine.Rd.meth, user, passphrase with
-         | `GET, _, _ -> Access.forbidden hsm_state `Operator rd
-         | `POST, userid, "passphrase" ->
+         match rd.Webmachine.Rd.meth, Webmachine.Rd.lookup_path_info "id" rd with
+         | `POST, Some userid ->
            if Access.get_user rd.Webmachine.Rd.req_headers = userid then
              Access.forbidden hsm_state `Operator rd
            else
@@ -119,5 +174,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
          Lwt.return not_an_admin) >>= fun forbidden ->
       Wm.continue forbidden rd
   end
+
 
 end
