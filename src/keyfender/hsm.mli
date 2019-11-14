@@ -138,6 +138,9 @@ module type S = sig
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 
+    val role_of_yojson : Yojson.Safe.t -> (role, string) result
+    val role_to_yojson : role -> Yojson.Safe.t
+
     type user = { name : string ; salt : string ; digest : string ; role : role }
 
     val user_of_yojson : Yojson.Safe.t -> (user, string) result
@@ -150,12 +153,12 @@ module type S = sig
     val list : t -> (string list, [> `Msg of string ]) result Lwt.t
 
     val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (unit, [> `Msg of string ]) result Lwt.t
+      name:string -> (unit, error) result Lwt.t
 
     val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
   end
 end
 

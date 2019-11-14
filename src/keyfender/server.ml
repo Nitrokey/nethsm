@@ -23,15 +23,15 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : 
   module Random = Handler_random.Make(Wm)(Hsm)
   module Config = Handler_config.Make(Wm)(Hsm)
   module System = Handler_system.Make(Wm)(Hsm)
-  module Users = Handler_users.Make(Wm)
+  module Users = Handler_users.Make(Wm)(Hsm)
 
-  let routes hsm_state now = [
+  let routes hsm_state = [
     ("/info", fun () -> new Info.handler hsm_state) ;
     ("/health/:ep", fun () -> new Health.handler hsm_state) ;
     ("/provision", fun () -> new Provision.handler hsm_state) ;
     ("/unlock", fun () -> new Unlock.handler hsm_state) ;
     ("/random", fun () -> new Random.handler hsm_state) ;
-    ("/users/:id", fun () -> new Users.handler now) ;
+    ("/users/:id", fun () -> new Users.handler hsm_state) ;
     ("/config/tls/:ep", fun () -> new Config.handler_tls hsm_state) ;
     ("/config/:ep", fun () -> new Config.handler hsm_state) ;
     ("/system/restore", fun () -> new System.handler_restore hsm_state) ;
@@ -52,7 +52,7 @@ module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
                         (Cohttp.Request.resource request));
     Access_log.debug (fun m -> m "request headers %s"
                          (Cohttp.Header.to_string (Cohttp.Request.headers request)) );
-    Handlers.Wm.dispatch' (Handlers.routes hsm_state now) ~body ~request
+    Handlers.Wm.dispatch' (Handlers.routes hsm_state) ~body ~request
     >|= begin function
       | None        -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
       | Some result -> result

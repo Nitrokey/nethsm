@@ -138,6 +138,9 @@ module type S = sig
   module User : sig
     type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 
+    val role_of_yojson : Yojson.Safe.t -> (role, string) result
+    val role_to_yojson : role -> Yojson.Safe.t
+
     type user = { name : string ; salt : string ; digest : string ; role : role }
 
     val user_of_yojson : Yojson.Safe.t -> (user, string) result
@@ -150,12 +153,12 @@ module type S = sig
     val list : t -> (string list, [> `Msg of string ]) result Lwt.t
 
     val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (unit, [> `Msg of string ]) result Lwt.t
+      name:string -> (unit, error) result Lwt.t
 
     val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
-      (unit, [> `Msg of string ]) result Lwt.t
+      (unit, error) result Lwt.t
   end
 end
 
@@ -458,6 +461,14 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
     type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
 
+    let role_to_yojson role =
+      match role_to_yojson role with
+       `List [l] -> l | _ -> assert false
+
+    let role_of_yojson = function
+      | `String _ as l -> role_of_yojson (`List [ l ] )
+      | _ -> Error "expected string as role"
+
     type user = { name : string ; salt : string ; digest : string ; role : role } [@@deriving yojson]
 
     let pp_role ppf r =
@@ -488,20 +499,18 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      lwt_error_to_msg ~pp_error:Kv_crypto.pp_write_error
+      internal_server_error "Write user" Kv_crypto.pp_write_error
         (Kv_crypto.set store (Mirage_kv.Key.v id) user_str)
 
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
     let in_store t =
       match t.state with
-      | Operational keys -> Ok keys.auth_store
-      | _ -> Rresult.R.error_msgf "expected operation HSM, found %a"
-               pp_state (state t)
+      | Operational keys -> keys.auth_store
+      | _ -> assert false (* checked by webmachine Handler_user.service_available *)
 
     let get_user t id =
-      let open Lwt_result.Infix in
-      Lwt.return (in_store t) >>= fun keys ->
+      let keys = in_store t in
       lwt_error_to_msg ~pp_error:pp_find_error (read_decode keys id)
 
     let is_authenticated t ~username ~passphrase =
@@ -531,7 +540,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
           id
       in
       let open Lwt_result.Infix in
-      Lwt.return (in_store t) >>= fun store ->
+      let store = in_store t in
       Lwt.bind (read_decode store id)
         (function
           | Error `Kv_crypto `Kv (`Not_found _) ->
@@ -543,28 +552,29 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
             in
             write store id user >|= fun () ->
             Access.info (fun m -> m "added %s (%s)" name id)
-          | Ok _ -> Lwt.return (Error (`Msg "user already exists"))
+          | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
           | Error _ as e ->
-            Lwt.return (Rresult.R.error_to_msg ~pp_error:pp_find_error e))
+            internal_server_error "Adding user" pp_find_error
+              (Lwt.return e))
 
     let list t =
       let open Lwt_result.Infix in
-      Lwt.return (in_store t) >>= fun store ->
+      let store = in_store t in
       lwt_error_to_msg ~pp_error:Kv_crypto.pp_error
         (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
     let remove t id =
       let open Lwt_result.Infix in
-      Lwt.return (in_store t) >>= fun store ->
+      let store = in_store t in
       lwt_error_to_msg ~pp_error:Kv_crypto.pp_write_error
         (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 
     let set_passphrase t ~id ~passphrase =
       let open Lwt_result.Infix in
-      Lwt.return (in_store t) >>= fun store ->
-      lwt_error_to_msg ~pp_error:pp_find_error
+      let store = in_store t in
+      internal_server_error "Read user" pp_find_error
         (read_decode store id) >>= fun user ->
       let salt' = Rng.generate Crypto.salt_len in
       let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
@@ -606,8 +616,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
            reading back on system start first reads unlock-salt, if this fails,
            the HSM is in unprovisioned state *)
-        internal_server_error "set admin user" Rresult.R.pp_msg
-          (User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin") >>= fun () ->
+        User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= fun () ->
         internal_server_error "set domain key" KV.pp_write_error
           (Kv_domain.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
         internal_server_error "set unlock-salt" KV.pp_write_error

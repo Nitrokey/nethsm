@@ -6,8 +6,6 @@ module Kv_mem = Mirage_kv_mem.Make(Pclock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Pclock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
 
-let now () = Ptime.v (Pclock.now_d_ps ())
-
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
   let headers = Header.add headers "content-type" content_type in
   let hsm_state' = match hsm_state with
@@ -16,7 +14,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
   in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' now) ~body ~request with
+  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state') ~body ~request with
   | None -> hsm_state', None
   | Some (status, _, _, _) as r ->
     Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ;
@@ -654,6 +652,17 @@ let config_version_but_no_salt () =
     assert_bool "hsm state is unprovisioned if only config/version is present"
       (Hsm.state hsm = `Unprovisioned))
 
+let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "Very secret" } |}
+
+let user_operator_add () =
+  "PUT on /users/op succeeds"
+  @? begin
+    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
+  match request ~hsm_state:(operational_mock ()) ~body:(`String operator_json) ~meth:`PUT ~headers "/users/op" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -722,6 +731,7 @@ let () =
     "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
+    "/users/operator" >:: user_operator_add;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
