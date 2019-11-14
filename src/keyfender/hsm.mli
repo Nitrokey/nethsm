@@ -152,10 +152,12 @@ module type S = sig
 
     val list : t -> (string list, [> `Msg of string ]) result Lwt.t
 
+    val exists : t -> string -> (bool, error) result Lwt.t
+
     val add : ?id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
-    val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+    val remove : t -> string -> (unit, error) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t

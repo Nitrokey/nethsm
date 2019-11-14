@@ -152,10 +152,12 @@ module type S = sig
 
     val list : t -> (string list, [> `Msg of string ]) result Lwt.t
 
+    val exists : t -> string -> (bool, error) result Lwt.t
+
     val add : ?id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
-    val remove : t -> string -> (unit, [> `Msg of string ]) result Lwt.t
+    val remove : t -> string -> (unit, error) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -531,6 +533,14 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         false
       | Ok user -> user.role = role
 
+    let exists t id =
+      let open Lwt_result.Infix in
+      let store = in_store t in
+      internal_server_error "Exists user" Kv_crypto.pp_error
+       (Kv_crypto.exists store (Mirage_kv.Key.v id) >|= function
+        | None -> false
+        | Some _ -> true)
+
     (* TODO: validate username/id *)
     let add ?id t ~role ~passphrase ~name =
       let id = match id with
@@ -567,7 +577,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let remove t id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      lwt_error_to_msg ~pp_error:Kv_crypto.pp_write_error
+      internal_server_error "Remove user" Kv_crypto.pp_write_error
         (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 

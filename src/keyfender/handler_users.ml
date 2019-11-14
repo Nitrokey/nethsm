@@ -38,6 +38,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
        | [ _userid ; "passphrase" ] -> Wm.continue true rd
        | _ -> Wm.continue false rd
 
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some user_id -> Hsm.User.exists hsm_state user_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
+
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
 
@@ -45,9 +52,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method private create_user rd = 
-      Wm.continue true rd
-
-    method! delete_resource rd =
       Wm.continue true rd
 
     method content_types_provided rd =
@@ -58,17 +62,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#set_json)
       ] rd
 
-    (*
-    method delete_resource rd =
-      Db.delete db (self#id rd)
-      >>= fun deleted ->
-      let resp_body =
-        if deleted
-          then `String "{\"status\":\"ok\"}"
-          else `String "{\"status\":\"not found\"}"
-      in
-      Wm.continue deleted { rd with Wm.Rd.resp_body }
-    *)
+    method! delete_resource rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some user_id -> Hsm.User.remove hsm_state user_id >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Utils.respond_error e rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =

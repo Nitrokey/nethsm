@@ -663,6 +663,34 @@ let user_operator_add () =
   | _ -> false
   end
 
+let user_operator_delete () =
+  "DELETE on /users/operator succeeds"
+  @? begin
+    let headers = auth_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/operator" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_delete_fails () =
+  "DELETE on /users/operator fails (requires administrator privileges)"
+  @? begin
+    let headers = auth_header "operator" "test2" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/operator" with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_op_delete_fails () =
+  "DELETE on /users/op fails (user does not exist)"
+  @? begin
+    let headers = auth_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/op" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -732,6 +760,9 @@ let () =
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
     "/users/operator" >:: user_operator_add;
+    "/users/operator" >:: user_operator_delete;
+    "/users/operator" >:: user_operator_delete_fails;
+    "/users/operator" >:: user_op_delete_fails;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
