@@ -33,11 +33,19 @@ depends: [
   "pbkdf"
   "mirage-kv-lwt"
   "tls"
-  "x509"
+  "x509" {>= "0.8.0"}
   "hex"
   "gmap" {>= "0.3.0"}
   "mirage-clock-unix" {with-test}
   "mirage-random-test" {with-test}
   "mirage-kv-mem" {with-test}
+  "ipaddr"
+  "tcpip" {with-test}
+  "conduit-mirage"
+  "cohttp-mirage"
+  "mirage-clock-unix" {with-test}
+  "io-page-unix" {with-test}
+  "mirage-kv-mem" {with-test}
+  "mirage-random-test" {with-test}
 ]
 synopsis: "Keyfender library"
