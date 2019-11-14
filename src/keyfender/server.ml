@@ -31,6 +31,7 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : 
     ("/provision", fun () -> new Provision.handler hsm_state) ;
     ("/unlock", fun () -> new Unlock.handler hsm_state) ;
     ("/random", fun () -> new Random.handler hsm_state) ;
+    ("/users", fun () -> new Users.handler_users hsm_state) ;
     ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state) ;
     ("/users/:id", fun () -> new Users.handler hsm_state) ;
     ("/config/tls/:ep", fun () -> new Config.handler_tls hsm_state) ;

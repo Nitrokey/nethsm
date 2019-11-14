@@ -150,7 +150,7 @@ module type S = sig
 
     val is_authorized : t -> string -> role -> bool Lwt.t
 
-    val list : t -> (string list, [> `Msg of string ]) result Lwt.t
+    val list : t -> (string list, error) result Lwt.t
 
     val exists : t -> string -> (bool, error) result Lwt.t
 
@@ -578,7 +578,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let list t =
       let open Lwt_result.Infix in
       let store = in_store t in
-      lwt_error_to_msg ~pp_error:Kv_crypto.pp_error
+      internal_server_error "List users" Kv_crypto.pp_error
         (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 

@@ -652,7 +652,27 @@ let config_version_but_no_salt () =
     assert_bool "hsm state is unprovisioned if only config/version is present"
       (Hsm.state hsm = `Unprovisioned))
 
+let users_get () =
+  "GET on /users/ succeeds"
+  @? begin
+    let headers = auth_header "admin" "test1" in
+  match request ~hsm_state:(operational_mock ()) ~headers "/users" with
+  | _, Some (`OK, _, `String data, _) -> 
+   let expected ={|[{"user":"admin"},{"user":"operator"}]|} in
+   String.equal data expected
+  | _ -> false
+  end
+
 let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "Very secret" } |}
+
+let users_post () =
+  "POST on /users/ succeeds"
+  @? begin
+    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
+  match request ~hsm_state:(operational_mock ()) ~headers ~body:(`String operator_json) ~meth:`POST "/users" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
 
 let user_operator_add () =
   "PUT on /users/op succeeds"
@@ -817,6 +837,8 @@ let () =
     "/config/backup-passphrase" >:: set_backup_passphrase_empty;
     "invalid config version" >:: invalid_config_version;
     "config version but no unlock salt" >:: config_version_but_no_salt;
+    "/users" >:: users_get;
+    "/users" >:: users_post;
     "/users/operator" >:: user_operator_add;
     "/users/operator" >:: user_operator_delete;
     "/users/operator" >:: user_operator_delete_fails;

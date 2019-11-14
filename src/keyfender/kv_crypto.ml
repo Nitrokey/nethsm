@@ -42,7 +42,10 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   let exists t key = KV.exists t.kv (prefix t key) >|= lift_kv_err
 
-  let list t key = KV.list t.kv (prefix t key) >|= lift_kv_err
+  let list t key =
+    KV.list t.kv (prefix t key) >|= function
+    | Ok items -> Ok (List.filter (fun (data, _) -> not (String.equal ".version" data)) items)
+    | Error e -> Error (`Kv e) 
 
   let last_modified t key = KV.last_modified t.kv (prefix t key) >|= lift_kv_err
 

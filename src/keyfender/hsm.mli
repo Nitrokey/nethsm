@@ -150,7 +150,7 @@ module type S = sig
 
     val is_authorized : t -> string -> role -> bool Lwt.t
 
-    val list : t -> (string list, [> `Msg of string ]) result Lwt.t
+    val list : t -> (string list, error) result Lwt.t
 
     val exists : t -> string -> (bool, error) result Lwt.t
 
