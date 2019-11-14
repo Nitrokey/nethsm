@@ -690,6 +690,16 @@ let user_op_delete_fails () =
   | _ -> false
   end
 
+let user_operator_get () =
+  "GET on /users/operator succeeds"
+  @? begin
+    let headers = auth_header "admin" "test1"in
+  match request ~hsm_state:(operational_mock ()) ~headers "/users/operator" with
+  | _, Some (`OK, _, `String data, _) -> String.equal data {|{"realName":"operator","role":"Operator"}|}
+  | _ -> false
+  end
+
+
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -763,6 +773,7 @@ let () =
     "/users/operator" >:: user_operator_delete;
     "/users/operator" >:: user_operator_delete_fails;
     "/users/operator" >:: user_op_delete_fails;
+    "/users/operator" >:: user_operator_get;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

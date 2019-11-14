@@ -13,14 +13,28 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     Json.decode user_req_of_yojson content >>= fun user ->
     Json.nonempty ~name:"passphrase" user.passphrase >>| fun () ->
     user
- 
+
+  type user_reply = {
+      realName : string ;
+      role : Hsm.User.role ;
+  }[@@deriving yojson]
+
   module Access = Access.Make(Hsm)
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class handler hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get_json rd = Wm.continue `Empty rd
+    method private get_json rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue `Empty rd
+      | Some user_id ->
+          Hsm.User.get hsm_state user_id >>= function
+          | Error e -> Utils.respond_error e rd
+          | Ok user ->
+            let user_reply = { realName = user.name ; role = user.role } in
+            let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
+            Wm.continue (`String body) rd
 
     method private set_json rd =
       let uri = rd.Webmachine.Rd.uri in
@@ -29,7 +43,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       match Astring.String.cuts ~sep:"/" path with
        | [ userid ] ->
-          let ok user =
+          let ok (user : user_req) =
             Hsm.User.add ~id:userid hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
             | Ok () -> Wm.continue true rd
             | Error e -> Utils.respond_error e rd

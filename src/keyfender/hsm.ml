@@ -154,6 +154,8 @@ module type S = sig
 
     val exists : t -> string -> (bool, error) result Lwt.t
 
+    val get : t -> string -> (user, error) result Lwt.t
+
     val add : ?id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
@@ -540,6 +542,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
        (Kv_crypto.exists store (Mirage_kv.Key.v id) >|= function
         | None -> false
         | Some _ -> true)
+
+    let get t id =
+      let store = in_store t in
+      internal_server_error "Read user" pp_find_error
+        (read_decode store id)
+
 
     (* TODO: validate username/id *)
     let add ?id t ~role ~passphrase ~name =

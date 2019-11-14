@@ -154,6 +154,8 @@ module type S = sig
 
     val exists : t -> string -> (bool, error) result Lwt.t
 
+    val get : t -> string -> (user, error) result Lwt.t
+
     val add : ?id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
