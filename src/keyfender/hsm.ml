@@ -141,10 +141,6 @@ module type S = sig
     val role_of_yojson : Yojson.Safe.t -> (role, string) result
     val role_to_yojson : role -> Yojson.Safe.t
 
-    type user = { name : string ; salt : string ; digest : string ; role : role }
-
-    val user_of_yojson : Yojson.Safe.t -> (user, string) result
-
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
@@ -152,14 +148,14 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val exists : t -> string -> (bool, error) result Lwt.t
+    val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> string -> (user, error) result Lwt.t
+    val get : t -> id:string -> (string * role, error) result Lwt.t
 
     val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (unit, error) result Lwt.t
+      name:string -> (string, error) result Lwt.t
 
-    val remove : t -> string -> (unit, error) result Lwt.t
+    val remove : t -> id:string -> (unit, error) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -574,7 +570,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         false
       | Ok user -> user.role = role
 
-    let exists t id =
+    let exists t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error "Exists user" Kv_crypto.pp_error
@@ -582,10 +578,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         | None -> false
         | Some _ -> true)
 
-    let get t id =
+    let get t ~id =
+      let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error "Read user" pp_find_error
-        (read_decode store id)
+        (read_decode store id >|= fun user ->
+         user.name, user.role)
 
 
     (* TODO: validate username/id *)
@@ -608,7 +606,8 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
                 digest = Cstruct.to_string digest ; role }
             in
             write store id user >|= fun () ->
-            Access.info (fun m -> m "added %s (%s)" name id)
+            Access.info (fun m -> m "added %s (%s)" name id);
+            id
           | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
           | Error _ as e ->
             internal_server_error "Adding user" pp_find_error
@@ -621,7 +620,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
-    let remove t id =
+    let remove t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error "Remove user" Kv_crypto.pp_write_error
@@ -709,7 +708,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
 
            reading back on system start first reads unlock-salt, if this fails,
            the HSM is in unprovisioned state *)
-        User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= fun () ->
+        User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= fun _id ->
         internal_server_error "set domain key" KV.pp_write_error
           (Kv_domain.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
         internal_server_error "set unlock-salt" KV.pp_write_error

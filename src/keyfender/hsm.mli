@@ -141,10 +141,6 @@ module type S = sig
     val role_of_yojson : Yojson.Safe.t -> (role, string) result
     val role_to_yojson : role -> Yojson.Safe.t
 
-    type user = { name : string ; salt : string ; digest : string ; role : role }
-
-    val user_of_yojson : Yojson.Safe.t -> (user, string) result
-
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
@@ -152,15 +148,14 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val exists : t -> string -> (bool, error) result Lwt.t
+    val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> string -> (user, error) result Lwt.t
+    val get : t -> id:string -> (string * role, error) result Lwt.t
 
-    (* TODO return id! *)
     val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (unit, error) result Lwt.t
+      name:string -> (string, error) result Lwt.t
 
-    val remove : t -> string -> (unit, error) result Lwt.t
+    val remove : t -> id:string -> (unit, error) result Lwt.t
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t

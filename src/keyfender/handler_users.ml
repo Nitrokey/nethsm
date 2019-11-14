@@ -33,13 +33,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let body = Yojson.Safe.to_string (`List items) in
         Wm.continue (`String body) rd
 
-    (* TODO send back location header with user id *)
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
+      let add_location_header id headers =
+        Cohttp.Header.replace headers "Location" ("/users/" ^ id)
+      in
       let ok (user : user_req) =
         Hsm.User.add hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-        | Ok () -> Wm.continue true rd
+        | Ok id -> Wm.continue true (Webmachine.Rd.with_resp_headers (add_location_header id) rd)
         | Error e -> Utils.respond_error e rd
       in
       decode_user content |> Utils.err_to_bad_request ok rd
@@ -84,10 +86,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Webmachine.Rd.lookup_path_info "id" rd with
       | None -> Wm.continue `Empty rd
       | Some user_id ->
-          Hsm.User.get hsm_state user_id >>= function
+          Hsm.User.get hsm_state ~id:user_id >>= function
           | Error e -> Utils.respond_error e rd
-          | Ok user ->
-            let user_reply = { realName = user.name ; role = user.role } in
+          | Ok (name, role) ->
+            let user_reply = { realName = name ; role } in
             let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
             Wm.continue (`String body) rd
 
@@ -98,7 +100,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
        | Some userid ->
           let ok (user : user_req) =
             Hsm.User.add ~id:userid hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-            | Ok () -> Wm.continue true rd
+            | Ok _id -> Wm.continue true rd
             | Error e -> Utils.respond_error e rd
           in
           decode_user content |> Utils.err_to_bad_request ok rd
@@ -107,7 +109,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info "id" rd with
       | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.exists hsm_state user_id >>= function
+      | Some user_id -> Hsm.User.exists hsm_state ~id:user_id >>= function
         | Ok does_exist -> Wm.continue does_exist rd
         | Error e -> Utils.respond_error e rd
 
@@ -128,7 +130,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! delete_resource rd =
       match Webmachine.Rd.lookup_path_info "id" rd with
       | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.remove hsm_state user_id >>= function
+      | Some user_id -> Hsm.User.remove hsm_state ~id:user_id >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
 
@@ -177,7 +179,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info "id" rd with
       | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.exists hsm_state user_id >>= function
+      | Some user_id -> Hsm.User.exists hsm_state ~id:user_id >>= function
         | Ok does_exist -> Wm.continue does_exist rd
         | Error e -> Utils.respond_error e rd
 
