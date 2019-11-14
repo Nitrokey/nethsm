@@ -164,6 +164,45 @@ module type S = sig
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
   end
+
+  module Keys : sig
+    type purpose = Sign | Encrypt
+
+    val list : t -> (string list, error) result Lwt.t
+
+    val add_json : ?id:string -> t -> purpose -> p:string -> q:string -> e:string ->
+      (string, error) result Lwt.t
+
+    val add_pem : ?id:string -> t -> purpose -> string ->
+      (string, error) result Lwt.t
+
+    val generate : ?id:string -> t -> purpose -> length:int ->
+      (string, error) result Lwt.t
+
+    val remove : t -> id:string -> (unit, error) result Lwt.t
+
+    type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
+
+    val get_json : t -> id:string -> (publicKey, error) result Lwt.t
+
+    val get_pem : t -> id:string -> (string, error) result Lwt.t
+
+    val csr_pem : t -> id:string -> Json.subject_req -> (string, error) result Lwt.t
+
+    val get_cert : t -> id:string -> (string * string, error) result Lwt.t
+
+    val set_cert : t -> id:string -> content_type:string -> string -> (unit, error) result Lwt.t
+
+    val remove_cert : t -> id:string -> (unit, error) result Lwt.t
+
+    type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
+
+    val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
+
+    type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
+
+    val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
+  end
 end
 
 let lwt_error_to_msg ~pp_error thing =
@@ -602,6 +641,42 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       in
       write store id user' >|= fun () ->
       Access.info (fun m -> m "changed %s (%s) passphrase" id user.name)
+  end
+
+  module Keys = struct
+    type purpose = Sign | Encrypt
+
+    let list _t = assert false
+
+    let add_json ?id:_ _t _purpose ~p:_ ~q:_ ~e:_ = assert false
+
+    let add_pem ?id:_ _t _purpose _data = assert false
+
+    let generate ?id:_ _t _purpose ~length:_ = assert false
+
+    let remove _t ~id:_ = assert false
+
+    type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
+
+    let get_json _t ~id:_ = assert false
+
+    let get_pem _t ~id:_ = assert false
+
+    let csr_pem _t ~id:_ _subject = assert false
+
+    let get_cert _t ~id:_ = assert false
+
+    let set_cert _t ~id:_ ~content_type:_ _data = assert false
+
+    let remove_cert _t ~id:_ = assert false
+
+    type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
+
+    let decrypt _t ~id:_ _decrypt_mode _data = assert false
+
+    type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
+
+    let sign _t ~id:_ _sign_mode _data = assert false
   end
 
   let provision_mutex = Lwt_mutex.create ()
