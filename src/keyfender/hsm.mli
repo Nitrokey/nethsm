@@ -201,7 +201,7 @@ module type S = sig
   end
 end
 
-module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clock.PCLOCK) : sig
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.PCLOCK) : sig
   include S
 
   val boot : KV.t -> t Lwt.t

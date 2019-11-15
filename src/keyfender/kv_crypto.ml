@@ -1,8 +1,6 @@
 open Lwt.Infix
 
-module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
-
-  type +'a io = 'a Lwt.t
+module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   type t = {
     kv : KV.t ;
@@ -32,8 +30,6 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
 
   type key = Mirage_kv.Key.t
 
-  type value = string (* maybe Cstruct.t *)
-
   let lift_kv_err = function
     | Ok x -> Ok x
     | Error e -> Error (`Kv e)
@@ -45,7 +41,7 @@ module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
   let list t key =
     KV.list t.kv (prefix t key) >|= function
     | Ok items -> Ok (List.filter (fun (data, _) -> not (String.equal ".version" data)) items)
-    | Error e -> Error (`Kv e) 
+    | Error e -> Error (`Kv e)
 
   let last_modified t key = KV.last_modified t.kv (prefix t key) >|= lift_kv_err
 

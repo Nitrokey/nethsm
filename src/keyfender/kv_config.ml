@@ -2,7 +2,7 @@ open Lwt.Infix
 
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
-module Make (KV : Mirage_kv_lwt.RW) = struct
+module Make (KV : Mirage_kv.RW) = struct
 
   let config_prefix = "config"
 

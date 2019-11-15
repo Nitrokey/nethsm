@@ -209,7 +209,7 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clock.PCLOCK) = struct
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.PCLOCK) = struct
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 

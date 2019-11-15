@@ -7,8 +7,8 @@
     stored for key [b] unless [a] and [b] are equal. The IV is generated at
     random. The encrypted value stored is a concatenation of the IV, the
     authentication tag, and the encrypted data. *)
-module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) : sig
-  include Mirage_kv_lwt.RW
+module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
+  include Mirage_kv.RW
     with type error = [
         | Mirage_kv.error
         | `Kv of KV.error

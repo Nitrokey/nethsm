@@ -3,7 +3,7 @@ open Lwt.Infix
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : Hsm.S) = struct
+module Make_handlers (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Hsm : Hsm.S) = struct
 
   module WmClock = struct
     let now () =
@@ -50,7 +50,7 @@ module Make_handlers (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Hsm : 
   ]
 end
 
-module Make (R : Mirage_random.C) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
+module Make (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
 
   module Handlers = Make_handlers(R)(Clock)(Hsm)
 

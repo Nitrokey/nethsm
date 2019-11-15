@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-module Make (R : Mirage_random.C) (KV : Mirage_kv_lwt.RW) = struct
+module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   type t = KV.t
 
