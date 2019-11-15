@@ -508,8 +508,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | `String _ as l -> role_of_yojson (`List [ l ] )
       | _ -> Error "expected string as role"
 
-    type user = { name : string ; salt : string ; digest : string ; role : role } [@@deriving yojson]
-
     let pp_role ppf r =
       Fmt.string ppf @@ match r with
       | `Administrator -> "R-Administrator"
@@ -517,24 +515,25 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | `Metrics -> "R-Metrics"
       | `Backup -> "R-Backup"
 
-    let decode data =
-      let open Rresult.R.Infix in
-      (try Ok (Yojson.Safe.from_string data)
-       with Yojson.Json_error msg -> Error (`Json_parse msg)) >>= fun json ->
-      (match user_of_yojson json with
-       | Ok user -> Ok user
-       | Error msg -> Error (`Json_decode msg))
+    type user = {
+      name : string ;
+      salt : string ;
+      digest : string ;
+      role : role
+    }[@@deriving yojson]
 
     let read_decode store id =
       let open Lwt.Infix in
       Kv_crypto.get store (Mirage_kv.Key.v id) >|= function
       | Error e -> Error (`Kv_crypto e)
-      | Ok data -> decode data
+      | Ok data ->
+        Rresult.R.reword_error
+          (fun err -> `Json_decode err)
+          (Json.decode user_of_yojson data)
 
     let pp_find_error ppf = function
       | `Kv_crypto kv -> Kv_crypto.pp_error ppf kv
       | `Json_decode msg -> Fmt.pf ppf "json decode failure %s" msg
-      | `Json_parse msg -> Fmt.pf ppf "json parse error %s" msg
 
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
@@ -550,13 +549,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     let get_user t id =
       let keys = in_store t in
-      lwt_error_to_msg ~pp_error:pp_find_error (read_decode keys id)
+      read_decode keys id
 
     let is_authenticated t ~username ~passphrase =
       let open Lwt.Infix in
       get_user t username >|= function
-      | Error `Msg e ->
-        Access.warn (fun m -> m "%s unauthenticated: %s" username e);
+      | Error e ->
+        Access.warn (fun m -> m "%s unauthenticated: %a" username pp_find_error e);
         false
       | Ok user ->
         let pass = Crypto.key_of_passphrase ~salt:(Cstruct.of_string user.salt) passphrase in
@@ -565,8 +564,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let is_authorized t username role =
       let open Lwt.Infix in
       get_user t username >|= function
-      | Error `Msg e ->
-        Access.warn (fun m -> m "%s unauthorized for %a: %s" username pp_role role e);
+      | Error e ->
+        Access.warn (fun m -> m "%s unauthorized for %a: %a" username
+                        pp_role role pp_find_error e);
         false
       | Ok user -> user.role = role
 
