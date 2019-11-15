@@ -15,7 +15,7 @@ build: [
 
 depends: [
   "ocaml" {>= "4.06.0"}
-  "dune" {build}
+  "dune"
   "ounit" {with-test}
   "astring"
   "logs"
@@ -37,12 +37,12 @@ depends: [
   "hex"
   "gmap" {>= "0.3.0"}
   "ipaddr"
-  "conduit-mirage" {with-test}
-  "cohttp-mirage" {with-test}
-  "tcpip" {with-test}
-  "mirage-clock-unix" {with-test}
-  "io-page-unix" {with-test}
-  "mirage-kv-mem" {with-test}
-  "mirage-random-test" {with-test}
+  "conduit-mirage" #{with-test}
+  "cohttp-mirage" #{with-test}
+  "tcpip" #{with-test}
+  "mirage-clock-unix" #{with-test}
+  "io-page-unix" #{with-test}
+  "mirage-kv-mem" #{with-test}
+  "mirage-random-test" #{with-test}
 ]
 synopsis: "Keyfender library"
