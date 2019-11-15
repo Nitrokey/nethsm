@@ -164,6 +164,10 @@ module type S = sig
   module Keys : sig
     type purpose = Sign | Encrypt
 
+    val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
+
+    val exists : t -> id:string -> (bool, error) result Lwt.t
+
     val list : t -> (string list, error) result Lwt.t
 
     val add_json : ?id:string -> t -> purpose -> p:string -> q:string -> e:string ->
@@ -179,13 +183,15 @@ module type S = sig
 
     type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
 
+    val publicKey_to_yojson : publicKey -> Yojson.Safe.t
+
     val get_json : t -> id:string -> (publicKey, error) result Lwt.t
 
     val get_pem : t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem : t -> id:string -> Json.subject_req -> (string, error) result Lwt.t
 
-    val get_cert : t -> id:string -> (string * string, error) result Lwt.t
+    val get_cert : t -> id:string -> ((string * string) option, error) result Lwt.t
 
     val set_cert : t -> id:string -> content_type:string -> string -> (unit, error) result Lwt.t
 
@@ -193,9 +199,13 @@ module type S = sig
 
     type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
 
+    val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
+
     val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
 
     type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
+
+    val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
 
     val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
   end
@@ -648,6 +658,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     type purpose = Sign | Encrypt [@@deriving yojson]
 
+    let purpose_of_yojson = function
+      | `String _ as s -> purpose_of_yojson (`List [s])
+      | _ -> Error "Expected JSON string for purpose"
+
+    let purpose_to_yojson purpose =
+      match purpose_to_yojson purpose with
+      | `List [l] -> l
+      | _ -> assert false
+
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
     let key_store t =
@@ -679,11 +698,27 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         end
       | _ -> Error "Expected json string as private key"
 
+    let exists t ~id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      internal_server_error "Exists key" Kv_crypto.pp_error
+       (Kv_crypto.exists store (Mirage_kv.Key.v id) >|= function
+        | None -> false
+        | Some _ -> true)
+
     type key = {
       purpose : purpose ;
       priv : priv ;
       cert : (string * string) option ;
     } [@@deriving yojson]
+
+    let encode_and_write t id key =
+      let store = key_store t
+      and value = key_to_yojson key
+      and kv_key = Mirage_kv.Key.v id
+      in
+      internal_server_error "Write key" Kv_crypto.pp_write_error
+        (Kv_crypto.set store kv_key (Yojson.Safe.to_string value))
 
     let add ?id t purpose priv =
       let open Lwt_result.Infix in
@@ -700,9 +735,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-        let value = key_to_yojson { purpose ; priv ; cert = None } in
-        internal_server_error "Write key" Kv_crypto.pp_write_error
-          (Kv_crypto.set store key (Yojson.Safe.to_string value)) >|= fun () ->
+        encode_and_write t id { purpose ; priv ; cert = None } >|= fun () ->
         id
 
     let add_json ?id t purpose ~p ~q ~e =
@@ -744,27 +777,162 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       modulus : string ;
       publicExponent : string ;
       operations : int
-    }
+    } [@@deriving yojson]
 
-    let get_json _t ~id:_ = assert false
+    let get_key t id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      let key = Mirage_kv.Key.v id in
+      internal_server_error "Read key" Kv_crypto.pp_error
+        (Kv_crypto.get store key) >>= fun key_raw ->
+      Lwt.return (match Json.decode key_of_yojson key_raw with
+          | Ok k -> Ok k
+          | Error e -> Error (Internal_server_error, e))
 
-    let get_pem _t ~id:_ = assert false
+    let get_json t ~id =
+      let open Lwt_result.Infix in
+      get_key t id >|= fun key ->
+      let z_to_b64 n =
+        Cstruct.to_string Nocrypto.(Base64.encode @@ Numeric.Z.to_cstruct_be n)
+      in
+      { purpose = key.purpose ;
+        algorithm = "RSA" ;
+        modulus = z_to_b64 key.priv.Nocrypto.Rsa.n ;
+        publicExponent = z_to_b64 key.priv.Nocrypto.Rsa.e ;
+        operations = 0 ;
+      }
 
-    let csr_pem _t ~id:_ _subject = assert false
+    let get_pem t ~id =
+      let open Lwt_result.Infix in
+      get_key t id >|= fun key ->
+      Cstruct.to_string @@ X509.Private_key.encode_pem (`RSA key.priv)
 
-    let get_cert _t ~id:_ = assert false
+    let csr_pem t ~id subject =
+      let open Lwt_result.Infix in
+      get_key t id >|= fun key ->
+      let subject' =
+        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN subject.Json.commonName)) ]
+      in
+      let csr = X509.Signing_request.create subject' (`RSA key.priv) in
+      Cstruct.to_string @@ X509.Signing_request.encode_pem csr
 
-    let set_cert _t ~id:_ ~content_type:_ _data = assert false
+    let get_cert t ~id =
+      let open Lwt_result.Infix in
+      get_key t id >|= fun key ->
+      key.cert
 
-    let remove_cert _t ~id:_ = assert false
+    let set_cert t ~id ~content_type data =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key ->
+      match key.cert with
+      | Some _ -> Lwt.return (Error (Conflict, "Key already contains a certificate"))
+      | None ->
+        let key' = { key with cert = Some (content_type, data) } in
+        encode_and_write t id key'
 
-    type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
+    let remove_cert t ~id =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key ->
+      match key.cert with
+      | Some _ -> Lwt.return (Error (Conflict, "Key already contains a certificate"))
+      | None ->
+        let key' = { key with cert = None } in
+        encode_and_write t id key'
 
-    let decrypt _t ~id:_ _decrypt_mode _data = assert false
+    type decrypt_mode =
+      | Raw
+      | PKCS1
+      | OAEP_MD5
+      | OAEP_SHA1
+      | OAEP_SHA224
+      | OAEP_SHA256
+      | OAEP_SHA384
+      | OAEP_SHA512
+    [@@deriving yojson]
 
-    type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
+    let decrypt_mode_of_yojson = function
+      | `String _ as s -> decrypt_mode_of_yojson (`List [s])
+      | _ -> Error "Expected JSON string for decrypt mode"
 
-    let sign _t ~id:_ _sign_mode _data = assert false
+    module Oaep_md5 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.MD5)
+    module Oaep_sha1 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA1)
+    module Oaep_sha224 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA224)
+    module Oaep_sha256 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA256)
+    module Oaep_sha384 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA384)
+    module Oaep_sha512 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA512)
+
+    (* TODO should input and out be base64? *)
+    let decrypt t ~id decrypt_mode data =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key_data ->
+      let key = key_data.priv in
+      Lwt.return @@
+      if key_data.purpose = Encrypt then
+        let dec_cs_opt =
+          let enc_cs = Cstruct.of_string data in
+          match decrypt_mode with
+          | Raw ->
+            (try Some (Nocrypto.Rsa.decrypt ~key enc_cs)
+             with Nocrypto.Rsa.Insufficient_key -> None)
+          | PKCS1 -> Nocrypto.Rsa.PKCS1.decrypt ~key enc_cs
+          | OAEP_MD5 -> Oaep_md5.decrypt ~key enc_cs
+          | OAEP_SHA1 -> Oaep_sha1.decrypt ~key enc_cs
+          | OAEP_SHA224 -> Oaep_sha224.decrypt ~key enc_cs
+          | OAEP_SHA256 -> Oaep_sha256.decrypt ~key enc_cs
+          | OAEP_SHA384 -> Oaep_sha384.decrypt ~key enc_cs
+          | OAEP_SHA512 -> Oaep_sha512.decrypt ~key enc_cs
+        in
+        match dec_cs_opt with
+        | None -> Error (Bad_request, "Decryption failure.")
+        | Some cs -> Ok (Cstruct.to_string cs)
+      else
+        Error (Bad_request, "Key purpose is not encrypt.")
+
+    type sign_mode =
+      | PKCS1
+      | PSS_MD5
+      | PSS_SHA1
+      | PSS_SHA224
+      | PSS_SHA256
+      | PSS_SHA384
+      | PSS_SHA512
+    [@@deriving yojson]
+
+    let sign_mode_of_yojson = function
+      | `String _ as s -> sign_mode_of_yojson (`List [s])
+      | _ -> Error "Expected JSON string for sign mode"
+
+    module Pss_md5 = Nocrypto.Rsa.PSS(Nocrypto.Hash.MD5)
+    module Pss_sha1 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA1)
+    module Pss_sha224 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA224)
+    module Pss_sha256 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA256)
+    module Pss_sha384 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA384)
+    module Pss_sha512 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA512)
+
+    (* TODO should input and out be base64? *)
+    let sign t ~id sign_mode data =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key_data ->
+      let key = key_data.priv in
+      Lwt.return @@
+      if key_data.purpose = Sign then
+        let cs = Cstruct.of_string data in
+        try
+          let signature =
+            match sign_mode with
+            | PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key cs
+            | PSS_MD5 -> Pss_md5.sign ~key cs
+            | PSS_SHA1 -> Pss_sha1.sign ~key cs
+            | PSS_SHA224 -> Pss_sha224.sign ~key cs
+            | PSS_SHA256 -> Pss_sha256.sign ~key cs
+            | PSS_SHA384 -> Pss_sha384.sign ~key cs
+            | PSS_SHA512 -> Pss_sha512.sign ~key cs
+          in
+          Ok (Cstruct.to_string signature)
+        with Nocrypto.Rsa.Insufficient_key -> Error (Bad_request, "Signing failure.")
+      else
+        Error (Bad_request, "Key purpose is not sign.")
+
   end
 
   let provision_mutex = Lwt_mutex.create ()

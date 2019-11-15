@@ -164,6 +164,10 @@ module type S = sig
   module Keys : sig
     type purpose = Sign | Encrypt
 
+    val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
+
+    val exists : t -> id:string -> (bool, error) result Lwt.t
+
     val list : t -> (string list, error) result Lwt.t
 
     val add_json : ?id:string -> t -> purpose -> p:string -> q:string -> e:string ->
@@ -179,13 +183,15 @@ module type S = sig
 
     type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
 
+    val publicKey_to_yojson : publicKey -> Yojson.Safe.t
+
     val get_json : t -> id:string -> (publicKey, error) result Lwt.t
 
     val get_pem : t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem : t -> id:string -> Json.subject_req -> (string, error) result Lwt.t
 
-    val get_cert : t -> id:string -> (string * string, error) result Lwt.t
+    val get_cert : t -> id:string -> ((string * string) option, error) result Lwt.t
 
     val set_cert : t -> id:string -> content_type:string -> string -> (unit, error) result Lwt.t
 
@@ -193,9 +199,13 @@ module type S = sig
 
     type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
 
+    val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
+
     val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
 
     type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
+
+    val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
 
     val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
   end
