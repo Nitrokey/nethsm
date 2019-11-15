@@ -1,11 +1,11 @@
 module type S = sig
 
-  type status_code =  
-    | Internal_server_error 
+  type status_code =
+    | Internal_server_error
     | Bad_request
     | Precondition_failed
     | Conflict
-  
+
   (* string is the body, which may contain error message *)
   type error = status_code * string
 

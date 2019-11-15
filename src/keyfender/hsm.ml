@@ -1,11 +1,11 @@
 module type S = sig
 
-  type status_code =  
-    | Internal_server_error 
+  type status_code =
+    | Internal_server_error
     | Bad_request
     | Precondition_failed
     | Conflict
-  
+
   (* string is the body, which may contain error message *)
   type error = status_code * string
 
@@ -120,7 +120,7 @@ module type S = sig
 
     val shutdown : t -> unit
 
-    val reset : t -> (unit, error) result Lwt.t 
+    val reset : t -> (unit, error) result Lwt.t
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
@@ -228,12 +228,12 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     | Ok a -> Ok a
     | Error e -> fatal prefix ~pp_error e
 
-  type status_code =  
-    | Internal_server_error 
+  type status_code =
+    | Internal_server_error
     | Bad_request
     | Precondition_failed
     | Conflict
-  
+
   (* string is the body, which may contain error message *)
   type error = status_code * string
 
@@ -270,18 +270,18 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     `Assoc [ ("state", match state_to_yojson state with
         `List [l] -> l | _ -> assert false) ]
 
-  type version = int * int 
+  type version = int * int
 
   let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
   let version_of_string s = match Astring.String.cut ~sep:"." s with
     | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
-    | Some (major, minor) -> 
-      try 
+    | Some (major, minor) ->
+      try
         let ma = int_of_string major
         and mi = int_of_string minor
         in
-        Ok (ma, mi) 
-      with Failure _ -> Error (Bad_request, "Failed to parse version: Not a number. A valid version would be '4.2'.")                  
+        Ok (ma, mi)
+      with Failure _ -> Error (Bad_request, "Failed to parse version: Not a number. A valid version would be '4.2'.")
 
   let version_to_yojson v = `String (version_to_string v)
   let version_of_yojson _ = Error "Cannot convert version"
@@ -331,7 +331,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let open Lwt.Infix in
     f >|= function
     | Ok x -> Ok x
-    | Error e -> 
+    | Error e ->
       Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
       Error (Internal_server_error, "Could not write to disk. Check hardware.")
 
@@ -923,7 +923,7 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
     let system_info t = t.system_info
 
     (* TODO call hardware *)
-    let reboot t = 
+    let reboot t =
       t.state <- Busy
 
     (* TODO call hardware *)
@@ -946,21 +946,21 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
         | Some data ->
           let str = prefix ^ data in
           if String.length str >= n
-          then 
+          then
             let data, rest = Astring.String.span ~min:n ~max:n str in
             Lwt.return @@ Ok (data, put_back stream rest)
           else read str
       in
       read ""
- 
-    let get_length stream = 
+
+    let get_length stream =
       let open Lwt_result.Infix in
       read_n stream 2 >|= fun (data, stream') ->
       let length = Cstruct.BE.get_uint16 (Cstruct.of_string data) 0 in
       (length, stream')
- 
+
     let get_data (l, s) = read_n s l
- 
+
     let get_field s =
       let open Lwt_result.Infix in
       get_length s >>=
@@ -985,13 +985,13 @@ module Make (Rng : Mirage_random.C) (KV : Mirage_kv_lwt.RW) (Pclock : Mirage_clo
       get_field s'' >>= fun (version, s''') ->
       Lwt.return (version_of_string version) >>= fun version' ->
       let hash'' = update hash' version in
-      Lwt_stream.fold_s (fun chunk acc -> 
+      Lwt_stream.fold_s (fun chunk acc ->
         match acc with
         | Error e -> Lwt.return (Error e)
-        | Ok hash -> 
-          (*TODO stream to s_update*) 
+        | Ok hash ->
+          (*TODO stream to s_update*)
           let hash' = update hash chunk in
-          Lwt.return @@ Ok hash') 
+          Lwt.return @@ Ok hash')
         s''' (Ok hash'') >>= fun hash ->
       let _final = get hash in
       (* TODO verify signature *)
