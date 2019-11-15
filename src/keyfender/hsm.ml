@@ -643,19 +643,108 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
   end
 
   module Keys = struct
-    type purpose = Sign | Encrypt
+    let keys_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
+    module Access = (val Logs.src_log keys_src : Logs.LOG)
 
-    let list _t = assert false
+    type purpose = Sign | Encrypt [@@deriving yojson]
 
-    let add_json ?id:_ _t _purpose ~p:_ ~q:_ ~e:_ = assert false
+    (* functions below are exported, and take a Hsm.t directly, this the
+       wrapper to unpack the auth_store handle. *)
+    let key_store t =
+      match t.state with
+      | Operational keys -> keys.key_store
+      | _ -> assert false (* checked by webmachine Handler_keys.service_available *)
 
-    let add_pem ?id:_ _t _purpose _data = assert false
+    let list t =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      internal_server_error "List keys" Kv_crypto.pp_error
+        (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
+      List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
-    let generate ?id:_ _t _purpose ~length:_ = assert false
+    (* how a key is persisted in the kv store. note that while nocrypto
+       provides s-expression conversions, these have been removed from the
+       trunk version -- it is also not safe to embed s-expressions into json.
+       to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
+       json is not safe as well)!
+    *)
+    type priv = Nocrypto.Rsa.priv
+    let priv_to_yojson p =
+      `String (Cstruct.to_string (X509.Private_key.encode_pem (`RSA p)))
+    let priv_of_yojson = function
+      | `String data ->
+        begin match X509.Private_key.decode_pem (Cstruct.of_string data) with
+          | Ok `RSA priv -> Ok priv
+          | Error `Msg m -> Error m
+        end
+      | _ -> Error "Expected json string as private key"
 
-    let remove _t ~id:_ = assert false
+    type key = {
+      purpose : purpose ;
+      priv : priv ;
+      cert : (string * string) option ;
+    } [@@deriving yojson]
 
-    type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
+    let add ?id t purpose priv =
+      let open Lwt_result.Infix in
+      let id = match id with
+        | Some x -> x
+        | None ->
+          let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+          id
+      in
+      let store = key_store t in
+      let key = Mirage_kv.Key.v id in
+      internal_server_error "Exist key" Kv_crypto.pp_error
+        (Kv_crypto.exists store key) >>= function
+      | Some _ ->
+        Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
+      | None ->
+        let value = key_to_yojson { purpose ; priv ; cert = None } in
+        internal_server_error "Write key" Kv_crypto.pp_write_error
+          (Kv_crypto.set store key (Yojson.Safe.to_string value)) >|= fun () ->
+        id
+
+    let add_json ?id t purpose ~p ~q ~e =
+      let open Nocrypto in
+      let to_z ctx data =
+        match Base64.decode (Cstruct.of_string data) with
+        | Some num -> Ok (Numeric.Z.of_cstruct_be num)
+        | None -> Error ("Invalid base64 encoded value in '" ^ ctx ^ "': " ^ data)
+      in
+      match
+        let open Rresult.R.Infix in
+        to_z "p" p >>= fun p ->
+        to_z "q" q >>= fun q ->
+        to_z "e" e >>| fun e ->
+        Rsa.priv_of_primes ~e ~p ~q
+      with
+      | Error e -> Lwt.return (Error (Bad_request, e))
+      | Ok priv -> add ?id t purpose priv
+
+    let add_pem ?id t purpose data =
+      match X509.Private_key.decode_pem (Cstruct.of_string data) with
+      | Error `Msg m -> Lwt.return (Error (Bad_request, m))
+      | Ok `RSA priv -> add ?id t purpose priv
+
+    let generate ?id t purpose ~length =
+      let priv = Nocrypto.Rsa.generate length in
+      add ?id t purpose priv
+
+    let remove t ~id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      internal_server_error "Remove key" Kv_crypto.pp_write_error
+        (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
+         Access.info (fun m -> m "removed (%s)" id))
+
+    type publicKey = {
+      purpose : purpose ;
+      algorithm : string ;
+      modulus : string ;
+      publicExponent : string ;
+      operations : int
+    }
 
     let get_json _t ~id:_ = assert false
 
