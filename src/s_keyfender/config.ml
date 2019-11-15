@@ -30,6 +30,7 @@ let main =
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
     package "cohttp-mirage";
+    package ~min:"3.7.1" "mirage-runtime";
   ] in
   let keys = List.map Key.abstract [ http_port; https_port ] in
   foreign
