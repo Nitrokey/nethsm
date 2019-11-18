@@ -1,14 +1,41 @@
 (* request data *)
 
 type subject_req = {
+    commonName : string ;
     countryName : string ;
-    stateOrProvinceName : string ;
     localityName : string ;
+    stateOrProvinceName : string ;
     organizationName : string ;
     organizationalUnitName : string ;
-    commonName : string ;
     emailAddress : string ;
 } [@@deriving yojson]
+
+let to_distinguished_name subject =
+  let open X509.Distinguished_name in
+  let res = Relative_distinguished_name.empty in
+  let add = Relative_distinguished_name.add in
+  let res = if subject.commonName <> "" 
+  then add (CN subject.commonName) res
+  else res in
+  let res = if subject.countryName <> "" 
+  then add (C subject.countryName) res
+  else res in
+  let res = if subject.localityName <> "" 
+  then add (L subject.localityName) res
+  else res in
+  let res = if subject.stateOrProvinceName <> "" 
+  then add (ST subject.stateOrProvinceName) res
+  else res in
+  let res = if subject.organizationName <> "" 
+  then add (O subject.organizationName) res
+  else res in
+  let res = if subject.organizationalUnitName <> "" 
+  then add (OU subject.organizationalUnitName) res
+  else res in
+  let res = if subject.emailAddress <> "" 
+  then add (Mail subject.emailAddress) res
+  else res in
+  [ res ]
 
 let nonempty ~name s =
   if String.length s == 0

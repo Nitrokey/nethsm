@@ -810,9 +810,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let csr_pem t ~id subject =
       let open Lwt_result.Infix in
       get_key t id >|= fun key ->
-      let subject' =
-        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN subject.Json.commonName)) ]
-      in
+      let subject' = Json.to_distinguished_name subject in
       let csr = X509.Signing_request.create subject' (`RSA key.priv) in
       Cstruct.to_string @@ X509.Signing_request.encode_pem csr
 
@@ -834,8 +832,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
       match key.cert with
-      | Some _ -> Lwt.return (Error (Conflict, "Key already contains a certificate"))
-      | None ->
+      | None -> Lwt.return (Error (Conflict, "Key already contains a certificate"))
+      | Some _ ->
         let key' = { key with cert = None } in
         encode_and_write t id key'
 
@@ -1065,8 +1063,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let tls_csr_pem t subject =
       let open Lwt.Infix in
       certificate_chain t >|= fun (_, _, priv) ->
-      (* TODO add entire subject here *)
-      let dn = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN subject.Json.commonName)) ] in
+      let dn = Json.to_distinguished_name subject in 
       let csr, _ = generate_csr ~dn priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
