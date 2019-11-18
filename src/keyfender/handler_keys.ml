@@ -79,8 +79,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | true when rd.meth = `GET -> (* no admin - only get allowed for operator *)
         Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
         Wm.continue not_an_operator rd
-      | true -> Wm.continue true rd
-      | false -> Wm.continue false rd (* is an admin - nothing's forbidden *)
+      | not_an_admin -> Wm.continue not_an_admin rd
   end
 
   type generate_request = { purpose: Hsm.Keys.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson] 
@@ -147,26 +146,49 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private get_json rd =
-      Hsm.User.list hsm_state >>= function
-      | Error e -> Utils.respond_error e rd
-      | Ok users ->
-        let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
-        let body = Yojson.Safe.to_string (`List items) in
-        Wm.continue (`String body) rd
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue `Empty rd
+      | Some key_id ->
+        Hsm.Keys.get_json ~id:key_id hsm_state >>= function
+        | Error e -> Utils.respond_error e rd
+        | Ok public_key ->
+          let body = Yojson.Safe.to_string @@ Hsm.Keys.publicKey_to_yojson public_key in
+          Wm.continue (`String body) rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id ->
+        let ok (key : private_key_request) =
+          let rsa_key = key.key in
+          Hsm.Keys.add_json hsm_state ~id:key_id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Utils.respond_error e rd
+        in
+        Json.decode private_key_request_of_yojson content |> 
+        Utils.err_to_bad_request ok rd
 
-    method !process_post rd =
-      self#set_json rd
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
+
+    method! delete_resource rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.remove hsm_state ~id:key_id >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#get_json) ] rd
@@ -187,8 +209,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Administrator rd >>= function
+      | true when rd.meth = `GET -> 
+        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+        Wm.continue not_an_operator rd
+      | not_an_admin -> Wm.continue not_an_admin rd
   end
 
   class handler_public hsm_state = object(self)

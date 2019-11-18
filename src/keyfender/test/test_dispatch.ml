@@ -793,6 +793,36 @@ let keys_generate () =
   | _ -> false
   end
 
+let hsm_with_key () =
+  let state = operational_mock () in
+  Lwt_main.run (Hsm.Keys.generate state Hsm.Keys.Encrypt ~id:"keyID" ~length:1024 >|= function
+  | Ok () -> state
+  | Error _ -> assert false)
+
+let keys_key_get () =
+  "GET on /keys/keyID succeeds"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_put () =
+  "PUT on /keys/keyID succeeds"
+  @? begin
+  match admin_put_request ~body:(`String key_json) "/keys/keyID" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_delete () =
+  "DELETE on /keys/keyID succeeds"
+  @? begin
+  match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -877,6 +907,9 @@ let () =
     "/keys" >:: keys_post_json;
     "/keys" >:: keys_post_pem;
     "/keys/generate" >:: keys_generate;
+    "/keys/keyID" >:: keys_key_get;
+    "/keys/keyID" >:: keys_key_put;
+    "/keys/keyID" >:: keys_key_delete;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
