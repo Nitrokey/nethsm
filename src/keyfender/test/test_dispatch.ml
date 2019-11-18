@@ -83,7 +83,7 @@ let provision_json = {| {
 let provision_ok () =
   let body = `String provision_json in
   "an initial provision request is successful (state transition to operational, HTTP response 204)"
-    @? begin match request ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
+    @? begin match request ~body ~meth:`PUT "/provision" with
        | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
        | _ -> false
     end
@@ -91,7 +91,7 @@ let provision_ok () =
 let provision_error_malformed_request () =
   let body = `String ("hallo" ^ provision_json) in
   "an initial provision request with invalid json returns a malformed request with 400"
-    @? begin match request ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
+    @? begin match request ~body ~meth:`PUT "/provision" with
        | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Unprovisioned
        | _ -> false
     end
@@ -99,9 +99,9 @@ let provision_error_malformed_request () =
 let provision_error_precondition_failed () =
   let body = `String provision_json in
   "an initial provision request is successful, a subsequent provision fails with 412"
-    @? begin match request ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
+    @? begin match request ~body ~meth:`PUT "/provision" with
        | hsm_state, Some (`No_content, _, _, _) ->
-         begin match request ~hsm_state ~body ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/provision" with
+         begin match request ~hsm_state ~body ~meth:`PUT "/provision" with
           | _, Some (`Precondition_failed, _, _, _) -> true
           | _ -> false
          end
@@ -124,7 +124,7 @@ let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?conte
  
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
-   @? begin match request ~hsm_state:(operational_mock ()) ~headers:(auth_header "admin" "test1") "/system/info" with
+   @? begin match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/system/info" with
       | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.system_info_to_yojson @@ Hsm.System.system_info hsm_state
       | _ -> false
    end
@@ -366,14 +366,11 @@ let unlock_twice () =
 let change_unlock_passphrase () =
   "change unlock passphrase succeeds"
   @? begin 
-  let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
   let passphrase = {|{ "passphrase" : "new passphrase" }|} in
-  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
-                   ~meth:`POST ~headers "/config/unlock-passphrase" with
+  match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
     Hsm.lock hsm_state;
-    begin match request ~body:(`String passphrase) ~hsm_state
-                     ~meth:`PUT ~headers:(Header.init_with "content-type" "application/json") "/unlock" with
+    begin match admin_put_request ~body:(`String passphrase) ~hsm_state "/unlock" with
     | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
     | _ -> false
     end
@@ -383,10 +380,8 @@ let change_unlock_passphrase () =
 let change_unlock_passphrase_empty () =
   "change to empty unlock passphrase fails"
   @? begin 
-  let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
   let passphrase = {|{ "passphrase" : "" }|} in
-  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
-                   ~meth:`POST ~headers "/config/unlock-passphrase" with
+  match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | _, Some (`Bad_request, _, _, _) -> true 
   | _ -> false
   end
@@ -440,8 +435,7 @@ let get_config_tls_public_pem () =
   "get tls public pem file succeeds"
   @? begin 
   let headers = admin_headers in 
-  match request ~hsm_state:(operational_mock ())
-                   ~meth:`GET ~headers "/config/tls/public.pem" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/public.pem" with
   | _, Some (`OK, _, _, _) -> true 
   | _ -> false
   end
@@ -450,8 +444,7 @@ let get_config_tls_cert_pem () =
   "get tls cert pem file succeeds"
   @? begin 
   let headers = admin_headers in 
-  match request ~hsm_state:(operational_mock ())
-                   ~meth:`GET ~headers "/config/tls/cert.pem" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
   | _, Some (`OK, _, _, _) -> true 
   | _ -> false
   end
@@ -460,8 +453,7 @@ let put_config_tls_cert_pem () =
   "post tls cert pem file succeeds"
   @? begin 
   let headers = admin_headers in 
-  match request ~hsm_state:(operational_mock ())
-                   ~meth:`GET ~headers "/config/tls/cert.pem" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
   | hsm_state, Some (`OK, _, `String body, _) -> 
     begin
       let content_type = "application/x-pem-file" in 
@@ -495,9 +487,7 @@ let post_config_tls_csr_pem () =
     "commonName": "nitrohsm.local",
     "emailAddress": "info@nitrokey.com"
   }|} in
-  let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-  match request ~hsm_state:(operational_mock ())
-                   ~meth:`POST ~headers ~body:(`String subject) "/config/tls/csr.pem" with
+  match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
   | _, Some (`OK, _, _, _) -> true 
   | _ -> false
   end
@@ -505,7 +495,7 @@ let post_config_tls_csr_pem () =
 let config_network_ok () =
   "GET on /config/network succeeds"
   @? begin
-    let headers = auth_header "admin" "test1" in
+    let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/network" with
   | _, Some (`OK, _, `String body, _) ->
     body = {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
@@ -516,10 +506,9 @@ let config_network_set_ok () =
   "PUT on /config/network succeeds"
   @? begin
     let new_network = {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_network) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/network" with
+    match admin_put_request ~body:(`String new_network) "/config/network" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match request ~hsm_state ~meth:`GET ~headers "/config/network" with
+      begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network" with
         | _, Some (`OK, _, `String body, _) -> body = new_network
         | _ -> false
       end
@@ -530,8 +519,7 @@ let config_network_set_fail () =
   "PUT with invalid IP address on /config/network fails"
   @? begin
     let new_network = {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_network) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/network" with
+    match admin_put_request ~body:(`String new_network) "/config/network" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
@@ -539,7 +527,7 @@ let config_network_set_fail () =
 let config_logging_ok () =
   "GET on /config/logging succeeds"
   @? begin
-    let headers = auth_header "admin" "test1" in
+    let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/logging" with
   | _, Some (`OK, _, `String body, _) ->
     body = {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
@@ -550,10 +538,9 @@ let config_logging_set_ok () =
   "PUT on /config/logging succeeds"
   @? begin
     let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"error"}|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_logging) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/logging" with
+    match admin_put_request ~body:(`String new_logging) "/config/logging" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match request ~hsm_state ~meth:`GET ~headers "/config/logging" with
+      begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/logging" with
         | _, Some (`OK, _, `String body, _) -> body = new_logging
         | _ -> false
       end
@@ -564,8 +551,7 @@ let config_logging_set_fail () =
   "PUT with invalid logLevel on /config/logging fails"
   @? begin
     let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"nonexisting"}|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_logging) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/logging" with
+    match admin_put_request ~body:(`String new_logging) "/config/logging" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
@@ -573,8 +559,7 @@ let config_logging_set_fail () =
 let config_time_ok () =
   "GET on /config/time succeeds"
   @? begin
-    let headers = auth_header "admin" "test1" in
-  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/time" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers:admin_headers "/config/time" with
   | _, Some (`OK, _, `String body, _) ->
     let without_ticks = String.sub body 1 (String.length body - 2) in
     begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
@@ -585,10 +570,9 @@ let config_time_set_ok () =
   "PUT on /config/time succeeds"
   @? begin
     let new_time = {|"1970-01-01T00:00:00-00:00"|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_time) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/time" with
+    match admin_put_request ~body:(`String new_time) "/config/time" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match request ~hsm_state ~meth:`GET ~headers "/config/time" with
+      begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/time" with
         | _, Some (`OK, _, `String body, _) ->
           let without_ticks = String.sub body 1 (String.length body - 2) in
           begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
@@ -601,8 +585,7 @@ let config_time_set_fail () =
   "PUT with invalid logLevel on /config/time fails"
   @? begin
     let new_time = {|"1234"|} in
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
-    match request ~body:(`String new_time) ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers "/config/time" with
+    match admin_put_request ~body:(`String new_time) "/config/time" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
@@ -611,10 +594,8 @@ let config_time_set_fail () =
 let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
-  let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
   let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
-  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
-                   ~meth:`PUT ~headers "/config/backup-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`No_content, _, _, _) -> true 
   | _ -> false
   end
@@ -623,10 +604,8 @@ let set_backup_passphrase () =
 let set_backup_passphrase_empty () =
   "set empty backup passphrase fails"
   @? begin
-  let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in 
   let passphrase = {|{ "passphrase" : "" }|} in
-  match request ~body:(`String passphrase) ~hsm_state:(operational_mock ())
-                   ~meth:`PUT ~headers "/config/backup-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`Bad_request, _, _, _) -> true 
   | _ -> false
   end
@@ -656,8 +635,7 @@ let config_version_but_no_salt () =
 let users_get () =
   "GET on /users/ succeeds"
   @? begin
-    let headers = auth_header "admin" "test1" in
-  match request ~hsm_state:(operational_mock ()) ~headers "/users" with
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users" with
   | _, Some (`OK, _, `String data, _) -> 
    let expected ={|[{"user":"admin"},{"user":"operator"}]|} in
    String.equal data expected
@@ -669,8 +647,7 @@ let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "V
 let users_post () =
   "POST on /users/ succeeds"
   @? begin
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
-  match request ~hsm_state:(operational_mock ()) ~headers ~body:(`String operator_json) ~meth:`POST "/users" with
+  match admin_post_request ~body:(`String operator_json) "/users" with
   | _, Some (`Created, _, _, _) -> true
   | _ -> false
   end
@@ -678,8 +655,7 @@ let users_post () =
 let user_operator_add () =
   "PUT on /users/op succeeds"
   @? begin
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
-  match request ~hsm_state:(operational_mock ()) ~body:(`String operator_json) ~meth:`PUT ~headers "/users/op" with
+  match admin_put_request ~body:(`String operator_json) "/users/op" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
   end
@@ -687,8 +663,7 @@ let user_operator_add () =
 let user_operator_delete () =
   "DELETE on /users/operator succeeds"
   @? begin
-    let headers = auth_header "admin" "test1" in
-  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/operator" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
   end
@@ -705,8 +680,7 @@ let user_operator_delete_fails () =
 let user_op_delete_fails () =
   "DELETE on /users/op fails (user does not exist)"
   @? begin
-    let headers = auth_header "admin" "test1" in
-  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/op" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
   | _ -> false
   end
@@ -714,8 +688,7 @@ let user_op_delete_fails () =
 let user_operator_get () =
   "GET on /users/operator succeeds"
   @? begin
-    let headers = auth_header "admin" "test1"in
-  match request ~hsm_state:(operational_mock ()) ~headers "/users/operator" with
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/operator" with
   | _, Some (`OK, _, `String data, _) -> String.equal data {|{"realName":"operator","role":"Operator"}|}
   | _ -> false
   end
@@ -723,8 +696,7 @@ let user_operator_get () =
 let user_operator_get_not_found () =
   "GET on /users/op returns not found"
   @? begin
-    let headers = auth_header "admin" "test1"in
-  match request ~hsm_state:(operational_mock ()) ~headers "/users/op" with
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
   | _ -> false
   end
@@ -732,12 +704,11 @@ let user_operator_get_not_found () =
 let user_passphrase_post () =
   "POST on /users/admin/passphrase succeeds"
   @? begin
-    let headers = Header.add (auth_header "admin" "test1") "content-type" "application/json" in
     let new_passphrase = "my super new passphrase" in
-    match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
+    match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users/admin/passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
      begin
-       match request ~hsm_state ~meth:`GET ~headers "/users/admin" with
+       match request ~hsm_state ~meth:`GET ~headers:admin_headers "/users/admin" with
        | _, Some (`Unauthorized, _, _, _) ->
           begin
             let headers = auth_header "admin" new_passphrase in
@@ -753,7 +724,7 @@ let user_passphrase_post () =
 let user_passphrase_operator_post () =
   "POST on /users/operator/passphrase succeeds"
   @? begin
-    let headers = Header.add (auth_header "operator" "test2") "content-type" "application/json" in
+    let headers = auth_header "operator" "test2" in
     let new_passphrase = "my super new passphrase" in
     match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/operator/passphrase" with
   | _, Some (`No_content, _, _, _) -> true
@@ -763,12 +734,55 @@ let user_passphrase_operator_post () =
 let user_passphrase_administrator_post () =
   "POST on /users/admin/passphrase fails as operator"
   @? begin
-    let headers = Header.add (auth_header "operator" "test2") "content-type" "application/json" in
+    let headers = auth_header "operator" "test2" in
     let new_passphrase = "my super new passphrase" in
     match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
   end
+
+let keys_get () =
+  "GET on /keys succeeds"
+  @? begin match request ~headers:admin_headers ~hsm_state:(operational_mock ()) "/keys" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let key_json = {| { purpose: "Sign", algorithm: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
+
+let keys_post_json () =
+  "POST on /keys succeeds"
+  @? begin
+  match admin_post_request ~body:(`String key_json) "/keys" with
+  | _, Some (`Created, _, _, _) -> true
+  | _ -> false
+  end
+
+let key_pem = {|-----BEGIN PRIVATE KEY-----
+MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBAL6csYDN7EOaO+QN
+mn92flj6m93rK9hz82MPHuxqiBVhqIYeZaAqIoxoly69jEN+/OJWx5JQhsIkWKR8
+GVuLfIXoP5+7Sbbj1+9WU54lybyPj9oplNq+WY5U6lXgFLR8rbRpq8mJw31hZ/X6
+rjQnJDrtBDsNmj0bRA33uc8bPPKLAgMBAAECgYBU6mF5TEOQ6kj8E8NcPWGUKjD9
+8CKcTyuCWd4g3GS7gcId3bTQYXT6sC2JuQ+fkhb+jkJiQFWIb8C9pjt1uPJDvxir
+SwBPm4sRWIKTmXVH4rMJ1K/rhPd4biei5E+tVRuxc4Ml4b3zqnIxfCa7BIDqTmc4
+rJHR6S+HU0Hr4NAIwQJBAPobBXDgsxUcEDMLi2hY6b+qTL+gXKpnEQQVm1Wls6Wq
+uvmoOHUactLSBdfOds8gmKpBrubk5B7ep3ST3ypySEkCQQDDGrnlBEvrZn7UiuwE
+zqH9gFx9MeduKiN6kU8BqQkBTQ/SP72CwcFs+BvaIUyFDISPRsgp19aFoBLWiqPp
+rCwzAkEAjXnbig6RPs+xGi7dnRkuoIzk/UDpKjtDFNxkEf65sGzzd2YBCbz8VuUX
+CQxxiJkXwreFCHdR02R/tSIwiwI6gQJBAMK+gp9eUol9nUt5/2ws9PSck7VDgsYr
+uY42TK5Tk3GBAjHS/c7up6ulW+e3JTII9Kgu9s0NbEulJCiR6lrsSJECQQC5PtvX
+Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
++7ZxYTUvsOssyznW
+-----END PRIVATE KEY-----|}
+
+let keys_post_pem () =
+  "POST on /keys succeeds"
+  @? begin
+  match admin_post_request ~content_type:"application/x-pem-file" ~body:(`String key_pem) "/keys" with
+  | _, Some (`Created, _, _, _) -> true
+  | _ -> false
+  end
+
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -849,6 +863,9 @@ let () =
     "/users/admin/passphrase" >:: user_passphrase_post;
     "/users/operator/passphrase" >:: user_passphrase_operator_post;
     "/users/admin/passphrase" >:: user_passphrase_administrator_post;
+    "/keys" >:: keys_get;
+    "/keys" >:: keys_post_json;
+    "/keys" >:: keys_post_pem;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

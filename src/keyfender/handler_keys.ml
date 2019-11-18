@@ -4,7 +4,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Access = Access.Make(Hsm)
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
-  type private_key_request = { purpose: Hsm.Keys.purpose ; p: string ; q: string ; e:string }[@@deriving yojson]
+  type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
+  type private_key_request = { purpose: Hsm.Keys.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
+
   class handler_keys hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
@@ -22,7 +24,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
       let ok (key : private_key_request) =
-        Hsm.Keys.add_json hsm_state ~id key.purpose ~p:key.p ~q:key.q ~e:key.e >>= function
+        let rsa_key = key.key in
+        Hsm.Keys.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
       in
@@ -31,8 +34,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private set_pem rd =
       let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      let id = match Cohttp.Header.get rd.req_headers "new_id" with
+      | None -> assert false | Some path -> path in
+      Hsm.Keys.add_pem hsm_state ~id Hsm.Keys.Encrypt (*TODO*) content >>= function
+      | Ok () -> Wm.continue true rd
+      | Error e -> Utils.respond_error e rd
 
     method! post_is_create rd =
       Wm.continue true rd
