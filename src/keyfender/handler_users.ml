@@ -36,18 +36,22 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      let add_location_header id headers =
-        Cohttp.Header.replace headers "Location" ("/users/" ^ id)
-      in
       let ok (user : user_req) =
-        Hsm.User.add hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-        | Ok id -> Wm.continue true (Webmachine.Rd.with_resp_headers (add_location_header id) rd)
+        let id = match Cohttp.Header.get rd.req_headers "new_id" with
+        | None -> assert false | Some path -> path in
+        Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
+        | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
       in
       decode_user content |> Utils.err_to_bad_request ok rd
 
-    method !process_post rd =
-      self#set_json rd
+    method! post_is_create rd =
+      Wm.continue true rd
+
+    method! create_path rd =
+      let path = Hsm.User.generate_id () in
+      let rd' = { rd with req_headers = Cohttp.Header.add rd.req_headers "new_id" path } in
+      Wm.continue path rd'
 
     method! allowed_methods rd =
       Wm.continue [`POST; `GET ] rd

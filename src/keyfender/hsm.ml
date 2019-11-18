@@ -152,8 +152,10 @@ module type S = sig
 
     val get : t -> id:string -> (string * role, error) result Lwt.t
 
-    val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (string, error) result Lwt.t
+    val generate_id : unit -> string
+
+    val add : id:string -> t -> role:role -> passphrase:string ->
+      name:string -> (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
@@ -595,15 +597,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         (read_decode store id >|= fun user ->
          user.name, user.role)
 
+    let generate_id () =
+      let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+      id
 
     (* TODO: validate username/id *)
-    let add ?id t ~role ~passphrase ~name =
-      let id = match id with
-        | Some id -> id
-        | None ->
-          let `Hex id = Hex.of_cstruct (Rng.generate 10) in
-          id
-      in
+    let add ~id t ~role ~passphrase ~name =
       let open Lwt_result.Infix in
       let store = in_store t in
       Lwt.bind (read_decode store id)
@@ -616,8 +615,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
                 digest = Cstruct.to_string digest ; role }
             in
             write store id user >|= fun () ->
-            Access.info (fun m -> m "added %s (%s)" name id);
-            id
+            Access.info (fun m -> m "added %s (%s)" name id)
           | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
           | Error _ as e ->
             internal_server_error "Adding user" pp_find_error

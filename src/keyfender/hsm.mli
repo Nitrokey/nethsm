@@ -152,8 +152,10 @@ module type S = sig
 
     val get : t -> id:string -> (string * role, error) result Lwt.t
 
-    val add : ?id:string -> t -> role:role -> passphrase:string ->
-      name:string -> (string, error) result Lwt.t
+    val generate_id : unit -> string
+
+    val add : id:string -> t -> role:role -> passphrase:string ->
+      name:string -> (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
