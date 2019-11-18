@@ -754,8 +754,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | Ok `RSA priv -> add ~id t purpose priv
 
     let generate ~id t purpose ~length =
-      let priv = Nocrypto.Rsa.generate length in
-      add ~id t purpose priv
+      if 1024 <= length && length <= 8192 then 
+        let priv = Nocrypto.Rsa.generate length in
+        add ~id t purpose priv
+      else Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
 
     let remove t ~id =
       let open Lwt_result.Infix in
