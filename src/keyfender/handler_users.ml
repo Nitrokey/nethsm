@@ -49,7 +49,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue true rd
 
     method! create_path rd =
-      let path = Hsm.User.generate_id () in
+      let path = Hsm.generate_id () in
       let rd' = { rd with req_headers = Cohttp.Header.add rd.req_headers "new_id" path } in
       Wm.continue path rd'
 

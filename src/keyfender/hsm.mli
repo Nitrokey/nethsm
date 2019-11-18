@@ -62,6 +62,8 @@ module type S = sig
 
   val random : int -> string
 
+  val generate_id : unit -> string
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -152,8 +154,6 @@ module type S = sig
 
     val get : t -> id:string -> (string * role, error) result Lwt.t
 
-    val generate_id : unit -> string
-
     val add : id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
@@ -168,18 +168,20 @@ module type S = sig
 
     val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
 
+    val purpose_to_yojson : purpose -> Yojson.Safe.t
+
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : ?id:string -> t -> purpose -> p:string -> q:string -> e:string ->
-      (string, error) result Lwt.t
+    val add_json : id:string -> t -> purpose -> p:string -> q:string -> e:string ->
+      (unit, error) result Lwt.t
 
-    val add_pem : ?id:string -> t -> purpose -> string ->
-      (string, error) result Lwt.t
+    val add_pem : id:string -> t -> purpose -> string ->
+      (unit, error) result Lwt.t
 
-    val generate : ?id:string -> t -> purpose -> length:int ->
-      (string, error) result Lwt.t
+    val generate : id:string -> t -> purpose -> length:int ->
+      (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 

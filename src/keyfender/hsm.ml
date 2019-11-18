@@ -62,6 +62,8 @@ module type S = sig
 
   val random : int -> string
 
+  val generate_id : unit -> string
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -152,8 +154,6 @@ module type S = sig
 
     val get : t -> id:string -> (string * role, error) result Lwt.t
 
-    val generate_id : unit -> string
-
     val add : id:string -> t -> role:role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
@@ -168,18 +168,20 @@ module type S = sig
 
     val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
 
+    val purpose_to_yojson : purpose -> Yojson.Safe.t
+
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : ?id:string -> t -> purpose -> p:string -> q:string -> e:string ->
-      (string, error) result Lwt.t
+    val add_json : id:string -> t -> purpose -> p:string -> q:string -> e:string ->
+      (unit, error) result Lwt.t
 
-    val add_pem : ?id:string -> t -> purpose -> string ->
-      (string, error) result Lwt.t
+    val add_pem : id:string -> t -> purpose -> string ->
+      (unit, error) result Lwt.t
 
-    val generate : ?id:string -> t -> purpose -> length:int ->
-      (string, error) result Lwt.t
+    val generate : id:string -> t -> purpose -> length:int ->
+      (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
@@ -506,6 +508,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let random n = Cstruct.to_string @@ Nocrypto.Base64.encode @@ Rng.generate n
 
+  let generate_id () =
+    let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+    id
+
   module User = struct
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
@@ -596,10 +602,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       internal_server_error "Read user" pp_find_error
         (read_decode store id >|= fun user ->
          user.name, user.role)
-
-    let generate_id () =
-      let `Hex id = Hex.of_cstruct (Rng.generate 10) in
-      id
 
     (* TODO: validate username/id *)
     let add ~id t ~role ~passphrase ~name =
@@ -718,14 +720,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       internal_server_error "Write key" Kv_crypto.pp_write_error
         (Kv_crypto.set store kv_key (Yojson.Safe.to_string value))
 
-    let add ?id t purpose priv =
+    let add ~id t purpose priv =
       let open Lwt_result.Infix in
-      let id = match id with
-        | Some x -> x
-        | None ->
-          let `Hex id = Hex.of_cstruct (Rng.generate 10) in
-          id
-      in
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
       internal_server_error "Exist key" Kv_crypto.pp_error
@@ -733,10 +729,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-        encode_and_write t id { purpose ; priv ; cert = None } >|= fun () ->
-        id
+        encode_and_write t id { purpose ; priv ; cert = None }
 
-    let add_json ?id t purpose ~p ~q ~e =
+    let add_json ~id t purpose ~p ~q ~e =
       let open Nocrypto in
       let to_z ctx data =
         match Base64.decode (Cstruct.of_string data) with
@@ -751,16 +746,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         Rsa.priv_of_primes ~e ~p ~q
       with
       | Error e -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ?id t purpose priv
+      | Ok priv -> add ~id t purpose priv
 
-    let add_pem ?id t purpose data =
+    let add_pem ~id t purpose data =
       match X509.Private_key.decode_pem (Cstruct.of_string data) with
       | Error `Msg m -> Lwt.return (Error (Bad_request, m))
-      | Ok `RSA priv -> add ?id t purpose priv
+      | Ok `RSA priv -> add ~id t purpose priv
 
-    let generate ?id t purpose ~length =
+    let generate ~id t purpose ~length =
       let priv = Nocrypto.Rsa.generate length in
-      add ?id t purpose priv
+      add ~id t purpose priv
 
     let remove t ~id =
       let open Lwt_result.Infix in
