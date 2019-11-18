@@ -75,8 +75,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Administrator rd >>= function
+      | true when rd.meth = `GET -> (* no admin - only get allowed for operator *)
+        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+        Wm.continue not_an_operator rd
+      | true -> Wm.continue true rd
+      | false -> Wm.continue false rd (* is an admin - nothing's forbidden *)
   end
 
   type generate_request = { purpose: Hsm.Keys.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson] 
