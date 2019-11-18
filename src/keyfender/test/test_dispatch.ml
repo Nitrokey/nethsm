@@ -783,6 +783,16 @@ let keys_post_pem () =
   | _ -> false
   end
 
+let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048 }|}
+
+let keys_generate () =
+  "POST on /keys/generate succeeds"
+  @? begin
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Created, _, _, _) -> true
+  | _ -> false
+  end
+
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -866,6 +876,7 @@ let () =
     "/keys" >:: keys_get;
     "/keys" >:: keys_post_json;
     "/keys" >:: keys_post_pem;
+    "/keys/generate" >:: keys_generate;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
