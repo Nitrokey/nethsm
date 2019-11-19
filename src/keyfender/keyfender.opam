@@ -46,3 +46,6 @@ depends: [
   "mirage-random-test" #{with-test}
 ]
 synopsis: "Keyfender library"
+pin-depends: [
+  ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#post-create"]
+]

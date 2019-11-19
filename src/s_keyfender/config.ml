@@ -9,7 +9,7 @@ let http_port =
   let doc = Key.Arg.info ~doc:"Listening HTTP port." ["http"] in
   Key.(create "http_port" Arg.(opt int 8080 doc))
 
-let store = direct_kv_rw "store"
+let store = (* direct_kv_rw "store" *) kv_rw_mem ()
 
 let https_port =
   let doc = Key.Arg.info ~doc:"Listening HTTPS port." ["https"] in
