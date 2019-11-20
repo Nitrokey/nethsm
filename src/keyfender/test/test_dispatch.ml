@@ -7,7 +7,7 @@ module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Pclock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
-  let headers = Header.add headers "content-type" content_type in
+  let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
     | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot)
     | Some x -> x
@@ -933,6 +933,39 @@ let operator_keys_key_sign () =
     | _ -> false
   end
 
+let keys_key_cert_get () =
+  "GET on /keys/keyID/cert succeeds"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    let _ = Lwt_main.run (Hsm.Keys.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
+    match request ~headers:operator_headers ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`OK, headers, `String data, _) ->
+      begin match Cohttp.Header.get headers "content-type" with
+        | Some "foo/bar" -> String.equal data "data"
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let keys_key_cert_put () =
+  "PUT on /keys/keyID/cert succeeds"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`Created, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_cert_delete () =
+  "DELETE on /keys/keyID/cert succeeds"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    let _ = Lwt_main.run (Hsm.Keys.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
+    match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`No_content, _, _, _) -> true
+    | _ -> false
+  end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -1025,6 +1058,9 @@ let () =
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
+    "/keys/keyID/cert" >:: keys_key_cert_get;
+    "/keys/keyID/cert" >:: keys_key_cert_put;
+    "/keys/keyID/cert" >:: keys_key_cert_delete;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

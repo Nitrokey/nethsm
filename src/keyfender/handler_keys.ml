@@ -420,18 +420,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_cert hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get_json rd =
-      Hsm.User.list hsm_state >>= function
+    method private get_cert rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.get_cert hsm_state ~id >>= function
       | Error e -> Utils.respond_error e rd
-      | Ok users ->
-        let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
-        let body = Yojson.Safe.to_string (`List items) in
-        Wm.continue (`String body) rd
-
-    method private set_json rd =
-      let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      | Ok None -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+      | Ok (Some (content_type, data)) ->
+        let add_ct headers =
+          Cohttp.Header.replace headers "content-type" content_type
+        in
+        Wm.continue (`String data) (Webmachine.Rd.with_resp_headers add_ct rd)
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -439,22 +437,34 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
-    method !process_post rd =
-      self#set_json rd
+    method! delete_resource rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.remove_cert hsm_state ~id >>= function
+      | Ok () -> Wm.continue true rd
+      | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get_json) ] rd
+      Wm.continue [ ("text/html", self#get_cert) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [
-        ("application/json", self#set_json)
-      ] rd
+      (* Allow all content types provided by the client, which is not intended
+         use of webmachine. We send a response immediately instead of returning
+         control to webmachine. *)
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      match Cohttp.Header.get rd.req_headers "content-type" with
+      | None -> Utils.respond_error (Bad_request, "Missing content-type header.") rd
+      | Some content_type ->
+        Hsm.Keys.set_cert hsm_state ~id ~content_type content >>= function
+        | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
+        | Error e -> Utils.respond_error e rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
@@ -467,8 +477,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Administrator rd >>= function
+      | true when rd.meth = `GET -> (* no admin - only get allowed for operator *)
+        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+        Wm.continue not_an_operator rd
+      | not_an_admin -> Wm.continue not_an_admin rd
   end
 
 end
