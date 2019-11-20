@@ -3,13 +3,12 @@ open Lwt.Infix
 let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-module Make_handlers (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Hsm : Hsm.S) = struct
+module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
 
   module WmClock = struct
     let now () =
-      let ts = Clock.now_d_ps () in
-      let span = Ptime.Span.v ts in
-      match Ptime.Span.to_int_s span with
+      let now_ptime = Hsm.now () in
+      match Ptime.Span.to_int_s @@ Ptime.to_span now_ptime with
       | None -> 0
       | Some seconds -> seconds
   end
@@ -50,14 +49,13 @@ module Make_handlers (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Hsm : 
   ]
 end
 
-module Make (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
+module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
 
-  module Handlers = Make_handlers(R)(Clock)(Hsm)
+  module Handlers = Make_handlers(R)(Hsm)
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
   let dispatch hsm_state request body =
-    let now () = Ptime.v (Clock.now_d_ps ()) in
-    let start = now () in
+    let start = Hsm.now () in
     Access_log.info (fun m -> m "request %s %s"
                         (Cohttp.Code.string_of_method (Cohttp.Request.meth request))
                         (Cohttp.Request.resource request));
@@ -69,7 +67,7 @@ module Make (R : Mirage_random.S) (Clock : Mirage_clock.PCLOCK) (Http: Cohttp_lw
       | Some result -> result
     end
     >>= fun (status, headers, body, path) ->
-    let stop = now () in
+    let stop = Hsm.now () in
     let diff = Ptime.diff stop start in
     Access_log.info (fun m -> m "response %d response time %a"
                         (Cohttp.Code.code_of_status status)

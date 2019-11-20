@@ -1,5 +1,7 @@
 module type S = sig
 
+  val now : unit -> Ptime.t
+
   type status_code =
     | Internal_server_error
     | Bad_request
@@ -246,6 +248,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     | Ok a -> Ok a
     | Error e -> fatal prefix ~pp_error e
 
+  let time_offset = ref Ptime.Span.zero
+
+  let now () =
+    let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+    match Ptime.add_span hw_clock !time_offset with
+    | None -> Ptime.epoch
+    | Some ts -> ts
+
+
   type status_code =
     | Internal_server_error
     | Bad_request
@@ -398,6 +409,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let boot_config_store t =
     let open Lwt_result.Infix in
+    lwt_error_fatal "get time offset" ~pp_error:Kv_config.pp_error
+      (Kv_config.get_opt t.kv Time_offset >|= function
+        | None -> ()
+        | Some span -> time_offset := span) >>= fun () ->
     lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
       (Kv_config.get_opt t.kv Unlock_salt) >>= function
         | None -> Lwt.return (Ok t)
@@ -1153,24 +1168,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           (Kv_config.set t.kv Backup_key backup_key)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
-    let time t =
-      let open Lwt.Infix in
-      Kv_config.get_opt t.kv Time_offset >|= fun offset ->
-      let span = match offset with
-        | Ok None -> Ptime.Span.zero
-        | Ok Some span -> span
-        | Error e ->
-          Log.warn (fun m -> m "error %a getting time offset" Kv_config.pp_error e);
-          Ptime.Span.zero
-      in
-      let now = Ptime.v (Pclock.now_d_ps ()) in
-      match Ptime.add_span now span with
-      | None -> Ptime.epoch
-      | Some ts -> ts
+    let time _t = Lwt.return (now ())
 
     let set_time t timestamp =
-      let now = Ptime.v (Pclock.now_d_ps ()) in
-      let span = Ptime.diff timestamp now in
+      let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+      let span = Ptime.diff timestamp hw_clock in
+      time_offset := span;
       internal_server_error "Write time offset" KV.pp_write_error
         (Kv_config.set t.kv Time_offset span)
   end
@@ -1373,6 +1376,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let restore t uri stream =
       let open Lwt.Infix in
       let char_stream = Lwt_stream.(concat (map of_string stream)) in
+      (* TODO use systemTime query parameter to set time *)
       match Uri.get_query_param uri "backupPassphrase" with
       | None -> Lwt.return (Error (Bad_request, "Request is missing backup passphrase."))
       | Some backup_passphrase ->

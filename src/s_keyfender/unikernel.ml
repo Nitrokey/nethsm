@@ -21,7 +21,7 @@ struct
   module Http = Cohttp_mirage.Server_with_conduit
 
   module Hsm = Keyfender.Hsm.Make(Rng)(Store)(Pclock)
-  module Webserver = Keyfender.Server.Make(Rng)(Pclock)(Http)(Hsm)
+  module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
   let start _random _pclock _mclock _assets store _internal_stack ext_net ext_eth ext_arp _nocrypto =
     Hsm.boot store >>= fun hsm_state ->

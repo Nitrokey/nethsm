@@ -9,14 +9,14 @@ module Http = Cohttp_mirage.Server_with_conduit
 
 module Store = Mirage_kv_mem.Make(Pclock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Pclock)
-module Webserver = Keyfender.Server.Make(Mirage_random_test)(Pclock)(Http)(Hsm)
+module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
 let () =
   Printexc.record_backtrace true;
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug);
-  Lwt_main.run 
+  Lwt_main.run
   begin
     Nocrypto_entropy_lwt.initialize () >>= fun () ->
     Store.connect () >>= fun store ->

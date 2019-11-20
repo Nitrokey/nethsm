@@ -1,5 +1,7 @@
 module type S = sig
 
+  val now : unit -> Ptime.t
+
   type status_code =
     | Internal_server_error
     | Bad_request

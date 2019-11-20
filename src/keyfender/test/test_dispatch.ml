@@ -4,7 +4,7 @@ open Lwt.Infix
 
 module Kv_mem = Mirage_kv_mem.Make(Pclock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Pclock)
-module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Pclock)(Hsm)
+module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
   let headers = Header.replace headers "content-type" content_type in
