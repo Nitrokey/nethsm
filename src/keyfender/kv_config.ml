@@ -13,7 +13,7 @@ module Make (KV : Mirage_kv.RW) = struct
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
     | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
-    | Backup_salt : Cstruct.t k (* TODO needs to be an unencrypted part of the backup for successful restore *)
+    | Backup_salt : Cstruct.t k
     | Backup_key : Cstruct.t k
     | Log_config : (Ipaddr.V4.t * int * Logs.level) k
     | Time_offset : Ptime.span k

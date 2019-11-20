@@ -1264,8 +1264,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let commit_update t =
       match t.has_changes with
       | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
-      | Some _changes -> Ok ()
-      (* TODO commit update, do we cover all error variants? *)
+      | Some _changes -> Ok () (* TODO call hardware *)
 
     let cancel_update t =
       match t.has_changes with

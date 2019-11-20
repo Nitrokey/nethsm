@@ -601,22 +601,20 @@ let config_time_set_fail () =
     | _ -> false
   end
 
-(* TODO raml says POST but PUT is more consistent *)
 let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
   let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
-  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
+  match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`No_content, _, _, _) -> true 
   | _ -> false
   end
 
-(* TODO raml says POST but PUT is more consistent *)
 let set_backup_passphrase_empty () =
   "set empty backup passphrase fails"
   @? begin
   let passphrase = {|{ "passphrase" : "" }|} in
-  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
+  match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`Bad_request, _, _, _) -> true 
   | _ -> false
   end
