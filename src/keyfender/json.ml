@@ -66,7 +66,6 @@ let decode_time s =
   (match off with None | Some 0 -> Ok () | _ -> Error "Error while parsing timestamp. Offset must be 0.") >>| fun () ->
   time
 
- (* TODO json object or string? *)
 type passphrase_req = { passphrase : string } [@@deriving yojson]
 
 let decode_passphrase json =

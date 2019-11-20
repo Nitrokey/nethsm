@@ -1,6 +1,5 @@
 open Lwt.Infix
 
-(* TODO encode as string or object? *)
 type req_body = { passphrase : string }[@@deriving yojson]
 
 let decode_json content =

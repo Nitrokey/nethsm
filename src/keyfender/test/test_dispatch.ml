@@ -68,7 +68,7 @@ let health_ready_error_precondition_failed () =
 
 let health_state_ok () =
   let hsm_state = operational_mock () in
-  "a request for /health/state will produce an HTTP 200"
+  "a request for /health/state will produce an HTTP 200 and returns the state as json"
     @? begin match request ~hsm_state "/health/state" with
        | _, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.state_to_yojson @@ Hsm.state hsm_state 
        | _ -> false
@@ -177,8 +177,10 @@ let system_update_ok () =
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
-      | hsm_state, Some (`OK, _, _, _) -> Hsm.state hsm_state = `Operational
-      | _ -> false
+     | hsm_state, Some (`OK, _, `String release_notes, _) ->
+       String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes &&
+       Hsm.state hsm_state = `Operational
+     | _ -> false
    end
 
 let system_update_invalid_data () =
@@ -205,7 +207,7 @@ let system_update_commit_ok () =
   let body = `String "\000\003sig\000\018A new system image\000\0032.0binary data is here" in
   "a request for /system/commit-update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
-      | hsm_state, Some (`OK, _, _, _) -> 
+      | hsm_state, Some (`OK, _, _, _) ->
         begin match admin_post_request ~hsm_state "/system/commit-update" with
         | _ , Some (`No_content, _, _, _) -> true
         | _ -> false
@@ -501,7 +503,7 @@ let config_network_ok () =
     let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/network" with
   | _, Some (`OK, _, `String body, _) ->
-    body = {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
+    String.equal body {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
   | _ -> false
   end
 
@@ -512,7 +514,7 @@ let config_network_set_ok () =
     match admin_put_request ~body:(`String new_network) "/config/network" with
     | hsm_state, Some (`No_content, _, _, _) ->
       begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network" with
-        | _, Some (`OK, _, `String body, _) -> body = new_network
+        | _, Some (`OK, _, `String body, _) -> String.equal body new_network
         | _ -> false
       end
   | _ -> false
@@ -533,7 +535,7 @@ let config_logging_ok () =
     let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/logging" with
   | _, Some (`OK, _, `String body, _) ->
-    body = {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
+    String.equal body {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
   | _ -> false
   end
 
@@ -544,7 +546,7 @@ let config_logging_set_ok () =
     match admin_put_request ~body:(`String new_logging) "/config/logging" with
     | hsm_state, Some (`No_content, _, _, _) ->
       begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/logging" with
-        | _, Some (`OK, _, `String body, _) -> body = new_logging
+        | _, Some (`OK, _, `String body, _) -> String.equal body new_logging
         | _ -> false
       end
   | _ -> false
@@ -562,32 +564,38 @@ let config_logging_set_fail () =
 let config_time_ok () =
   "GET on /config/time succeeds"
   @? begin
-  match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers:admin_headers "/config/time" with
-  | _, Some (`OK, _, `String body, _) ->
-    let without_ticks = String.sub body 1 (String.length body - 2) in
-    begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/config/time" with
+    | _, Some (`OK, _, `String body, _) ->
+      begin match Yojson.Safe.from_string body with
+        | `Assoc [ "time" , `String time ] ->
+          begin match Ptime.of_rfc3339 time with Ok _ -> true | _ -> false end
+        | _ -> false
+      end
   | _ -> false
   end
 
 let config_time_set_ok () =
   "PUT on /config/time succeeds"
   @? begin
-    let new_time = {|"1970-01-01T00:00:00-00:00"|} in
+    let new_time = {|{time: "1970-01-01T00:00:00-00:00"}|} in
     match admin_put_request ~body:(`String new_time) "/config/time" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/time" with
+      begin match request ~hsm_state ~headers:admin_headers "/config/time" with
         | _, Some (`OK, _, `String body, _) ->
-          let without_ticks = String.sub body 1 (String.length body - 2) in
-          begin match Ptime.of_rfc3339 without_ticks with Ok _ -> true | _ -> false end
+          begin match Yojson.Safe.from_string body with
+            | `Assoc [ "time" , `String time ] ->
+              begin match Ptime.of_rfc3339 time with Ok _ -> true | _ -> false end
+            | _ -> false
+          end
         | _ -> false
       end
   | _ -> false
   end
 
 let config_time_set_fail () =
-  "PUT with invalid logLevel on /config/time fails"
+  "PUT with invalid timestamp on /config/time fails"
   @? begin
-    let new_time = {|"1234"|} in
+    let new_time = {|{time: "1234"}|} in
     match admin_put_request ~body:(`String new_time) "/config/time" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
@@ -715,7 +723,7 @@ let user_passphrase_post () =
        | _, Some (`Unauthorized, _, _, _) ->
           begin
             let headers = auth_header "admin" new_passphrase in
-            match request ~hsm_state ~meth:`GET ~headers "/users/admin" with
+            match request ~hsm_state ~headers "/users/admin" with
             | _, Some (`OK, _, _, _) -> true
             | _ -> false 
           end
@@ -747,7 +755,7 @@ let user_passphrase_administrator_post () =
 let keys_get () =
   "GET on /keys succeeds"
   @? begin match request ~headers:admin_headers ~hsm_state:(operational_mock ()) "/keys" with
-  | _, Some (`OK, _, _, _) -> true
+  | _, Some (`OK, _, `String body, _) -> String.equal body "[]"
   | _ -> false
   end
 

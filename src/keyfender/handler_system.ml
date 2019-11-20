@@ -40,7 +40,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           let add_content_type h = Cohttp.Header.add h "Content-Type" "application/json" in
           update hsm_state content >>= function
           | Ok changes ->
-            let json = Yojson.Safe.to_string (`String changes) in
+            let json = Yojson.Safe.to_string (`Assoc [ "releaseNotes", `String changes ]) in
             let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
             Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
           | Error e -> Utils.respond_error e rd
@@ -56,13 +56,19 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Ok () -> Wm.continue true rd
         end
       | "backup" ->
-        let add_content_type h = Cohttp.Header.add h "Content-Type" "application/octet-stream" in
-        let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
         let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
         begin
           backup hsm_state push >>= function
           | Error e -> Utils.respond_error e rd
-          | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd' (* TODO or Wm.continue? *)
+          | Ok () ->
+            let add_content_type h =
+              Cohttp.Header.replace h "Content-Type" "application/octet-stream"
+            in
+            let rd' = {
+              rd with resp_headers = add_content_type rd.resp_headers ;
+                      resp_body = `Stream stream
+            } in
+            Wm.continue true rd'
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 

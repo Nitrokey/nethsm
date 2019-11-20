@@ -20,6 +20,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     in
     Json.decode parse content
 
+  type time = { time : string } [@@deriving yojson]
+
   module Access = Access.Make(Hsm)
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
@@ -109,8 +111,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
       | "time" ->
         Hsm.Config.time hsm_state >>= fun timestamp ->
-        let time_str = Ptime.to_rfc3339 timestamp in
-        Wm.continue (`String (Yojson.Safe.to_string (`String time_str))) rd
+        let time = Ptime.to_rfc3339 timestamp in
+        let json = time_to_yojson { time } in
+        Wm.continue (`String (Yojson.Safe.to_string json)) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
     (* TODO maybe overwrite resource_exists instead of the above Not_found *)
@@ -160,10 +163,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | "time" ->
         let parse json =
           let open Rresult.R.Infix in
-          (match json with
-           | `String ts -> Ok ts
-           | _ -> Error "Invalid JSON timestamp.") >>= fun ts ->
-          Json.decode_time ts
+          time_of_yojson json >>= fun time ->
+          Json.decode_time time.time
         in
         begin match Json.decode parse content with
           | Error e -> Utils.respond_error (Bad_request, e) rd

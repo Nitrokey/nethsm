@@ -285,8 +285,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         | `Busy -> "busy")
 
   let state_to_yojson state =
-    `Assoc [ ("state", match state_to_yojson state with
-        `List [l] -> l | _ -> assert false) ]
+    `Assoc [ "state", match state_to_yojson state with `List [l] -> l | _ -> assert false ]
 
   type version = int * int
 

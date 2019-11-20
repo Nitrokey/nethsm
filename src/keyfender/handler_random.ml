@@ -12,13 +12,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun length ->
       match int_of_string length with
       | exception Failure _ -> Wm.respond (Cohttp.Code.code_of_status `Bad_request) rd
-      | l -> 
+      | l ->
         let data = Hsm.random l in
         let json = Yojson.Safe.to_string (`String data) in
         Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd
-       
-    method private empty rd =
-      Wm.continue `Empty rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
@@ -31,8 +28,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      (* TODO role should be operator but we don't have it yet *)
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
+      Access.forbidden hsm_state `Operator rd >>= fun auth ->
       Wm.continue auth rd
 
     method !process_post rd =
@@ -40,9 +36,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method !allowed_methods rd =
       Wm.continue [ `GET ; `POST ] rd
- 
+
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#empty) ] rd
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [ ("application/json", self#random) ] rd
