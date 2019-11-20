@@ -113,7 +113,9 @@ let auth_header user pass =
   Header.init_with "authorization" ("Basic " ^ base64)
   
 let admin_headers = auth_header "admin" "test1"
- 
+
+let operator_headers = auth_header "operator" "test2"
+
 let admin_put_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
   request ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
@@ -823,6 +825,21 @@ let keys_key_delete () =
   | _ -> false
   end
 
+let admin_keys_key_public_pem () =
+  "GET on /keys/keyID/public.pem succeeds"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID/public.pem" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let operator_keys_key_public_pem () =
+  "GET on /keys/keyID/public.pem succeeds"
+  @? begin
+  match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID/public.pem" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -910,6 +927,8 @@ let () =
     "/keys/keyID" >:: keys_key_get;
     "/keys/keyID" >:: keys_key_put;
     "/keys/keyID" >:: keys_key_delete;
+    "/keys/keyID/public.pem" >:: admin_keys_key_public_pem;
+    "/keys/keyID/public.pem" >:: operator_keys_key_public_pem;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
