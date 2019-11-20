@@ -213,6 +213,8 @@ module type S = sig
 
     val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
 
+    val sign_mode_to_yojson : sign_mode -> Yojson.Safe.t
+
     val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
   end
 end
@@ -906,29 +908,31 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     module Pss_sha384 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA384)
     module Pss_sha512 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA512)
 
-    (* TODO should input and out be base64? *)
     let sign t ~id sign_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
       Lwt.return @@
-      if key_data.purpose = Sign then
-        let cs = Cstruct.of_string data in
-        try
-          let signature =
-            match sign_mode with
-            | PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key cs
-            | PSS_MD5 -> Pss_md5.sign ~key cs
-            | PSS_SHA1 -> Pss_sha1.sign ~key cs
-            | PSS_SHA224 -> Pss_sha224.sign ~key cs
-            | PSS_SHA256 -> Pss_sha256.sign ~key cs
-            | PSS_SHA384 -> Pss_sha384.sign ~key cs
-            | PSS_SHA512 -> Pss_sha512.sign ~key cs
-          in
-          Ok (Cstruct.to_string signature)
-        with Nocrypto.Rsa.Insufficient_key -> Error (Bad_request, "Signing failure.")
-      else
-        Error (Bad_request, "Key purpose is not sign.")
+      let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
+      match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
+      | None -> Error (Bad_request, "Couldn't decode data from base64.")
+      | Some to_sign ->
+        if key_data.purpose = Sign then
+          try
+            let signature =
+              match sign_mode with
+              | PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key to_sign
+              | PSS_MD5 -> Pss_md5.sign ~key to_sign
+              | PSS_SHA1 -> Pss_sha1.sign ~key to_sign
+              | PSS_SHA224 -> Pss_sha224.sign ~key to_sign
+              | PSS_SHA256 -> Pss_sha256.sign ~key to_sign
+              | PSS_SHA384 -> Pss_sha384.sign ~key to_sign
+              | PSS_SHA512 -> Pss_sha512.sign ~key to_sign
+            in
+            Ok (Nocrypto.Base64.encode signature |> Cstruct.to_string)
+          with Nocrypto.Rsa.Insufficient_key -> Error (Bad_request, "Signing failure.")
+        else
+          Error (Bad_request, "Key purpose is not sign.")
 
   end
 

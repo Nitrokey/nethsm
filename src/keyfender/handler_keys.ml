@@ -8,6 +8,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   type private_key_request = { purpose: Hsm.Keys.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
 
   type decrypt = { mode : Hsm.Keys.decrypt_mode ; encrypted : string }[@@deriving yojson]
+  type sign = { mode : Hsm.Keys.sign_mode ; message : string }[@@deriving yojson]
 
   class handler_keys hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
@@ -365,18 +366,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_sign hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get_json rd =
-      Hsm.User.list hsm_state >>= function
-      | Error e -> Utils.respond_error e rd
-      | Ok users ->
-        let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
-        let body = Yojson.Safe.to_string (`List items) in
-        Wm.continue (`String body) rd
-
-    method private set_json rd =
+    method private sign rd =
       let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      let ok (sign : sign) =
+        Hsm.Keys.sign hsm_state ~id sign.mode sign.message >>= function
+        | Ok signature ->
+          let json = Yojson.Safe.to_string (`Assoc [ "signature", `String signature ]) in
+          Wm.respond 200 ~body:(`String json) rd
+        | Error e -> Utils.respond_error e rd
+      in
+      Json.decode sign_of_yojson content |> Utils.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -385,20 +386,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
-      self#set_json rd
+      self#sign rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get_json) ] rd
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [
-        ("application/json", self#set_json)
+        ("application/json", self#sign)
       ] rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -412,8 +413,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+      Wm.continue not_an_operator rd
   end
 
   class handler_cert hsm_state = object(self)

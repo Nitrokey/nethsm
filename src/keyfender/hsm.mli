@@ -213,6 +213,8 @@ module type S = sig
 
     val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
 
+    val sign_mode_to_yojson : sign_mode -> Yojson.Safe.t
+
     val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
   end
 end

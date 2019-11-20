@@ -814,9 +814,9 @@ q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 -----END RSA PRIVATE KEY-----
 |}
 
-let hsm_with_key () =
+let hsm_with_key ?(mode = Hsm.Keys.Encrypt) () =
   let state = operational_mock () in
-  Lwt_main.run (Hsm.Keys.add_pem state Hsm.Keys.Encrypt ~id:"keyID" test_key_pem >|= function
+  Lwt_main.run (Hsm.Keys.add_pem state mode ~id:"keyID" test_key_pem >|= function
   | Ok () -> state
   | Error _ -> assert false)
 
@@ -899,6 +899,34 @@ let operator_keys_key_decrypt () =
             | Some decoded ->
               let decoded_str = Cstruct.to_string decoded in
               String.equal message decoded_str
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let sign_request =
+  Printf.sprintf {|{ mode: "PKCS1", message: "%s"}|}
+    (Cstruct.of_string message |> Nocrypto.Base64.encode |> Cstruct.to_string)
+
+let operator_keys_key_sign () =
+  "POST on /keys/keyID/sign succeeds"
+  @? begin
+    let hsm_state = hsm_with_key ~mode:Hsm.Keys.Sign () in
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`OK, _, `String data, _) ->
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "signature", `String signature ] ->
+          begin match Nocrypto.Base64.decode @@ Cstruct.of_string signature with
+            | None -> false
+            | Some decoded ->
+              match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
+              | Error _ -> false
+              | Ok `RSA private_key ->
+                let key = Nocrypto.Rsa.pub_of_priv private_key in
+                match Nocrypto.Rsa.PKCS1.sig_decode ~key decoded with
+                | Some msg -> String.equal (Cstruct.to_string msg) message
+                | None -> false
           end
         | _ -> false
       end
@@ -996,6 +1024,7 @@ let () =
     "/keys/keyID/csr.pem" >:: admin_keys_key_csr_pem;
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
+    "/keys/keyID/sign" >:: operator_keys_key_sign;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
