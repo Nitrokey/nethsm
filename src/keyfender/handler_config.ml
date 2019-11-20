@@ -2,12 +2,6 @@ open Lwt.Infix
  
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
- let decode_subject json =
-    let open Rresult.R.Infix in
-    Json.decode Json.subject_req_of_yojson json >>= fun subject ->
-    Json.nonempty ~name:"commonName" subject.Json.commonName >>| fun () ->
-    subject
- 
   let decode_network json =
     Json.decode Hsm.Config.network_of_yojson json
 
@@ -54,7 +48,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         end
        | Some "csr.pem" -> 
         (* TODO CSR is POST according to raml, but only PUT works with webmachine for some reason *)
-        begin match decode_subject content with
+        begin match Json.decode_subject content with
           | Error e -> Utils.respond_error (Bad_request, e) rd 
           | Ok subject -> 
             Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->

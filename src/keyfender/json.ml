@@ -1,5 +1,17 @@
 (* request data *)
 
+let nonempty ~name s =
+  if String.length s == 0
+  then Error (Printf.sprintf "JSON field %s is empty." name)
+  else Ok ()
+
+let decode parse data =
+  let open Rresult.R.Infix in
+  (try Ok (Yojson.Safe.from_string data)
+   with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json ->
+  Rresult.R.reword_error (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m)
+    @@ parse json
+
 type subject_req = {
     commonName : string ;
     countryName : string ;
@@ -9,6 +21,12 @@ type subject_req = {
     organizationalUnitName : string ;
     emailAddress : string ;
 } [@@deriving yojson]
+
+let decode_subject json =
+  let open Rresult.R.Infix in
+  decode subject_req_of_yojson json >>= fun subject ->
+  nonempty ~name:"commonName" subject.commonName >>| fun () ->
+  subject
 
 let to_distinguished_name subject =
   let open X509.Distinguished_name in
@@ -36,18 +54,6 @@ let to_distinguished_name subject =
   then add (Mail subject.emailAddress) res
   else res in
   [ res ]
-
-let nonempty ~name s =
-  if String.length s == 0
-  then Error (Printf.sprintf "JSON field %s is empty." name)
-  else Ok ()
-
-let decode parse data =
-  let open Rresult.R.Infix in
-  (try Ok (Yojson.Safe.from_string data)
-   with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json ->
-  Rresult.R.reword_error (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m)
-    @@ parse json
 
 let decode_time s =
   let open Rresult.R.Infix in

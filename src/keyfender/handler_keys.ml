@@ -265,34 +265,41 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_csr hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get_json rd =
-      Hsm.User.list hsm_state >>= function
-      | Error e -> Utils.respond_error e rd
-      | Ok users ->
-        let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
-        let body = Yojson.Safe.to_string (`List items) in
-        Wm.continue (`String body) rd
-
-    method private set_json rd =
+    method private csr_pem rd =
       let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> assert false
+      | Some key_id ->
+        match Json.decode_subject content with
+        | Error e -> Utils.respond_error (Bad_request, e) rd
+        | Ok subject ->
+          Hsm.Keys.csr_pem hsm_state ~id:key_id subject >>= function
+          | Error e -> Utils.respond_error e rd
+          | Ok csr_pem -> Wm.respond 200 ~body:(`String csr_pem) rd
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
-      self#set_json rd
+      self#csr_pem rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get_json) ] rd
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [
-        ("application/json", self#set_json)
+        ("application/x-pem-file", self#csr_pem)
       ] rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -307,7 +314,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! forbidden rd =
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+      Wm.continue (not_an_admin && not_an_operator) rd
   end
 
   class handler_decrypt hsm_state = object(self)
@@ -325,6 +333,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun _content ->
       assert false
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#set_json rd
@@ -374,6 +389,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun _content ->
       assert false
 
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
+
     method !process_post rd =
       self#set_json rd
 
@@ -421,6 +443,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun _content ->
       assert false
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Wm.continue false rd
+      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#set_json rd

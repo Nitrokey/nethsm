@@ -477,10 +477,7 @@ let put_config_tls_cert_pem_fail () =
     | _ -> false
   end
 
-let post_config_tls_csr_pem () =
-  "post tls csr pem file succeeds"
-  @? begin 
-  let subject = {|{ 
+let subject = {|{
     "countryName": "DE",
     "stateOrProvinceName": "",
     "localityName": "Berlin",
@@ -488,7 +485,11 @@ let post_config_tls_csr_pem () =
     "organizationalUnitName": "",
     "commonName": "nitrohsm.local",
     "emailAddress": "info@nitrokey.com"
-  }|} in
+  }|}
+
+let post_config_tls_csr_pem () =
+  "post tls csr pem file succeeds"
+  @? begin 
   match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
   | _, Some (`OK, _, _, _) -> true 
   | _ -> false
@@ -841,6 +842,22 @@ let operator_keys_key_public_pem () =
   | _ -> false
   end
 
+let admin_keys_key_csr_pem () =
+  "POST on /keys/keyID/csr.pem succeeds"
+  @? begin
+  match admin_post_request ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let operator_keys_key_csr_pem () =
+  "POST on /keys/keyID/csr.pem succeeds"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -929,6 +946,8 @@ let () =
     "/keys/keyID" >:: keys_key_delete;
     "/keys/keyID/public.pem" >:: admin_keys_key_public_pem;
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem;
+    "/keys/keyID/csr.pem" >:: admin_keys_key_csr_pem;
+    "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
