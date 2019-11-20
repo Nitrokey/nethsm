@@ -796,9 +796,27 @@ let keys_generate () =
   | _ -> false
   end
 
+let test_key_pem = {|
+-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQCwMWUcsAEksFrhssoZK09w9iTMe77qJrks542+InrqD8qj31gw
+Wagnrd/x9RAvqxkmLqkiuTYOQq7ly5Vrswvwub0TleCtvhnDWg1mZQ5obSBZ8BbS
+o6K8oI/pjLaVgshx8e3Dx73ekDtlQNEmYiXB4Zlhv5VZnGC+nhcw0KHj2wIDAQAB
+AoGAKNvrlNGEElwLV1e84kVW8N1D/1+bEHXWb4FrL3KTioALACGlM+E2y6zYyCWK
+kWNeO6qKcpD85iW0pXmmtwkYdWHFsG6fthZCsPUdVchoYDQQmCjZLNk+l4jnV66p
+KowVbScx/oWDgIFw/dajFR+bDybuTjCr8QJ10LuelzRwueECQQDqBswdI669i0sW
+eBMRnGD7uFYR8/pyExIkQJ+WgyYEKG+Q8rJbAVDJdhbqATtSXJb9g43aVh5ecnd9
+9tR4IBgJAkEAwLx5ddawRbTJdPdG5jDDjY5716U5g1U8mgrBn6yX3cMgLsyMf2ZP
+gQKQaKbSdRWgxIc0bkGpkMHbKbSTrcYtwwJBAJs5SPdm7IciNfrAR/2dWKJ9oPEl
+f49cYOMUzgVaFcQaQe3FXFGKbNhDcG1jxcIaUbfzIwqXpmsEx4cQSdsnhmkCQQCw
+wWjGuBBKrSUAXvKnktsUjDJpLz7Sgi4ku26dCETyfMub/71t7R9Gmlpjj3J9LEuX
+UMO1xgRDHHXpBpFVEeXPAkA1JUjkAwT934dsaE5UJKw6UbSuO/aJtC3zzwlJxJ/+
+q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
+-----END RSA PRIVATE KEY-----
+|}
+
 let hsm_with_key () =
   let state = operational_mock () in
-  Lwt_main.run (Hsm.Keys.generate state Hsm.Keys.Encrypt ~id:"keyID" ~length:1024 >|= function
+  Lwt_main.run (Hsm.Keys.add_pem state Hsm.Keys.Encrypt ~id:"keyID" test_key_pem >|= function
   | Ok () -> state
   | Error _ -> assert false)
 
@@ -856,6 +874,35 @@ let operator_keys_key_csr_pem () =
   match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
   | _, Some (`OK, _, _, _) -> true
   | _ -> false
+  end
+
+let message = "Hi Alice! Please bring malacpörkölt for dinner!"
+
+let encrypted_message = {|
+WiugdWUSZAqia2lIJbPm1N3KHcnbZAyLklnNqKnlzDjvTR9UNgmlG2FC4jdnfvn9w9TUt5H9z7Z5
+9jnWww+v9AQebiUpnps0RqwN87XDWCHhE9AdqWFnNjCA4NsoKXUFB4RhrRrBInqVKD0SFYSXVu4g
+hufwzgzFoWeqJnQN6uE=
+|}
+
+let encrypted =
+  Printf.sprintf {|{ mode: "PKCS1", encrypted: "%s"}|} encrypted_message
+
+let operator_keys_key_decrypt () =
+  "POST on /keys/keyID/decrypt succeeds"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys/keyID/decrypt" with
+    | _, Some (`OK, _, `String data, _) ->
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "decrypted", `String decrypted ] ->
+          begin match Nocrypto.Base64.decode @@ Cstruct.of_string decrypted with
+            | None -> false
+            | Some decoded ->
+              let decoded_str = Cstruct.to_string decoded in
+              String.equal message decoded_str
+          end
+        | _ -> false
+      end
+    | _ -> false
   end
 
 (* translate from ounit into boolean *)
@@ -948,6 +995,7 @@ let () =
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem;
     "/keys/keyID/csr.pem" >:: admin_keys_key_csr_pem;
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
+    "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

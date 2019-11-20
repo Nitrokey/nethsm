@@ -205,6 +205,8 @@ module type S = sig
 
     val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
 
+    val decrypt_mode_to_yojson : decrypt_mode -> Yojson.Safe.t
+
     val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
 
     type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
@@ -854,32 +856,34 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     module Oaep_sha384 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA384)
     module Oaep_sha512 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA512)
 
-    (* TODO should input and out be base64? *)
     let decrypt t ~id decrypt_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
       Lwt.return @@
-      if key_data.purpose = Encrypt then
-        let dec_cs_opt =
-          let enc_cs = Cstruct.of_string data in
-          match decrypt_mode with
-          | Raw ->
-            (try Some (Nocrypto.Rsa.decrypt ~key enc_cs)
-             with Nocrypto.Rsa.Insufficient_key -> None)
-          | PKCS1 -> Nocrypto.Rsa.PKCS1.decrypt ~key enc_cs
-          | OAEP_MD5 -> Oaep_md5.decrypt ~key enc_cs
-          | OAEP_SHA1 -> Oaep_sha1.decrypt ~key enc_cs
-          | OAEP_SHA224 -> Oaep_sha224.decrypt ~key enc_cs
-          | OAEP_SHA256 -> Oaep_sha256.decrypt ~key enc_cs
-          | OAEP_SHA384 -> Oaep_sha384.decrypt ~key enc_cs
-          | OAEP_SHA512 -> Oaep_sha512.decrypt ~key enc_cs
-        in
-        match dec_cs_opt with
-        | None -> Error (Bad_request, "Decryption failure.")
-        | Some cs -> Ok (Cstruct.to_string cs)
-      else
-        Error (Bad_request, "Key purpose is not encrypt.")
+      let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
+      match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
+      | None -> Error (Bad_request, "Couldn't decode data from base64.")
+      | Some encrypted_data ->
+        if key_data.purpose = Encrypt then
+          let dec_cs_opt =
+            match decrypt_mode with
+            | Raw ->
+              (try Some (Nocrypto.Rsa.decrypt ~key encrypted_data)
+               with Nocrypto.Rsa.Insufficient_key -> None)
+            | PKCS1 -> Nocrypto.Rsa.PKCS1.decrypt ~key encrypted_data
+            | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_data
+            | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_data
+            | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_data
+            | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_data
+            | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_data
+            | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
+          in
+          match dec_cs_opt with
+          | None -> Error (Bad_request, "Decryption failure.")
+          | Some cs -> Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
+        else
+          Error (Bad_request, "Key purpose is not encrypt.")
 
     type sign_mode =
       | PKCS1

@@ -205,6 +205,8 @@ module type S = sig
 
     val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
 
+    val decrypt_mode_to_yojson : decrypt_mode -> Yojson.Safe.t
+
     val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
 
     type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512

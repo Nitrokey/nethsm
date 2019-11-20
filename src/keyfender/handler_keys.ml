@@ -7,6 +7,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
   type private_key_request = { purpose: Hsm.Keys.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
 
+  type decrypt = { mode : Hsm.Keys.decrypt_mode ; encrypted : string }[@@deriving yojson]
+
   class handler_keys hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
@@ -321,18 +323,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_decrypt hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
-    method private get_json rd =
-      Hsm.User.list hsm_state >>= function
-      | Error e -> Utils.respond_error e rd
-      | Ok users ->
-        let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
-        let body = Yojson.Safe.to_string (`List items) in
-        Wm.continue (`String body) rd
-
-    method private set_json rd =
+    method private decrypt rd =
       let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun _content ->
-      assert false
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> assert false
+      | Some key_id ->
+        let ok (dec : decrypt) =
+          Hsm.Keys.decrypt hsm_state ~id:key_id dec.mode dec.encrypted >>= function
+          | Ok decrypted ->
+            let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
+            Wm.respond 200 ~body:(`String json) rd
+          | Error e -> Utils.respond_error e rd
+        in
+        Json.decode decrypt_of_yojson content |> Utils.err_to_bad_request ok rd
 
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info "id" rd with
@@ -342,20 +346,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
-      self#set_json rd
+      self#decrypt rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
+      Wm.continue [`POST ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("application/json", self#get_json) ] rd
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [
-        ("application/json", self#set_json)
+        ("application/json", self#decrypt)
       ] rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
@@ -369,8 +373,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue auth rd'
 
     method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+      Wm.continue not_an_operator rd
   end
 
   class handler_sign hsm_state = object(self)
