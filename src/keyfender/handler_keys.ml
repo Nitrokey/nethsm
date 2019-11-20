@@ -148,43 +148,37 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private get_json rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue `Empty rd
-      | Some key_id ->
-        Hsm.Keys.get_json ~id:key_id hsm_state >>= function
-        | Error e -> Utils.respond_error e rd
-        | Ok public_key ->
-          let body = Yojson.Safe.to_string @@ Hsm.Keys.publicKey_to_yojson public_key in
-          Wm.continue (`String body) rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.get_json ~id hsm_state >>= function
+      | Error e -> Utils.respond_error e rd
+      | Ok public_key ->
+        let body = Yojson.Safe.to_string @@ Hsm.Keys.publicKey_to_yojson public_key in
+        Wm.continue (`String body) rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id ->
-        let ok (key : private_key_request) =
-          let rsa_key = key.key in
-          Hsm.Keys.add_json hsm_state ~id:key_id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
-          | Ok () -> Wm.continue true rd
-          | Error e -> Utils.respond_error e rd
-        in
-        Json.decode private_key_request_of_yojson content |> 
-        Utils.err_to_bad_request ok rd
-
-    method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
-
-    method! delete_resource rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.remove hsm_state ~id:key_id >>= function
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      let ok (key : private_key_request) =
+        let rsa_key = key.key in
+        Hsm.Keys.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
+      in
+      Json.decode private_key_request_of_yojson content |> 
+      Utils.err_to_bad_request ok rd
+
+    method! resource_exists rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
+
+    method! delete_resource rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.remove hsm_state ~id >>= function
+      | Ok () -> Wm.continue true rd
+      | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
@@ -222,19 +216,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private get_pem rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> assert false
-      | Some key_id ->
-        Hsm.Keys.get_pem hsm_state ~id:key_id >>= function
-        | Error e -> Utils.respond_error e rd
-        | Ok data -> Wm.continue (`String data) rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.get_pem hsm_state ~id >>= function
+      | Error e -> Utils.respond_error e rd
+      | Ok data -> Wm.continue (`String data) rd
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`GET ] rd
@@ -270,22 +261,19 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private csr_pem rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> assert false
-      | Some key_id ->
-        match Json.decode_subject content with
-        | Error e -> Utils.respond_error (Bad_request, e) rd
-        | Ok subject ->
-          Hsm.Keys.csr_pem hsm_state ~id:key_id subject >>= function
-          | Error e -> Utils.respond_error e rd
-          | Ok csr_pem -> Wm.respond 200 ~body:(`String csr_pem) rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      match Json.decode_subject content with
+      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Ok subject ->
+        Hsm.Keys.csr_pem hsm_state ~id subject >>= function
+        | Error e -> Utils.respond_error e rd
+        | Ok csr_pem -> Wm.respond 200 ~body:(`String csr_pem) rd
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#csr_pem rd
@@ -326,24 +314,21 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private decrypt rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> assert false
-      | Some key_id ->
-        let ok (dec : decrypt) =
-          Hsm.Keys.decrypt hsm_state ~id:key_id dec.mode dec.encrypted >>= function
-          | Ok decrypted ->
-            let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
-            Wm.respond 200 ~body:(`String json) rd
-          | Error e -> Utils.respond_error e rd
-        in
-        Json.decode decrypt_of_yojson content |> Utils.err_to_bad_request ok rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      let ok (dec : decrypt) =
+        Hsm.Keys.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
+        | Ok decrypted ->
+          let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
+          Wm.respond 200 ~body:(`String json) rd
+        | Error e -> Utils.respond_error e rd
+      in
+      Json.decode decrypt_of_yojson content |> Utils.err_to_bad_request ok rd
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#decrypt rd
@@ -394,11 +379,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       assert false
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#set_json rd
@@ -449,11 +433,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       assert false
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some key_id -> Hsm.Keys.exists hsm_state ~id:key_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Keys.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method !process_post rd =
       self#set_json rd

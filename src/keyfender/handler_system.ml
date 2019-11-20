@@ -9,56 +9,58 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private system_info rd =
-      match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "info" -> 
+      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
+      | "info" ->
         let open Hsm in
         let json = Yojson.Safe.to_string (system_info_to_yojson @@ System.system_info hsm_state) in
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-       
-    (* TODO we get 500 instead of 200 when we post to reset etc *)
+
+    (* TODO overwrite resource_exists *)
+
     method private system rd =
-      match Webmachine.Rd.lookup_path_info "ep" rd with
-      | Some "reboot" -> 
-        Hsm.System.reboot hsm_state ;
+      let open Hsm.System in
+      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
+      | "reboot" ->
+        reboot hsm_state ;
         Wm.continue true rd
-      | Some "shutdown" -> 
-        Hsm.System.shutdown hsm_state ;
+      | "shutdown" ->
+        shutdown hsm_state ;
         Wm.continue true rd
-      | Some "reset" ->
+      | "reset" ->
         begin
-        Hsm.System.reset hsm_state >>= function
-        | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+          reset hsm_state >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Utils.respond_error e rd
         end
-      | Some "update" ->  
+      | "update" ->
         begin
-        let body = rd.Webmachine.Rd.req_body in
-        let content = Cohttp_lwt.Body.to_stream body in
-        let add_content_type h = Cohttp.Header.add h "Content-Type" "application/json" in
-        Hsm.System.update hsm_state content >>= function
-        | Ok changes -> 
-          let json = Yojson.Safe.to_string (`String changes) in
-          let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
-          Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
-        | Error e -> Utils.respond_error e rd
+          let body = rd.Webmachine.Rd.req_body in
+          let content = Cohttp_lwt.Body.to_stream body in
+          let add_content_type h = Cohttp.Header.add h "Content-Type" "application/json" in
+          update hsm_state content >>= function
+          | Ok changes ->
+            let json = Yojson.Safe.to_string (`String changes) in
+            let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
+            Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
+          | Error e -> Utils.respond_error e rd
         end
-      | Some "commit-update" -> 
-        begin match Hsm.System.commit_update hsm_state with
-        | Error e -> Utils.respond_error e rd
-        | Ok () -> Wm.continue true rd
+      | "commit-update" ->
+        begin match commit_update hsm_state with
+          | Error e -> Utils.respond_error e rd
+          | Ok () -> Wm.continue true rd
         end
-      | Some "cancel-update" -> 
-        begin match Hsm.System.cancel_update hsm_state with
-        | Error e -> Utils.respond_error e rd
-        | Ok () -> Wm.continue true rd
+      | "cancel-update" ->
+        begin match cancel_update hsm_state with
+          | Error e -> Utils.respond_error e rd
+          | Ok () -> Wm.continue true rd
         end
-      | Some "backup" ->
+      | "backup" ->
         let add_content_type h = Cohttp.Header.add h "Content-Type" "application/octet-stream" in
         let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
         let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
-        begin 
-          Hsm.System.backup hsm_state push >>= function
+        begin
+          backup hsm_state push >>= function
           | Error e -> Utils.respond_error e rd
           | Ok () -> Wm.respond ~body:(`Stream stream) (Cohttp.Code.code_of_status `OK) rd' (* TODO or Wm.continue? *)
         end

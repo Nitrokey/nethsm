@@ -87,35 +87,30 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private get_json rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue `Empty rd
-      | Some user_id ->
-          Hsm.User.get hsm_state ~id:user_id >>= function
-          | Error e -> Utils.respond_error e rd
-          | Ok (name, role) ->
-            let user_reply = { realName = name ; role } in
-            let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
-            Wm.continue (`String body) rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.User.get hsm_state ~id >>= function
+      | Error e -> Utils.respond_error e rd
+      | Ok (name, role) ->
+        let user_reply = { realName = name ; role } in
+        let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
+        Wm.continue (`String body) rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Webmachine.Rd.lookup_path_info "id" rd with
-       | Some userid ->
-          let ok (user : user_req) =
-            Hsm.User.add ~id:userid hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-            | Ok _id -> Wm.continue true rd
-            | Error e -> Utils.respond_error e rd
-          in
-          decode_user content |> Utils.err_to_bad_request ok rd
-       | None -> Wm.continue false rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      let ok (user : user_req) =
+        Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
+        | Ok _id -> Wm.continue true rd
+        | Error e -> Utils.respond_error e rd
+      in
+      decode_user content |> Utils.err_to_bad_request ok rd
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.exists hsm_state ~id:user_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.User.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
@@ -132,11 +127,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       ] rd
 
     method! delete_resource rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.remove hsm_state ~id:user_id >>= function
-        | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.User.remove hsm_state ~id >>= function
+      | Ok () -> Wm.continue true rd
+      | Error e -> Utils.respond_error e rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
@@ -168,24 +162,19 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Webmachine.Rd.lookup_path_info "id" rd with
-       | None -> Wm.continue false rd
-       | Some userid ->
-          (* extract passphrase from body! *)
-          (* call Hsm.User.change_passphrase *)
-          let ok passphrase =
-            Hsm.User.set_passphrase hsm_state ~id:userid ~passphrase >>= function
-            | Ok () -> Wm.continue true rd
-            | Error e -> Utils.respond_error e rd
-          in
-          Json.decode_passphrase content |> Utils.err_to_bad_request ok rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      let ok passphrase =
+        Hsm.User.set_passphrase hsm_state ~id ~passphrase >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Utils.respond_error e rd
+      in
+      Json.decode_passphrase content |> Utils.err_to_bad_request ok rd
 
     method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info "id" rd with
-      | None -> Wm.continue false rd
-      | Some user_id -> Hsm.User.exists hsm_state ~id:user_id >>= function
-        | Ok does_exist -> Wm.continue does_exist rd
-        | Error e -> Utils.respond_error e rd
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.User.exists hsm_state ~id >>= function
+      | Ok does_exist -> Wm.continue does_exist rd
+      | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`POST] rd
@@ -221,9 +210,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       (if not_an_admin then
          (* R-Operator may GET (all!) users, and POST their own passphrase *)
          (* TODO do we need to decouple userid from username? *)
-         match rd.Webmachine.Rd.meth, Webmachine.Rd.lookup_path_info "id" rd with
-         | `POST, Some userid ->
-           if Access.get_user rd.Webmachine.Rd.req_headers = userid then
+         match rd.Webmachine.Rd.meth with
+         | `POST ->
+           let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+           if Access.get_user rd.Webmachine.Rd.req_headers = id then
              Access.forbidden hsm_state `Operator rd
            else
              Lwt.return not_an_admin
