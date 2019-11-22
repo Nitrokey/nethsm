@@ -1,19 +1,28 @@
 open Mirage
 
-let internal_stack = generic_stackv4 default_network
+let internal_stack =
+  let default_internal =
+    let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
+    let network = Ipaddr.V4.Prefix.make 24 ip in
+    { network = network, ip ; gateway = None }
+  in
+  generic_stackv4 ~group:"internal" ~config:default_internal
+    (netif ~group:"internal" "internal")
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
 let htdocs = generic_kv_ro ~key:htdocs_key "htdocs"
 
 let http_port =
   let doc = Key.Arg.info ~doc:"Listening HTTP port." ["http"] in
-  Key.(create "http_port" Arg.(opt int 8080 doc))
-
-let store = (* direct_kv_rw "store" *) kv_rw_mem ()
+  Key.(create "http_port" Arg.(opt int 80 doc))
 
 let https_port =
   let doc = Key.Arg.info ~doc:"Listening HTTPS port." ["https"] in
-  Key.(create "https_port" Arg.(opt int 4433 doc))
+  Key.(create "https_port" Arg.(opt int 443 doc))
+
+let remote =
+  let doc = Key.Arg.info ~doc:"Remote git repository." ["remote"] in
+  Key.(create "remote" Arg.(opt string "git://169.254.169.2/keyfender-data.git" doc))
 
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
@@ -31,16 +40,19 @@ let main =
     package "conduit-mirage";
     package "cohttp-mirage";
     package ~min:"3.7.1" "mirage-runtime";
+    package ~min:"2.0.0" "irmin-mirage";
+    package ~min:"2.0.0" "irmin-mirage-git";
   ] in
-  let keys = List.map Key.abstract [ http_port; https_port ] in
+  let keys = Key.[ abstract http_port; abstract https_port; abstract remote ] in
   foreign
     ~packages ~keys ~deps:[abstract nocrypto]
     "Unikernel.Main"
-    (random @-> pclock @-> mclock @-> kv_ro @-> kv_rw @-> stackv4 @->
+    (random @-> pclock @-> mclock @-> kv_ro @->
+     stackv4 @-> resolver @-> conduit @->
      network @-> ethernet @-> arpv4 @-> job)
 
 let () =
   register "keyfender"
-    [ main $ default_random $ default_posix_clock $ default_monotonic_clock $
-      htdocs $ store $ internal_stack $
+    [ main $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
+      internal_stack $ resolver_dns internal_stack $ conduit_direct internal_stack $
       external_netif $ external_eth $ external_arp ]
