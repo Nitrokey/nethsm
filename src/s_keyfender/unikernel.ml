@@ -7,7 +7,7 @@ module Log = (val Logs.src_log https_src : Logs.LOG)
 module Main
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Static_assets: Mirage_kv.RO)
-    (Internal_stack: Mirage_stack.V4) (Resolver: Resolver_lwt.S) (Conduit: Conduit_mirage.S)
+    (Internal_stack: Mirage_stack.V4) (Internal_resolver: Resolver_lwt.S) (Internal_conduit: Conduit_mirage.S)
     (External_net: Mirage_net.S) (External_eth: Mirage_protocols.ETHERNET) (External_arp: Mirage_protocols.ARP)
 =
 struct
@@ -26,14 +26,14 @@ struct
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Pclock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
-  let start () () () _assets _internal_stack res con ext_net ext_eth ext_arp _nocrypto =
+  let start () () () _assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
       let author _ = "keyfender"
       and msg _ = "a keyfender change"
       in
-      Git_store.connect git ~conduit:con ~resolver:res ~author ~msg (Key_gen.remote ()) >>= fun store ->
+      Git_store.connect git ~conduit:internal_conduit ~resolver:internal_resolver ~author ~msg (Key_gen.remote ()) >>= fun store ->
       Hsm.boot store >>= fun hsm_state ->
       Hsm.network_configuration hsm_state >>= fun (ip, network, gateway) ->
       Ext_ipv4.connect ~ip:(network, ip) ?gateway ext_eth ext_arp >>= fun ipv4 ->
