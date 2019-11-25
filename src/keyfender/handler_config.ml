@@ -175,6 +175,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         end
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
+    method! resource_exists rd =
+      let does_exist = Access.is_in_state hsm_state `Operational in
+      Wm.continue does_exist rd
+
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
       if Access.is_in_state hsm_state `Operational
