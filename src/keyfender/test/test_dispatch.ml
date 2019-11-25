@@ -324,7 +324,7 @@ let system_restore_ok () =
       begin match admin_post_request ~hsm_state "/system/backup" with
         | _hsm_state, Some (`OK, _, `Stream s, _) ->
           let content_type = "application/octet-stream" in
-          let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
+          let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ "2019-10-30T11:20:50Z" ]) ] in
           let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
           begin match request ~meth:`POST ~content_type ~query ~body:(`String data) "/system/restore" with
             | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Locked

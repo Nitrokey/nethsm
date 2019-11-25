@@ -248,15 +248,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     | Ok a -> Ok a
     | Error e -> fatal prefix ~pp_error e
 
-  let time_offset = ref Ptime.Span.zero
-
-  let now () =
-    let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
-    match Ptime.add_span hw_clock !time_offset with
-    | None -> Ptime.epoch
-    | Some ts -> ts
-
-
   type status_code =
     | Internal_server_error
     | Bad_request
@@ -274,6 +265,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     | Conflict -> `Conflict
     in
     Cohttp.Code.code_of_status status
+
+  let internal_server_error context pp_err f =
+    let open Lwt.Infix in
+    f >|= function
+    | Ok x -> Ok x
+    | Error e ->
+      Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
+      Error (Internal_server_error, "Could not write to disk. Check hardware.")
 
   type info = {
     vendor : string ;
@@ -355,13 +354,23 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let lock t = t.state <- Locked
 
-  let internal_server_error context pp_err f =
-    let open Lwt.Infix in
-    f >|= function
-    | Ok x -> Ok x
-    | Error e ->
-      Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
-      Error (Internal_server_error, "Could not write to disk. Check hardware.")
+  let time_offset = ref Ptime.Span.zero
+
+  let now () =
+    let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+    match Ptime.add_span hw_clock !time_offset with
+    | None -> Ptime.epoch
+    | Some ts -> ts
+
+  let set_time_offset ?hw_clock t timestamp =
+    let hw_clock = match hw_clock with 
+    | Some ts -> ts
+    | None -> Ptime.v (Pclock.now_d_ps ()) 
+    in
+    let span = Ptime.diff timestamp hw_clock in
+    time_offset := span;
+    internal_server_error "Write time offset" KV.pp_write_error
+      (Config_store.set t.kv Time_offset span)
 
   let prepare_keys t slot credentials =
     let open Lwt_result.Infix in
@@ -952,7 +961,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let provision_mutex = Lwt_mutex.create ()
 
-  let provision t ~unlock ~admin _time =
+  let provision t ~unlock ~admin time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
         let open Lwt_result.Infix in
         (* state already checked in Handler_provision.service_available *)
@@ -984,9 +993,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         internal_server_error "set domain key" KV.pp_write_error
           (Domain_key_store.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
         internal_server_error "set unlock-salt" KV.pp_write_error
-          (Config_store.set t.kv Unlock_salt unlock_salt)
-          (* TODO compute "time - our_current_idea_of_now", store offset in
-                  configuration store *)
+          (Config_store.set t.kv Unlock_salt unlock_salt) >>= fun () ->
+        set_time_offset t time
       )
 
   module Config = struct
@@ -1170,12 +1178,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     let time _t = Lwt.return (now ())
 
-    let set_time t timestamp =
-      let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
-      let span = Ptime.diff timestamp hw_clock in
-      time_offset := span;
-      internal_server_error "Write time offset" KV.pp_write_error
-        (Config_store.set t.kv Time_offset span)
+    let set_time = set_time_offset ?hw_clock:None
   end
 
   module System = struct
@@ -1373,34 +1376,38 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         | Error `Insufficient_data -> Error (Bad_request, "Could not decrypt backup. Backup incomplete, try another one.")
         | Error `Not_authenticated -> Error (Bad_request, "Could not decrypt backup, authentication failed. Is the passphrase correct?")
 
+    let get_query_parameters uri =
+      match Uri.get_query_param uri "systemTime" with
+      | None -> Error (Bad_request, "Request is missing system time.")
+      | Some timestamp -> match Json.decode_time timestamp with
+        | Error e -> Error (Bad_request, "Request parse error: " ^ e ^ ".")
+        | Ok timestamp -> 
+          match Uri.get_query_param uri "backupPassphrase" with
+          | None -> Error (Bad_request, "Request is missing backup passphrase.")
+          | Some backup_passphrase -> Ok (timestamp, backup_passphrase)
+
     let restore t uri stream =
       let open Lwt.Infix in
+      let (>>==) = Lwt_result.bind in
+      let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+      Lwt.return @@ get_query_parameters uri >>== fun (timestamp, backup_passphrase) ->
       let char_stream = Lwt_stream.(concat (map of_string stream)) in
-      (* TODO use systemTime query parameter to set time *)
-      match Uri.get_query_param uri "backupPassphrase" with
-      | None -> Lwt.return (Error (Bad_request, "Request is missing backup passphrase."))
-      | Some backup_passphrase ->
-        decode_value char_stream >>= function
-        | Error e -> Lwt.return (Error e)
-        | Ok backup_salt ->
-          let backup_key =
-            Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
-          in
-          let key = Crypto.GCM.of_secret backup_key in
-          let rec next () =
-            Lwt_stream.is_empty char_stream >>= function
-            | true -> t.state <- Locked ; Lwt.return (Ok ())
-            | false ->
-              read_and_decrypt char_stream key >>= function
-              | Error e -> Lwt.return (Error e)
-              | Ok (k, v) ->
-                KV.set t.kv (Mirage_kv.Key.v k) v >>= function
-                | Ok () -> next ()
-                | Error e ->
-                  Log.err (fun m -> m "error %a restoring backup (writing to KV)"
-                              KV.pp_write_error e);
-                  Lwt.return (Error (Internal_server_error, "Could not restore backup, disk failure? Check the hardware."))
-          in
-          next ()
+      decode_value char_stream >>== fun backup_salt ->
+      let backup_key =
+        Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
+      in
+      let key = Crypto.GCM.of_secret backup_key in
+      let rec next () =
+        Lwt_stream.is_empty char_stream >>= function
+        | true -> t.state <- Locked ; Lwt.return (Ok ())
+        | false ->
+          read_and_decrypt char_stream key >>== fun (k, v) ->
+          internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
+            (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
+          next () 
+      in
+      let open Lwt_result.Infix in
+      next () >>= fun () ->
+      set_time_offset ~hw_clock t timestamp
   end
 end
