@@ -356,6 +356,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let lock t = t.state <- Locked
 
+  (* TODO implement based on kv interface: list and get *)
+  let kv_equal _a _b = true
+    
+  let _equal a b = 
+       a.state = b.state 
+    && a.has_changes = b.has_changes
+    && kv_equal a.kv b.kv
+    && a.info = b.info
+    && a.system_info = b.system_info
+
   let time_offset = ref Ptime.Span.zero
 
   let now () =
@@ -1206,7 +1216,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         (KV.remove t.kv Mirage_kv.Key.empty)
       (* TODO reboot the hardware *)
 
-    let put_back stream chunk = Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
+    let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
 
     let read_n stream n =
       let rec read prefix =
@@ -1223,10 +1233,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       in
       read ""
 
+   let decode_length data =
+     let data' = Cstruct.of_string data in
+     let byte = Cstruct.get_uint8 data' 0 in
+     let len = Cstruct.BE.get_uint16 data' 1 in
+     byte lsl 16 + len
+ 
     let get_length stream =
       let open Lwt_result.Infix in
-      read_n stream 2 >|= fun (data, stream') ->
-      let length = Cstruct.BE.get_uint16 (Cstruct.of_string data) 0 in
+      read_n stream 3 >|= fun (data, stream') ->
+      let length = decode_length data in
       (length, stream')
 
     let get_data (l, s) = read_n s l
@@ -1236,7 +1252,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       get_length s >>=
       get_data
 
-    (* TODO encode like backup *)
     let update t s =
       let empty = Cstruct.empty in
       let update t _data = t in
@@ -1287,7 +1302,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
       | Some _changes -> t.has_changes <- None; Ok ()
 
-    let prefix_len s = string_of_int (String.length s) ^ ":" ^ s
+    let prefix_len s = 
+      let len_buf = Cstruct.create 3 in
+      let length = String.length s in
+      assert (length < 1 lsl 24);
+      Cstruct.set_uint8 len_buf 0 (length lsr 16);
+      Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
+      Cstruct.to_string len_buf ^ s
 
     let rec backup_directory kv push backup_key path =
       let open Lwt.Infix in
@@ -1308,7 +1329,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
                   let key_str = Mirage_kv.Key.to_string key in
                   (* TODO is it ok to encrypt each entry individually? *)
                   (* encrypt the stream instead *)
-                  let data = prefix_len key_str ^ prefix_len data in
+                  let data = prefix_len key_str ^ data in
                   let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
                   let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key ~adata (Cstruct.of_string data) in
                   push (Some (prefix_len (Cstruct.to_string encrypted_data)))
@@ -1339,52 +1360,32 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           push None;
           Ok ()
 
-    exception Decoding_error
-
-    let decode_value char_stream =
-      let open Lwt.Infix in
-      (* the char stream contains an integer (length of value), followed by ":",
-         followed by value *)
-      let to_str xs = List.to_seq xs |> String.of_seq in
-      (* TODO size-bound the get_while *)
-      Lwt.catch (fun () ->
-          (Lwt_stream.get_while
-             (function ':' -> false | '0'..'9' -> true | _ -> raise Decoding_error)
-             char_stream >|= to_str >|= int_of_string) >>= fun n ->
-          Lwt_stream.junk char_stream >>= fun () ->
-          Lwt_stream.nget n char_stream >|= to_str >|= fun data ->
-          Ok data)
-        (function
-          | Failure _ | Decoding_error ->
-            Lwt.return (Error (Bad_request, "Malformed length field in backup data. Backup not readable, try another one."))
-          | e -> raise e)
+    let decode_value = get_field 
 
     let split_kv data =
       (* len:key len:value *)
       let msg = "Missing length field in backup data. Backup not readable, try another one." in
-      match Astring.String.cut ~sep:":" data with
-      | None -> Error (Bad_request, msg)
-      | Some (len_str, rest) ->
-        let len = int_of_string len_str in
-        let key = String.sub rest 0 len in
-        match Astring.String.cut ~sep:":" (String.sub rest len (String.length rest - len)) with
-        | None -> Error (Bad_request, msg)
-        | Some (len, data) ->
-          if String.length data = int_of_string len then
-            Ok (key, data)
-          else
-            Error (Bad_request, "Unexpected length in backup data. Backup not readable, try another one.")
+      let key_len = decode_length data in
+      if String.length data < key_len + 3 
+      then Error (Bad_request, msg)
+      else 
+        let key = String.sub data 3 key_len in
+        let val_start = 3 + key_len in
+        let value = String.sub data val_start (String.length data - val_start) in
+        Ok (key, value)
 
-    let read_and_decrypt char_stream key =
+    let read_and_decrypt stream key =
       let open Lwt.Infix in
-      decode_value char_stream >|= function
+      decode_value stream >|= function
       | Error e -> Error e
-      | Ok encrypted_data ->
+      | Ok (encrypted_data, stream') ->
         let adata = Cstruct.of_string "backup" in
         match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
-        | Ok kv -> split_kv (Cstruct.to_string kv)
         | Error `Insufficient_data -> Error (Bad_request, "Could not decrypt backup. Backup incomplete, try another one.")
         | Error `Not_authenticated -> Error (Bad_request, "Could not decrypt backup, authentication failed. Is the passphrase correct?")
+        | Ok kv -> match split_kv (Cstruct.to_string kv) with
+          | Ok kv' -> Ok (kv', stream')
+          | Error e -> Error e
 
     let get_query_parameters uri =
       match Uri.get_query_param uri "systemTime" with
@@ -1401,23 +1402,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       let (>>==) = Lwt_result.bind in
       let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
       Lwt.return @@ get_query_parameters uri >>== fun (timestamp, backup_passphrase) ->
-      let char_stream = Lwt_stream.(concat (map of_string stream)) in
-      decode_value char_stream >>== fun backup_salt ->
+      decode_value stream >>== fun (backup_salt, stream') ->
       let backup_key =
         Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
       in
       let key = Crypto.GCM.of_secret backup_key in
-      let rec next () =
-        Lwt_stream.is_empty char_stream >>= function
+      let rec next stream =
+        Lwt_stream.is_empty stream >>= function
         | true -> t.state <- Locked ; Lwt.return (Ok ())
         | false ->
-          read_and_decrypt char_stream key >>== fun (k, v) ->
+          read_and_decrypt stream key >>== fun ((k, v), stream) ->
           internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
             (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
-          next () 
+          next stream 
       in
-      let open Lwt_result.Infix in
-      next () >>= fun () ->
+      next stream' >>== fun () ->
       set_time_offset ~hw_clock t timestamp
   end
 end
