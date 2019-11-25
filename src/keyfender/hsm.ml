@@ -66,6 +66,8 @@ module type S = sig
 
   val generate_id : unit -> string
 
+  module Pclock : Mirage_clock.PCLOCK
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -538,6 +540,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
   let generate_id () =
     let `Hex id = Hex.of_cstruct (Rng.generate 10) in
     id
+
+  module Pclock = struct
+    let now_d_ps () = Ptime.(Span.to_d_ps @@ to_span @@ now ())
+    let current_tz_offset_s () = None
+    let period_d_ps () = None
+  end
 
   module User = struct
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"

@@ -66,6 +66,8 @@ module type S = sig
 
   val generate_id : unit -> string
 
+  module Pclock : Mirage_clock.PCLOCK
+
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
