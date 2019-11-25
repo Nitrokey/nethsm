@@ -321,14 +321,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     hardwareVersion : string ;
   }[@@deriving yojson]
 
-  module Kv_config = Kv_config.Make(KV)
-  module Kv_domain = Kv_domain_key.Make(Rng)(KV)
-  module Kv_crypto = Kv_crypto.Make(Rng)(KV)
+  module Config_store = Config_store.Make(KV)
+  module Domain_key_store = Domain_key_store.Make(Rng)(KV)
+  module Encrypted_store = Encrypted_store.Make(Rng)(KV)
 
   type keys = {
     domain_key : Cstruct.t ; (* needed when unlock passphrase changes and likely for unattended boot *)
-    auth_store : Kv_crypto.t ;
-    key_store : Kv_crypto.t ;
+    auth_store : Encrypted_store.t ;
+    key_store : Encrypted_store.t ;
   }
 
   type internal_state =
@@ -366,14 +366,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
   let prepare_keys t slot credentials =
     let open Lwt_result.Infix in
     let get_salt_key = function
-      | Kv_domain.Passphrase -> Kv_config.Unlock_salt
-      | Kv_domain.Device_id -> Kv_config.Device_id_salt
+      | Domain_key_store.Passphrase -> Config_store.Unlock_salt
+      | Domain_key_store.Device_id -> Config_store.Device_id_salt
     in
-    internal_server_error "Prepare keys" Kv_config.pp_error
-      (Kv_config.get t.kv (get_salt_key slot)) >>= fun salt ->
+    internal_server_error "Prepare keys" Config_store.pp_error
+      (Config_store.get t.kv (get_salt_key slot)) >>= fun salt ->
     let unlock_key = Crypto.key_of_passphrase ~salt credentials in
     Lwt_result.map_err (function `Msg m -> Bad_request, m)
-      (Kv_domain.get t.kv slot ~unlock_key) >|= fun domain_key ->
+      (Domain_key_store.get t.kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
@@ -381,11 +381,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let unlock_store kv slot key =
     let open Lwt_result.Infix in
-    let slot_str = Kv_crypto.slot_to_string slot in
+    let slot_str = Encrypted_store.slot_to_string slot in
     internal_server_error
       ("connecting to " ^ slot_str ^ " store")
-      Kv_crypto.pp_connect_error
-      (Kv_crypto.unlock Version.current slot ~key kv)
+      Encrypted_store.pp_connect_error
+      (Encrypted_store.unlock Version.current slot ~key kv)
     >>= function
         | `Version_greater (stored, _t) ->
           (* upgrade code for authentication store *)
@@ -409,17 +409,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let boot_config_store t =
     let open Lwt_result.Infix in
-    lwt_error_fatal "get time offset" ~pp_error:Kv_config.pp_error
-      (Kv_config.get_opt t.kv Time_offset >|= function
+    lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
+      (Config_store.get_opt t.kv Time_offset >|= function
         | None -> ()
         | Some span -> time_offset := span) >>= fun () ->
-    lwt_error_fatal "get unlock-salt" ~pp_error:Kv_config.pp_error
-      (Kv_config.get_opt t.kv Unlock_salt) >>= function
+    lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
+      (Config_store.get_opt t.kv Unlock_salt) >>= function
         | None -> Lwt.return (Ok t)
         | Some _ ->
           t.state <- Locked;
-          lwt_error_fatal "get unattended boot" ~pp_error:Kv_config.pp_error
-            (Kv_config.get_opt t.kv Unattended_boot) >>= function
+          lwt_error_fatal "get unattended boot" ~pp_error:Config_store.pp_error
+            (Config_store.get_opt t.kv Unattended_boot) >>= function
           | Some true ->
             begin
               let open Lwt.Infix in
@@ -445,12 +445,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let open Lwt.Infix in
     begin
       let open Lwt_result.Infix in
-      lwt_error_to_msg ~pp_error:Kv_config.pp_error
-        (Kv_config.get_opt t.kv Version) >>= function
+      lwt_error_to_msg ~pp_error:Config_store.pp_error
+        (Config_store.get_opt t.kv Version) >>= function
       | None ->
         (* uninitialized / unprovisioned device, write version *)
         lwt_error_to_msg ~pp_error:KV.pp_write_error
-          (Kv_config.set t.kv Version Version.current >|= fun () -> t)
+          (Config_store.set t.kv Version Version.current >|= fun () -> t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal -> boot_config_store t
@@ -489,18 +489,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     in
     lwt_error_fatal "write certificate to configuration store"
       ~pp_error:KV.pp_write_error
-      (Kv_config.set t.kv Certificate (cert, []) >|= fun () -> cert)
+      (Config_store.set t.kv Certificate (cert, []) >|= fun () -> cert)
 
   let certificate_chain t =
     Lwt_result.get_exn
       (let open Lwt_result.Infix in
        lwt_error_fatal "get private key from configuration store"
-         ~pp_error:Kv_config.pp_error
-         (Kv_config.get_opt t.kv Private_key) >>= function
+         ~pp_error:Config_store.pp_error
+         (Config_store.get_opt t.kv Private_key) >>= function
        | Some priv ->
          lwt_error_fatal "get certificate from configuration store"
-           ~pp_error:Kv_config.pp_error
-           (Kv_config.get t.kv Certificate >|= fun (cert, chain) ->
+           ~pp_error:Config_store.pp_error
+           (Config_store.get t.kv Certificate >|= fun (cert, chain) ->
             cert, chain, priv)
        | None  ->
          (* no key -> generate, generate certificate *)
@@ -508,7 +508,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
          generate_cert t priv >>= fun cert ->
          lwt_error_fatal "set private key to configuration store"
            ~pp_error:KV.pp_write_error
-           (Kv_config.set t.kv Private_key priv >|= fun () ->
+           (Config_store.set t.kv Private_key priv >|= fun () ->
             (cert, [], priv)))
 
   let default_network_configuration =
@@ -517,11 +517,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let network_configuration t =
     let open Lwt.Infix in
-    Kv_config.(get t.kv Ip_config) >|= function
+    Config_store.(get t.kv Ip_config) >|= function
     | Ok cfg -> cfg
     | Error e ->
       Log.warn (fun m -> m "error %a while retrieving IP, using default"
-                   Kv_config.pp_error e);
+                   Config_store.pp_error e);
       default_network_configuration
 
   let random n = Cstruct.to_string @@ Nocrypto.Base64.encode @@ Rng.generate n
@@ -560,21 +560,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     let read_decode store id =
       let open Lwt.Infix in
-      Kv_crypto.get store (Mirage_kv.Key.v id) >|= function
-      | Error e -> Error (`Kv_crypto e)
+      Encrypted_store.get store (Mirage_kv.Key.v id) >|= function
+      | Error e -> Error (`Encrypted_store e)
       | Ok data ->
         Rresult.R.reword_error
           (fun err -> `Json_decode err)
           (Json.decode user_of_yojson data)
 
     let pp_find_error ppf = function
-      | `Kv_crypto kv -> Kv_crypto.pp_error ppf kv
+      | `Encrypted_store kv -> Encrypted_store.pp_error ppf kv
       | `Json_decode msg -> Fmt.pf ppf "json decode failure %s" msg
 
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      internal_server_error "Write user" Kv_crypto.pp_write_error
-        (Kv_crypto.set store (Mirage_kv.Key.v id) user_str)
+      internal_server_error "Write user" Encrypted_store.pp_write_error
+        (Encrypted_store.set store (Mirage_kv.Key.v id) user_str)
 
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
@@ -609,8 +609,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let exists t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error "Exists user" Kv_crypto.pp_error
-       (Kv_crypto.exists store (Mirage_kv.Key.v id) >|= function
+      internal_server_error "Exists user" Encrypted_store.pp_error
+       (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
         | None -> false
         | Some _ -> true)
 
@@ -627,7 +627,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       let store = in_store t in
       Lwt.bind (read_decode store id)
         (function
-          | Error `Kv_crypto `Kv (`Not_found _) ->
+          | Error `Encrypted_store `Kv (`Not_found _) ->
             let user =
               let salt = Rng.generate Crypto.salt_len in
               let digest = Crypto.key_of_passphrase ~salt passphrase in
@@ -644,15 +644,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let list t =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error "List users" Kv_crypto.pp_error
-        (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
+      internal_server_error "List users" Encrypted_store.pp_error
+        (Encrypted_store.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error "Remove user" Kv_crypto.pp_write_error
-        (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
+      internal_server_error "Remove user" Encrypted_store.pp_write_error
+        (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 
     let set_passphrase t ~id ~passphrase =
@@ -695,8 +695,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let list t =
       let open Lwt_result.Infix in
       let store = key_store t in
-      internal_server_error "List keys" Kv_crypto.pp_error
-        (Kv_crypto.list store Mirage_kv.Key.empty) >|= fun xs ->
+      internal_server_error "List keys" Encrypted_store.pp_error
+        (Encrypted_store.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
     (* how a key is persisted in the kv store. note that while nocrypto
@@ -719,8 +719,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let exists t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      internal_server_error "Exists key" Kv_crypto.pp_error
-       (Kv_crypto.exists store (Mirage_kv.Key.v id) >|= function
+      internal_server_error "Exists key" Encrypted_store.pp_error
+       (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
         | None -> false
         | Some _ -> true)
 
@@ -735,15 +735,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       and value = key_to_yojson key
       and kv_key = Mirage_kv.Key.v id
       in
-      internal_server_error "Write key" Kv_crypto.pp_write_error
-        (Kv_crypto.set store kv_key (Yojson.Safe.to_string value))
+      internal_server_error "Write key" Encrypted_store.pp_write_error
+        (Encrypted_store.set store kv_key (Yojson.Safe.to_string value))
 
     let add ~id t purpose priv =
       let open Lwt_result.Infix in
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
-      internal_server_error "Exist key" Kv_crypto.pp_error
-        (Kv_crypto.exists store key) >>= function
+      internal_server_error "Exist key" Encrypted_store.pp_error
+        (Encrypted_store.exists store key) >>= function
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
@@ -780,8 +780,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      internal_server_error "Remove key" Kv_crypto.pp_write_error
-        (Kv_crypto.remove store (Mirage_kv.Key.v id) >|= fun () ->
+      internal_server_error "Remove key" Encrypted_store.pp_write_error
+        (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 
     type publicKey = {
@@ -796,8 +796,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       let open Lwt_result.Infix in
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
-      internal_server_error "Read key" Kv_crypto.pp_error
-        (Kv_crypto.get store key) >>= fun key_raw ->
+      internal_server_error "Read key" Encrypted_store.pp_error
+        (Encrypted_store.get store key) >>= fun key_raw ->
       Lwt.return (match Json.decode key_of_yojson key_raw with
           | Ok k -> Ok k
           | Error e -> Error (Internal_server_error, e))
@@ -964,12 +964,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           Cstruct.split domain_key Crypto.key_len
         in
         internal_server_error
-          "Initializing authentication store" Kv_crypto.pp_write_error
-          (Kv_crypto.initialize Version.current Authentication ~key:auth_store_key t.kv)
+          "Initializing authentication store" Encrypted_store.pp_write_error
+          (Encrypted_store.initialize Version.current Authentication ~key:auth_store_key t.kv)
         >>= fun auth_store ->
         internal_server_error
-          "Initializing key store" Kv_crypto.pp_write_error
-          (Kv_crypto.initialize Version.current Key ~key:key_store_key t.kv)
+          "Initializing key store" Encrypted_store.pp_write_error
+          (Encrypted_store.initialize Version.current Key ~key:key_store_key t.kv)
         >>= fun key_store ->
         let keys = { domain_key ; auth_store ; key_store } in
         t.state <- Operational keys;
@@ -982,9 +982,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
            the HSM is in unprovisioned state *)
         User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= fun _id ->
         internal_server_error "set domain key" KV.pp_write_error
-          (Kv_domain.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
+          (Domain_key_store.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
         internal_server_error "set unlock-salt" KV.pp_write_error
-          (Kv_config.set t.kv Unlock_salt unlock_salt)
+          (Config_store.set t.kv Unlock_salt unlock_salt)
           (* TODO compute "time - our_current_idea_of_now", store offset in
                   configuration store *)
       )
@@ -1003,15 +1003,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         let unlock_salt, unlock_key = salted passphrase in
         (* TODO the two writes below should be a transaction *)
         internal_server_error "Write unlock salt" KV.pp_write_error
-          (Kv_config.set t.kv Unlock_salt unlock_salt) >>= fun () ->
+          (Config_store.set t.kv Unlock_salt unlock_salt) >>= fun () ->
         internal_server_error "Write passphrase" KV.pp_write_error
-          (Kv_domain.set t.kv Passphrase ~unlock_key keys.domain_key)
+          (Domain_key_store.set t.kv Passphrase ~unlock_key keys.domain_key)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
       let open Lwt_result.Infix in
-      internal_server_error "Read unattended boot" Kv_config.pp_error
-        (Kv_config.get_opt t.kv Unattended_boot >|=
+      internal_server_error "Read unattended boot" Config_store.pp_error
+        (Config_store.get_opt t.kv Unattended_boot >|=
          function None -> false | Some v -> v)
 
     let set_unattended_boot t status =
@@ -1022,18 +1022,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       match t.state with
       | Operational keys ->
         internal_server_error "Write unattended boot" KV.pp_write_error
-          (Kv_config.set t.kv Unattended_boot status) >>= fun () ->
+          (Config_store.set t.kv Unattended_boot status) >>= fun () ->
         if status then begin
           let salt, unlock_key = salted "my device id, psst" in
           internal_server_error "Write device ID salt" KV.pp_write_error
-            (Kv_config.set t.kv Device_id_salt salt) >>= fun () ->
+            (Config_store.set t.kv Device_id_salt salt) >>= fun () ->
           internal_server_error "Write device ID" KV.pp_write_error
-            (Kv_domain.set t.kv Device_id ~unlock_key keys.domain_key)
+            (Domain_key_store.set t.kv Device_id ~unlock_key keys.domain_key)
         end else begin
           internal_server_error "Remove device ID salt" KV.pp_write_error
-            (Kv_config.remove t.kv Device_id_salt) >>= fun () ->
+            (Config_store.remove t.kv Device_id_salt) >>= fun () ->
           internal_server_error "Remove device ID" KV.pp_write_error
-            (Kv_domain.remove t.kv Device_id)
+            (Domain_key_store.remove t.kv Device_id)
         end
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
@@ -1073,7 +1073,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
           | Ok _ ->
             internal_server_error "Write certificate" KV.pp_write_error
-              (Kv_config.set t.kv Certificate (cert, chain))
+              (Config_store.set t.kv Certificate (cert, chain))
         else
           Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key")
 
@@ -1122,7 +1122,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       in
       (* TODO if successful, reboot (or set the IP address) after responding *)
       internal_server_error "Write network configuration" KV.pp_write_error
-        Kv_config.(set t.kv Ip_config (network.ipAddress, prefix, route))
+        Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
     type log_level = Logs.level
     let log_level_to_string l = Logs.level_to_string (Some l)
@@ -1144,17 +1144,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     let log t =
       let open Lwt.Infix in
-      Kv_config.get_opt t.kv Log_config >|= function
+      Config_store.get_opt t.kv Log_config >|= function
       | Ok None -> default_log
       | Ok Some (ipAddress, port, logLevel) -> { ipAddress ; port ; logLevel }
       | Error e ->
         Log.warn (fun m -> m "error %a while getting log configuration"
-                     Kv_config.pp_error e);
+                     Config_store.pp_error e);
         default_log
 
     let set_log t log =
       internal_server_error "Write log config" KV.pp_write_error
-        (Kv_config.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
+        (Config_store.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
 
     let backup_passphrase t ~passphrase =
       match t.state with
@@ -1163,9 +1163,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
         let backup_salt, backup_key = salted passphrase in
         (* TODO the two writes below should be a transaction *)
         internal_server_error "Write backup salt" KV.pp_write_error
-          (Kv_config.set t.kv Backup_salt backup_salt) >>= fun () ->
+          (Config_store.set t.kv Backup_salt backup_salt) >>= fun () ->
         internal_server_error "Write backup key" KV.pp_write_error
-          (Kv_config.set t.kv Backup_key backup_key)
+          (Config_store.set t.kv Backup_key backup_key)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let time _t = Lwt.return (now ())
@@ -1175,7 +1175,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       let span = Ptime.diff timestamp hw_clock in
       time_offset := span;
       internal_server_error "Write time offset" KV.pp_write_error
-        (Kv_config.set t.kv Time_offset span)
+        (Config_store.set t.kv Time_offset span)
   end
 
   module System = struct
@@ -1308,17 +1308,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
     let backup t push =
       let open Lwt.Infix in
-      Kv_config.get_opt t.kv Backup_key >>= function
+      Config_store.get_opt t.kv Backup_key >>= function
       | Error e ->
-        Log.err (fun m -> m "Error %a while reading backup key." Kv_config.pp_error e);
+        Log.err (fun m -> m "Error %a while reading backup key." Config_store.pp_error e);
         Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
       | Ok None -> Lwt.return (Error (Precondition_failed, "Please configure backup key before doing a backup."))
       | Ok Some backup_key ->
         (* iteratae over keys in KV store *)
         let backup_key' = Crypto.GCM.of_secret backup_key in
-        Kv_config.get t.kv Backup_salt >>= function
+        Config_store.get t.kv Backup_salt >>= function
         | Error e ->
-          Log.err (fun m -> m "error %a while reading backup salt" Kv_config.pp_error e);
+          Log.err (fun m -> m "error %a while reading backup salt" Config_store.pp_error e);
           Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
         | Ok backup_salt ->
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
