@@ -11,6 +11,13 @@
   (package keyfender))
 
 (executable
+  (libraries logs.fmt fmt.tty keyfender mirage-random-test mirage-clock-unix mirage-kv-mem lwt.unix nocrypto.lwt)
+  (modules test_stream)
+  (name test_stream)
+  (public_name test_stream)
+  (package keyfender))
+
+(executable
   (libraries logs.fmt fmt.tty nocrypto.lwt keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test io-page-unix)
   (modules test_server)
   (name test_server)

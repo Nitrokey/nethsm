@@ -1264,6 +1264,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           Lwt.return @@ Ok hash')
         s''' (Ok hash'') >>= fun hash ->
       let _final = get hash in
+      let gc_stat = Gc.stat () in
+      Logs.app (fun m -> m "%u top heap words" gc_stat.top_heap_words);
       (* TODO verify signature *)
       let current = t.system_info.softwareVersion in
       if version_is_upgrade ~current ~update:version' then
