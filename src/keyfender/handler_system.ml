@@ -16,8 +16,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue (`String json) rd
       | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
 
-    (* TODO overwrite resource_exists *)
-
     method private system rd =
       let open Hsm.System in
       match Webmachine.Rd.lookup_path_info_exn "ep" rd with
@@ -70,13 +68,24 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
             } in
             Wm.continue true rd'
         end
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+      | _ -> assert false
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
       if Access.is_in_state hsm_state `Operational
       then Wm.continue true rd
       else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
+      | "reboot"
+      | "shutdown"
+      | "reset"
+      | "update"
+      | "commit-update"
+      | "cancel-update"
+      | "backup" -> Wm.continue true rd
+      | _ -> Wm.continue false rd
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
@@ -118,6 +127,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       if Access.is_in_state hsm_state `Unprovisioned
       then Wm.continue true rd
       else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method! resource_exists rd =
+      Wm.continue true rd
 
     method !process_post rd =
       self#restore rd

@@ -36,9 +36,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | "cert.pem" ->
         Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
         Wm.continue (`String cert_pem) rd
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-
-    (* TODO maybe overwrite resource_exists instead of the above Not_found *)
+      | _ -> assert false
 
     method private set_pem rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -57,13 +55,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
             Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
             Wm.respond 200 ~body:(`String csr_pem) rd
         end
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+      | _ -> assert false
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
       if Access.is_in_state hsm_state `Operational
       then Wm.continue true rd
       else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
+
+    method! resource_exists rd =
+      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
+      | "public.pem" 
+      | "cert.pem" 
+      | "csr.pem" -> Wm.continue true rd
+      | _ -> Wm.continue false rd
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
@@ -114,9 +119,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let time = Ptime.to_rfc3339 timestamp in
         let json = time_to_yojson { time } in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-
-    (* TODO maybe overwrite resource_exists instead of the above Not_found *)
+      | _ -> assert false
 
     method private change_passphrase rd write json =
       match Json.decode_passphrase json with
@@ -173,11 +176,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
             | Ok () -> Wm.continue true rd
             | Error e -> Utils.respond_error e rd
         end
-      | _ -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+      | _ -> assert false
 
     method! resource_exists rd =
-      let does_exist = Access.is_in_state hsm_state `Operational in
-      Wm.continue does_exist rd
+      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
+      | "unlock-passphrase" 
+      | "unattended-boot" 
+      | "network" 
+      | "logging" 
+      | "backup-passphrase" 
+      | "time" -> Wm.continue true rd
+      | _ -> Wm.continue false rd
+
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
