@@ -7,7 +7,7 @@ let () =
 (library
   (name        keyfender)
   (public_name keyfender)
-  (preprocess (pps ppx_deriving_yojson %s))
+  (preprocess (pps ppx_deriving_yojson ppx_deriving.std %s))
   (libraries astring logs lwt ptime cohttp rresult nocrypto webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf mirage-kv tls x509 hex gmap ipaddr))
   |}
  (if bisect then "bisect_ppx -conditional" else "")

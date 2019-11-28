@@ -30,6 +30,7 @@ depends: [
   "mirage-clock"
   "mirage-random" {>= "2.0.0"}
   "ppx_deriving_yojson"
+  "ppx_deriving"
   "pbkdf"
   "mirage-kv" {>= "3.0.0"}
   "tls"

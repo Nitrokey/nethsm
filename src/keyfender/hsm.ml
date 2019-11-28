@@ -44,6 +44,8 @@ module type S = sig
 
   type t
 
+  val equal : t -> t -> bool Lwt.t
+
   val info : t -> info
 
   val state : t -> state
@@ -231,7 +233,7 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.PCLOCK) = struct
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock.PCLOCK) = struct
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 
@@ -332,11 +334,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     key_store : Encrypted_store.t ;
   }
 
+  let equal_keys a b = Cstruct.equal a.domain_key b.domain_key
+
   type internal_state =
     | Unprovisioned
     | Operational of keys
     | Locked
     | Busy
+      [@@deriving eq]
 
   let to_external_state = function
     | Unprovisioned -> `Unprovisioned
@@ -356,28 +361,59 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
 
   let lock t = t.state <- Locked
 
-  (* TODO implement based on kv interface: list and get *)
-  let kv_equal _a _b = true
-    
-  let _equal a b = 
-       a.state = b.state 
+  let kv_equal a b =
+    let open Lwt_result.Infix in
+    let rec traverse root =
+      let for_all acc path =
+        Lwt.return acc >>= fun acc' ->
+        traverse path >|= fun v ->
+        acc' && v
+      in
+      KV.exists a root >>= fun a_typ ->
+      KV.exists b root >>= fun b_typ ->
+      match a_typ, b_typ with
+      | Some `Value, Some `Value ->
+        KV.get a root >>= fun v ->
+        KV.get b root >>= fun v' ->
+        Lwt_result.return (String.equal v v')
+      | Some `Dictionary, Some `Dictionary ->
+        KV.list a root >>= fun l ->
+        KV.list b root >>= fun l' ->
+        if List.length l = List.length l' && List.for_all2 (=) l l'
+        then
+          Lwt_list.fold_left_s for_all (Ok true)
+            (List.map (Mirage_kv.Key.add root) (fst (List.split l)))
+        else
+          Lwt_result.return false
+      | _ -> Lwt_result.return false
+    in
+    let get_ok v =
+      let open Lwt.Infix in
+      v >|= function Ok v -> v | Error _ -> false
+    in
+    traverse Mirage_kv.Key.empty |> get_ok
+
+  let equal a b =
+    let open Lwt.Infix in
+    kv_equal a.kv b.kv >|= fun equal_kv ->
+    equal_internal_state a.state b.state
     && a.has_changes = b.has_changes
-    && kv_equal a.kv b.kv
     && a.info = b.info
     && a.system_info = b.system_info
+    && equal_kv
 
   let time_offset = ref Ptime.Span.zero
 
   let now () =
-    let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+    let hw_clock = Ptime.v (Hw_clock.now_d_ps ()) in
     match Ptime.add_span hw_clock !time_offset with
     | None -> Ptime.epoch
     | Some ts -> ts
 
   let set_time_offset ?hw_clock t timestamp =
-    let hw_clock = match hw_clock with 
+    let hw_clock = match hw_clock with
     | Some ts -> ts
-    | None -> Ptime.v (Pclock.now_d_ps ()) 
+    | None -> Ptime.v (Hw_clock.now_d_ps ())
     in
     let span = Ptime.diff timestamp hw_clock in
     time_offset := span;
@@ -1392,7 +1428,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
       | None -> Error (Bad_request, "Request is missing system time.")
       | Some timestamp -> match Json.decode_time timestamp with
         | Error e -> Error (Bad_request, "Request parse error: " ^ e ^ ".")
-        | Ok timestamp -> 
+        | Ok timestamp ->
           match Uri.get_query_param uri "backupPassphrase" with
           | None -> Error (Bad_request, "Request is missing backup passphrase.")
           | Some backup_passphrase -> Ok (timestamp, backup_passphrase)
@@ -1400,7 +1436,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let restore t uri stream =
       let open Lwt.Infix in
       let (>>==) = Lwt_result.bind in
-      let hw_clock = Ptime.v (Pclock.now_d_ps ()) in
+      let hw_clock = Ptime.v (Hw_clock.now_d_ps ()) in
       Lwt.return @@ get_query_parameters uri >>== fun (timestamp, backup_passphrase) ->
       decode_value stream >>== fun (backup_salt, stream') ->
       let backup_key =
@@ -1414,7 +1450,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
           read_and_decrypt stream key >>== fun ((k, v), stream) ->
           internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
             (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
-          next stream 
+          next stream
       in
       next stream' >>== fun () ->
       set_time_offset ~hw_clock t timestamp

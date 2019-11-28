@@ -2,8 +2,14 @@ open OUnit
 open Cohttp
 open Lwt.Infix
 
-module Kv_mem = Mirage_kv_mem.Make(Pclock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Pclock)
+module Mock_clock = struct
+  let now_d_ps () = (1000, 0L)
+  let current_tz_offset_s () = None
+  let period_d_ps () = None
+end
+
+module Kv_mem = Mirage_kv_mem.Make(Mock_clock)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Mock_clock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
@@ -234,7 +240,6 @@ let system_update_cancel_ok () =
       | _ -> false
    end
 
-(* TODO: test that restoring a retrieved backup on a fresh HSM leads to an identical underlying KV store *)
 let system_backup_and_restore_ok () =
   "a request for /system/restore succeeds"
   @? begin
@@ -245,15 +250,16 @@ let system_backup_and_restore_ok () =
       begin match admin_post_request ~hsm_state "/system/backup" with
         | _hsm_state, Some (`OK, _, `Stream s, _) ->
           let content_type = "application/octet-stream" in
-          let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ "2019-10-30T11:20:50Z" ]) ] in
+          let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
           let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
           begin match request ~meth:`POST ~content_type ~query ~body:(`String data) "/system/restore" with
-            | hsm_state', Some (`No_content, _, _, _) -> 
+            | hsm_state', Some (`No_content, _, _, _) ->
               assert (Hsm.state hsm_state' = `Locked);
               let unlock_json = {|{ "passphrase": "unlock" }|} in
               begin match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state:hsm_state' "/unlock" with
-              | _, Some (`No_content, _, _, _) -> Hsm.state hsm_state' = `Operational
-              | _ -> false
+                | _, Some (`No_content, _, _, _) ->
+                  Hsm.state hsm_state' = `Operational && Lwt_main.run (Hsm.equal hsm_state hsm_state')
+                | _ -> false
               end
             | _ -> false
           end

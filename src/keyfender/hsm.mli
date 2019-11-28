@@ -44,6 +44,8 @@ module type S = sig
 
   type t
 
+  val equal : t -> t -> bool Lwt.t
+
   val info : t -> info
 
   val state : t -> state
