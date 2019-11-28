@@ -24,14 +24,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           Hsm.provision hsm_state ~unlock ~admin time >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Utils.respond_error e rd
-      in 
+      in
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       decode_json content |> Utils.err_to_bad_request ok rd
-
-
-    method private noop rd =
-      Wm.continue `Empty rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
@@ -41,9 +37,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method !allowed_methods rd =
       Wm.continue [ `PUT ] rd
- 
+
     method content_types_provided rd =
-      Wm.continue [ ("text/html", self#noop) ] rd
+      Wm.continue [ ("text/html", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [ ("application/json", self#provision) ] rd

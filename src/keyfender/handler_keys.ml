@@ -55,9 +55,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! allowed_methods rd =
       Wm.continue [`POST; `GET ] rd
 
-    method! known_methods rd =
-      Wm.continue [`POST; `GET ] rd
-
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#get_json) ] rd
 
@@ -115,9 +112,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue path rd'
 
     method! allowed_methods rd =
-      Wm.continue [`POST] rd
-
-    method! known_methods rd =
       Wm.continue [`POST] rd
 
     method content_types_provided rd =
@@ -182,9 +176,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
 
-    method! known_methods rd =
-      Wm.continue [`PUT; `GET; `DELETE ] rd
-
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#get_json) ] rd
 
@@ -227,9 +218,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
-      Wm.continue [`GET ] rd
-
-    method! known_methods rd =
       Wm.continue [`GET ] rd
 
     method content_types_provided rd =
@@ -278,9 +266,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       self#csr_pem rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST ] rd
-
-    method! known_methods rd =
       Wm.continue [`POST ] rd
 
     method content_types_provided rd =
@@ -335,9 +320,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! allowed_methods rd =
       Wm.continue [`POST ] rd
 
-    method! known_methods rd =
-      Wm.continue [`POST ] rd
-
     method content_types_provided rd =
       Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
@@ -387,9 +369,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       self#sign rd
 
     method! allowed_methods rd =
-      Wm.continue [`POST ] rd
-
-    method! known_methods rd =
       Wm.continue [`POST ] rd
 
     method content_types_provided rd =
@@ -442,9 +421,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Error e -> Utils.respond_error e rd
 
     method! allowed_methods rd =
-      Wm.continue [`PUT; `GET; `DELETE ] rd
-
-    method! known_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method content_types_provided rd =

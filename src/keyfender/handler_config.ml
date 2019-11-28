@@ -36,7 +36,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | "cert.pem" ->
         Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
         Wm.continue (`String cert_pem) rd
-      | _ -> assert false
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Method_not_allowed) rd
 
     method private set_pem rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -55,7 +55,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
             Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
             Wm.respond 200 ~body:(`String csr_pem) rd
         end
-      | _ -> assert false
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Method_not_allowed) rd
 
     (* we use this not for the service, but to check the internal state before processing requests *)
     method! service_available rd =
@@ -65,8 +65,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info_exn "ep" rd with
-      | "public.pem" 
-      | "cert.pem" 
+      | "public.pem"
+      | "cert.pem"
       | "csr.pem" -> Wm.continue true rd
       | _ -> Wm.continue false rd
 
@@ -119,7 +119,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let time = Ptime.to_rfc3339 timestamp in
         let json = time_to_yojson { time } in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
-      | _ -> assert false
+      | _ -> Wm.respond (Cohttp.Code.code_of_status `Method_not_allowed) rd
 
     method private change_passphrase rd write json =
       match Json.decode_passphrase json with
@@ -180,11 +180,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info_exn "ep" rd with
-      | "unlock-passphrase" 
-      | "unattended-boot" 
-      | "network" 
-      | "logging" 
-      | "backup-passphrase" 
+      | "unlock-passphrase"
+      | "unattended-boot"
+      | "network"
+      | "logging"
+      | "backup-passphrase"
       | "time" -> Wm.continue true rd
       | _ -> Wm.continue false rd
 

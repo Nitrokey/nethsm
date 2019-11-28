@@ -10,7 +10,7 @@ module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
         | "state", state ->
           let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
           Ok (`String json)
-        | _, _ -> Error `Precondition_failed (*TODO assert false if wrong endpoint?*) 
+        | _, _ -> Error `Precondition_failed
       in
       match result with
       | Ok body -> Wm.continue body rd
@@ -18,10 +18,13 @@ module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
 
     method! resource_exists rd =
       match Webmachine.Rd.lookup_path_info_exn "ep" rd with
-     | "alive"
-     | "ready"
-     | "state" -> Wm.continue true rd
-     | _ -> Wm.continue false rd
+      | "alive"
+      | "ready"
+      | "state" -> Wm.continue true rd
+      | _ -> Wm.continue false rd
+
+    (* We don't need to implement service_available since all endpoints are
+       always available. *)
 
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#to_json) ] rd

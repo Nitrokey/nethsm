@@ -1305,7 +1305,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.P
     let prefix_len s = 
       let len_buf = Cstruct.create 3 in
       let length = String.length s in
-      assert (length < 1 lsl 24);
+      assert (length < 1 lsl 24); (* TODO *)
       Cstruct.set_uint8 len_buf 0 (length lsr 16);
       Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
       Cstruct.to_string len_buf ^ s
