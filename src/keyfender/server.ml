@@ -25,28 +25,31 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
   module Keys = Handler_keys.Make(Wm)(Hsm)
   module System = Handler_system.Make(Wm)(Hsm)
 
-  let routes hsm_state = [
-    ("/info", fun () -> new Info.handler hsm_state) ;
-    ("/health/:ep", fun () -> new Health.handler hsm_state) ;
-    ("/provision", fun () -> new Provision.handler hsm_state) ;
-    ("/unlock", fun () -> new Unlock.handler hsm_state) ;
-    ("/random", fun () -> new Random.handler hsm_state) ;
-    ("/config/tls/:ep", fun () -> new Config.handler_tls hsm_state) ;
-    ("/config/:ep", fun () -> new Config.handler hsm_state) ;
-    ("/users", fun () -> new Users.handler_users hsm_state) ;
-    ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state) ;
-    ("/users/:id", fun () -> new Users.handler hsm_state) ;
-    ("/keys", fun () -> new Keys.handler_keys hsm_state) ;
-    ("/keys/generate", fun () -> new Keys.handler_keys_generate hsm_state) ;
-    ("/keys/:id", fun () -> new Keys.handler hsm_state) ;
-    ("/keys/:id/public.pem", fun () -> new Keys.handler_public hsm_state) ;
-    ("/keys/:id/csr.pem", fun () -> new Keys.handler_csr hsm_state) ;
-    ("/keys/:id/decrypt", fun () -> new Keys.handler_decrypt hsm_state) ;
-    ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state) ;
-    ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state) ;
-    ("/system/restore", fun () -> new System.handler_restore hsm_state) ;
-    ("/system/:ep", fun () -> new System.handler hsm_state) ;
-  ]
+  let routes hsm_state =
+    let latest_version = (Hsm.info hsm_state).Hsm.version in
+    List.map (fun (p, h) -> "/api/" ^ latest_version ^ p, h)
+      [
+        ("/info", fun () -> new Info.handler hsm_state) ;
+        ("/health/:ep", fun () -> new Health.handler hsm_state) ;
+        ("/provision", fun () -> new Provision.handler hsm_state) ;
+        ("/unlock", fun () -> new Unlock.handler hsm_state) ;
+        ("/random", fun () -> new Random.handler hsm_state) ;
+        ("/config/tls/:ep", fun () -> new Config.handler_tls hsm_state) ;
+        ("/config/:ep", fun () -> new Config.handler hsm_state) ;
+        ("/users", fun () -> new Users.handler_users hsm_state) ;
+        ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state) ;
+        ("/users/:id", fun () -> new Users.handler hsm_state) ;
+        ("/keys", fun () -> new Keys.handler_keys hsm_state) ;
+        ("/keys/generate", fun () -> new Keys.handler_keys_generate hsm_state) ;
+        ("/keys/:id", fun () -> new Keys.handler hsm_state) ;
+        ("/keys/:id/public.pem", fun () -> new Keys.handler_public hsm_state) ;
+        ("/keys/:id/csr.pem", fun () -> new Keys.handler_csr hsm_state) ;
+        ("/keys/:id/decrypt", fun () -> new Keys.handler_decrypt hsm_state) ;
+        ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state) ;
+        ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state) ;
+        ("/system/restore", fun () -> new System.handler_restore hsm_state) ;
+        ("/system/:ep", fun () -> new System.handler hsm_state) ;
+      ]
 end
 
 module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct

@@ -12,12 +12,13 @@ module Kv_mem = Mirage_kv_mem.Make(Mock_clock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Mock_clock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
-let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
+let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
     | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot)
     | Some x -> x
   in
+  let path = "/api/v1" ^ endpoint in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
   match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state') ~body ~request with
