@@ -113,7 +113,7 @@ module type S = sig
 
     val set_log : t -> log -> (unit, error) result Lwt.t
 
-    val backup_passphrase : t -> passphrase:string ->
+    val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t

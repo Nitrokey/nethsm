@@ -113,7 +113,7 @@ module type S = sig
 
     val set_log : t -> log -> (unit, error) result Lwt.t
 
-    val backup_passphrase : t -> passphrase:string ->
+    val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t
@@ -1218,7 +1218,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       internal_server_error "Write log config" KV.pp_write_error
         (Config_store.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
 
-    let backup_passphrase t ~passphrase =
+    let set_backup_passphrase t ~passphrase =
       match t.state with
       | Operational _keys ->
         let open Lwt_result.Infix in

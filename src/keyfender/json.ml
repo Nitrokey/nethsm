@@ -5,12 +5,16 @@ let nonempty ~name s =
   then Error (Printf.sprintf "JSON field %s is empty." name)
   else Ok ()
 
+let to_ocaml parse json =
+  Rresult.R.reword_error
+    (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m)
+    @@ parse json
+
 let decode parse data =
   let open Rresult.R.Infix in
   (try Ok (Yojson.Safe.from_string data)
    with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json ->
-  Rresult.R.reword_error (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m)
-    @@ parse json
+  to_ocaml parse json
 
 type subject_req = {
     commonName : string ;
@@ -68,8 +72,14 @@ let decode_time s =
 
 type passphrase_req = { passphrase : string } [@@deriving yojson]
 
-let decode_passphrase json =
+let decode_passphrase2 json =
   let open Rresult.R.Infix in
-  decode passphrase_req_of_yojson json >>= fun passphrase ->
+  to_ocaml passphrase_req_of_yojson json >>= fun passphrase ->
   nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
+
+let decode_passphrase json =
+  let open Rresult.R.Infix in
+  (try Ok (Yojson.Safe.from_string json)
+   with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json' ->
+  decode_passphrase2 json'

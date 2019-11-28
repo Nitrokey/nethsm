@@ -1,37 +1,32 @@
-module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
-  class handler hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-    method private to_json rd =
-      let ep = Webmachine.Rd.lookup_path_info_exn "ep" rd in
-      let result = match ep, Hsm.state hsm_state with
-        | "alive", (`Locked | `Unprovisioned) -> Ok `Empty
-        | "ready", `Operational -> Ok `Empty
-        | "state", state ->
-          let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
-          Ok (`String json)
-        | _, _ -> Error `Precondition_failed
-      in
-      match result with
-      | Ok body -> Wm.continue body rd
-      | Error status -> Wm.respond (Cohttp.Code.code_of_status status) rd
+  module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-    method! resource_exists rd =
-      match Webmachine.Rd.lookup_path_info_exn "ep" rd with
-      | "alive"
-      | "ready"
-      | "state" -> Wm.continue true rd
-      | _ -> Wm.continue false rd
+  class alive hsm_state = object
+    inherit Endpoint.get_json hsm_state
 
-    (* We don't need to implement service_available since all endpoints are
-       always available. *)
+    method private to_json = Wm.continue `Empty
 
-    method content_types_provided rd =
-      Wm.continue [ ("application/json", self#to_json) ] rd
-
-    method content_types_accepted rd =
-      Wm.continue [ ] rd
-
+    method private required_states = Wm.continue [ `Locked ; `Unprovisioned ]
   end
 
+  class ready hsm_state = object
+    inherit Endpoint.get_json hsm_state
+
+    method private to_json = Wm.continue `Empty
+
+    method private required_states = Wm.continue [ `Operational ]
+  end
+
+  class state hsm_state = object
+    inherit Endpoint.get_json hsm_state
+
+    method private to_json =
+      let state = Hsm.state hsm_state in
+      let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
+      Wm.continue (`String json)
+
+    method private required_states =
+      Wm.continue [ `Unprovisioned ; `Operational ; `Locked ; `Busy ]
+  end
 end

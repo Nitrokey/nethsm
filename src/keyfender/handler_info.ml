@@ -1,18 +1,18 @@
-module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
-  class handler hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-    method private to_json rd =
-      let open Hsm in
-      let json = Yojson.Safe.to_string (info_to_yojson @@ info hsm_state) in
-      Wm.continue (`String json) rd
+  module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-    method content_types_provided rd =
-      Wm.continue [ ("application/json", self#to_json) ] rd
+  class info hsm_state = object
+    inherit Endpoint.get_json hsm_state
 
-    method content_types_accepted rd =
-      Wm.continue [ ] rd
+    method private to_json =
+      let json =
+        Hsm.(info hsm_state |> info_to_yojson |> Yojson.Safe.to_string)
+      in
+      Wm.continue (`String json)
 
+    method private required_states =
+      Wm.continue [ `Unprovisioned ; `Operational ; `Locked ; `Busy ]
   end
 
 end
