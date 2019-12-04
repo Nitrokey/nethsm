@@ -23,10 +23,14 @@ prepare:
 $(GIT_DAEMON):
 	$(MAKE) -C src/git NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 NO_GETTEXT=1 NO_PYTHON=1 all
 
-.PHONY: force-it
-# Always build the keyfender unikernel, since we have no way of propagating
-# dependencies from ocamlbuild/mirage to the top-level make.
-$(S_KEYFENDER): force-it
+.PHONY: keyfender force-it
+# Always build the keyfender library and s_keyfender unikernel, since we have
+# no way of propagating dependencies from ocamlbuild/mirage to the top-level
+# make.
+keyfender:
+	opam reinstall -y keyfender
+
+$(S_KEYFENDER): keyfender force-it
 	cd src/s_keyfender && mirage configure -t $(TARGET)
 	cd src/s_keyfender && $(MAKE) depend
 	cd src/s_keyfender && $(MAKE)
@@ -50,5 +54,11 @@ run/git-daemon.pid: | run/git/keyfender-data.git
 .PHONY: run
 run: build run/git-daemon.pid
 	solo5-hvt --net:external=tap200 --net:internal=tap201 $(S_KEYFENDER)
+
+.PHONY: clean
+clean:
+	-opam remove -y keyfender
+	-test -f run/git-daemon.pid && kill $$(cat run/git-daemon.pid) && rm run/git-daemon.pid
+	$(RM) -r run/
 
 endif

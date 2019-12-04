@@ -46,7 +46,7 @@ This will create the required Git repositories for storage and, if not yet runni
 You should now be able to access S-Keyfender on `192.168.1.1`, for example:
 
 ```
-$ curl -k https://192.168.1.1/health/state
+$ curl -k https://192.168.1.1/api/v1/health/state
 ```
 
 Produces
