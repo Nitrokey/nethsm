@@ -754,9 +754,9 @@ q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 -----END RSA PRIVATE KEY-----
 |}
 
-let hsm_with_key ?(mode = Hsm.Keys.Encrypt) () =
+let hsm_with_key ?(mode = Hsm.Key.Encrypt) () =
   let state = operational_mock () in
-  Lwt_main.run (Hsm.Keys.add_pem state mode ~id:"keyID" test_key_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem state mode ~id:"keyID" test_key_pem >|= function
   | Ok () -> state
   | Error _ -> assert false)
 
@@ -852,7 +852,7 @@ let sign_request =
 let operator_keys_key_sign () =
   "POST on /keys/keyID/sign succeeds"
   @? begin
-    let hsm_state = hsm_with_key ~mode:Hsm.Keys.Sign () in
+    let hsm_state = hsm_with_key ~mode:Hsm.Key.Sign () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with
@@ -877,7 +877,7 @@ let keys_key_cert_get () =
   "GET on /keys/keyID/cert succeeds"
   @? begin
     let hsm_state = hsm_with_key () in
-    let _ = Lwt_main.run (Hsm.Keys.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
+    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
     match request ~headers:operator_headers ~hsm_state "/keys/keyID/cert" with
     | _, Some (`OK, headers, `String data, _) ->
       begin match Cohttp.Header.get headers "content-type" with
@@ -900,7 +900,7 @@ let keys_key_cert_delete () =
   "DELETE on /keys/keyID/cert succeeds"
   @? begin
     let hsm_state = hsm_with_key () in
-    let _ = Lwt_main.run (Hsm.Keys.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
+    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID/cert" with
     | _, Some (`No_content, _, _, _) -> true
     | _ -> false

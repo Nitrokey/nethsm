@@ -5,16 +5,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
   type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
-  type private_key_request = { purpose: Hsm.Keys.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
+  type private_key_request = { purpose: Hsm.Key.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
 
-  type decrypt = { mode : Hsm.Keys.decrypt_mode ; encrypted : string }[@@deriving yojson]
-  type sign = { mode : Hsm.Keys.sign_mode ; message : string }[@@deriving yojson]
+  type decrypt = { mode : Hsm.Key.decrypt_mode ; encrypted : string }[@@deriving yojson]
+  type sign = { mode : Hsm.Key.sign_mode ; message : string }[@@deriving yojson]
 
   class handler_keys hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
 
     method private get_json rd =
-      Hsm.Keys.list hsm_state >>= function
+      Hsm.Key.list hsm_state >>= function
       | Error e -> Utils.respond_error e rd
       | Ok keys ->
         let items = List.map (fun key -> `Assoc [ "key", `String key ]) keys in
@@ -28,7 +28,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | None -> assert false | Some path -> path in
       let ok (key : private_key_request) =
         let rsa_key = key.key in
-        Hsm.Keys.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
+        Hsm.Key.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
       in
@@ -40,7 +40,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
-      Hsm.Keys.add_pem hsm_state ~id Hsm.Keys.Encrypt (*TODO*) content >>= function
+      Hsm.Key.add_pem hsm_state ~id Hsm.Key.Encrypt (*TODO*) content >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Utils.respond_error e rd
 
@@ -82,7 +82,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | not_an_admin -> Wm.continue not_an_admin rd
   end
 
-  type generate_request = { purpose: Hsm.Keys.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
+  type generate_request = { purpose: Hsm.Key.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
 
   class handler_keys_generate hsm_state = object(self)
     inherit [Cohttp_lwt.Body.t] Wm.resource
@@ -96,7 +96,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | "", None -> assert false
         | id, _ -> id
         in
-        Hsm.Keys.generate hsm_state ~id key.purpose ~length:key.length >>= function
+        Hsm.Key.generate hsm_state ~id key.purpose ~length:key.length >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
       in
@@ -142,10 +142,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.get_json ~id hsm_state >>= function
+      Hsm.Key.get_json ~id hsm_state >>= function
       | Error e -> Utils.respond_error e rd
       | Ok public_key ->
-        let body = Yojson.Safe.to_string @@ Hsm.Keys.publicKey_to_yojson public_key in
+        let body = Yojson.Safe.to_string @@ Hsm.Key.publicKey_to_yojson public_key in
         Wm.continue (`String body) rd
 
     method private set_json rd =
@@ -154,7 +154,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (key : private_key_request) =
         let rsa_key = key.key in
-        Hsm.Keys.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
+        Hsm.Key.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Utils.respond_error e rd
       in
@@ -163,13 +163,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
     method! delete_resource rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.remove hsm_state ~id >>= function
+      Hsm.Key.remove hsm_state ~id >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Utils.respond_error e rd
 
@@ -207,13 +207,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get_pem rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.get_pem hsm_state ~id >>= function
+      Hsm.Key.get_pem hsm_state ~id >>= function
       | Error e -> Utils.respond_error e rd
       | Ok data -> Wm.continue (`String data) rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
@@ -252,13 +252,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Json.decode_subject content with
       | Error e -> Utils.respond_error (Bad_request, e) rd
       | Ok subject ->
-        Hsm.Keys.csr_pem hsm_state ~id subject >>= function
+        Hsm.Key.csr_pem hsm_state ~id subject >>= function
         | Error e -> Utils.respond_error e rd
         | Ok csr_pem -> Wm.respond 200 ~body:(`String csr_pem) rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
@@ -300,7 +300,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (dec : decrypt) =
-        Hsm.Keys.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
+        Hsm.Key.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
         | Ok decrypted ->
           let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
           Wm.respond 200 ~body:(`String json) rd
@@ -310,7 +310,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
@@ -351,7 +351,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (sign : sign) =
-        Hsm.Keys.sign hsm_state ~id sign.mode sign.message >>= function
+        Hsm.Key.sign hsm_state ~id sign.mode sign.message >>= function
         | Ok signature ->
           let json = Yojson.Safe.to_string (`Assoc [ "signature", `String signature ]) in
           Wm.respond 200 ~body:(`String json) rd
@@ -361,7 +361,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
@@ -399,7 +399,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get_cert rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.get_cert hsm_state ~id >>= function
+      Hsm.Key.get_cert hsm_state ~id >>= function
       | Error e -> Utils.respond_error e rd
       | Ok None -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
       | Ok (Some (content_type, data)) ->
@@ -410,13 +410,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.exists hsm_state ~id >>= function
+      Hsm.Key.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Utils.respond_error e rd
 
     method! delete_resource rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.Keys.remove_cert hsm_state ~id >>= function
+      Hsm.Key.remove_cert hsm_state ~id >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Utils.respond_error e rd
 
@@ -436,7 +436,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Cohttp.Header.get rd.req_headers "content-type" with
       | None -> Utils.respond_error (Bad_request, "Missing content-type header.") rd
       | Some content_type ->
-        Hsm.Keys.set_cert hsm_state ~id ~content_type content >>= function
+        Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
         | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
         | Error e -> Utils.respond_error e rd
 

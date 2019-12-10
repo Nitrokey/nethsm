@@ -169,7 +169,7 @@ module type S = sig
       (unit, error) result Lwt.t
   end
 
-  module Keys : sig
+  module Key : sig
     type purpose = Sign | Encrypt
 
     val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result

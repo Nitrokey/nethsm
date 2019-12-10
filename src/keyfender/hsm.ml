@@ -169,7 +169,7 @@ module type S = sig
       (unit, error) result Lwt.t
   end
 
-  module Keys : sig
+  module Key : sig
     type purpose = Sign | Encrypt
 
     val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
@@ -733,9 +733,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       Access.info (fun m -> m "changed %s (%s) passphrase" id user.name)
   end
 
-  module Keys = struct
-    let keys_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
-    module Access = (val Logs.src_log keys_src : Logs.LOG)
+  module Key = struct
+    let key_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
+    module Access = (val Logs.src_log key_src : Logs.LOG)
 
     type purpose = Sign | Encrypt [@@deriving yojson]
 
