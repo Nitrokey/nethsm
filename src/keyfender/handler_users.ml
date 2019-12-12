@@ -26,6 +26,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_users hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get_json rd =
       Hsm.User.list hsm_state >>= function
@@ -62,23 +63,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", self#get_json) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [
-        ("application/json", self#set_json)
-      ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
+      Wm.continue [ ("application/json", self#set_json) ] rd
   end
 
 
   class handler hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role_operator_get hsm_state
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -122,23 +114,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Hsm.User.remove hsm_state ~id >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Utils.respond_error e rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      (* R-Administrator may GET/PUT/DELETE/POST everything *)
-      (* /users/:UserID and /users/:UserID/passphrase *)
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      (if not_an_admin then
-         (* R-Operator may GET (all!) users, and POST their own passphrase *)
-         match rd.Webmachine.Rd.meth with
-         | `GET -> Access.forbidden hsm_state `Operator rd
-         | _ -> Lwt.return not_an_admin
-       else
-         Lwt.return not_an_admin) >>= fun forbidden ->
-      Wm.continue forbidden rd
   end
 
   class handler_passphrase hsm_state = object(self)
@@ -169,9 +144,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [
-        ("application/json", self#set_json)
-      ] rd
+      Wm.continue [ ("application/json", self#set_json) ] rd
 
     method !process_post rd =
       self#set_json rd
@@ -184,21 +157,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       (* R-Administrator may GET/PUT/DELETE/POST everything *)
       (* /users/:UserID and /users/:UserID/passphrase *)
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      (if not_an_admin then
-         (* R-Operator may GET (all!) users, and POST their own passphrase *)
-         (* TODO do we need to decouple userid from username? *)
-         match rd.Webmachine.Rd.meth with
-         | `POST ->
-           let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-           if Access.get_user rd.Webmachine.Rd.req_headers = id then
-             Access.forbidden hsm_state `Operator rd
-           else
-             Lwt.return not_an_admin
-         | _ -> Lwt.return not_an_admin
-       else
-         Lwt.return not_an_admin) >>= fun forbidden ->
-      Wm.continue forbidden rd
+      begin
+        (* R-Operator may GET (all!) users, and POST their own passphrase *)
+        let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+        if Access.get_user rd.Webmachine.Rd.req_headers = id then
+          Access.forbidden hsm_state `Operator rd
+        else
+          Lwt.return not_an_admin
+      end >>= fun not_an_operator ->
+      Wm.continue (not_an_admin && not_an_operator) rd
   end
-
-
 end

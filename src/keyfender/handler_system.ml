@@ -9,6 +9,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class info hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit Endpoint.get_json
 
     method private to_json =
@@ -16,74 +17,46 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.(System.system_info hsm_state |> system_info_to_yojson |> Yojson.Safe.to_string)
       in
       Wm.continue (`String json)
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class reboot hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.reboot hsm_state ;
       Wm.continue true rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class shutdown hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.shutdown hsm_state ;
       Wm.continue true rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class reset hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.reset hsm_state >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Utils.respond_error e rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class update hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
@@ -99,57 +72,36 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! content_types_accepted =
       Wm.continue [ ("application/octet-stream", self#process_post) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class commit_update hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
       match Hsm.System.commit_update hsm_state with
       | Error e -> Utils.respond_error e rd
       | Ok () -> Wm.continue true rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class cancel_update hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
       match Hsm.System.cancel_update hsm_state with
       | Error e -> Utils.respond_error e rd
       | Ok () -> Wm.continue true rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class backup hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
 
     method! process_post rd =
@@ -165,14 +117,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
                   resp_body = `Stream stream
         } in
         Wm.continue true rd'
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class restore hsm_state = object(self)
@@ -190,5 +134,4 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! content_types_accepted =
       Wm.continue [ ("application/octet-stream", self#process_post) ]
   end
-
 end

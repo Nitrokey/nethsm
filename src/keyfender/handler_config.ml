@@ -29,6 +29,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class tls_public hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
@@ -39,19 +40,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted rd =
       Wm.continue [ ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class tls_cert hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
@@ -71,19 +65,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/x-pem-file", self#set) ]
 
     method !allowed_methods = Wm.continue [ `GET ; `PUT ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class tls_csr hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
 
     method private of_json json rd =
@@ -96,19 +83,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! content_types_provided =
       Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class unlock_passphrase hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
 
     method private of_json json rd =
@@ -118,19 +98,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error e -> Utils.respond_error e rd
       in
       Json.decode_passphrase2 json |> Utils.err_to_bad_request ok rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class unattended_boot hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.unattended_boot hsm_state >>= function
@@ -158,19 +131,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class network hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.network hsm_state >>= fun network ->
@@ -194,19 +160,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class logging hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.log hsm_state >>= fun log_config ->
@@ -230,19 +189,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class backup_passphrase hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
 
     method private of_json json rd =
@@ -252,19 +204,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Error e -> Utils.respond_error e rd
       in
       Json.decode_passphrase2 json |> Utils.err_to_bad_request ok rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 
   class time hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private get rd =
       Hsm.Config.time hsm_state >>= fun timestamp ->
@@ -294,13 +239,5 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun auth ->
-      Wm.continue auth rd
   end
 end

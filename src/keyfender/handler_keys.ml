@@ -14,6 +14,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_keys hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role_operator_get hsm_state
 
     method private get_json rd =
       Hsm.Key.list hsm_state >>= function
@@ -65,17 +66,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#set_json) ;
         ("application/x-pem-file", self#set_pem)
       ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= function
-      | true when rd.meth = `GET -> (* no admin - only get allowed for operator *)
-        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-        Wm.continue not_an_operator rd
-      | not_an_admin -> Wm.continue not_an_admin rd
   end
 
   type generate_request = { purpose: Hsm.Key.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
@@ -83,6 +73,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_keys_generate hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -118,19 +109,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [
         ("application/json", self#set_json)
       ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-      Wm.continue not_an_admin rd
   end
 
   class handler hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role_operator_get hsm_state
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -175,17 +159,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [
         ("application/json", self#set_json)
       ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= function
-      | true when rd.meth = `GET ->
-        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-        Wm.continue not_an_operator rd
-      | not_an_admin -> Wm.continue not_an_admin rd
   end
 
   class handler_public hsm_state = object(self)
@@ -271,6 +244,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler_decrypt hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Operator
 
     method private decrypt rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -301,22 +275,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [
-        ("application/json", self#decrypt)
-      ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-      Wm.continue not_an_operator rd
+      Wm.continue [ ("application/json", self#decrypt) ] rd
   end
 
   class handler_sign hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Operator
 
     method private sign rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -347,22 +312,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
-      Wm.continue [
-        ("application/json", self#sign)
-      ] rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-      Wm.continue not_an_operator rd
+      Wm.continue [ ("application/json", self#sign) ] rd
   end
 
   class handler_cert hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role_operator_get hsm_state
 
     method private get_cert rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -406,17 +362,5 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
         | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
         | Error e -> Utils.respond_error e rd
-
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
-
-    method! forbidden rd =
-      Access.forbidden hsm_state `Administrator rd >>= function
-      | true when rd.meth = `GET -> (* no admin - only get allowed for operator *)
-        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-        Wm.continue not_an_operator rd
-      | not_an_admin -> Wm.continue not_an_admin rd
   end
-
 end
