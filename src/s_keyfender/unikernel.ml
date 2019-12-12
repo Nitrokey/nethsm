@@ -31,10 +31,21 @@ struct
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
-      let author _ = "keyfender"
-      and msg _ = "a keyfender change"
+      let store_connect () =
+        let author _ = "keyfender"
+        and msg _ = "a keyfender change"
+        in
+        Git_store.connect git ~conduit:internal_conduit ~resolver:internal_resolver ~author ~msg (Key_gen.remote ())
       in
-      Git_store.connect git ~conduit:internal_conduit ~resolver:internal_resolver ~author ~msg (Key_gen.remote ()) >>= fun store ->
+      let sleep e =
+        Log.warn(fun m -> m "Could not connect to remote %s" (Printexc.to_string e));
+        Time.sleep_ns (Duration.of_sec 1) 
+      in
+      let rec connect_git () = 
+        Lwt.catch store_connect
+          (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e) 
+      in
+      connect_git () >>= fun store ->
       Hsm.boot store >>= fun hsm_state ->
       Hsm.network_configuration hsm_state >>= fun (ip, network, gateway) ->
       Ext_ipv4.connect ~ip:(network, ip) ?gateway ext_eth ext_arp >>= fun ipv4 ->

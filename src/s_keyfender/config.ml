@@ -24,6 +24,10 @@ let remote =
   let doc = Key.Arg.info ~doc:"Remote git repository." ["remote"] in
   Key.(create "remote" Arg.(opt string "git://169.254.169.2/keyfender-data.git" doc))
 
+let retry =
+  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
+  Key.(create "retry" Arg.(flag doc))
+
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
    cannot yet connect the ip stack, but have to manually do that in the
@@ -43,7 +47,7 @@ let main =
     package ~min:"2.0.0" "irmin-mirage";
     package ~min:"2.0.0" "irmin-mirage-git";
   ] in
-  let keys = Key.[ abstract http_port; abstract https_port; abstract remote ] in
+  let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ] in
   foreign
     ~packages ~keys ~deps:[abstract nocrypto]
     "Unikernel.Main"
