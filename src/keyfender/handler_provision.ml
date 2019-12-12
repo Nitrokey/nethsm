@@ -16,7 +16,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class provision hsm_state = object
-    inherit Endpoint.put_json hsm_state
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned ]
+    inherit !Endpoint.put_json
 
     method private of_json json rd =
       let ok (unlock, admin, time) =
@@ -25,7 +27,5 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           | Error e -> Utils.respond_error e rd
       in
       decode_json json |> Utils.err_to_bad_request ok rd
-
-    method private required_states = Wm.continue [ `Unprovisioned ]
   end
 end

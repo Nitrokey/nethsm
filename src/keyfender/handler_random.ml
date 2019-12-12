@@ -9,7 +9,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class random hsm_state = object
-    inherit Endpoint.post_json hsm_state
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post_json
 
     method private of_json json rd =
       let ok { length } =
@@ -18,8 +20,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd
       in
       Json.to_ocaml req_length_of_yojson json |> Utils.err_to_bad_request ok rd
-
-    method private required_states = Wm.continue [ `Operational ]
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->

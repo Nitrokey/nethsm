@@ -1,6 +1,9 @@
-module Make (Wm : Webmachine.S) (Hsm : Hsm.S) = struct
+module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
+
+  module Endpoint = Endpoint.Make(Wm)(Hsm)
+
   class handler _hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
 
     method private to_json rd =
       let result = 

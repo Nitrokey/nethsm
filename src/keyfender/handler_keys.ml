@@ -3,6 +3,7 @@ open Lwt.Infix
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
   module Access = Access.Make(Hsm)
   module Utils = Wm_utils.Make(Wm)(Hsm)
+  module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
   type private_key_request = { purpose: Hsm.Key.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
@@ -11,7 +12,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   type sign = { mode : Hsm.Key.sign_mode ; message : string }[@@deriving yojson]
 
   class handler_keys hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get_json rd =
       Hsm.Key.list hsm_state >>= function
@@ -64,12 +66,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/x-pem-file", self#set_pem)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -85,7 +81,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   type generate_request = { purpose: Hsm.Key.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
 
   class handler_keys_generate hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -122,12 +119,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#set_json)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -138,7 +129,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -184,12 +176,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#set_json)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -203,7 +189,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_public hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get_pem rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -226,12 +213,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method content_types_accepted rd =
       Wm.continue [ ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -243,7 +224,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_csr hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private csr_pem rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -276,12 +258,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/x-pem-file", self#csr_pem)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -293,7 +269,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_decrypt hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private decrypt rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -328,12 +305,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#decrypt)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -344,7 +315,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_sign hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private sign rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -379,12 +351,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#sign)
       ] rd
 
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -395,7 +361,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_cert hsm_state = object(self)
-    inherit [Cohttp_lwt.Body.t] Wm.resource
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get_cert rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -439,12 +406,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
         | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
         | Error e -> Utils.respond_error e rd
-
-    (* we use this not for the service, but to check the internal state before processing requests *)
-    method! service_available rd =
-      if Access.is_in_state hsm_state `Operational
-      then Wm.continue true rd
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed) rd
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->

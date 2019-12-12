@@ -27,9 +27,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class tls_public hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
@@ -51,9 +50,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class tls_cert hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
@@ -84,9 +82,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class tls_csr hsm_state = object
-    inherit Endpoint.post_json hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post_json
 
     method private of_json json rd =
       let ok subject =
@@ -99,8 +97,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! content_types_provided =
       Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
 
-    method !allowed_methods = Wm.continue [ `POST ]
-
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
       Wm.continue auth rd'
@@ -111,9 +107,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class unlock_passphrase hsm_state = object
-    inherit Endpoint.post_json hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post_json
 
     method private of_json json rd =
       let ok passphrase =
@@ -133,9 +129,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class unattended_boot hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.unattended_boot hsm_state >>= function
@@ -174,9 +169,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class network hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.network hsm_state >>= fun network ->
@@ -211,9 +205,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class logging hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.log hsm_state >>= fun log_config ->
@@ -248,9 +241,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class backup_passphrase hsm_state = object
-    inherit Endpoint.post_json hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post_json
 
     method private of_json json rd =
       let ok passphrase =
@@ -270,9 +263,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class time hsm_state = object(self)
-    inherit Endpoint.hsm hsm_state
-
-    method private required_states = Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get rd =
       Hsm.Config.time hsm_state >>= fun timestamp ->

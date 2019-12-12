@@ -7,16 +7,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class info hsm_state = object
-    inherit Endpoint.get_json hsm_state
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit Endpoint.get_json
 
     method private to_json =
       let json =
         Hsm.(System.system_info hsm_state |> system_info_to_yojson |> Yojson.Safe.to_string)
       in
       Wm.continue (`String json)
-
-    method private required_states =
-      Wm.continue [ `Operational ]
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
@@ -28,10 +27,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class reboot hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.reboot hsm_state ;
@@ -47,10 +45,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class shutdown hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.shutdown hsm_state ;
@@ -66,10 +63,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class reset hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       Hsm.System.reset hsm_state >>= function
@@ -86,10 +82,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class update hsm_state = object(self)
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -115,10 +110,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class commit_update hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       match Hsm.System.commit_update hsm_state with
@@ -135,10 +129,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class cancel_update hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       match Hsm.System.cancel_update hsm_state with
@@ -155,10 +148,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class backup hsm_state = object
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Operational ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
@@ -184,10 +176,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class restore hsm_state = object(self)
-    inherit Endpoint.post hsm_state
-
-    method private required_states =
-      Wm.continue [ `Unprovisioned ]
+    inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned ]
+    inherit !Endpoint.post
 
     method! process_post rd =
       let body = rd.Webmachine.Rd.req_body in
