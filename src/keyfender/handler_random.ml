@@ -1,9 +1,5 @@
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
-
-  type req_length = { length : int }[@@deriving yojson]
-
   module Endpoint = Endpoint.Make(Wm)(Hsm)
-  module Access = Access.Make(Hsm)
 
   class random hsm_state = object
     inherit Endpoint.base
@@ -12,11 +8,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.post_json
 
     method private of_json json rd =
-      let ok { length } =
+      let ok ({ Json.length } : Json.random_req ) =
         let data = Hsm.random length in
         let json = Yojson.Safe.to_string (`Assoc [ "random" , `String data ]) in
         Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd
       in
-      Json.to_ocaml req_length_of_yojson json |> Endpoint.err_to_bad_request ok rd
+      Json.to_ocaml Json.random_req_of_yojson json |> Endpoint.err_to_bad_request ok rd
   end
 end

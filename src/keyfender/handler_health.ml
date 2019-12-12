@@ -24,7 +24,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private to_json =
       let state = Hsm.state hsm_state in
-      let json = Yojson.Safe.to_string (Hsm.state_to_yojson state) in
+      let json = Yojson.Safe.to_string (Json.state_to_yojson state) in
       Wm.continue (`String json)
   end
 end

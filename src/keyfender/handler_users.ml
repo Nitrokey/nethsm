@@ -2,23 +2,6 @@ open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  type user_req = {
-      realName : string ;
-      role : Hsm.User.role ;
-      passphrase : string ;
-  }[@@deriving yojson]
-
-  let decode_user content =
-    let open Rresult.R.Infix in
-    Json.decode user_req_of_yojson content >>= fun user ->
-    Json.nonempty ~name:"passphrase" user.passphrase >>| fun () ->
-    user
-
-  type user_reply = {
-      realName : string ;
-      role : Hsm.User.role ;
-  }[@@deriving yojson]
-
   module Access = Access.Make(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
@@ -38,14 +21,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      let ok (user : user_req) =
+      let ok (user : Json.user_req) =
         let id = match Cohttp.Header.get rd.req_headers "new_id" with
         | None -> assert false | Some path -> path in
         Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      decode_user content |> Endpoint.err_to_bad_request ok rd
+      Json.decode_user_req content |> Endpoint.err_to_bad_request ok rd
 
     method! post_is_create rd =
       Wm.continue true rd
@@ -76,20 +59,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Hsm.User.get hsm_state ~id >>= function
       | Error e -> Endpoint.respond_error e rd
       | Ok (name, role) ->
-        let user_reply = { realName = name ; role } in
-        let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
+        let user = { Json.realName = name ; role } in
+        let body = Yojson.Safe.to_string (Json.user_res_to_yojson user) in
         Wm.continue (`String body) rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok (user : user_req) =
+      let ok (user : Json.user_req) =
         Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok _id -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      decode_user content |> Endpoint.err_to_bad_request ok rd
+      Json.decode_user_req content |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -128,7 +111,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase content |> Endpoint.err_to_bad_request ok rd
+      match 
+        try Ok (Yojson.Safe.from_string content)
+        with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg) with
+      | Ok json' -> Json.decode_passphrase json' |> Endpoint.err_to_bad_request ok rd
+      | Error e -> Endpoint.respond_error (Bad_request, e) rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in

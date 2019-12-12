@@ -2,7 +2,6 @@ open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  module Access = Access.Make(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class info hsm_state = object
@@ -13,7 +12,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private to_json =
       let json =
-        Hsm.(System.system_info hsm_state |> system_info_to_yojson |> Yojson.Safe.to_string)
+        Hsm.System.system_info hsm_state |> Json.system_info_to_yojson |> Yojson.Safe.to_string
       in
       Wm.continue (`String json)
   end

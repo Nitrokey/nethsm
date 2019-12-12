@@ -72,14 +72,188 @@ let decode_time s =
 
 type passphrase_req = { passphrase : string } [@@deriving yojson]
 
-let decode_passphrase2 json =
+let decode_passphrase json =
   let open Rresult.R.Infix in
   to_ocaml passphrase_req_of_yojson json >>= fun passphrase ->
   nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
 
-let decode_passphrase json =
+type provision_req = { unlockPassphrase : string ; adminPassphrase : string ; time : string }[@@deriving yojson]
+
+let decode_provision_req json =
   let open Rresult.R.Infix in
-  (try Ok (Yojson.Safe.from_string json)
-   with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json' ->
-  decode_passphrase2 json'
+  to_ocaml provision_req_of_yojson json >>= fun b ->
+  nonempty ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
+  nonempty ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
+  decode_time b.time >>| fun time ->
+  (b.unlockPassphrase, b.adminPassphrase, time)
+
+type ip = Ipaddr.V4.t
+let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
+let ip_of_yojson = function
+  | `String ip_str ->
+    Rresult.R.reword_error (function `Msg msg -> msg)
+      (Ipaddr.V4.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+type network = {
+  ipAddress : ip ;
+  netmask : ip ;
+  gateway : ip ;
+}[@@deriving yojson]
+
+let decode_network json =
+  decode network_of_yojson json
+
+let is_unattended_boot_to_yojson r =
+  `Assoc [ ("status", `String (if r then "on" else "off")) ]
+
+let is_unattended_boot_of_yojson content =
+  let parse = function
+  | `Assoc [ ("status", `String r) ] ->
+    if r = "on"
+    then Ok true
+    else if r = "off"
+    then Ok false
+    else Error "Invalid status data, expected 'on' or 'off'."
+  | _ -> Error "Invalid status data, expected a dictionary with one entry 'status'."
+  in
+  decode parse content
+
+type time_req = { time : string } [@@deriving yojson]
+
+type log_level = Logs.level
+let log_level_to_string l = Logs.level_to_string (Some l)
+let log_level_of_string str = match Logs.level_of_string str with
+  | Ok Some lvl -> Ok lvl
+  | Ok None -> Error "parse error for log level"
+  | Error (`Msg msg) -> Error msg
+
+let log_level_to_yojson l = `String (log_level_to_string l)
+
+let log_level_of_yojson = function
+  | `String l -> log_level_of_string l
+  | _ -> Error "expected string as log level"
+
+type log =
+  { ipAddress : ip ; port : int ; logLevel : log_level } [@@deriving yojson]
+
+type random_req = { length : int }[@@deriving yojson]
+
+type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
+
+type purpose = Sign | Encrypt [@@deriving yojson]
+
+let purpose_of_yojson = function
+  | `String _ as s -> purpose_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for purpose"
+
+let purpose_to_yojson purpose =
+  match purpose_to_yojson purpose with
+  | `List [l] -> l
+  | _ -> assert false
+
+type publicKey = {
+  purpose : purpose ;
+  algorithm : string ;
+  modulus : string ;
+  publicExponent : string ;
+  operations : int
+} [@@deriving yojson]
+
+type private_key_req = { 
+  purpose: purpose ; 
+  algorithm: string ; 
+  key : rsa_key 
+}[@@deriving yojson]
+
+type decrypt_mode =
+  | Raw
+  | PKCS1
+  | OAEP_MD5
+  | OAEP_SHA1
+  | OAEP_SHA224
+  | OAEP_SHA256
+  | OAEP_SHA384
+  | OAEP_SHA512
+[@@deriving yojson]
+
+let decrypt_mode_of_yojson = function
+  | `String _ as s -> decrypt_mode_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for decrypt mode"
+
+type decrypt_req = { mode : decrypt_mode ; encrypted : string }[@@deriving yojson]
+
+type sign_mode =
+  | PKCS1
+  | PSS_MD5
+  | PSS_SHA1
+  | PSS_SHA224
+  | PSS_SHA256
+  | PSS_SHA384
+  | PSS_SHA512
+[@@deriving yojson]
+
+let sign_mode_of_yojson = function
+  | `String _ as s -> sign_mode_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for sign mode"
+
+type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
+
+type generate_key_req = { purpose: purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
+
+type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
+
+let role_to_yojson role =
+  match role_to_yojson role with
+   `List [l] -> l | _ -> assert false
+
+let role_of_yojson = function
+  | `String _ as l -> role_of_yojson (`List [ l ] )
+  | _ -> Error "expected string as role"
+
+type user_req = {
+  realName : string ;
+  role : role ;
+  passphrase : string ;
+}[@@deriving yojson]
+
+let decode_user_req content =
+  let open Rresult.R.Infix in
+  decode user_req_of_yojson content >>= fun user ->
+  nonempty ~name:"passphrase" user.passphrase >>| fun () ->
+  user
+
+type user_res = {
+  realName : string ;
+  role : role ;
+}[@@deriving yojson]
+
+type info = {
+  vendor : string ;
+  product : string ;
+  version : string ;
+}[@@deriving yojson]
+
+type state = [
+  | `Unprovisioned
+  | `Operational
+  | `Locked
+  | `Busy
+][@@deriving yojson]
+
+let state_to_yojson state =
+  `Assoc [ "state", match state_to_yojson state with `List [l] -> l | _ -> assert false ]
+
+type version = int * int
+
+let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
+let version_to_yojson v = `String (version_to_string v)
+let version_of_yojson _ = Error "Cannot convert version"
+
+type system_info = {
+  firmwareVersion : string ;
+  softwareVersion : version ;
+  hardwareVersion : string ;
+}[@@deriving yojson]
+

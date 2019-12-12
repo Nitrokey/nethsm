@@ -2,27 +2,6 @@ open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  let decode_network json =
-    Json.decode Hsm.Config.network_of_yojson json
-
-  let is_unattended_boot_to_yojson r =
-    `Assoc [ ("status", `String (if r then "on" else "off")) ]
-
-  let is_unattended_boot_of_yojson content =
-    let parse = function
-    | `Assoc [ ("status", `String r) ] ->
-      if r = "on"
-      then Ok true
-      else if r = "off"
-      then Ok false
-      else Error "Invalid status data, expected 'on' or 'off'."
-    | _ -> Error "Invalid status data, expected a dictionary with one entry 'status'."
-    in
-    Json.decode parse content
-
-  type time_req = { time : string } [@@deriving yojson]
-
-  module Access = Access.Make(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class tls_public hsm_state = object(self)
@@ -96,7 +75,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase2 json |> Endpoint.err_to_bad_request ok rd
+      Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
   end
 
   class unattended_boot hsm_state = object(self)
@@ -107,14 +86,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private get rd =
       Hsm.Config.unattended_boot hsm_state >>= function
       | Ok is_unattended_boot ->
-        let json = is_unattended_boot_to_yojson is_unattended_boot in
+        let json = Json.is_unattended_boot_to_yojson is_unattended_boot in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
       | Error e -> Endpoint.respond_error e rd
 
     method private set rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match is_unattended_boot_of_yojson content with
+      match Json.is_unattended_boot_of_yojson content with
       | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok unattended_boot ->
         Hsm.Config.set_unattended_boot hsm_state unattended_boot >>= function
@@ -139,13 +118,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get rd =
       Hsm.Config.network hsm_state >>= fun network ->
-      let json = Hsm.Config.network_to_yojson network in
+      let json = Json.network_to_yojson network in
       Wm.continue (`String (Yojson.Safe.to_string json)) rd
 
     method private set rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match decode_network content with
+      match Json.decode_network content with
       | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok network ->
         Hsm.Config.set_network hsm_state network >>= function
@@ -168,13 +147,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get rd =
       Hsm.Config.log hsm_state >>= fun log_config ->
-      let json = Hsm.Config.log_to_yojson log_config in
+      let json = Json.log_to_yojson log_config in
       Wm.continue (`String (Yojson.Safe.to_string json)) rd
 
     method private set rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      match Json.decode Hsm.Config.log_of_yojson content with
+      match Json.decode Json.log_of_yojson content with
       | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok log_config ->
         Hsm.Config.set_log hsm_state log_config >>= function
@@ -202,7 +181,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase2 json |> Endpoint.err_to_bad_request ok rd
+      Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
   end
 
   class time hsm_state = object(self)
@@ -213,7 +192,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private get rd =
       Hsm.Config.time hsm_state >>= fun timestamp ->
       let time = Ptime.to_rfc3339 timestamp in
-      let json = time_req_to_yojson { time } in
+      let json = Json.time_req_to_yojson { time } in
       Wm.continue (`String (Yojson.Safe.to_string json)) rd
 
     method private set rd =
@@ -221,7 +200,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let parse json =
         let open Rresult.R.Infix in
-        time_req_of_yojson json >>= fun time ->
+        Json.time_req_of_yojson json >>= fun time ->
         Json.decode_time time.time
       in
       match Json.decode parse content with

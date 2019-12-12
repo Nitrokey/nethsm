@@ -13,42 +13,15 @@ module type S = sig
 
   val error_to_code : status_code -> int
 
-  type info = {
-    vendor : string ;
-    product : string ;
-    version : string ;
-  }
-
-  val info_to_yojson : info -> Yojson.Safe.t
-
-  type state = [
-    | `Unprovisioned
-    | `Operational
-    | `Locked
-    | `Busy
-  ]
-
-  val pp_state : state Fmt.t
-
-  val state_to_yojson : state -> Yojson.Safe.t
-
-  type version = int * int
-
-  type system_info = {
-    firmwareVersion : string ;
-    softwareVersion : version ;
-    hardwareVersion : string ;
-  }
-
-  val system_info_to_yojson : system_info -> Yojson.Safe.t
+  val pp_state : Json.state Fmt.t
 
   type t
 
   val equal : t -> t -> bool Lwt.t
 
-  val info : t -> info
+  val info : t -> Json.info
 
-  val state : t -> state
+  val state : t -> Json.state
 
   val lock : t -> unit
 
@@ -88,30 +61,14 @@ module type S = sig
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
-    type network = {
-      ipAddress : Ipaddr.V4.t ;
-      netmask : Ipaddr.V4.t ;
-      gateway : Ipaddr.V4.t ;
-    }
+    val network : t -> Json.network Lwt.t
 
-    val network_to_yojson : network -> Yojson.Safe.t
-
-    val network_of_yojson : Yojson.Safe.t -> (network, string) result
-
-    val network : t -> network Lwt.t
-
-    val set_network : t -> network ->
+    val set_network : t -> Json.network ->
       (unit, error) result Lwt.t
 
-    type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
+    val log : t -> Json.log Lwt.t
 
-    val log_to_yojson : log -> Yojson.Safe.t
-
-    val log_of_yojson : Yojson.Safe.t -> (log, string) result
-
-    val log : t -> log Lwt.t
-
-    val set_log : t -> log -> (unit, error) result Lwt.t
+    val set_log : t -> Json.log -> (unit, error) result Lwt.t
 
     val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -122,7 +79,7 @@ module type S = sig
   end
 
   module System : sig
-    val system_info : t -> system_info
+    val system_info : t -> Json.system_info
 
     val reboot : t -> unit
 
@@ -144,23 +101,18 @@ module type S = sig
   end
 
   module User : sig
-    type role = [ `Administrator | `Operator | `Metrics | `Backup ]
-
-    val role_of_yojson : Yojson.Safe.t -> (role, string) result
-    val role_to_yojson : role -> Yojson.Safe.t
-
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
-    val is_authorized : t -> string -> role -> bool Lwt.t
+    val is_authorized : t -> string -> Json.role -> bool Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> id:string -> (string * role, error) result Lwt.t
+    val get : t -> id:string -> (string * Json.role, error) result Lwt.t
 
-    val add : id:string -> t -> role:role -> passphrase:string ->
+    val add : id:string -> t -> role:Json.role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -170,32 +122,22 @@ module type S = sig
   end
 
   module Key : sig
-    type purpose = Sign | Encrypt
-
-    val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
-
-    val purpose_to_yojson : purpose -> Yojson.Safe.t
-
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> purpose -> p:string -> q:string -> e:string ->
+    val add_json : id:string -> t -> Json.purpose -> p:string -> q:string -> e:string ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> purpose -> string ->
+    val add_pem : id:string -> t -> Json.purpose -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> purpose -> length:int ->
+    val generate : id:string -> t -> Json.purpose -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
-    type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
-
-    val publicKey_to_yojson : publicKey -> Yojson.Safe.t
-
-    val get_json : t -> id:string -> (publicKey, error) result Lwt.t
+    val get_json : t -> id:string -> (Json.publicKey, error) result Lwt.t
 
     val get_pem : t -> id:string -> (string, error) result Lwt.t
 
@@ -207,21 +149,9 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
-    type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
+    val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
 
-    val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
-
-    val decrypt_mode_to_yojson : decrypt_mode -> Yojson.Safe.t
-
-    val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
-
-    type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
-
-    val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
-
-    val sign_mode_to_yojson : sign_mode -> Yojson.Safe.t
-
-    val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
+    val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
   end
 end
 
@@ -278,19 +208,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       Log.err (fun m -> m "Error: %a while writing to key-value store: %s." pp_err e context);
       Error (Internal_server_error, "Could not write to disk. Check hardware.")
 
-  type info = {
-    vendor : string ;
-    product : string ;
-    version : string ;
-  }[@@deriving yojson]
-
-  type state = [
-    | `Unprovisioned
-    | `Operational
-    | `Locked
-    | `Busy
-  ][@@deriving yojson]
-
   let pp_state ppf s =
     Fmt.string ppf (match s with
         | `Unprovisioned -> "unprovisioned"
@@ -298,12 +215,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         | `Locked -> "locked"
         | `Busy -> "busy")
 
-  let state_to_yojson state =
-    `Assoc [ "state", match state_to_yojson state with `List [l] -> l | _ -> assert false ]
-
-  type version = int * int
-
-  let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
   let version_of_string s = match Astring.String.cut ~sep:"." s with
     | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
     | Some (major, minor) ->
@@ -314,15 +225,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         Ok (ma, mi)
       with Failure _ -> Error (Bad_request, "Failed to parse version: Not a number. A valid version would be '4.2'.")
 
-  let version_to_yojson v = `String (version_to_string v)
-  let version_of_yojson _ = Error "Cannot convert version"
   let version_is_upgrade ~current ~update = fst current <= fst update
-
-  type system_info = {
-    firmwareVersion : string ;
-    softwareVersion : version ;
-    hardwareVersion : string ;
-  }[@@deriving yojson]
 
   module Config_store = Config_store.Make(KV)
   module Domain_key_store = Domain_key_store.Make(Rng)(KV)
@@ -353,8 +256,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     mutable state : internal_state ;
     mutable has_changes : string option ;
     kv : KV.t ;
-    info : info ;
-    system_info : system_info ;
+    info : Json.info ;
+    system_info : Json.system_info ;
   }
 
   let state t = to_external_state t.state
@@ -597,16 +500,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
 
-    type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
-
-    let role_to_yojson role =
-      match role_to_yojson role with
-       `List [l] -> l | _ -> assert false
-
-    let role_of_yojson = function
-      | `String _ as l -> role_of_yojson (`List [ l ] )
-      | _ -> Error "expected string as role"
-
     let pp_role ppf r =
       Fmt.string ppf @@ match r with
       | `Administrator -> "R-Administrator"
@@ -618,7 +511,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       name : string ;
       salt : string ;
       digest : string ;
-      role : role
+      role : Json.role
     }[@@deriving yojson]
 
     let read_decode store id =
@@ -737,17 +630,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     let key_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
     module Access = (val Logs.src_log key_src : Logs.LOG)
 
-    type purpose = Sign | Encrypt [@@deriving yojson]
-
-    let purpose_of_yojson = function
-      | `String _ as s -> purpose_of_yojson (`List [s])
-      | _ -> Error "Expected JSON string for purpose"
-
-    let purpose_to_yojson purpose =
-      match purpose_to_yojson purpose with
-      | `List [l] -> l
-      | _ -> assert false
-
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
     let key_store t =
@@ -788,7 +670,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         | Some _ -> true)
 
     type key = {
-      purpose : purpose ;
+      purpose : Json.purpose ;
       priv : priv ;
       cert : (string * string) option ;
     } [@@deriving yojson]
@@ -847,14 +729,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
          Access.info (fun m -> m "removed (%s)" id))
 
-    type publicKey = {
-      purpose : purpose ;
-      algorithm : string ;
-      modulus : string ;
-      publicExponent : string ;
-      operations : int
-    } [@@deriving yojson]
-
     let get_key t id =
       let open Lwt_result.Infix in
       let store = key_store t in
@@ -871,7 +745,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       let z_to_b64 n =
         Cstruct.to_string Nocrypto.(Base64.encode @@ Numeric.Z.to_cstruct_be n)
       in
-      { purpose = key.purpose ;
+      { Json.purpose = key.purpose ;
         algorithm = "RSA" ;
         modulus = z_to_b64 key.priv.Nocrypto.Rsa.n ;
         publicExponent = z_to_b64 key.priv.Nocrypto.Rsa.e ;
@@ -913,21 +787,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         let key' = { key with cert = None } in
         encode_and_write t id key'
 
-    type decrypt_mode =
-      | Raw
-      | PKCS1
-      | OAEP_MD5
-      | OAEP_SHA1
-      | OAEP_SHA224
-      | OAEP_SHA256
-      | OAEP_SHA384
-      | OAEP_SHA512
-    [@@deriving yojson]
-
-    let decrypt_mode_of_yojson = function
-      | `String _ as s -> decrypt_mode_of_yojson (`List [s])
-      | _ -> Error "Expected JSON string for decrypt mode"
-
     module Oaep_md5 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.MD5)
     module Oaep_sha1 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA1)
     module Oaep_sha224 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA224)
@@ -947,7 +806,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
         if key_data.purpose = Encrypt then
           let dec_cs_opt =
             match decrypt_mode with
-            | Raw ->
+            | Json.Raw ->
               (try Some (Nocrypto.Rsa.decrypt ~key encrypted_data)
                with Nocrypto.Rsa.Insufficient_key -> None)
             | PKCS1 -> Nocrypto.Rsa.PKCS1.decrypt ~key encrypted_data
@@ -963,20 +822,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
           | Some cs -> Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
         else
           Error (Bad_request, "Key purpose is not encrypt.")
-
-    type sign_mode =
-      | PKCS1
-      | PSS_MD5
-      | PSS_SHA1
-      | PSS_SHA224
-      | PSS_SHA256
-      | PSS_SHA384
-      | PSS_SHA512
-    [@@deriving yojson]
-
-    let sign_mode_of_yojson = function
-      | `String _ as s -> sign_mode_of_yojson (`List [s])
-      | _ -> Error "Expected JSON string for sign mode"
 
     module Pss_md5 = Nocrypto.Rsa.PSS(Nocrypto.Hash.MD5)
     module Pss_sha1 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA1)
@@ -998,7 +843,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
           try
             let signature =
               match sign_mode with
-              | PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key to_sign
+              | Json.PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key to_sign
               | PSS_MD5 -> Pss_md5.sign ~key to_sign
               | PSS_SHA1 -> Pss_sha1.sign ~key to_sign
               | PSS_SHA224 -> Pss_sha224.sign ~key to_sign
@@ -1146,33 +991,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       let csr, _ = generate_csr ~dn priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
-    type ip = Ipaddr.V4.t
-    let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
-    let ip_of_yojson = function
-      | `String ip_str ->
-        Rresult.R.reword_error (function `Msg msg -> msg)
-          (Ipaddr.V4.of_string ip_str)
-      | _ -> Error "expected string for IP"
-
-    type network = {
-      ipAddress : ip ;
-      netmask : ip ;
-      gateway : ip ;
-    }[@@deriving yojson]
-
     let network t =
       let open Lwt.Infix in
       network_configuration t >|= fun (ipAddress, prefix, route) ->
       let netmask = Ipaddr.V4.Prefix.netmask prefix
       and gateway = match route with None -> Ipaddr.V4.any | Some ip -> ip
       in
-      { ipAddress ; netmask ; gateway }
+      { Json.ipAddress ; netmask ; gateway }
 
     let set_network t network =
       let open Lwt_result.Infix in
       Lwt.return (
         try
-          Ok (Ipaddr.V4.Prefix.of_netmask network.netmask network.ipAddress)
+          Ok (Ipaddr.V4.Prefix.of_netmask network.Json.netmask network.ipAddress)
         with
           Ipaddr.Parse_error (err, packet) ->
           Error (Bad_request, Fmt.strf "error %s parsing netmask %s" err packet)) >>= fun prefix ->
@@ -1186,23 +1017,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
       internal_server_error "Write network configuration" KV.pp_write_error
         Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
-    type log_level = Logs.level
-    let log_level_to_string l = Logs.level_to_string (Some l)
-    let log_level_of_string str = match Logs.level_of_string str with
-      | Ok Some lvl -> Ok lvl
-      | Ok None -> Error "parse error for log level"
-      | Error (`Msg msg) -> Error msg
-
-    let log_level_to_yojson l = `String (log_level_to_string l)
-
-    let log_level_of_yojson = function
-      | `String l -> log_level_of_string l
-      | _ -> Error "expected string as log level"
-
-    type log =
-      { ipAddress : ip ; port : int ; logLevel : log_level } [@@deriving yojson]
-
-    let default_log = { ipAddress = Ipaddr.V4.any ; port = 514 ; logLevel = Info }
+    let default_log = { Json.ipAddress = Ipaddr.V4.any ; port = 514 ; logLevel = Info }
 
     let log t =
       let open Lwt.Infix in
@@ -1216,7 +1031,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
 
     let set_log t log =
       internal_server_error "Write log config" KV.pp_write_error
-        (Config_store.set t.kv Log_config (log.ipAddress, log.port, log.logLevel))
+        (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))
 
     let set_backup_passphrase t ~passphrase =
       match t.state with

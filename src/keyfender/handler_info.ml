@@ -7,7 +7,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.get_json
 
     method private to_json =
-      let json = Hsm.(info hsm_state |> info_to_yojson |> Yojson.Safe.to_string) in
+      let json = Hsm.info hsm_state |> Json.info_to_yojson |> Yojson.Safe.to_string in
       Wm.continue (`String json)
   end
 

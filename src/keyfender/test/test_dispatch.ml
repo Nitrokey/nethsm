@@ -77,7 +77,8 @@ let health_state_ok () =
   let hsm_state = operational_mock () in
   "a request for /health/state will produce an HTTP 200 and returns the state as json"
     @? begin match request ~hsm_state "/health/state" with
-       | _, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.state_to_yojson @@ Hsm.state hsm_state 
+       | _, Some (`OK, _, `String body, _) -> 
+         String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.state_to_yojson @@ Hsm.state hsm_state 
        | _ -> false
     end
 
@@ -134,7 +135,8 @@ let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?conte
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
    @? begin match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/system/info" with
-      | hsm_state, Some (`OK, _, `String body, _) -> String.equal body @@ Yojson.Safe.to_string @@ Hsm.system_info_to_yojson @@ Hsm.System.system_info hsm_state
+      | hsm_state, Some (`OK, _, `String body, _) -> 
+        String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.system_info_to_yojson @@ Hsm.System.system_info hsm_state
       | _ -> false
    end
 
@@ -754,7 +756,7 @@ q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 -----END RSA PRIVATE KEY-----
 |}
 
-let hsm_with_key ?(mode = Hsm.Key.Encrypt) () =
+let hsm_with_key ?(mode = Keyfender.Json.Encrypt) () =
   let state = operational_mock () in
   Lwt_main.run (Hsm.Key.add_pem state mode ~id:"keyID" test_key_pem >|= function
   | Ok () -> state
@@ -852,7 +854,7 @@ let sign_request =
 let operator_keys_key_sign () =
   "POST on /keys/keyID/sign succeeds"
   @? begin
-    let hsm_state = hsm_with_key ~mode:Hsm.Key.Sign () in
+    let hsm_state = hsm_with_key ~mode:Keyfender.Json.Sign () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with

@@ -4,12 +4,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Access = Access.Make(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
-  type private_key_request = { purpose: Hsm.Key.purpose ; algorithm: string ; key : rsa_key }[@@deriving yojson]
-
-  type decrypt = { mode : Hsm.Key.decrypt_mode ; encrypted : string }[@@deriving yojson]
-  type sign = { mode : Hsm.Key.sign_mode ; message : string }[@@deriving yojson]
-
   class handler_keys hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
@@ -28,13 +22,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
-      let ok (key : private_key_request) =
+      let ok (key : Json.private_key_req) =
         let rsa_key = key.key in
         Hsm.Key.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode private_key_request_of_yojson content |>
+      Json.decode Json.private_key_req_of_yojson content |>
       Endpoint.err_to_bad_request ok rd
 
     method private set_pem rd =
@@ -42,7 +36,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
-      Hsm.Key.add_pem hsm_state ~id Hsm.Key.Encrypt (*TODO*) content >>= function
+      Hsm.Key.add_pem hsm_state ~id Json.Encrypt (*TODO*) content >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Endpoint.respond_error e rd
 
@@ -67,8 +61,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       ] rd
   end
 
-  type generate_request = { purpose: Hsm.Key.purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
-
   class handler_keys_generate hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
@@ -77,7 +69,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      let ok (key : generate_request) =
+      let ok (key : Json.generate_key_req) =
         let id = match key.id, Cohttp.Header.get rd.req_headers "new_id" with
         | "", Some path -> path
         | "", None -> assert false
@@ -87,7 +79,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode generate_request_of_yojson content |>
+      Json.decode Json.generate_key_req_of_yojson content |>
       Endpoint.err_to_bad_request ok rd
 
     method! post_is_create rd =
@@ -120,20 +112,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Hsm.Key.get_json ~id hsm_state >>= function
       | Error e -> Endpoint.respond_error e rd
       | Ok public_key ->
-        let body = Yojson.Safe.to_string @@ Hsm.Key.publicKey_to_yojson public_key in
+        let body = Yojson.Safe.to_string @@ Json.publicKey_to_yojson public_key in
         Wm.continue (`String body) rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok (key : private_key_request) =
+      let ok (key : Json.private_key_req) =
         let rsa_key = key.key in
         Hsm.Key.add_json hsm_state ~id key.purpose ~p:rsa_key.primeP ~q:rsa_key.primeQ ~e:rsa_key.publicExponent >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode private_key_request_of_yojson content |>
+      Json.decode Json.private_key_req_of_yojson content |>
       Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
@@ -249,14 +241,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok (dec : decrypt) =
+      let ok (dec : Json.decrypt_req) =
         Hsm.Key.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
         | Ok decrypted ->
           let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
           Wm.respond 200 ~body:(`String json) rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode decrypt_of_yojson content |> Endpoint.err_to_bad_request ok rd
+      Json.decode Json.decrypt_req_of_yojson content |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -286,14 +278,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok (sign : sign) =
+      let ok (sign : Json.sign_req) =
         Hsm.Key.sign hsm_state ~id sign.mode sign.message >>= function
         | Ok signature ->
           let json = Yojson.Safe.to_string (`Assoc [ "signature", `String signature ]) in
           Wm.respond 200 ~body:(`String json) rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode sign_of_yojson content |> Endpoint.err_to_bad_request ok rd
+      Json.decode Json.sign_req_of_yojson content |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in

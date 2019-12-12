@@ -13,42 +13,15 @@ module type S = sig
 
   val error_to_code : status_code -> int
 
-  type info = {
-    vendor : string ;
-    product : string ;
-    version : string ;
-  }
-
-  val info_to_yojson : info -> Yojson.Safe.t
-
-  type state = [
-    | `Unprovisioned
-    | `Operational
-    | `Locked
-    | `Busy
-  ]
-
-  val pp_state : state Fmt.t
-
-  val state_to_yojson : state -> Yojson.Safe.t
-
-  type version = int * int
-
-  type system_info = {
-    firmwareVersion : string ;
-    softwareVersion : version ;
-    hardwareVersion : string ;
-  }
-
-  val system_info_to_yojson : system_info -> Yojson.Safe.t
+  val pp_state : Json.state Fmt.t
 
   type t
 
   val equal : t -> t -> bool Lwt.t
 
-  val info : t -> info
+  val info : t -> Json.info
 
-  val state : t -> state
+  val state : t -> Json.state
 
   val lock : t -> unit
 
@@ -88,30 +61,14 @@ module type S = sig
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
-    type network = {
-      ipAddress : Ipaddr.V4.t ;
-      netmask : Ipaddr.V4.t ;
-      gateway : Ipaddr.V4.t ;
-    }
+    val network : t -> Json.network Lwt.t
 
-    val network_to_yojson : network -> Yojson.Safe.t
-
-    val network_of_yojson : Yojson.Safe.t -> (network, string) result
-
-    val network : t -> network Lwt.t
-
-    val set_network : t -> network ->
+    val set_network : t -> Json.network ->
       (unit, error) result Lwt.t
 
-    type log = { ipAddress : Ipaddr.V4.t ; port : int ; logLevel : Logs.level }
+    val log : t -> Json.log Lwt.t
 
-    val log_to_yojson : log -> Yojson.Safe.t
-
-    val log_of_yojson : Yojson.Safe.t -> (log, string) result
-
-    val log : t -> log Lwt.t
-
-    val set_log : t -> log -> (unit, error) result Lwt.t
+    val set_log : t -> Json.log -> (unit, error) result Lwt.t
 
     val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -122,7 +79,7 @@ module type S = sig
   end
 
   module System : sig
-    val system_info : t -> system_info
+    val system_info : t -> Json.system_info
 
     val reboot : t -> unit
 
@@ -144,23 +101,18 @@ module type S = sig
   end
 
   module User : sig
-    type role = [ `Administrator | `Operator | `Metrics | `Backup ]
-
-    val role_of_yojson : Yojson.Safe.t -> (role, string) result
-    val role_to_yojson : role -> Yojson.Safe.t
-
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
-    val is_authorized : t -> string -> role -> bool Lwt.t
+    val is_authorized : t -> string -> Json.role -> bool Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> id:string -> (string * role, error) result Lwt.t
+    val get : t -> id:string -> (string * Json.role, error) result Lwt.t
 
-    val add : id:string -> t -> role:role -> passphrase:string ->
+    val add : id:string -> t -> role:Json.role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -170,32 +122,22 @@ module type S = sig
   end
 
   module Key : sig
-    type purpose = Sign | Encrypt
-
-    val purpose_of_yojson : Yojson.Safe.t -> (purpose, string) result
-
-    val purpose_to_yojson : purpose -> Yojson.Safe.t
-
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> purpose -> p:string -> q:string -> e:string ->
+    val add_json : id:string -> t -> Json.purpose -> p:string -> q:string -> e:string ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> purpose -> string ->
+    val add_pem : id:string -> t -> Json.purpose -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> purpose -> length:int ->
+    val generate : id:string -> t -> Json.purpose -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
-    type publicKey = { purpose : purpose ; algorithm : string ; modulus : string ; publicExponent : string ; operations : int }
-
-    val publicKey_to_yojson : publicKey -> Yojson.Safe.t
-
-    val get_json : t -> id:string -> (publicKey, error) result Lwt.t
+    val get_json : t -> id:string -> (Json.publicKey, error) result Lwt.t
 
     val get_pem : t -> id:string -> (string, error) result Lwt.t
 
@@ -207,21 +149,9 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
-    type decrypt_mode = Raw | PKCS1 | OAEP_MD5 | OAEP_SHA1 | OAEP_SHA224 | OAEP_SHA256 | OAEP_SHA384 | OAEP_SHA512
+    val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
 
-    val decrypt_mode_of_yojson : Yojson.Safe.t -> (decrypt_mode, string) result
-
-    val decrypt_mode_to_yojson : decrypt_mode -> Yojson.Safe.t
-
-    val decrypt : t -> id:string -> decrypt_mode -> string -> (string, error) result Lwt.t
-
-    type sign_mode = PKCS1 | PSS_MD5 | PSS_SHA1 | PSS_SHA224 | PSS_SHA256 | PSS_SHA384 | PSS_SHA512
-
-    val sign_mode_of_yojson : Yojson.Safe.t -> (sign_mode, string) result
-
-    val sign_mode_to_yojson : sign_mode -> Yojson.Safe.t
-
-    val sign : t -> id:string -> sign_mode -> string -> (string, error) result Lwt.t
+    val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
   end
 end
 
