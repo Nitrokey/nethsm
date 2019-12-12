@@ -41,8 +41,6 @@ module type S = sig
 
   val generate_id : unit -> string
 
-  module Pclock : Mirage_clock.PCLOCK
-
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -155,7 +153,7 @@ module type S = sig
   end
 end
 
-module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Pclock : Mirage_clock.PCLOCK) : sig
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
   val boot : KV.t -> t Lwt.t

@@ -7,8 +7,9 @@ module Log = (val Logs.src_log https_src : Logs.LOG)
 module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket)
 module Http = Cohttp_mirage.Server_with_conduit
 
-module Store = Mirage_kv_mem.Make(Pclock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Pclock)
+module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
+module Store = Mirage_kv_mem.Make(Hsm_clock)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Hsm_clock)
 module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
 let () =

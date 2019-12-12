@@ -7,9 +7,10 @@ module Mock_clock = struct
   let current_tz_offset_s () = None
   let period_d_ps () = None
 end
+module Hsm_clock = Keyfender.Hsm_clock.Make(Mock_clock)
 
-module Kv_mem = Mirage_kv_mem.Make(Mock_clock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Mock_clock)
+module Kv_mem = Mirage_kv_mem.Make(Hsm_clock)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Hsm_clock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query endpoint =

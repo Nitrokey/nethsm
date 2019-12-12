@@ -41,8 +41,6 @@ module type S = sig
 
   val generate_id : unit -> string
 
-  module Pclock : Mirage_clock.PCLOCK
-
   module Config : sig
     val set_unlock_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -163,7 +161,7 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock.PCLOCK) = struct
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCLOCK) = struct
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 
@@ -305,21 +303,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     && a.system_info = b.system_info
     && equal_kv
 
-  let time_offset = ref Ptime.Span.zero
+  let now () = Clock.now ()
 
-  let now () =
-    let hw_clock = Ptime.v (Hw_clock.now_d_ps ()) in
-    match Ptime.add_span hw_clock !time_offset with
-    | None -> Ptime.epoch
-    | Some ts -> ts
-
-  let set_time_offset ?hw_clock t timestamp =
-    let hw_clock = match hw_clock with
-    | Some ts -> ts
-    | None -> Ptime.v (Hw_clock.now_d_ps ())
-    in
-    let span = Ptime.diff timestamp hw_clock in
-    time_offset := span;
+  let set_time_offset t timestamp =
+    Clock.set timestamp;
+    let span = Clock.get_offset () in
     internal_server_error "Write time offset" KV.pp_write_error
       (Config_store.set t.kv Time_offset span)
 
@@ -372,7 +360,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
       (Config_store.get_opt t.kv Time_offset >|= function
         | None -> ()
-        | Some span -> time_offset := span) >>= fun () ->
+        | Some span -> 
+          let `Raw now_raw = Clock.now_raw () in
+          match Ptime.add_span now_raw span with
+          | None -> Log.warn (fun m -> m "time offset from config store out of range")
+          | Some ts -> Clock.set ts) >>= fun () ->
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
       (Config_store.get_opt t.kv Unlock_salt) >>= function
         | None -> Lwt.return (Ok t)
@@ -489,12 +481,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
   let generate_id () =
     let `Hex id = Hex.of_cstruct (Rng.generate 10) in
     id
-
-  module Pclock = struct
-    let now_d_ps () = Ptime.(Span.to_d_ps @@ to_span @@ now ())
-    let current_tz_offset_s () = None
-    let period_d_ps () = None
-  end
 
   module User = struct
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
@@ -1047,7 +1033,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
 
     let time _t = Lwt.return (now ())
 
-    let set_time = set_time_offset ?hw_clock:None
+    let set_time = set_time_offset
   end
 
   module System = struct
@@ -1251,8 +1237,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
     let restore t uri stream =
       let open Lwt.Infix in
       let (>>==) = Lwt_result.bind in
-      let hw_clock = Ptime.v (Hw_clock.now_d_ps ()) in
-      Lwt.return @@ get_query_parameters uri >>== fun (timestamp, backup_passphrase) ->
+      let `Raw start_ts = Clock.now_raw () in
+      Lwt.return @@ get_query_parameters uri >>== fun (new_time, backup_passphrase) ->
       decode_value stream >>== fun (backup_salt, stream') ->
       let backup_key =
         Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
@@ -1268,6 +1254,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Hw_clock : Mirage_clock
           next stream
       in
       next stream' >>== fun () ->
-      set_time_offset ~hw_clock t timestamp
+      let `Raw stop_ts = Clock.now_raw () in
+      let elapsed = Ptime.diff stop_ts start_ts in
+      match Ptime.add_span new_time elapsed with
+      | Some ts -> set_time_offset t ts
+      | None -> 
+        t.state <- Unprovisioned; 
+        Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
   end
 end
