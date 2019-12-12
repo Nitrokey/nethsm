@@ -58,36 +58,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method !allowed_methods = Wm.continue [ `PUT ]
   end
 
-  class virtual post_json hsm_state = object(self)
-    inherit hsm hsm_state
-
-    method virtual private of_json : Yojson.Safe.t ->
-      Cohttp_lwt.Body.t Wm.acceptor
-
-(*
-    method virtual private to_json : Cohttp_lwt.Body.t Wm.provider
-*)
-
-    method content_types_provided =
-      Wm.continue [ ("application/json", Wm.continue `Empty) ]
-
-    method private parse_json rd =
-      let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun content ->
-      try self#of_json (Yojson.Safe.from_string content) rd
-      with Yojson.Json_error msg ->
-        Utils.respond_error
-          (Hsm.Bad_request, Printf.sprintf "Invalid JSON: %s." msg)
-          rd
-
-    method content_types_accepted =
-      Wm.continue [  ("application/json", self#parse_json) ]
-
-    method !allowed_methods = Wm.continue [ `POST ]
-
-    method !process_post = self#parse_json
-  end
-
   class virtual post hsm_state = object(self)
     inherit hsm hsm_state
 
@@ -98,6 +68,24 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", Wm.continue `Empty) ]
 
     method !allowed_methods = Wm.continue [ `POST ]
+  end
+
+  class virtual post_json hsm_state = object(self)
+    inherit post hsm_state
+
+    method virtual private of_json : Yojson.Safe.t ->
+      Cohttp_lwt.Body.t Wm.acceptor
+
+    method private parse_json rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      try self#of_json (Yojson.Safe.from_string content) rd
+      with Yojson.Json_error msg ->
+        Utils.respond_error
+          (Hsm.Bad_request, Printf.sprintf "Invalid JSON: %s." msg)
+          rd
+
+    method !process_post = self#parse_json
   end
 
 end
