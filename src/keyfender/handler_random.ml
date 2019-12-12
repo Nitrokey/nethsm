@@ -4,7 +4,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
   module Access = Access.Make(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class random hsm_state = object
     inherit Endpoint.base
@@ -18,6 +17,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let json = Yojson.Safe.to_string (`Assoc [ "random" , `String data ]) in
         Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd
       in
-      Json.to_ocaml req_length_of_yojson json |> Utils.err_to_bad_request ok rd
+      Json.to_ocaml req_length_of_yojson json |> Endpoint.err_to_bad_request ok rd
   end
 end

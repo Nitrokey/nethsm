@@ -3,7 +3,6 @@ open Lwt.Infix
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class info hsm_state = object
@@ -50,7 +49,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! process_post rd =
       Hsm.System.reset hsm_state >>= function
       | Ok () -> Wm.continue true rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
   end
 
   class update hsm_state = object(self)
@@ -68,7 +67,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let json = Yojson.Safe.to_string (`Assoc [ "releaseNotes", `String changes ]) in
         let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
         Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
 
     method! content_types_accepted =
       Wm.continue [ ("application/octet-stream", self#process_post) ]
@@ -82,7 +81,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! process_post rd =
       match Hsm.System.commit_update hsm_state with
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok () -> Wm.continue true rd
   end
 
@@ -94,7 +93,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! process_post rd =
       match Hsm.System.cancel_update hsm_state with
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok () -> Wm.continue true rd
   end
 
@@ -107,7 +106,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! process_post rd =
       let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
       Hsm.System.backup hsm_state push >>= function
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok () ->
         let add_content_type h =
           Cohttp.Header.replace h "Content-Type" "application/octet-stream"
@@ -128,7 +127,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       let content = Cohttp_lwt.Body.to_stream body in
       Hsm.System.restore hsm_state rd.Webmachine.Rd.uri content >>= function
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok () -> Wm.continue true rd
 
     method! content_types_accepted =

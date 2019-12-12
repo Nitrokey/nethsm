@@ -23,7 +23,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   type time_req = { time : string } [@@deriving yojson]
 
   module Access = Access.Make(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class tls_public hsm_state = object(self)
@@ -56,7 +55,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       Hsm.Config.set_tls_cert_pem hsm_state content >>= function
       | Ok () -> Wm.continue true rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
 
     method content_types_provided =
       Wm.continue [ ("application/x-pem-file", self#get) ]
@@ -79,7 +78,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.respond 200 ~body:(`String csr_pem) rd
       in
       Json.to_ocaml Json.subject_req_of_yojson json |>
-      Utils.err_to_bad_request ok rd
+      Endpoint.err_to_bad_request ok rd
 
     method! content_types_provided =
       Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
@@ -95,9 +94,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok passphrase =
         Hsm.Config.set_unlock_passphrase hsm_state ~passphrase >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase2 json |> Utils.err_to_bad_request ok rd
+      Json.decode_passphrase2 json |> Endpoint.err_to_bad_request ok rd
   end
 
   class unattended_boot hsm_state = object(self)
@@ -110,17 +109,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok is_unattended_boot ->
         let json = is_unattended_boot_to_yojson is_unattended_boot in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
 
     method private set rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       match is_unattended_boot_of_yojson content with
-      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok unattended_boot ->
         Hsm.Config.set_unattended_boot hsm_state unattended_boot >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
 
     method !allowed_methods = Wm.continue [ `GET ; `POST ]
 
@@ -147,11 +146,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       match decode_network content with
-      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok network ->
         Hsm.Config.set_network hsm_state network >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
 
     method !allowed_methods = Wm.continue [ `GET ; `PUT ]
 
@@ -176,11 +175,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       match Json.decode Hsm.Config.log_of_yojson content with
-      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok log_config ->
         Hsm.Config.set_log hsm_state log_config >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
 
     method !allowed_methods = Wm.continue [ `GET ; `PUT ]
 
@@ -201,9 +200,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok passphrase =
         Hsm.Config.set_backup_passphrase hsm_state ~passphrase >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase2 json |> Utils.err_to_bad_request ok rd
+      Json.decode_passphrase2 json |> Endpoint.err_to_bad_request ok rd
   end
 
   class time hsm_state = object(self)
@@ -226,11 +225,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Json.decode_time time.time
       in
       match Json.decode parse content with
-      | Error e -> Utils.respond_error (Bad_request, e) rd
+      | Error e -> Endpoint.respond_error (Bad_request, e) rd
       | Ok ts ->
         Hsm.Config.set_time hsm_state ts >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
 
     method !allowed_methods = Wm.continue [ `GET ; `PUT ]
 

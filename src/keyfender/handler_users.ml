@@ -20,7 +20,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   }[@@deriving yojson]
 
   module Access = Access.Make(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class handler_users hsm_state = object(self)
@@ -30,7 +29,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get_json rd =
       Hsm.User.list hsm_state >>= function
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok users ->
         let items = List.map (fun user -> `Assoc [ "user", `String user ]) users in
         let body = Yojson.Safe.to_string (`List items) in
@@ -44,9 +43,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | None -> assert false | Some path -> path in
         Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
       in
-      decode_user content |> Utils.err_to_bad_request ok rd
+      decode_user content |> Endpoint.err_to_bad_request ok rd
 
     method! post_is_create rd =
       Wm.continue true rd
@@ -75,7 +74,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.User.get hsm_state ~id >>= function
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
       | Ok (name, role) ->
         let user_reply = { realName = name ; role } in
         let body = Yojson.Safe.to_string (user_reply_to_yojson user_reply) in
@@ -88,15 +87,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok (user : user_req) =
         Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok _id -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
       in
-      decode_user content |> Utils.err_to_bad_request ok rd
+      decode_user content |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.User.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
@@ -113,7 +112,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.User.remove hsm_state ~id >>= function
       | Ok () -> Wm.continue true rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
   end
 
   class handler_passphrase hsm_state = object(self)
@@ -127,15 +126,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok passphrase =
         Hsm.User.set_passphrase hsm_state ~id ~passphrase >>= function
         | Ok () -> Wm.continue true rd
-        | Error e -> Utils.respond_error e rd
+        | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase content |> Utils.err_to_bad_request ok rd
+      Json.decode_passphrase content |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.User.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
-      | Error e -> Utils.respond_error e rd
+      | Error e -> Endpoint.respond_error e rd
 
     method! allowed_methods rd =
       Wm.continue [`POST] rd

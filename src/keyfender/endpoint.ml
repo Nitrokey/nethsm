@@ -3,9 +3,16 @@ open Lwt.Infix
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Access = Access.Make(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   type body = Cohttp_lwt.Body.t
+
+  let respond_error (e, body) rd = 
+    let code = Hsm.error_to_code e in
+    Wm.respond ~body:(`String body) code rd
+
+  let err_to_bad_request ok rd = function
+    | Error m -> respond_error (Bad_request, m) rd
+    | Ok data -> ok data 
 
   class virtual base = object
     inherit [body] Wm.resource
@@ -65,7 +72,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       try self#of_json (Yojson.Safe.from_string content) rd
       with Yojson.Json_error msg ->
-        Utils.respond_error
+        respond_error
           (Hsm.Bad_request, Printf.sprintf "Invalid JSON: %s." msg)
           rd
 
@@ -96,7 +103,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       try self#of_json (Yojson.Safe.from_string content) rd
       with Yojson.Json_error msg ->
-        Utils.respond_error
+        respond_error
           (Hsm.Bad_request, Printf.sprintf "Invalid JSON: %s." msg)
           rd
 

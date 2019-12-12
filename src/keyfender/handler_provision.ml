@@ -13,7 +13,6 @@ let decode_json json =
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
-  module Utils = Wm_utils.Make(Wm)(Hsm)
 
   class provision hsm_state = object
     inherit Endpoint.base
@@ -24,8 +23,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok (unlock, admin, time) =
           Hsm.provision hsm_state ~unlock ~admin time >>= function
           | Ok () -> Wm.continue true rd
-          | Error e -> Utils.respond_error e rd
+          | Error e -> Endpoint.respond_error e rd
       in
-      decode_json json |> Utils.err_to_bad_request ok rd
+      decode_json json |> Endpoint.err_to_bad_request ok rd
   end
 end
