@@ -1,5 +1,9 @@
 module type S = sig
 
+  module Metrics : sig
+    val retrieve : unit -> (string * string) list
+  end
+
   val now : unit -> Ptime.t
 
   type status_code =
@@ -171,7 +175,7 @@ module type S = sig
   end
 end
 
-module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCLOCK) : sig
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
   val boot : KV.t -> t Lwt.t

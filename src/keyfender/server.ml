@@ -17,6 +17,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
 
   module Info = Handler_info.Make(Wm)(Hsm)
   module Health = Handler_health.Make(Wm)(Hsm)
+  module Metrics = Handler_metrics.Make(Wm)(Hsm)
   module Provision = Handler_provision.Make(Wm)(Hsm)
   module Unlock = Handler_unlock.Make(Wm)(Hsm)
   module Random = Handler_random.Make(Wm)(Hsm)
@@ -33,6 +34,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/health/alive", fun () -> new Health.alive hsm_state) ;
         ("/health/ready", fun () -> new Health.ready hsm_state) ;
         ("/health/state", fun () -> new Health.state hsm_state) ;
+        ("/metrics", fun () -> new Metrics.metrics hsm_state) ;
         ("/provision", fun () -> new Provision.provision hsm_state) ;
         ("/unlock", fun () -> new Unlock.unlock hsm_state) ;
         ("/random", fun () -> new Random.random hsm_state) ;

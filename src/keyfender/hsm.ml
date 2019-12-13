@@ -1,5 +1,9 @@
 module type S = sig
 
+  module Metrics : sig
+    val retrieve : unit -> (string * string) list
+  end
+
   val now : unit -> Ptime.t
 
   type status_code =
@@ -179,7 +183,68 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
-module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCLOCK) = struct
+module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) = struct
+  module Metrics = struct
+    let db = Hashtbl.create 13
+
+    let retrieve () =
+      Hashtbl.fold (fun k v acc -> (k, v) :: acc) db []
+
+    let _src =
+      let open Metrics in
+      let doc = "Counters" in
+      let data () =
+        Data.v
+          [ int "keyOperations" 1 ;
+            int "uptime" 2 ;
+          ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "our_src"
+
+    let sample_interval = Duration.of_sec 1
+
+    let now () = Monotonic_clock.elapsed_ns ()
+
+    let uptime_src =
+      let open Metrics in
+      let doc = "Uptime of Keyfender" in
+      let data now =
+        let seconds = Duration.to_sec now in
+        Data.v [ int "uptime" seconds ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "uptime"
+
+    let rec sample () =
+      let open Lwt.Infix in
+      Metrics.add uptime_src (fun t -> t) (fun m -> m (now ()));
+      Time.sleep_ns sample_interval >>=
+      sample
+
+    let set_mem_reporter () =
+      let report ~tags:_ ~data ~over _src k =
+        let data_fields = Metrics.Data.fields data in
+        (* let name = Metrics.Src.name src in *)
+        let field f =
+          Fmt.to_to_string Metrics.pp_key f, Fmt.to_to_string Metrics.pp_value f
+        in
+        let fields = List.map field in
+        (* let timestamp =
+          match Metrics.Data.timestamp data with
+          | Some ts -> ts
+          | None -> Int64.to_string (now ())
+           in *)
+        (* let d = name, fields tags, fields data_fields, timestamp in*)
+        List.iter
+          (fun (field_name, field_value) -> Hashtbl.replace db field_name field_value)
+          (fields data_fields);
+        over (); k ()
+      in
+      let at_exit () = () in
+      Metrics.enable_all ();
+      Metrics.set_reporter {Metrics.report; now; at_exit};
+      Lwt.async sample
+  end
+
   (* fatal is called on error conditions we do not expect (hardware failure,
      KV inconsistency).
 
@@ -403,6 +468,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
           | None | Some false -> Lwt.return (Ok t)
 
   let boot kv =
+    Metrics.set_mem_reporter ();
     let t =
       {
         state = Unprovisioned ;

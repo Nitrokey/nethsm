@@ -1,9 +1,13 @@
 open Cohttp
 open Lwt.Infix
 
+module Time = struct
+  let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
+end
+
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 module Kv_mem = Mirage_kv_mem.Make(Hsm_clock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Hsm_clock)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Time)(Mclock)(Hsm_clock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
 let request hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =

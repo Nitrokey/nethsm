@@ -24,7 +24,7 @@ struct
   module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
   module Git_store = Irmin_mirage_git.KV_RW(Irmin_git.Mem)(Hsm_clock)
 
-  module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Hsm_clock)
+  module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
   let start () () () _assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =

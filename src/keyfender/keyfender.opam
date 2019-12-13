@@ -38,6 +38,9 @@ depends: [
   "hex"
   "gmap" {>= "0.3.0"}
   "ipaddr"
+  "metrics"
+  "mirage-time"
+  "duration"
   "conduit-mirage" #{with-test}
   "cohttp-mirage" #{with-test}
   "tcpip" #{with-test}

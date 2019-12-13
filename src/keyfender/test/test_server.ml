@@ -4,12 +4,16 @@ open Lwt.Infix
 let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NitroHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
+module Time = struct
+  let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
+end
+
 module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket)
 module Http = Cohttp_mirage.Server_with_conduit
 
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 module Store = Mirage_kv_mem.Make(Hsm_clock)
-module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Hsm_clock)
+module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Time)(Mclock)(Hsm_clock)
 module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
 let () =

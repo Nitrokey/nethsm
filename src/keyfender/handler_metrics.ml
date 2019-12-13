@@ -2,24 +2,22 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class handler _hsm_state = object(self)
+  class metrics hsm_state = object(self)
     inherit Endpoint.base
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Metrics
+    inherit !Endpoint.no_cache
 
     method private to_json rd =
-      let result = 
-            let metrics = "" in
-            Ok (`String metrics)
-      in
-      match result with
-      | Ok body -> Wm.continue body rd
-      | Error status -> Wm.respond (Cohttp.Code.code_of_status status) rd
+      let data = Hsm.Metrics.retrieve () in
+      let json = `Assoc (List.map (fun (k, v) -> k, `String v) data) in
+      let body = Yojson.Safe.to_string json in
+      Wm.continue (`String body) rd
 
     method content_types_provided rd =
       Wm.continue [ ("application/json", self#to_json) ] rd
 
     method content_types_accepted rd =
       Wm.continue [ ] rd
-
   end
-
 end
