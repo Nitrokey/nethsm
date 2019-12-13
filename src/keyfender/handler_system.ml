@@ -99,7 +99,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class backup hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Backup
     inherit !Endpoint.post
 
     method! process_post rd =

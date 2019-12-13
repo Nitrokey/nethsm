@@ -32,7 +32,8 @@ let operational_mock () =
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.boot >>= fun state ->
     Hsm.provision state ~unlock:"unlock" ~admin:"test1" Ptime.epoch >>= fun _ ->
-    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
+    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >>= fun _ ->
+    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3" ~name:"backup" >|= fun _ ->
     state)
 
 let locked_mock () =
@@ -251,7 +252,8 @@ let system_backup_and_restore_ok () =
     let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
     match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      begin match admin_post_request ~hsm_state "/system/backup" with
+      let headers = auth_header "backup" "test3" in
+      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
         | _hsm_state, Some (`OK, _, `Stream s, _) ->
           let content_type = "application/octet-stream" in
           let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
@@ -582,8 +584,8 @@ let users_get () =
   "GET on /users/ succeeds"
   @? begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users" with
-  | _, Some (`OK, _, `String data, _) -> 
-   let expected ={|[{"user":"admin"},{"user":"operator"}]|} in
+  | _, Some (`OK, _, `String data, _) ->
+   let expected ={|[{"user":"admin"},{"user":"backup"},{"user":"operator"}]|} in
    String.equal data expected
   | _ -> false
   end
