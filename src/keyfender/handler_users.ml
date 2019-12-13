@@ -46,8 +46,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted rd =
       Wm.continue [ ("application/json", self#set_json) ] rd
-  end
 
+    method! generate_etag rd =
+      Hsm.User.list_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
+  end
 
   class handler hsm_state = object(self)
     inherit Endpoint.base
@@ -96,11 +99,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Hsm.User.remove hsm_state ~id >>= function
       | Ok () -> Wm.continue true rd
       | Error e -> Endpoint.respond_error e rd
+
+    method! generate_etag rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.User.digest hsm_state ~id >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class handler_passphrase hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.no_cache
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -111,7 +120,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      match 
+      match
         try Ok (Yojson.Safe.from_string content)
         with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg) with
       | Ok json' -> Json.decode_passphrase json' |> Endpoint.err_to_bad_request ok rd

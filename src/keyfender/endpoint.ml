@@ -18,6 +18,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit [body] Wm.resource
   end
 
+  class no_cache = object
+    method finish_request : (unit, body) Wm.op = fun rd ->
+      let cc hdr = Cohttp.Header.replace hdr "Cache-control" "no-cache" in
+      let rd' = Webmachine.Rd.with_resp_headers cc rd in
+      Wm.continue () rd'
+  end
+
   class role hsm_state role = object
     method is_authorized : (Wm.auth, body) Wm.op = fun rd ->
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
@@ -40,11 +47,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Wm.continue not_an_operator rd
       | not_an_admin -> Wm.continue not_an_admin rd
   end
- 
+
   class input_state_validated hsm_state allowed_input_states = object
     method service_available : (bool, body) Wm.op =
       if List.exists (Access.is_in_state hsm_state) allowed_input_states
-      then Wm.continue true 
+      then Wm.continue true
       else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed)
   end
 

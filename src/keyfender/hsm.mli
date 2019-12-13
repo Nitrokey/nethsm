@@ -50,12 +50,18 @@ module type S = sig
     val set_unattended_boot : t -> bool ->
       (unit, error) result Lwt.t
 
+    val unattended_boot_digest : t -> string option Lwt.t
+
     val tls_public_pem : t -> string Lwt.t
+
+    val tls_public_pem_digest : t -> string option Lwt.t
 
     val tls_cert_pem : t -> string Lwt.t
 
     val set_tls_cert_pem : t -> string ->
       (unit, error) result Lwt.t
+
+    val tls_cert_digest : t -> string option Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
@@ -64,9 +70,13 @@ module type S = sig
     val set_network : t -> Json.network ->
       (unit, error) result Lwt.t
 
+    val network_digest : t -> string option Lwt.t
+
     val log : t -> Json.log Lwt.t
 
     val set_log : t -> Json.log -> (unit, error) result Lwt.t
+
+    val log_digest : t -> string option Lwt.t
 
     val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -117,6 +127,10 @@ module type S = sig
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
+
+    val list_digest : t -> string option Lwt.t
+
+    val digest : t -> id:string -> string option Lwt.t
   end
 
   module Key : sig
@@ -150,6 +164,10 @@ module type S = sig
     val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
 
     val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
+
+    val list_digest : t -> string option Lwt.t
+
+    val digest : t -> id:string -> string option Lwt.t
   end
 end
 

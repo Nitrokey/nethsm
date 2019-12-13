@@ -59,12 +59,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/json", self#set_json) ;
         ("application/x-pem-file", self#set_pem)
       ] rd
+
+    method! generate_etag rd =
+      Hsm.Key.list_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class handler_keys_generate hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.no_cache
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -150,6 +155,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [
         ("application/json", self#set_json)
       ] rd
+
+    method! generate_etag rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Key.digest hsm_state ~id >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class handler_public hsm_state = object(self)
@@ -185,11 +195,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
       Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
       Wm.continue (not_an_admin && not_an_operator) rd
+
+    method! generate_etag rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Key.digest hsm_state ~id >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class handler_csr hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.no_cache
 
     method private csr_pem rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -236,6 +252,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator
+    inherit !Endpoint.no_cache
 
     method private decrypt rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -273,6 +290,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator
+    inherit !Endpoint.no_cache
 
     method private sign rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -353,5 +371,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
         | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
         | Error e -> Endpoint.respond_error e rd
+
+    method! generate_etag rd =
+      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+      Hsm.Key.digest hsm_state ~id >>= fun digest ->
+      Wm.continue digest rd
   end
 end

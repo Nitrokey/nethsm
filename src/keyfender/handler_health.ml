@@ -6,6 +6,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Locked ; `Unprovisioned ]
     inherit Endpoint.get_json
+    inherit !Endpoint.no_cache
 
     method private to_json = Wm.continue `Empty
   end
@@ -14,6 +15,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit Endpoint.get_json
+    inherit !Endpoint.no_cache
 
     method private to_json = Wm.continue `Empty
   end
@@ -21,6 +23,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class state hsm_state = object
     inherit Endpoint.base
     inherit Endpoint.get_json
+    inherit !Endpoint.no_cache
 
     method private to_json =
       let state = Hsm.state hsm_state in

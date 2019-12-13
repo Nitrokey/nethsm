@@ -6,6 +6,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator
     inherit !Endpoint.post_json
+    inherit !Endpoint.no_cache
 
     method private of_json json rd =
       let ok ({ Json.length } : Json.random_req ) =

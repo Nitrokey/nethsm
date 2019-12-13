@@ -18,6 +18,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted rd =
       Wm.continue [ ] rd
+
+    method! generate_etag rd =
+      Hsm.Config.tls_public_pem_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class tls_cert hsm_state = object(self)
@@ -43,6 +47,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/x-pem-file", self#set) ]
 
     method !allowed_methods = Wm.continue [ `GET ; `PUT ]
+
+    method! generate_etag rd =
+      Hsm.Config.tls_cert_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class tls_csr hsm_state = object
@@ -50,6 +58,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
+    inherit !Endpoint.no_cache
 
     method private of_json json rd =
       let ok subject =
@@ -68,6 +77,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
+    inherit !Endpoint.no_cache
 
     method private of_json json rd =
       let ok passphrase =
@@ -109,6 +119,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
+
+    method! generate_etag rd =
+      Hsm.Config.unattended_boot_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class network hsm_state = object(self)
@@ -138,6 +152,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
+
+    method! generate_etag rd =
+      Hsm.Config.network_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class logging hsm_state = object(self)
@@ -167,6 +185,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted =
       Wm.continue [ ("application/json", self#set) ]
+
+    method! generate_etag rd =
+      Hsm.Config.log_digest hsm_state >>= fun digest ->
+      Wm.continue digest rd
   end
 
   class backup_passphrase hsm_state = object
@@ -174,6 +196,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post_json
+    inherit !Endpoint.no_cache
 
     method private of_json json rd =
       let ok passphrase =
@@ -188,6 +211,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.no_cache
 
     method private get rd =
       Hsm.Config.time hsm_state >>= fun timestamp ->

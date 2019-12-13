@@ -191,4 +191,6 @@ module Make (KV : Mirage_kv.RW) = struct
     KV.set kv (key_path key) data
 
   let remove kv key = KV.remove kv (key_path key)
+
+  let digest kv key = KV.digest kv (key_path key)
 end

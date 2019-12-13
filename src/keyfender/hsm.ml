@@ -50,12 +50,18 @@ module type S = sig
     val set_unattended_boot : t -> bool ->
       (unit, error) result Lwt.t
 
+    val unattended_boot_digest : t -> string option Lwt.t
+
     val tls_public_pem : t -> string Lwt.t
+
+    val tls_public_pem_digest : t -> string option Lwt.t
 
     val tls_cert_pem : t -> string Lwt.t
 
     val set_tls_cert_pem : t -> string ->
       (unit, error) result Lwt.t
+
+    val tls_cert_digest : t -> string option Lwt.t
 
     val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
 
@@ -64,9 +70,13 @@ module type S = sig
     val set_network : t -> Json.network ->
       (unit, error) result Lwt.t
 
+    val network_digest : t -> string option Lwt.t
+
     val log : t -> Json.log Lwt.t
 
     val set_log : t -> Json.log -> (unit, error) result Lwt.t
+
+    val log_digest : t -> string option Lwt.t
 
     val set_backup_passphrase : t -> passphrase:string ->
       (unit, error) result Lwt.t
@@ -117,6 +127,10 @@ module type S = sig
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
+
+    val list_digest : t -> string option Lwt.t
+
+    val digest : t -> id:string -> string option Lwt.t
   end
 
   module Key : sig
@@ -150,6 +164,10 @@ module type S = sig
     val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
 
     val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
+
+    val list_digest : t -> string option Lwt.t
+
+    val digest : t -> id:string -> string option Lwt.t
   end
 end
 
@@ -610,6 +628,20 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
       in
       write store id user' >|= fun () ->
       Access.info (fun m -> m "changed %s (%s) passphrase" id user.name)
+
+    let list_digest t =
+      let open Lwt.Infix in
+      let store = in_store t in
+      Encrypted_store.digest store Mirage_kv.Key.empty >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
+    let digest t ~id =
+      let open Lwt.Infix in
+      let store = in_store t in
+      Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
   end
 
   module Key = struct
@@ -842,6 +874,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
         else
           Error (Bad_request, "Key purpose is not sign.")
 
+    let list_digest t =
+      let open Lwt.Infix in
+      let store = key_store t in
+      Encrypted_store.digest store Mirage_kv.Key.empty >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
+    let digest t ~id =
+      let open Lwt.Infix in
+      let store = key_store t in
+      Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
   end
 
   let provision_mutex = Lwt_mutex.create ()
@@ -930,11 +975,23 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
         end
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
+    let unattended_boot_digest t =
+      let open Lwt.Infix in
+      Config_store.digest t.kv Unattended_boot >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
     let tls_public_pem t =
       let open Lwt.Infix in
       certificate_chain t >|= fun (certificate, _, _) ->
       let public = X509.Certificate.public_key certificate in
       Cstruct.to_string (X509.Public_key.encode_pem public)
+
+    let tls_public_pem_digest t =
+      let open Lwt.Infix in
+      Config_store.digest t.kv Private_key >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
 
     let tls_cert_pem t =
       let open Lwt.Infix in
@@ -970,6 +1027,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
         else
           Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key")
 
+    let tls_cert_digest t =
+      let open Lwt.Infix in
+      Config_store.digest t.kv Certificate >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
     let tls_csr_pem t subject =
       let open Lwt.Infix in
       certificate_chain t >|= fun (_, _, priv) ->
@@ -1003,6 +1066,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
       internal_server_error "Write network configuration" KV.pp_write_error
         Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))
 
+    let network_digest t =
+      let open Lwt.Infix in
+      Config_store.digest t.kv Ip_config >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
     let default_log = { Json.ipAddress = Ipaddr.V4.any ; port = 514 ; logLevel = Info }
 
     let log t =
@@ -1018,6 +1087,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
     let set_log t log =
       internal_server_error "Write log config" KV.pp_write_error
         (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))
+
+    let log_digest t =
+      let open Lwt.Infix in
+      Config_store.digest t.kv Log_config >|= function
+      | Ok digest -> Some (Digest.to_hex digest)
+      | Error _ -> None
+
 
     let set_backup_passphrase t ~passphrase =
       match t.state with

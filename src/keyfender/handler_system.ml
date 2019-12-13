@@ -4,7 +4,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class info hsm_state = object
+  class info hsm_state = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
@@ -15,6 +15,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.System.system_info hsm_state |> Json.system_info_to_yojson |> Yojson.Safe.to_string
       in
       Wm.continue (`String json)
+
+    method! generate_etag rd =
+      self#to_json rd >>= function
+      | Ok `String json, _ ->
+        let etag = Digest.to_hex (Digest.string json) in
+        Wm.continue (Some etag) rd
+      | _ -> Wm.continue None rd
   end
 
   class reboot hsm_state = object
@@ -22,6 +29,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       Hsm.System.reboot hsm_state ;
@@ -33,6 +41,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       Hsm.System.shutdown hsm_state ;
@@ -44,6 +53,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       Hsm.System.reset hsm_state >>= function
@@ -56,6 +66,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       let body = rd.Webmachine.Rd.req_body in
@@ -77,6 +88,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       match Hsm.System.commit_update hsm_state with
@@ -89,6 +101,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       match Hsm.System.cancel_update hsm_state with
@@ -101,6 +114,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Backup
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       let stream, push = Lwt_stream.create () in (* TODO use Lwt_stream.from *)
@@ -121,6 +135,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned ]
     inherit !Endpoint.post
+    inherit !Endpoint.no_cache
 
     method! process_post rd =
       let body = rd.Webmachine.Rd.req_body in
