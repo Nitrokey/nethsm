@@ -1194,8 +1194,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
           Log.err (fun m -> m "error %a while reading backup salt" Config_store.pp_error e);
           Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
         | Ok backup_salt ->
-          push (Some (prefix_len (Version.to_string backup_version)));
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
+          let encrypted_version =
+            let data = Cstruct.of_string (Version.to_string backup_version)
+            and adata = Cstruct.of_string "backup-version"
+            in
+            Crypto.encrypt Rng.generate ~key:backup_key' ~adata data
+          in
+          push (Some (prefix_len (Cstruct.to_string encrypted_version)));
           backup_directory t.kv push backup_key' Mirage_kv.Key.empty >|= fun () ->
           push None;
           Ok ()
@@ -1242,39 +1248,46 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Clock : Hsm_clock.HSMCL
       let (>>==) = Lwt_result.bind in
       let `Raw start_ts = Clock.now_raw () in
       Lwt.return @@ get_query_parameters uri >>== fun (new_time, backup_passphrase) ->
-      decode_value stream >>== fun (version, stream') ->
-      match Version.of_string version with
-      | Ok v when Version.compare backup_version v = `Equal ->
-        begin
-          decode_value stream' >>== fun (backup_salt, stream'') ->
-          let backup_key =
-            Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
+      decode_value stream >>== fun (backup_salt, stream') ->
+      decode_value stream' >>== fun (version, stream'') ->
+      let backup_key =
+        Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
+      in
+      let key = Crypto.GCM.of_secret backup_key in
+      let adata = Cstruct.of_string "backup-version" in
+      match Crypto.decrypt ~key ~adata (Cstruct.of_string version) with
+      | Error `Insufficient_data ->
+        Lwt.return @@ Error (Bad_request, "Could not decrypt backup version. Backup incomplete, try another one.")
+      | Error `Not_authenticated ->
+        Lwt.return @@ Error (Bad_request, "Could not decrypt backup version, authentication failed. Is the passphrase correct?")
+      | Ok version ->
+        match Version.of_string (Cstruct.to_string version) with
+        | Ok v when Version.compare backup_version v = `Equal ->
+          begin
+            let rec next stream =
+              Lwt_stream.is_empty stream >>= function
+              | true -> t.state <- Locked ; Lwt.return (Ok ())
+              | false ->
+                read_and_decrypt stream key >>== fun ((k, v), stream) ->
+                internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
+                  (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
+                next stream
+            in
+            next stream'' >>== fun () ->
+            let `Raw stop_ts = Clock.now_raw () in
+            let elapsed = Ptime.diff stop_ts start_ts in
+            match Ptime.add_span new_time elapsed with
+            | Some ts -> set_time_offset t ts
+            | None ->
+              t.state <- Unprovisioned;
+              Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+          end
+        | _ ->
+          let msg =
+            Printf.sprintf
+              "Version mismatch on restore, provided backup version is %s, server expects %s"
+              (Cstruct.to_string version) (Version.to_string backup_version)
           in
-          let key = Crypto.GCM.of_secret backup_key in
-          let rec next stream =
-            Lwt_stream.is_empty stream >>= function
-            | true -> t.state <- Locked ; Lwt.return (Ok ())
-            | false ->
-              read_and_decrypt stream key >>== fun ((k, v), stream) ->
-              internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
-                (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
-              next stream
-          in
-          next stream'' >>== fun () ->
-          let `Raw stop_ts = Clock.now_raw () in
-          let elapsed = Ptime.diff stop_ts start_ts in
-          match Ptime.add_span new_time elapsed with
-          | Some ts -> set_time_offset t ts
-          | None ->
-            t.state <- Unprovisioned;
-            Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
-        end
-      | _ ->
-        let msg =
-          Printf.sprintf
-            "Version mismatch on restore, provided backup version is %s, server expects %s"
-            version (Version.to_string backup_version)
-        in
-        Lwt.return @@ Error (Bad_request, msg)
+          Lwt.return @@ Error (Bad_request, msg)
   end
 end
