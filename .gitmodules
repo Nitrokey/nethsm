@@ -5,3 +5,6 @@
 	path = src/muen
 	url = ../muen.git
 	branch = devel-nitrohsm
+[submodule "src/zlib"]
+	path = src/zlib
+	url = https://github.com/madler/zlib.git
