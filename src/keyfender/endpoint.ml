@@ -6,21 +6,47 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   type body = Cohttp_lwt.Body.t
 
-  let respond_error (e, body) rd = 
+  let respond_error (e, body) rd =
     let code = Hsm.error_to_code e in
     Wm.respond ~body:(`String body) code rd
 
   let err_to_bad_request ok rd = function
     | Error m -> respond_error (Bad_request, m) rd
-    | Ok data -> ok data 
+    | Ok data -> ok data
+
+  let date () =
+    let ptime_to_http_date ptime =
+      let (y, m, d), ((hh, mm, ss), _)  = Ptime.to_date_time ptime
+      and weekday = match Ptime.weekday ptime with
+        | `Mon -> "Mon"
+        | `Tue -> "Tue"
+        | `Wed -> "Wed"
+        | `Thu -> "Thu"
+        | `Fri -> "Fri"
+        | `Sat -> "Sat"
+        | `Sun -> "Sun"
+      and month = [|"Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec"|]
+      in
+      Printf.sprintf "%s, %02d %s %04d %02d:%02d:%02d GMT" weekday d (Array.get month (m-1)) y hh mm ss
+    in
+    ptime_to_http_date (Hsm.now ())
+
 
   class virtual base = object
     inherit [body] Wm.resource
+
+    method! finish_request : (unit, body) Wm.op = fun rd ->
+      let cc hdr = Cohttp.Header.replace hdr "Date" (date ()) in
+      let rd' = Webmachine.Rd.with_resp_headers cc rd in
+      Wm.continue () rd'
   end
 
   class no_cache = object
     method finish_request : (unit, body) Wm.op = fun rd ->
-      let cc hdr = Cohttp.Header.replace hdr "Cache-control" "no-cache" in
+      let cc hdr =
+        let hdr' = Cohttp.Header.replace hdr "Cache-control" "no-cache" in
+        Cohttp.Header.replace hdr' "Date" (date ())
+      in
       let rd' = Webmachine.Rd.with_resp_headers cc rd in
       Wm.continue () rd'
   end
