@@ -612,6 +612,16 @@ let user_operator_add () =
   | _ -> false
   end
 
+let user_operator_add_empty_passphrase () =
+  let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "" } |} in
+  "PUT on /users/op succeeds"
+  @? begin
+  match admin_put_request ~body:(`String operator_json) "/users/op" with
+  | _, Some (`Bad_request, _, _, _) -> 
+    true
+  | _ -> false
+  end
+
 let user_operator_delete () =
   "DELETE on /users/operator succeeds"
   @? begin
@@ -985,6 +995,7 @@ let () =
     "/users" >:: users_get;
     "/users" >:: users_post;
     "/users/operator" >:: user_operator_add;
+    "/users/operator" >:: user_operator_add_empty_passphrase;
     "/users/operator" >:: user_operator_delete;
     "/users/operator" >:: user_operator_delete_fails;
     "/users/operator" >:: user_op_delete_fails;
