@@ -108,43 +108,26 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler_passphrase hsm_state = object(self)
+  class handler_passphrase hsm_state = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.post_json
     inherit !Endpoint.no_cache
 
-    method private set_json rd =
-      let body = rd.Webmachine.Rd.req_body in
-      Cohttp_lwt.Body.to_string body >>= fun content ->
+    method private of_json json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok passphrase =
         Hsm.User.set_passphrase hsm_state ~id ~passphrase >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      match
-        try Ok (Yojson.Safe.from_string content)
-        with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg) with
-      | Ok json' -> Json.decode_passphrase json' |> Endpoint.err_to_bad_request ok rd
-      | Error e -> Endpoint.respond_error (Bad_request, e) rd
+      Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.User.exists hsm_state ~id >>= function
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Endpoint.respond_error e rd
-
-    method! allowed_methods rd =
-      Wm.continue [`POST] rd
-
-    method content_types_provided rd =
-      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
-
-    method content_types_accepted rd =
-      Wm.continue [ ("application/json", self#set_json) ] rd
-
-    method !process_post rd =
-      self#set_json rd
 
     method! is_authorized rd =
       Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
