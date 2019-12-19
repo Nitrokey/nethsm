@@ -27,7 +27,20 @@ struct
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
-  let start () () () _assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
+  let opt_static_file assets next request body =
+    let uri = Cohttp.Request.uri request in
+    let path = match Uri.path uri with
+      | "/" -> "/index.html"
+      | p -> p
+    in
+    Static_assets.get assets (Mirage_kv.Key.v path) >>= function
+    | Ok data ->
+      let mime_type = Magic_mime.lookup path in
+      let headers = Cohttp.Header.init_with "content-type" mime_type in
+      Http.respond ~headers ~status:`OK ~body:(`String data) ()
+    | _ -> next request body
+
+  let start () () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
@@ -65,7 +78,7 @@ struct
       let open Webserver in
       let https =
         Log.info (fun f -> f "listening on %d/TCP" https_port);
-        http tls @@ serve @@ dispatch hsm_state
+        http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
       in
       let http =
         Log.info (fun f -> f "listening on %d/TCP" http_port);
