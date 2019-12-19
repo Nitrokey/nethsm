@@ -5,6 +5,9 @@ let nonempty ~name s =
   then Error (Printf.sprintf "JSON field %s is empty." name)
   else Ok ()
 
+let valid_passphrase ~name s =
+  nonempty ~name s
+
 let to_ocaml parse json =
   Rresult.R.reword_error
     (fun m -> Printf.sprintf "Invalid data for JSON schema: %s." m)
@@ -71,15 +74,15 @@ type passphrase_req = { passphrase : string } [@@deriving yojson]
 
 let decode_passphrase json =
   to_ocaml passphrase_req_of_yojson json >>= fun passphrase ->
-  nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
+  valid_passphrase ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
 
 type provision_req = { unlockPassphrase : string ; adminPassphrase : string ; time : string }[@@deriving yojson]
 
 let decode_provision_req json =
   to_ocaml provision_req_of_yojson json >>= fun b ->
-  nonempty ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
-  nonempty ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
+  valid_passphrase ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
+  valid_passphrase ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
   decode_time b.time >>| fun time ->
   (b.unlockPassphrase, b.adminPassphrase, time)
 
@@ -199,13 +202,11 @@ type generate_key_req = { purpose: purpose ; algorithm : string ; length : int ;
 
 let is_alphanum s = Astring.String.for_all (function 'a'..'z'|'A'..'Z'|'0'..'9' -> true | _ -> false) s
 
-(* TODO Json.decode_generate_key_req, nonempty id, alphanum id, length 1 - 128 *)
 let valid_id id =
   (if String.length id <= 128
     then Ok ()
     else Error "ID cannot be longer than 128 characters.") >>= fun () ->
    if is_alphanum id then Ok () else Error "ID may only contain alphanumeric characters."
-
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
@@ -230,7 +231,7 @@ type user_req = {
 
 let decode_user_req content =
   decode user_req_of_yojson content >>= fun user ->
-  nonempty ~name:"passphrase" user.passphrase >>| fun () ->
+  valid_passphrase ~name:"passphrase" user.passphrase >>| fun () ->
   user
 
 type user_res = {
