@@ -82,7 +82,6 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      (* TODO Json.decode_generate_key_req, nonempty id, alphanum id, length 1 - 128 *)
       let ok (key : Json.generate_key_req) =
         let id = match key.id, Cohttp.Header.get rd.req_headers "new_id" with
         | "", Some path -> path
