@@ -210,6 +210,11 @@ let valid_id id =
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
+  (* purpose already checked by json parser *)
+  (if "RSA" = r.algorithm then Ok () else Error "Only RSA algorithm supported.") >>= fun () ->
+  (if 1024 <= r.length && r.length <= 8192
+    then Ok ()
+    else Error "Key length must be between 1024 and 8192.") >>= fun () ->
   valid_id r.id >>| fun () ->
   r
 
