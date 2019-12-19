@@ -83,8 +83,8 @@ let health_state_ok () =
   let hsm_state = operational_mock () in
   "a request for /health/state will produce an HTTP 200 and returns the state as json"
     @? begin match request ~hsm_state "/health/state" with
-       | _, Some (`OK, _, `String body, _) -> 
-         String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.state_to_yojson @@ Hsm.state hsm_state 
+       | _, Some (`OK, _, `String body, _) ->
+         String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.state_to_yojson @@ Hsm.state hsm_state
        | _ -> false
     end
 
@@ -125,7 +125,7 @@ let provision_error_precondition_failed () =
 let auth_header user pass =
   let base64 = Cstruct.to_string (Nocrypto.Base64.encode (Cstruct.of_string (user ^ ":" ^ pass))) in
   Header.init_with "authorization" ("Basic " ^ base64)
-  
+
 let admin_headers = auth_header "admin" "test1"
 
 let operator_headers = auth_header "operator" "test2"
@@ -133,15 +133,15 @@ let operator_headers = auth_header "operator" "test2"
 let admin_put_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
   request ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
- 
+
 let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
   request ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query path
- 
+
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
    @? begin match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/system/info" with
-      | hsm_state, Some (`OK, _, `String body, _) -> 
+      | hsm_state, Some (`OK, _, `String body, _) ->
         String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.system_info_to_yojson @@ Hsm.System.system_info hsm_state
       | _ -> false
    end
@@ -202,8 +202,8 @@ let system_update_invalid_data () =
   let body = `String "\000\000\003signature too long\000\000\018A new system image\000\000\0032.0binary data is here" in
   "a request for /system/update with invalid data fails."
    @? begin match admin_post_request ~body "/system/update" with
-      | hsm_state, Some (`Bad_request, _, `String body, _) -> 
-        Logs.info (fun m -> m "Update with invalid data returned %s" body); 
+      | hsm_state, Some (`Bad_request, _, `String body, _) ->
+        Logs.info (fun m -> m "Update with invalid data returned %s" body);
         Hsm.state hsm_state = `Operational
       | _ -> false
    end
@@ -212,8 +212,8 @@ let system_update_version_downgrade () =
   let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0030.5binary data is here" in
   "a request for /system/update trying to send an older software fails."
    @? begin match admin_post_request ~body "/system/update" with
-      | hsm_state, Some (`Conflict, _, `String body, _) -> 
-        Logs.info (fun m -> m "Update with older software version returned %s" body); 
+      | hsm_state, Some (`Conflict, _, `String body, _) ->
+        Logs.info (fun m -> m "Update with older software version returned %s" body);
         Hsm.state hsm_state = `Operational
       | _ -> false
    end
@@ -241,7 +241,7 @@ let system_update_cancel_ok () =
   let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0032.0binary data is here" in
   "a request for /system/cancel-update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
-      | hsm_state, Some (`OK, _, _, _) -> 
+      | hsm_state, Some (`OK, _, _, _) ->
         begin match admin_post_request ~hsm_state "/system/cancel-update" with
         | _ , Some (`No_content, _, _, _) -> true
         | _ -> false
@@ -312,7 +312,7 @@ let unlock_twice () =
 
 let change_unlock_passphrase () =
   "change unlock passphrase succeeds"
-  @? begin 
+  @? begin
   let passphrase = {|{ "passphrase" : "new passphrase" }|} in
   match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
@@ -326,10 +326,10 @@ let change_unlock_passphrase () =
 
 let change_unlock_passphrase_empty () =
   "change to empty unlock passphrase fails"
-  @? begin 
+  @? begin
   let passphrase = {|{ "passphrase" : "" }|} in
   match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
-  | _, Some (`Bad_request, _, _, _) -> true 
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -380,32 +380,32 @@ let unattended_boot_failed () =
 
 let get_config_tls_public_pem () =
   "get tls public pem file succeeds"
-  @? begin 
-  let headers = admin_headers in 
+  @? begin
+  let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/public.pem" with
-  | _, Some (`OK, _, _, _) -> true 
+  | _, Some (`OK, _, _, _) -> true
   | _ -> false
   end
 
 let get_config_tls_cert_pem () =
   "get tls cert pem file succeeds"
-  @? begin 
-  let headers = admin_headers in 
+  @? begin
+  let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
-  | _, Some (`OK, _, _, _) -> true 
+  | _, Some (`OK, _, _, _) -> true
   | _ -> false
   end
 
 let put_config_tls_cert_pem () =
   "post tls cert pem file succeeds"
-  @? begin 
-  let headers = admin_headers in 
+  @? begin
+  let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
-  | hsm_state, Some (`OK, _, `String body, _) -> 
+  | hsm_state, Some (`OK, _, `String body, _) ->
     begin
-      let content_type = "application/x-pem-file" in 
+      let content_type = "application/x-pem-file" in
       match request ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String body) "/config/tls/cert.pem" with
-      | _, Some (`No_content, _, _, _) -> true 
+      | _, Some (`No_content, _, _, _) -> true
       | _ -> false
     end
   | _ -> false
@@ -413,12 +413,12 @@ let put_config_tls_cert_pem () =
 
 let put_config_tls_cert_pem_fail () =
   "post tls cert pem file fail"
-  @? begin 
-    let headers = admin_headers in 
-    let content_type = "application/x-pem-file" in 
+  @? begin
+    let headers = admin_headers in
+    let content_type = "application/x-pem-file" in
     let not_a_pem = "hello this is not pem format" in
     match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~content_type ~body:(`String not_a_pem) "/config/tls/cert.pem" with
-    | _, Some (`Bad_request, _, _, _) -> true 
+    | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
 
@@ -434,9 +434,9 @@ let subject = {|{
 
 let post_config_tls_csr_pem () =
   "post tls csr pem file succeeds"
-  @? begin 
+  @? begin
   match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
-  | _, Some (`OK, _, _, _) -> true 
+  | _, Some (`OK, _, _, _) -> true
   | _ -> false
   end
 
@@ -549,7 +549,7 @@ let set_backup_passphrase () =
   @? begin
   let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
   match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
-  | _, Some (`No_content, _, _, _) -> true 
+  | _, Some (`No_content, _, _, _) -> true
   | _ -> false
   end
 
@@ -558,7 +558,7 @@ let set_backup_passphrase_empty () =
   @? begin
   let passphrase = {|{ "passphrase" : "" }|} in
   match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
-  | _, Some (`Bad_request, _, _, _) -> true 
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -617,7 +617,7 @@ let user_operator_add_empty_passphrase () =
   "PUT on /users/op succeeds"
   @? begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
-  | _, Some (`Bad_request, _, _, _) -> 
+  | _, Some (`Bad_request, _, _, _) ->
     true
   | _ -> false
   end
@@ -676,7 +676,7 @@ let user_passphrase_post () =
             let headers = auth_header "admin" new_passphrase in
             match request ~hsm_state ~headers "/users/admin" with
             | _, Some (`OK, _, _, _) -> true
-            | _ -> false 
+            | _ -> false
           end
        | _ -> false
      end
@@ -753,6 +753,24 @@ let keys_generate () =
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
   | _, Some (`Created, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_generate_invalid_id () =
+  let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
+  "POST on /keys/generate with invalid ID fails"
+  @? begin
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_generate_invalid_id_length () =
+  let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
+  "POST on /keys/generate with invalid ID fails"
+  @? begin
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -1009,6 +1027,8 @@ let () =
     "/keys" >:: keys_post_json;
     "/keys" >:: keys_post_pem;
     "/keys/generate" >:: keys_generate;
+    "/keys/generate" >:: keys_generate_invalid_id;
+    "/keys/generate" >:: keys_generate_invalid_id_length;
     "/keys/keyID" >:: keys_key_get;
     "/keys/keyID" >:: keys_key_put;
     "/keys/keyID" >:: keys_key_delete;

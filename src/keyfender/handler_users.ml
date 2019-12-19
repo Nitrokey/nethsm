@@ -75,7 +75,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok _id -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_user_req content |> Endpoint.err_to_bad_request ok rd
+      let (>>==) = Rresult.R.bind in
+      (Json.valid_id id >>== fun () -> Json.decode_user_req content) |>
+      Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in

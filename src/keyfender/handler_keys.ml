@@ -41,7 +41,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
-      let ok purpose = 
+      let ok purpose =
         Hsm.Key.add_pem hsm_state ~id purpose content >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
@@ -82,7 +82,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      (* TODO Json.decode_generate_key_req, nonempty id, alphanum id, length 1 - 128 *) 
+      (* TODO Json.decode_generate_key_req, nonempty id, alphanum id, length 1 - 128 *)
       let ok (key : Json.generate_key_req) =
         let id = match key.id, Cohttp.Header.get rd.req_headers "new_id" with
         | "", Some path -> path
@@ -93,7 +93,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode Json.generate_key_req_of_yojson content |>
+      Json.decode_generate_key_req content |>
       Endpoint.err_to_bad_request ok rd
 
     method! post_is_create rd =
@@ -139,7 +139,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode Json.private_key_req_of_yojson content |>
+      let (>>==) = Rresult.R.bind in
+      (Json.valid_id id >>== fun () -> Json.decode Json.private_key_req_of_yojson content) |>
       Endpoint.err_to_bad_request ok rd
 
     method! resource_exists rd =

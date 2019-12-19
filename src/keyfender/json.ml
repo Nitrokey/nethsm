@@ -1,4 +1,4 @@
-(* request data *)
+open Rresult.R.Infix
 
 let nonempty ~name s =
   if String.length s == 0
@@ -11,7 +11,6 @@ let to_ocaml parse json =
     @@ parse json
 
 let decode parse data =
-  let open Rresult.R.Infix in
   (try Ok (Yojson.Safe.from_string data)
    with Yojson.Json_error msg -> Error (Printf.sprintf "Invalid JSON: %s." msg)) >>= fun json ->
   to_ocaml parse json
@@ -27,7 +26,6 @@ type subject_req = {
 } [@@deriving yojson]
 
 let decode_subject json =
-  let open Rresult.R.Infix in
   decode subject_req_of_yojson json >>= fun subject ->
   nonempty ~name:"commonName" subject.commonName >>| fun () ->
   subject
@@ -36,31 +34,30 @@ let to_distinguished_name subject =
   let open X509.Distinguished_name in
   let res = Relative_distinguished_name.empty in
   let add = Relative_distinguished_name.add in
-  let res = if subject.commonName <> "" 
+  let res = if subject.commonName <> ""
   then add (CN subject.commonName) res
   else res in
-  let res = if subject.countryName <> "" 
+  let res = if subject.countryName <> ""
   then add (C subject.countryName) res
   else res in
-  let res = if subject.localityName <> "" 
+  let res = if subject.localityName <> ""
   then add (L subject.localityName) res
   else res in
-  let res = if subject.stateOrProvinceName <> "" 
+  let res = if subject.stateOrProvinceName <> ""
   then add (ST subject.stateOrProvinceName) res
   else res in
-  let res = if subject.organizationName <> "" 
+  let res = if subject.organizationName <> ""
   then add (O subject.organizationName) res
   else res in
-  let res = if subject.organizationalUnitName <> "" 
+  let res = if subject.organizationalUnitName <> ""
   then add (OU subject.organizationalUnitName) res
   else res in
-  let res = if subject.emailAddress <> "" 
+  let res = if subject.emailAddress <> ""
   then add (Mail subject.emailAddress) res
   else res in
   [ res ]
 
 let decode_time s =
-  let open Rresult.R.Infix in
   (* since ~sub:true is _not_ passed to of_rfc3339,
      no trailing bytes (third return value will be String.length b.time) *)
   Rresult.R.reword_error (function `RFC3339 ((start, stop), e) ->
@@ -73,7 +70,6 @@ let decode_time s =
 type passphrase_req = { passphrase : string } [@@deriving yojson]
 
 let decode_passphrase json =
-  let open Rresult.R.Infix in
   to_ocaml passphrase_req_of_yojson json >>= fun passphrase ->
   nonempty ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
@@ -81,7 +77,6 @@ let decode_passphrase json =
 type provision_req = { unlockPassphrase : string ; adminPassphrase : string ; time : string }[@@deriving yojson]
 
 let decode_provision_req json =
-  let open Rresult.R.Infix in
   to_ocaml provision_req_of_yojson json >>= fun b ->
   nonempty ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
   nonempty ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
@@ -161,10 +156,10 @@ type publicKey = {
   operations : int
 } [@@deriving yojson]
 
-type private_key_req = { 
-  purpose: purpose ; 
-  algorithm: string ; 
-  key : rsa_key 
+type private_key_req = {
+  purpose: purpose ;
+  algorithm: string ;
+  key : rsa_key
 }[@@deriving yojson]
 
 type decrypt_mode =
@@ -202,6 +197,21 @@ type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
 
 type generate_key_req = { purpose: purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
 
+let is_alphanum s = Astring.String.for_all (function 'a'..'z'|'A'..'Z'|'0'..'9' -> true | _ -> false) s
+
+(* TODO Json.decode_generate_key_req, nonempty id, alphanum id, length 1 - 128 *)
+let valid_id id =
+  (if String.length id <= 128
+    then Ok ()
+    else Error "ID cannot be longer than 128 characters.") >>= fun () ->
+   if is_alphanum id then Ok () else Error "ID may only contain alphanumeric characters."
+
+
+let decode_generate_key_req s =
+  decode generate_key_req_of_yojson s >>= fun r ->
+  valid_id r.id >>| fun () ->
+  r
+
 type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
 
 let role_to_yojson role =
@@ -219,7 +229,6 @@ type user_req = {
 }[@@deriving yojson]
 
 let decode_user_req content =
-  let open Rresult.R.Infix in
   decode user_req_of_yojson content >>= fun user ->
   nonempty ~name:"passphrase" user.passphrase >>| fun () ->
   user
