@@ -34,11 +34,19 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_pem rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
+      let purpose = match Uri.get_query_param rd.Webmachine.Rd.uri "purpose" with
+      | Some "sign" -> Ok Json.Sign
+      | Some "encrypt" -> Ok Json.Encrypt
+      | _ -> Error "Request is missing valid purpose."
+      in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
-      Hsm.Key.add_pem hsm_state ~id Json.Encrypt (*TODO*) content >>= function
-      | Ok () -> Wm.continue true rd
-      | Error e -> Endpoint.respond_error e rd
+      let ok purpose = 
+        Hsm.Key.add_pem hsm_state ~id purpose content >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.err_to_bad_request ok rd purpose
 
     method! post_is_create rd =
       Wm.continue true rd

@@ -738,9 +738,10 @@ Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
 -----END PRIVATE KEY-----|}
 
 let keys_post_pem () =
+  let query = [ ("purpose", [ "sign" ]) ] in
   "POST on /keys succeeds"
   @? begin
-  match admin_post_request ~content_type:"application/x-pem-file" ~body:(`String key_pem) "/keys" with
+  match admin_post_request ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys" with
   | _, Some (`Created, _, _, _) -> true
   | _ -> false
   end

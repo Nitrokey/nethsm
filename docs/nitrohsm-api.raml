@@ -237,6 +237,8 @@ types:
   post:
     description: Import a private key into NitroHSM and let NitroHSM generate a KeyID. The public key will be automatically derived.
     securedBy: basic # R-Administrator
+    queryParameters:
+      purpose: KeyPurpose 
     body:
       application/json:
         type: PrivateKey
