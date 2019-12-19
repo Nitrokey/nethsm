@@ -1,6 +1,12 @@
 # NitroHSM
 
-## Building
+The NitroHSM software can be built either as components that run on your local machine (the "Local Development System") or as a full emulated Muen system (the "Muen System").
+
+In either case, running `make` in this directory will produce a short help. The following sections detail how to build and run the software.
+
+## Local Development System
+
+**Requirements:**
 
 Opam >= 2.0.0 and OCaml >= 4.07.0 and mirage >= 3.7.0 is required.
 
@@ -10,11 +16,7 @@ Ensure that you have cloned this repository with all submodules, or run:
 git submodule update --init --recursive
 ```
 
-If you are starting from an empty OPAM switch, run:
-
-```
-make prepare
-```
+### Building
 
 To build the system for local development work, run:
 
@@ -22,9 +24,9 @@ To build the system for local development work, run:
 make build
 ```
 
-## Running
+### Running
 
-To run the system on a local machine, first ensure that you have set up the required network interfaces by running:
+To run the system on your local machine, first ensure that you have set up the required network interfaces by running:
 
 ```
 sudo tools/setup-net-dev.sh
@@ -57,14 +59,37 @@ Produces
 
 For initial provisioning, in `src/keyfender/tests` there is `notes.sh` with the `curl` command line to provision the NitroHSM, and `provision.json` containing the necessary json data.
 
-## Test coverage reporting
+### Test Coverage Reporting
 
-For OCaml there is a PPX (preprocessor) which can collect coverage information called bisect_ppx. The keyfender library is instrumented (see src/keyfender/dune for details) if the environment BISECT_ENABLE is set to "yes".
+For OCaml there is a PPX (preprocessor) which can collect coverage information called `bisect_ppx`. The keyfender library is instrumented (see `src/keyfender/dune` for details) if the environment `BISECT_ENABLE` is set to `yes`.
 
 To collect coverage information about the tests:
 
-(a) install bisect_ppx (opam install bisect_ppx)
-(b) export BISECT_ENABLE=yes in your shell
-(c) dune runtest
-(d) mkdir coverage && bisect-ppx-report -I _build/default/src/keyfender -html coverage _build/default/src/keyfender/test/bisect000*
-(e) browse to coverage/index.html
+1. install `bisect_ppx` (`opam install bisect_ppx`)
+2. `export BISECT_ENABLE=yes` in your shell
+3. `dune runtest`
+4. `mkdir coverage && bisect-ppx-report -I _build/default/src/keyfender -html coverage _build/default/src/keyfender/test/bisect000*`
+5. browse to coverage/index.html
+
+## Muen System
+
+**Requirements:**
+
+(To be documented, lots of requirements in raw notes at the moment.)
+
+### Building
+
+To build the Muen system image, run:
+
+```
+make -j5 MODE=muen build
+```
+
+### Running
+
+(To be documented.)
+
+
+```
+make -j5 MODE=muen run
+```

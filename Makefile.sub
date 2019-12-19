@@ -1,0 +1,318 @@
+# User-settable parameters.
+# Pass these at 'make' invocation time to the top-level Makefile.
+
+# (MODE is set from top-level Makefile and persisted to .stamp-mode.)
+
+# Set NO_GIT=1 if you are using MODE=dev and do not want to build or run
+# a Git daemon.
+NO_GIT ?=
+
+# Set NET_EXTERNAL=interface to use a non-default interface for the
+# "External" (192.168.1.0/24) network.
+NET_EXTERNAL ?= tap200
+
+# Set NET_INTERNAL=interface to use a non-default interface for the
+# "Internal" (169.254.169.0/24) network.
+NET_INTERNAL ?= tap201
+
+# ------------------------------------------------------------------------------
+
+export TOP_DIR := $(abspath .)
+
+.SUFFIXES:
+
+# Do not run any jobs in *this* Makefile in parallel. This would not gain us
+# anything and complicates the output. -j is still passed to and honored by
+# recursively called Makefiles.
+.NOTPARALLEL:
+
+.PHONY: all
+all:
+	@echo Error: Makefile.sub should not be invoked directly
+	@false
+
+# We cannot use $(MODE) in this Makefile, as that can be overriden by the user
+# in the top-level Makefile, and we need either the "last used mode" from
+# .stamp-mode OR 'dev' if this is a fresh/distclean'd tree.
+XMODE := $(shell cat .stamp-mode 2>/dev/null)
+
+ifeq ($(XMODE),)
+XMODE := dev
+endif
+ifeq ($(XMODE),dev)
+TARGET := hvt
+else ifeq ($(XMODE),muen)
+TARGET := muen
+else
+$(error Invalid MODE '$(XMODE)')
+endif
+
+# ------------------------------------------------------------------------------
+#
+# Rules for 'prepare' step. Common to all MODEs.
+#
+# ------------------------------------------------------------------------------
+
+.stamp-prepare:
+	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
+	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
+	opam install -y --deps-only keyfender
+	touch $@
+
+.PHONY: prepare
+prepare: .stamp-prepare
+
+# ------------------------------------------------------------------------------
+#
+# Rules for building the keyfender library, and the S-Keyfender unikernel.
+# Common to all MODEs.
+#
+# ------------------------------------------------------------------------------
+
+KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
+KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
+S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
+GIT_DAEMON ?= src/git/git-daemon
+
+$(KEYFENDER): .stamp-prepare
+	cd src/keyfender && dune build
+
+# XXX We want to use --assume-built here, but that causes OPAM to go off into an
+# XXX infinite loop. So just use --inplace-build, and deal with 'dune build'
+# XXX being run twice.
+$(KEYFENDER_INSTALL): $(KEYFENDER)
+	opam reinstall -y --inplace-build keyfender
+	touch $@
+
+.PHONY: clean-keyfender
+clean-keyfender:
+	-opam remove -y keyfender
+	$(RM) $(KEYFENDER_INSTALL)
+	-cd src/keyfender && dune clean
+	-cd src/s_keyfender && mirage clean
+
+$(S_KEYFENDER): $(KEYFENDER_INSTALL)
+	cd src/s_keyfender && mirage configure -t $(TARGET)
+	cd src/s_keyfender && $(MAKE) depend
+	cd src/s_keyfender && mirage build
+
+.PHONY: build-keyfender
+build-keyfender: $(S_KEYFENDER)
+
+ifeq ($(XMODE),dev)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running a local development system using Solo5/hvt.
+#
+# ------------------------------------------------------------------------------
+
+RUN_DIR := $(TOP_DIR)/run
+
+ifeq ($(NO_GIT),)
+
+GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
+    NO_GETTEXT=1 NO_PYTHON=1
+
+$(GIT_DAEMON):
+	$(MAKE) -C src/git $(GIT_MAKEFLAGS) all
+
+else
+
+$(GIT_DAEMON): ;
+
+endif
+
+.PHONY: build
+build: $(S_KEYFENDER) $(GIT_DAEMON)
+
+ifeq ($(NO_GIT),)
+
+$(RUN_DIR)/git/keyfender-data.git:
+	mkdir -p $@
+	git init --bare $@
+
+$(RUN_DIR)/git-daemon.pid: | $(RUN_DIR)/git/keyfender-data.git
+	src/git/bin-wrappers/git daemon \
+	    --listen=169.254.169.2 \
+	    --base-path=$(RUN_DIR)/git \
+	    --export-all \
+	    --enable=receive-pack \
+	    --pid-file=$@ &
+
+else
+
+$(RUN_DIR)/git-daemon.pid: ;
+
+endif
+
+.PHONY: run
+run: build $(RUN_DIR)/git-daemon.pid
+	solo5-hvt \
+	    --net:external=$(NET_EXTERNAL) \
+	    --net:internal=$(NET_INTERNAL) \
+	    $(S_KEYFENDER)
+
+.PHONY: clean
+clean: clean-keyfender
+	-test -f $(RUN_DIR)/git-daemon.pid && \
+	    kill $$(cat $(RUN_DIR)/git-daemon.pid) && \
+	    rm $(RUN_DIR)/git-daemon.pid
+	$(MAKE) -C src/git clean
+	$(RM) -r $(RUN_DIR)
+
+else ifeq ($(XMODE),muen)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running an emulated Muen system.
+#
+# ------------------------------------------------------------------------------
+
+MUEN_POLICY_OBJ_DIR := src/muen/policy/obj
+MUEN_PACK_OBJ_DIR := src/muen/pack/obj
+MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
+MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
+MUEN_GEN_CSPEC := src/muen/tools/scripts/solo5-muen-gencspec.py
+
+OBJ_DIR := $(TOP_DIR)/obj
+OBJ_DATA_DIR := $(OBJ_DIR)/data
+OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
+OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
+OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
+OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
+OBJ_QEMU_GRUB_IMG := $(OBJ_DIR)/grub.img
+OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/disk.img
+
+RUN_DIR := $(TOP_DIR)/run
+RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
+
+ZLIB_DIR := $(TOP_DIR)/src/zlib
+ZLIB_LIBZ := $(ZLIB_DIR)/libz.a
+
+$(OBJ_DIR):
+	mkdir -p $@
+
+# The symlinks below are so that we can pass $(ZLIB_DIR) directly to Git's
+# build system without a separate "install" step.
+$(ZLIB_DIR)/stamp-configure: $(ZLIB_DIR)/configure $(ZLIB_DIR)/Makefile.in
+	cd $(ZLIB_DIR) && CC=x86_64-linux-musl-gcc ./configure --static
+	cd $(ZLIB_DIR) && ln -s . include
+	cd $(ZLIB_DIR) && ln -s . lib
+	touch $@
+
+$(ZLIB_LIBZ): $(ZLIB_DIR)/stamp-configure
+	$(MAKE) -C $(ZLIB_DIR)
+
+GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
+    NO_GETTEXT=1 NO_PYTHON=1 NO_REGEX=NeedsStartEnd \
+    HOST_CPU=x86_64 CC=x86_64-linux-musl-gcc \
+    LDFLAGS=-static ZLIB_PATH=$(ZLIB_DIR) \
+    INSTALL_SYMLINKS=1 \
+    prefix=/ DESTDIR=$(OBJ_INITRAMFS_DIR)
+
+$(GIT_DAEMON): $(ZLIB_LIBZ)
+	$(MAKE) -C src/git $(GIT_MAKEFLAGS) all strip
+
+INSTALL_GIT_DAEMON := $(OBJ_GIT_LIBEXEC_DIR)/git-daemon
+
+$(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
+	$(MAKE) -C src/git $(GIT_MAKEFLAGS) install
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-credential-*
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-cvs*
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-http-backend
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-imap-send
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-remote-testsvn
+	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-shell
+	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
+	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
+
+$(MUEN_S_KEYFENDER): $(S_KEYFENDER)
+	$(MUEN_GEN_CSPEC) $< \
+	    src/muen/policy/xml/mirageos/cspec_src.xml \
+	    src/muen/policy/obj \
+	    --out_spec src/muen/policy/xml/mirageos/component_unikernel.xml
+
+$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(INSTALL_GIT_DAEMON)
+	$(MAKE) -C src/muen --no-print-directory \
+	    SYSTEM=xml/mirage-solo5.xml NO_PROOF=1 \
+	    U_ROOT_EXTRA="-files $(OBJ_INITRAMFS_DIR):/" \
+	    pack
+
+# XXX Files will be owned by the build user. Maybe run this from uinit once we
+# XXX have a real S-Storage, and also run git daemon as non-root.
+$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
+	mkdir -p $@
+	git init --bare $@
+
+$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
+
+$(OBJ_QEMU_DISK_IMG): $(MUEN_PACK_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.sh
+	tools/muen-mkdiskimage.sh $@ $< $(OBJ_DATA_DIR)
+
+$(OBJ_QEMU_GRUB_IMG): tools/grub-qemu.cfg tools/grub-mkqemu.sh
+	tools/grub-mkqemu.sh $@ $<
+
+.PHONY: build
+build: $(OBJ_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG)
+
+$(RUN_QEMU_DISK_IMG): $(OBJ_QEMU_DISK_IMG)
+	mkdir -p $(RUN_DIR)
+	cp $< $@
+
+$(RUN_DIR)/screenrc:
+	echo "logfile $(RUN_DIR)/emulate.out" >$@
+
+QEMU ?= qemu-system-x86_64
+QEMU_OPTS := \
+    -kernel $(OBJ_QEMU_GRUB_IMG) \
+    -drive file=$(RUN_QEMU_DISK_IMG),format=raw \
+    -serial file:run/serial.out \
+    -machine q35,accel=kvm,kernel-irqchip=split \
+    -cpu host,+invtsc \
+    -m 5120 \
+    -smp cores=2,threads=2,sockets=1 \
+    -device intel-iommu,intremap=on,device-iotlb=on \
+    -device ioh3420,id=pcie.1,chassis=1 \
+    -device virtio-net-pci,bus=pcie.1,netdev=net0,disable-legacy=on,disable-modern=off,iommu_platform=on,ats=on \
+    -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
+    -device qemu-xhci,id=xhci \
+    -device usb-tablet,bus=xhci.0 \
+    -curses
+QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
+
+.PHONY: check-running
+check-running:
+	@if test -f $(QEMU_PIDFILE) && test -d /proc/`cat $(QEMU_PIDFILE)`; then \
+	    echo "Error: QEMU still running, check $(QEMU_PIDFILE)"; \
+	    false; \
+	else \
+	    true; \
+	fi
+
+.PHONY: run
+run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
+	screen -c $(RUN_DIR)/screenrc -L -dmS kvm-muen \
+	    $(QEMU) $(QEMU_OPTS) -pidfile $(RUN_DIR)/qemu.pid
+	@echo -n "* QEMU/KVM started for '$(RUN_QEMU_DISK_IMG)', waiting for boot: "
+	@for i in $$(seq 1 5); do \
+	    sleep 1; \
+	    echo -n .; \
+	    boot=$$(cat $(RUN_DIR)/serial.out 2>/dev/null | grep 'Booting Muen'); \
+	    if [ -n "$$boot" ]; then \
+	        echo " OK"; echo; \
+	        echo "Console: screen -r kvm-muen"; \
+	        echo "         (C-A k to quit, C-A d to detach)"; \
+	        break; \
+	    fi; \
+	done; \
+	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/emulate.out && exit 1; fi
+
+.PHONY: clean
+clean: clean-keyfender
+	$(RM) $(MUEN_S_KEYFENDER)
+	$(MAKE) -C src/muen clean
+	$(MAKE) -C src/git clean
+	$(MAKE) -C src/zlib distclean
+	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
+	$(RM) -r $(OBJ_DIR) $(RUN_DIR)
+
+endif

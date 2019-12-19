@@ -1,3 +1,10 @@
 [submodule "src/git"]
 	path = src/git
 	url = https://git.kernel.org/pub/scm/git/git.git
+[submodule "src/muen"]
+	path = src/muen
+	url = ../muen.git
+	branch = devel-nitrohsm
+[submodule "src/zlib"]
+	path = src/zlib
+	url = https://github.com/madler/zlib.git

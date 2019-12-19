@@ -1,64 +1,33 @@
-export TOPDIR := $(abspath .)
-
 MODE ?= dev
-ifeq ($(MODE), dev)
-    TARGET := hvt
-else ifeq ($(MODE), muen)
-    TARGET := muen
-endif
-
-S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
-GIT_DAEMON ?= src/git/git-daemon
 
 .PHONY: all
 all:
-	@echo Read the README.md
+	@cat Makehelp
 
-.PHONY: prepare
-prepare:
-	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
-	opam pin add -y -n keyfender $(TOPDIR)/src/keyfender#HEAD
-	opam install -y --deps-only keyfender
+Makefile: ;
 
-$(GIT_DAEMON):
-	$(MAKE) -C src/git NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 NO_GETTEXT=1 NO_PYTHON=1 all
+.SUFFIXES:
 
-.PHONY: keyfender force-it
-# Always build the keyfender library and s_keyfender unikernel, since we have
-# no way of propagating dependencies from ocamlbuild/mirage to the top-level
-# make.
-keyfender:
-	opam reinstall -y keyfender
+.NOTPARALLEL:
 
-$(S_KEYFENDER): keyfender force-it
-	cd src/s_keyfender && mirage configure -t $(TARGET)
-	cd src/s_keyfender && $(MAKE) depend
-	cd src/s_keyfender && $(MAKE)
+.stamp-mode:
+	@echo "$(MODE)" >$@
+	@$(RM) .stamp-prepare
 
-.PHONY: build
-build: $(GIT_DAEMON) $(S_KEYFENDER)
+.PHONY: check-mode
+check-mode: .stamp-mode
+	@if test "`cat $<`" != "$(MODE)"; then \
+	  echo "Error: MODE is set to '`cat $<`', but '$(MODE)' was requested" 1>&2; \
+	  echo "Error: Cannot change MODE without running 'make distclean' first" 1>&2;  \
+	  false; \
+	else \
+	  true; \
+	fi
 
-ifeq ($(MODE), dev)
-run/git/keyfender-data.git:
-	mkdir -p $@
-	git init --bare $@
+.PHONY: distclean
+distclean:
+	$(MAKE) -f Makefile.sub clean
+	$(RM) .stamp-prepare .stamp-mode
 
-run/git-daemon.pid: | run/git/keyfender-data.git
-	src/git/bin-wrappers/git daemon \
-	    --listen=169.254.169.2 \
-	    --base-path=run/git \
-	    --export-all \
-	    --enable=receive-pack \
-	    --pid-file=$@ &
-
-.PHONY: run
-run: build run/git-daemon.pid
-	solo5-hvt --net:external=tap200 --net:internal=tap201 $(S_KEYFENDER)
-
-.PHONY: clean
-clean:
-	-opam remove -y keyfender
-	-test -f run/git-daemon.pid && kill $$(cat run/git-daemon.pid) && rm run/git-daemon.pid
-	$(RM) -r run/
-
-endif
+%:: check-mode
+	$(MAKE) -f Makefile.sub $@
