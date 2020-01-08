@@ -52,11 +52,11 @@ struct
       in
       let sleep e =
         Log.warn(fun m -> m "Could not connect to remote %s" (Printexc.to_string e));
-        Time.sleep_ns (Duration.of_sec 1) 
+        Time.sleep_ns (Duration.of_sec 1)
       in
-      let rec connect_git () = 
+      let rec connect_git () =
         Lwt.catch store_connect
-          (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e) 
+          (fun e -> if Key_gen.retry () > 0 then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
       Hsm.boot store >>= fun hsm_state ->

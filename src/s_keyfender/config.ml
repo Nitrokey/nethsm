@@ -24,9 +24,12 @@ let remote =
   let doc = Key.Arg.info ~doc:"Remote git repository." ["remote"] in
   Key.(create "remote" Arg.(opt string "git://169.254.169.2/keyfender-data.git" doc))
 
+(* This parameter uses an integer since mirage does not properly handle
+   (boolean) flags provided at configuration time (they are not preserved in
+   key_gen.ml). TODO report and fix upstream. *)
 let retry =
-  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
-  Key.(create "retry" Arg.(flag doc))
+  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed (>0 for enable)." ["retry"] in
+  Key.(create "retry" Arg.(opt int 0 doc))
 
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
