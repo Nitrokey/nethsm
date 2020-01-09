@@ -15,6 +15,10 @@ NET_EXTERNAL ?= tap200
 # "Internal" (169.254.169.0/24) network.
 NET_INTERNAL ?= tap201
 
+# Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
+# for the Keyfender unikernel. Default for MODE=muen is '--retry=1'.
+# (actual setting is performed later)
+
 # ------------------------------------------------------------------------------
 
 export TOP_DIR := $(abspath .)
@@ -41,8 +45,10 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
+KEYFENDER_CARGS ?=
 else ifeq ($(XMODE),muen)
 TARGET := muen
+KEYFENDER_CARGS ?= --retry=1
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -92,7 +98,7 @@ clean-keyfender:
 	-cd src/s_keyfender && mirage clean
 
 $(S_KEYFENDER): $(KEYFENDER_INSTALL)
-	cd src/s_keyfender && mirage configure -t $(TARGET)
+	cd src/s_keyfender && mirage configure -t $(TARGET) $(KEYFENDER_CARGS)
 	cd src/s_keyfender && $(MAKE) depend
 	cd src/s_keyfender && mirage build
 
@@ -170,8 +176,13 @@ else ifeq ($(XMODE),muen)
 MUEN_POLICY_OBJ_DIR := src/muen/policy/obj
 MUEN_PACK_OBJ_DIR := src/muen/pack/obj
 MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/nitrohsm/component_unikernel.xml
 MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
 MUEN_GEN_CSPEC := src/muen/tools/scripts/solo5-muen-gencspec.py
+# XXX: Using --bootparams= here is not currently possible without using
+# XXX: mirageos/compose.py, so we persist parameters at unikernel configure
+# XXX: time instead.
+MUEN_GEN_CSPEC_EXTRA :=
 
 OBJ_DIR := $(TOP_DIR)/obj
 OBJ_DATA_DIR := $(OBJ_DIR)/data
@@ -225,15 +236,17 @@ $(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
 
-$(MUEN_S_KEYFENDER): $(S_KEYFENDER)
-	$(MUEN_GEN_CSPEC) $< \
+$(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
+	$(MUEN_GEN_CSPEC) \
+	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
+	    $(MUEN_GEN_CSPEC_EXTRA) \
+	    $< \
 	    src/muen/policy/xml/mirageos/cspec_src.xml \
-	    src/muen/policy/obj \
-	    --out_spec src/muen/policy/xml/mirageos/component_unikernel.xml
+	    $(MUEN_POLICY_OBJ_DIR)
 
-$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(INSTALL_GIT_DAEMON)
+$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(INSTALL_GIT_DAEMON)
 	$(MAKE) -C src/muen --no-print-directory \
-	    SYSTEM=xml/mirage-solo5.xml NO_PROOF=1 \
+	    SYSTEM=xml/nitrohsm/basic_system.xml NO_PROOF=1 \
 	    U_ROOT_EXTRA="-files $(OBJ_INITRAMFS_DIR):/" \
 	    pack
 
@@ -308,7 +321,7 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
 
 .PHONY: clean
 clean: clean-keyfender
-	$(RM) $(MUEN_S_KEYFENDER)
+	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
 	$(MAKE) -C src/muen clean
 	$(MAKE) -C src/git clean
 	$(MAKE) -C src/zlib distclean
