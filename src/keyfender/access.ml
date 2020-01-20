@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-module Make (Hsm : Hsm.S) = struct
+module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
   (* Headers *)
   let get_authorization headers = Cohttp.Header.get headers "Authorization"
 
@@ -24,19 +24,24 @@ module Make (Hsm : Hsm.S) = struct
 
   let is_authorized hsm_state rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
-    | None -> Lwt.return (`Basic "NitroHSM", rd)
+    | None -> Wm.continue (`Basic "NitroHSM") rd
     | Some auth ->
       match decode_auth auth with
       | Ok (username, passphrase) ->
-        Hsm.User.is_authenticated hsm_state ~username ~passphrase >|= fun auth ->
-        if auth then
-          let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
-          `Authorized, rd'
+        (* data structure: ip -> (request, timestamp) ; sliding window *)
+        (* check whether rate limit is reached *)
+        if (* rate limit exceeded *) false then
+          Wm.respond ~body:(`String "Too many requests") 429 rd
         else
-          `Basic "invalid authorization", rd
+          Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->
+          if auth then
+            let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
+            Wm.continue `Authorized rd'
+          else
+            Wm.continue (`Basic "invalid authorization") rd
       | Error (`Msg msg) ->
         Logs.warn (fun m -> m "is_authorized failed with header value %s and message %s" auth msg);
-        Lwt.return (`Basic "invalid authorization", rd)
+        Wm.continue (`Basic "invalid authorization") rd
 
   let is_in_state hsm_state state =
     Hsm.state hsm_state = state

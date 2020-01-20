@@ -2,7 +2,7 @@ open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  module Access = Access.Make(Hsm)
+  module Access = Access.Make(Wm)(Hsm)
 
   type body = Cohttp_lwt.Body.t
 
@@ -52,9 +52,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class role hsm_state role = object
-    method is_authorized : (Wm.auth, body) Wm.op = fun rd ->
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
+    method is_authorized : (Wm.auth, body) Wm.op =
+      Access.is_authorized hsm_state
 
     method forbidden : (bool, body) Wm.op = fun rd ->
       Access.forbidden hsm_state role rd >>= fun auth ->
@@ -62,9 +61,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class role_operator_get hsm_state = object
-    method is_authorized : (Wm.auth, body) Wm.op = fun rd ->
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
+    method is_authorized : (Wm.auth, body) Wm.op =
+      Access.is_authorized hsm_state
 
     method forbidden : (bool, body) Wm.op = fun rd ->
       Access.forbidden hsm_state `Administrator rd >>= function

@@ -2,7 +2,7 @@ open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
 
-  module Access = Access.Make(Hsm)
+  module Access = Access.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class handler_users hsm_state = object(self)
@@ -129,9 +129,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Endpoint.respond_error e rd
 
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
+    method! is_authorized = Access.is_authorized hsm_state
 
     method! forbidden rd =
       (* R-Administrator may GET/PUT/DELETE/POST everything *)

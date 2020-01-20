@@ -1,7 +1,7 @@
 open Lwt.Infix
 
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = struct
-  module Access = Access.Make(Hsm)
+  module Access = Access.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class handler_keys hsm_state = object(self)
@@ -196,9 +196,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method content_types_accepted rd =
       Wm.continue [ ] rd
 
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
+    method! is_authorized = Access.is_authorized hsm_state
 
     method! forbidden rd =
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
@@ -247,9 +245,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/x-pem-file", self#csr_pem)
       ] rd
 
-    method! is_authorized rd =
-      Access.is_authorized hsm_state rd >>= fun (auth, rd') ->
-      Wm.continue auth rd'
+    method! is_authorized = Access.is_authorized hsm_state
 
     method! forbidden rd =
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
