@@ -5,10 +5,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Access = Access.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class handler_users hsm_state = object(self)
+  class handler_users hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get_json rd =
       Hsm.User.list hsm_state >>= function
@@ -52,10 +52,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler hsm_state = object(self)
+  class handler hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role_operator_get hsm_state
+    inherit !Endpoint.role_operator_get hsm_state ip
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -108,7 +108,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler_passphrase hsm_state = object
+  class handler_passphrase hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.post_json
@@ -129,7 +129,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok does_exist -> Wm.continue does_exist rd
       | Error e -> Endpoint.respond_error e rd
 
-    method! is_authorized = Access.is_authorized hsm_state
+    method! is_authorized = Access.is_authorized hsm_state ip
 
     method! forbidden rd =
       (* R-Administrator may GET/PUT/DELETE/POST everything *)

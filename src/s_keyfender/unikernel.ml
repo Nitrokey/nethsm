@@ -27,7 +27,7 @@ struct
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
-  let opt_static_file assets next request body =
+  let opt_static_file assets next ip request body =
     let uri = Cohttp.Request.uri request in
     let path = match Uri.path uri with
       | "/" -> "/index.html"
@@ -38,7 +38,7 @@ struct
       let mime_type = Magic_mime.lookup path in
       let headers = Cohttp.Header.init_with "content-type" mime_type in
       Http.respond ~headers ~status:`OK ~body:(`String data) ()
-    | _ -> next request body
+    | _ -> next ip request body
 
   let start () () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function

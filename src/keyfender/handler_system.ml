@@ -4,10 +4,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class info hsm_state = object(self)
+  class info hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit Endpoint.get_json
 
     method private to_json =
@@ -24,10 +24,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | _ -> Wm.continue None rd
   end
 
-  class reboot hsm_state = object
+  class reboot hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -36,10 +36,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue true rd
   end
 
-  class shutdown hsm_state = object
+  class shutdown hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -48,10 +48,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue true rd
   end
 
-  class reset hsm_state = object
+  class reset hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -61,10 +61,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Error e -> Endpoint.respond_error e rd
   end
 
-  class update hsm_state = object(self)
+  class update hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -83,10 +83,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/octet-stream", self#process_post) ]
   end
 
-  class commit_update hsm_state = object
+  class commit_update hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -96,10 +96,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok () -> Wm.continue true rd
   end
 
-  class cancel_update hsm_state = object
+  class cancel_update hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
@@ -109,10 +109,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok () -> Wm.continue true rd
   end
 
-  class backup hsm_state = object
+  class backup hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Backup
+    inherit !Endpoint.role hsm_state `Backup ip
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 

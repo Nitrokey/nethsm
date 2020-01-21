@@ -4,10 +4,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class tls_public hsm_state = object(self)
+  class tls_public hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get rd =
       Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
@@ -24,10 +24,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class tls_cert hsm_state = object(self)
+  class tls_cert hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get rd =
       Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
@@ -53,10 +53,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class tls_csr hsm_state = object
+  class tls_csr hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post_json
     inherit !Endpoint.no_cache
 
@@ -72,10 +72,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
   end
 
-  class unlock_passphrase hsm_state = object
+  class unlock_passphrase hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post_json
     inherit !Endpoint.no_cache
 
@@ -88,10 +88,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
   end
 
-  class unattended_boot hsm_state = object(self)
+  class unattended_boot hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get rd =
       Hsm.Config.unattended_boot hsm_state >>= function
@@ -125,10 +125,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class network hsm_state = object(self)
+  class network hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get rd =
       Hsm.Config.network hsm_state >>= fun network ->
@@ -158,10 +158,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class logging hsm_state = object(self)
+  class logging hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
 
     method private get rd =
       Hsm.Config.log hsm_state >>= fun log_config ->
@@ -191,10 +191,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class backup_passphrase hsm_state = object
+  class backup_passphrase hsm_state ip = object
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post_json
     inherit !Endpoint.no_cache
 
@@ -207,10 +207,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
   end
 
-  class time hsm_state = object(self)
+  class time hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.no_cache
 
     method private get rd =

@@ -51,18 +51,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue () rd'
   end
 
-  class role hsm_state role = object
+  class role hsm_state role ip = object
     method is_authorized : (Wm.auth, body) Wm.op =
-      Access.is_authorized hsm_state
+      Access.is_authorized hsm_state ip
 
     method forbidden : (bool, body) Wm.op = fun rd ->
       Access.forbidden hsm_state role rd >>= fun auth ->
       Wm.continue auth rd
   end
 
-  class role_operator_get hsm_state = object
+  class role_operator_get hsm_state ip = object
     method is_authorized : (Wm.auth, body) Wm.op =
-      Access.is_authorized hsm_state
+      Access.is_authorized hsm_state ip
 
     method forbidden : (bool, body) Wm.op = fun rd ->
       Access.forbidden hsm_state `Administrator rd >>= function

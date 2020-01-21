@@ -7,7 +7,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   let last_requests = ref []
 
   (* TODO store in configuration *)
-  let max_requests_per_second = 5
+  let max_requests_per_second = 10
 
   let within_rate_limit _hsm_state =
     let one_second_ago =

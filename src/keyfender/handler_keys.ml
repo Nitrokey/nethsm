@@ -4,10 +4,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Access = Access.Make(Wm)(Hsm)
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class handler_keys hsm_state = object(self)
+  class handler_keys hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role_operator_get hsm_state
+    inherit !Endpoint.role_operator_get hsm_state ip
 
     method private get_json rd =
       Hsm.Key.list hsm_state >>= function
@@ -73,10 +73,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler_keys_generate hsm_state = object(self)
+  class handler_keys_generate hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Administrator
+    inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.no_cache
 
     method private set_json rd =
@@ -115,10 +115,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       ] rd
   end
 
-  class handler hsm_state = object(self)
+  class handler hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role_operator_get hsm_state
+    inherit !Endpoint.role_operator_get hsm_state ip
 
     method private get_json rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -171,7 +171,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler_public hsm_state = object(self)
+  class handler_public hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
@@ -196,7 +196,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method content_types_accepted rd =
       Wm.continue [ ] rd
 
-    method! is_authorized = Access.is_authorized hsm_state
+    method! is_authorized = Access.is_authorized hsm_state ip
 
     method! forbidden rd =
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
@@ -209,7 +209,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue digest rd
   end
 
-  class handler_csr hsm_state = object(self)
+  class handler_csr hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.no_cache
@@ -245,7 +245,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         ("application/x-pem-file", self#csr_pem)
       ] rd
 
-    method! is_authorized = Access.is_authorized hsm_state
+    method! is_authorized = Access.is_authorized hsm_state ip
 
     method! forbidden rd =
       Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
@@ -253,10 +253,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue (not_an_admin && not_an_operator) rd
   end
 
-  class handler_decrypt hsm_state = object(self)
+  class handler_decrypt hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Operator
+    inherit !Endpoint.role hsm_state `Operator ip
     inherit !Endpoint.no_cache
 
     method private decrypt rd =
@@ -291,10 +291,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", self#decrypt) ] rd
   end
 
-  class handler_sign hsm_state = object(self)
+  class handler_sign hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Operator
+    inherit !Endpoint.role hsm_state `Operator ip
     inherit !Endpoint.no_cache
 
     method private sign rd =
@@ -329,10 +329,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", self#sign) ] rd
   end
 
-  class handler_cert hsm_state = object(self)
+  class handler_cert hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role_operator_get hsm_state
+    inherit !Endpoint.role_operator_get hsm_state ip
 
     method private get_cert rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in

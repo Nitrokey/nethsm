@@ -26,7 +26,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
   module Keys = Handler_keys.Make(Wm)(Hsm)
   module System = Handler_system.Make(Wm)(Hsm)
 
-  let routes hsm_state =
+  let routes hsm_state ip =
     let latest_version = (Hsm.info hsm_state).Json.version in
     List.map (fun (p, h) -> "/api/" ^ latest_version ^ p, h)
       [
@@ -34,38 +34,38 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/health/alive", fun () -> new Health.alive hsm_state) ;
         ("/health/ready", fun () -> new Health.ready hsm_state) ;
         ("/health/state", fun () -> new Health.state hsm_state) ;
-        ("/metrics", fun () -> new Metrics.metrics hsm_state) ;
+        ("/metrics", fun () -> new Metrics.metrics hsm_state ip) ;
         ("/provision", fun () -> new Provision.provision hsm_state) ;
         ("/unlock", fun () -> new Unlock.unlock hsm_state) ;
-        ("/random", fun () -> new Random.random hsm_state) ;
-        ("/config/unlock-passphrase", fun () -> new Config.unlock_passphrase hsm_state) ;
-        ("/config/unattended-boot", fun () -> new Config.unattended_boot hsm_state) ;
-        ("/config/tls/public.pem", fun () -> new Config.tls_public hsm_state) ;
-        ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state) ;
-        ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state) ;
-        ("/config/network", fun () -> new Config.network hsm_state) ;
-        ("/config/logging", fun () -> new Config.logging hsm_state) ;
-        ("/config/backup-passphrase", fun () -> new Config.backup_passphrase hsm_state) ;
-        ("/config/time", fun () -> new Config.time hsm_state) ;
-        ("/users", fun () -> new Users.handler_users hsm_state) ;
-        ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state) ;
-        ("/users/:id", fun () -> new Users.handler hsm_state) ;
-        ("/keys", fun () -> new Keys.handler_keys hsm_state) ;
-        ("/keys/generate", fun () -> new Keys.handler_keys_generate hsm_state) ;
-        ("/keys/:id", fun () -> new Keys.handler hsm_state) ;
-        ("/keys/:id/public.pem", fun () -> new Keys.handler_public hsm_state) ;
-        ("/keys/:id/csr.pem", fun () -> new Keys.handler_csr hsm_state) ;
-        ("/keys/:id/decrypt", fun () -> new Keys.handler_decrypt hsm_state) ;
-        ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state) ;
-        ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state) ;
-        ("/system/info", fun () -> new System.info hsm_state) ;
-        ("/system/reboot", fun () -> new System.reboot hsm_state) ;
-        ("/system/shutdown", fun () -> new System.shutdown hsm_state) ;
-        ("/system/reset", fun () -> new System.reset hsm_state) ;
-        ("/system/update", fun () -> new System.update hsm_state) ;
-        ("/system/commit-update", fun () -> new System.commit_update hsm_state) ;
-        ("/system/cancel-update", fun () -> new System.cancel_update hsm_state) ;
-        ("/system/backup", fun () -> new System.backup hsm_state) ;
+        ("/random", fun () -> new Random.random hsm_state ip) ;
+        ("/config/unlock-passphrase", fun () -> new Config.unlock_passphrase hsm_state ip) ;
+        ("/config/unattended-boot", fun () -> new Config.unattended_boot hsm_state ip) ;
+        ("/config/tls/public.pem", fun () -> new Config.tls_public hsm_state ip) ;
+        ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state ip) ;
+        ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state ip) ;
+        ("/config/network", fun () -> new Config.network hsm_state ip) ;
+        ("/config/logging", fun () -> new Config.logging hsm_state ip) ;
+        ("/config/backup-passphrase", fun () -> new Config.backup_passphrase hsm_state ip) ;
+        ("/config/time", fun () -> new Config.time hsm_state ip) ;
+        ("/users", fun () -> new Users.handler_users hsm_state ip) ;
+        ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state ip) ;
+        ("/users/:id", fun () -> new Users.handler hsm_state ip) ;
+        ("/keys", fun () -> new Keys.handler_keys hsm_state ip) ;
+        ("/keys/generate", fun () -> new Keys.handler_keys_generate hsm_state ip) ;
+        ("/keys/:id", fun () -> new Keys.handler hsm_state ip) ;
+        ("/keys/:id/public.pem", fun () -> new Keys.handler_public hsm_state ip) ;
+        ("/keys/:id/csr.pem", fun () -> new Keys.handler_csr hsm_state ip) ;
+        ("/keys/:id/decrypt", fun () -> new Keys.handler_decrypt hsm_state ip) ;
+        ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state ip) ;
+        ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state ip) ;
+        ("/system/info", fun () -> new System.info hsm_state ip) ;
+        ("/system/reboot", fun () -> new System.reboot hsm_state ip) ;
+        ("/system/shutdown", fun () -> new System.shutdown hsm_state ip) ;
+        ("/system/reset", fun () -> new System.reset hsm_state ip) ;
+        ("/system/update", fun () -> new System.update hsm_state ip) ;
+        ("/system/commit-update", fun () -> new System.commit_update hsm_state ip) ;
+        ("/system/cancel-update", fun () -> new System.cancel_update hsm_state ip) ;
+        ("/system/backup", fun () -> new System.backup hsm_state ip) ;
         ("/system/restore", fun () -> new System.restore hsm_state) ;
       ]
 end
@@ -75,14 +75,14 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
   module Handlers = Make_handlers(R)(Hsm)
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
-  let dispatch hsm_state request body =
+  let dispatch hsm_state ip request body =
     let start = Hsm.now () in
     Access_log.info (fun m -> m "request %s %s"
                         (Cohttp.Code.string_of_method (Cohttp.Request.meth request))
                         (Cohttp.Request.resource request));
     Access_log.debug (fun m -> m "request headers %s"
                          (Cohttp.Header.to_string (Cohttp.Request.headers request)) );
-    Handlers.Wm.dispatch' (Handlers.routes hsm_state) ~body ~request
+    Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request
     >|= begin function
       | None        -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
       | Some result -> result
@@ -100,7 +100,7 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
     Http.respond ~headers ~body ~status ()
 
   (* Redirect to https *)
-  let redirect port request _body =
+  let redirect port _ip request _body =
     let uri = Cohttp.Request.uri request in
     let new_uri = Uri.with_scheme uri (Some "https") in
     let new_uri = Uri.with_port new_uri (Some port) in
@@ -116,7 +116,7 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
       let uri = Cohttp.Request.uri request in
       let cid = Cohttp.Connection.to_string cid in
       Logs.info (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
-      cb request body
+      cb ip request body
     in
     let conn_closed (_,cid) =
       let cid = Cohttp.Connection.to_string cid in

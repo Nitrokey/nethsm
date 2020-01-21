@@ -22,15 +22,32 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       end
     | _ -> Error (`Msg ("invalid auth header " ^ auth))
 
-  let is_authorized hsm_state rd =
+  let requests : (Ipaddr.V4.t, Ptime.t list) Hashtbl.t = Hashtbl.create 7
+
+  let max_requests_per_second = 5
+
+  let within_rate_limit ip =
+    match Hashtbl.find_opt requests ip with
+    | None -> Hashtbl.add requests ip [ Hsm.now () ] ; true
+    | Some last_requests ->
+      let one_second_ago =
+        let one_second = Ptime.Span.of_int_s 1 in
+        match Ptime.sub_span (Hsm.now ()) one_second with
+        | Some ts -> ts
+        | None -> assert false
+      in
+      let requests' = List.filter (Ptime.is_later ~than:one_second_ago) last_requests in
+      let result = List.length requests' < max_requests_per_second in
+      Hashtbl.replace requests ip (Hsm.now () :: requests');
+      result
+
+  let is_authorized hsm_state ip rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
     | None -> Wm.continue (`Basic "NitroHSM") rd
     | Some auth ->
       match decode_auth auth with
       | Ok (username, passphrase) ->
-        (* data structure: ip -> (request, timestamp) ; sliding window *)
-        (* check whether rate limit is reached *)
-        if (* rate limit exceeded *) false then
+        if not (within_rate_limit ip) then
           Wm.respond ~body:(`String "Too many requests") 429 rd
         else
           Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->

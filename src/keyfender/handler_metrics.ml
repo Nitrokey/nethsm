@@ -2,10 +2,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
-  class metrics hsm_state = object(self)
+  class metrics hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role hsm_state `Metrics
+    inherit !Endpoint.role hsm_state `Metrics ip
     inherit !Endpoint.no_cache
 
     method private to_json rd =

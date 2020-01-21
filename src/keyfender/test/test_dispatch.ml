@@ -26,7 +26,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
   let path = "/api/v1" ^ endpoint in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state') ~body ~request with
+  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' Ipaddr.V4.any) ~body ~request with
   | None -> hsm_state', None
   | Some (status, _, _, _) as r ->
     Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ;

@@ -14,7 +14,7 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()
   let headers = Header.replace headers "content-type" content_type in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  Handlers.Wm.dispatch' (Handlers.routes hsm_state) ~body ~request
+  Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
 
 let unprovisioned_mock () =
   Kv_mem.connect () >>= Hsm.boot 
