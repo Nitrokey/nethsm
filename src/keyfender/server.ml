@@ -111,7 +111,8 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
     Http.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
 
   let serve cb =
-    let callback (_, cid) request body =
+    let callback (_, cid) ip request body =
+      Logs.warn (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
       let uri = Cohttp.Request.uri request in
       let cid = Cohttp.Connection.to_string cid in
       Logs.info (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
