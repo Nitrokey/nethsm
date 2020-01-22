@@ -222,6 +222,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "log msg type"
 
+    let gc_src =
+      let open Metrics in
+      let doc = "Garbage collection" in
+      let data (live, free) =
+        Data.v [ int "live_words_bytes" live ; int "free_words_bytes" free ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "gc"
+
     let key_ops_src =
       let open Metrics in
       let doc = "Key operations" in
@@ -244,6 +252,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt.Infix in
       Metrics.add uptime_src (fun t -> t) (fun m -> m (now ()));
       Metrics.add log_src (fun t -> t) (fun m -> m (Logs.warn_count (), Logs.err_count ()));
+      let gc_stat = Gc.stat () in
+      Metrics.add gc_src (fun t -> t) (fun m -> m (gc_stat.live_words * 8, gc_stat.free_words * 8));
       Time.sleep_ns sample_interval >>=
       sample
 
