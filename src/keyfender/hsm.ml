@@ -207,7 +207,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let uptime_src =
       let open Metrics in
-      let doc = "Uptime of Keyfender" in
+      let doc = "Uptime" in
       let data now =
         let seconds = Duration.to_sec now in
         Data.v [ int "uptime" seconds ]
@@ -216,11 +216,29 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let log_src =
       let open Metrics in
-      let doc = "Log message types of Keyfender" in
+      let doc = "Log message types" in
       let data (warns, errs) =
         Data.v [ int "warn msgs" warns ; int "err msgs" errs ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "log msg type"
+
+    let key_ops_src =
+      let open Metrics in
+      let doc = "Key operations" in
+      let data (generate, sign, decrypt) =
+        Data.v [ int "generate" generate ; int "sign" sign ; int "decrypt" decrypt ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "key operations"
+
+    let ops = ref (0, 0, 0)
+
+    let key_op op = 
+      let g, s, d = !ops in
+      (match op with 
+      | `Generate -> ops := g + 1, s, d
+      | `Sign -> ops := g, s + 1, d
+      | `Decrypt -> ops := g, s, d + 1);
+      Metrics.add key_ops_src (fun t -> t) (fun m -> m !ops)
 
     let rec sample () =
       let open Lwt.Infix in
@@ -810,9 +828,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok `RSA priv -> add ~id t purpose priv
 
     let generate ~id t purpose ~length =
-      if 1024 <= length && length <= 8192 then 
+      if 1024 <= length && length <= 8192 then begin 
         let priv = Nocrypto.Rsa.generate length in
+        Metrics.key_op `Generate;
         add ~id t purpose priv
+      end
       else Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
 
     let remove t ~id =
@@ -912,7 +932,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           in
           match dec_cs_opt with
           | None -> Error (Bad_request, "Decryption failure.")
-          | Some cs -> Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
+          | Some cs -> 
+            Metrics.key_op `Decrypt;
+            Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
         else
           Error (Bad_request, "Key purpose is not encrypt.")
 
@@ -944,6 +966,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               | PSS_SHA384 -> Pss_sha384.sign ~key to_sign
               | PSS_SHA512 -> Pss_sha512.sign ~key to_sign
             in
+            Metrics.key_op `Sign;
             Ok (Nocrypto.Base64.encode signature |> Cstruct.to_string)
           with Nocrypto.Rsa.Insufficient_key -> Error (Bad_request, "Signing failure.")
         else
