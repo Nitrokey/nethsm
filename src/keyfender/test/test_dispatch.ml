@@ -17,7 +17,7 @@ module Kv_mem = Mirage_kv_mem.Make(Hsm_clock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Kv_mem)(Time)(Mclock)(Hsm_clock)
 module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
-let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query endpoint =
+let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
     | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot)
@@ -26,11 +26,8 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
   let path = "/api/v1" ^ endpoint in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  match Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' Ipaddr.V4.any) ~body ~request with
-  | None -> hsm_state', None
-  | Some (status, _, _, _) as r ->
-    Printf.printf "got HTTP status %d\n%!" (Code.code_of_status status) ;
-    hsm_state', r
+  let resp = Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' ip) ~body ~request in
+  hsm_state', resp
 
 let operational_mock () =
   Lwt_main.run (
@@ -944,6 +941,37 @@ let keys_key_cert_delete () =
     | _ -> false
   end
 
+let rate_limit_for_unlock () =
+  let path = "/unlock" in
+  "rate limit for unlock"
+  @? begin
+    let hsm_state = locked_mock () in
+    for _ = 0 to 100 do
+      ignore (request ~hsm_state path)
+    done;
+    match request ~hsm_state path with
+    | _, Some (`Too_many_requests, _, _, _) -> true
+    | _ -> false
+  end
+
+let rate_limit_for_get () =
+  let path = "/system/info" in
+  "rate limit for get"
+  @? begin
+    let hsm_state = operational_mock () in
+    let headers = admin_headers in
+    for _ = 0 to 100 do
+      ignore (request ~hsm_state ~headers path)
+    done;
+    match request ~hsm_state ~headers path with
+    | _, Some (`Too_many_requests, _, _, _) -> 
+     begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+     | _, Some (`OK, _, _, _) -> true
+     | _ -> false
+     end
+    | _ -> false
+  end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -1041,6 +1069,8 @@ let () =
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_put;
     "/keys/keyID/cert" >:: keys_key_cert_delete;
+    "/unlock" >:: rate_limit_for_unlock;
+    "/system/info" >:: rate_limit_for_get;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
