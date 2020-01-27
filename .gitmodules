@@ -8,3 +8,6 @@
 [submodule "src/zlib"]
 	path = src/zlib
 	url = https://github.com/madler/zlib.git
+[submodule "src/u-root/src/github.com/u-root/u-root"]
+	path = src/u-root/src/github.com/u-root/u-root
+	url = https://github.com/u-root/u-root.git

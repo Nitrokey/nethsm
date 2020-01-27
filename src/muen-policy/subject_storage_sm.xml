@@ -1,0 +1,23 @@
+<subject name="storage_sm">
+ <events>
+  <source>
+   <group name="vmcall">
+    <event id="0" logical="serial_irq4" physical="serial_irq4_linux_2"/>
+    <event id="1" logical="reset_linux" physical="reset_linux_2"/>
+   </group>
+  </source>
+ </events>
+ <monitor>
+  <state subject="storage_linux" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+ </monitor>
+ <component ref="sm">
+  <map logical="time_info" physical="time_info"/>
+  <map logical="debuglog" physical="debuglog_subject3"/>
+  <if variable="pciconf_emulation_enabled" value="true">
+   <map logical="dm_pciconf_req" physical="storage_dm_request"/>
+   <map logical="dm_pciconf_res" physical="storage_dm_response"/>
+  </if>
+  <map logical="resume_subject" physical="resume_linux_2"/>
+  <map logical="handle_subject_trap" physical="trap_to_sm_2"/>
+ </component>
+</subject>
