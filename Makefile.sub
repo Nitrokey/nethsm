@@ -21,9 +21,15 @@ NET_INTERNAL ?= tap201
 
 # ------------------------------------------------------------------------------
 
-export TOP_DIR := $(abspath .)
+TOP_DIR := $(abspath .)
 
 .SUFFIXES:
+
+# Ensure that variables specified on the (top-level) 'make' command line are
+# NOT passed down to sub-makes invoked by this Makefile. Doing so would pass
+# down e.g. $(MODE), which is an overloaded name and breaks third-party
+# "downstream" Makefiles.
+MAKEOVERRIDES =
 
 # Do not run any jobs in *this* Makefile in parallel. This would not gain us
 # anything and complicates the output. -j is still passed to and honored by
@@ -163,7 +169,7 @@ clean: clean-keyfender
 	-test -f $(RUN_DIR)/git-daemon.pid && \
 	    kill $$(cat $(RUN_DIR)/git-daemon.pid) && \
 	    rm $(RUN_DIR)/git-daemon.pid
-	$(MAKE) -C src/git clean
+	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(RM) -r $(RUN_DIR)
 
 else ifeq ($(XMODE),muen)
@@ -224,17 +230,19 @@ $(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
 
 OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
-GOPATH := $(TOP_DIR)/src/u-root
-export GOPATH
-U_ROOT := $(GOPATH)/bin/u-root
+U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
+U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
 U_ROOT_UINIT := nitrohsm/uinit
 U_ROOT_PKGS := core $(U_ROOT_UINIT)
 
-$(U_ROOT):
-	go install github.com/u-root/u-root
+# Rather than using "export GOPATH" and thus potentially polluting the
+# environment of *all* Makefiles called from this Makefile, ensure it is set
+# explicitly and only for those recipes/commands that require it.
+$(U_ROOT_BIN):
+	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
 
-$(OBJ_INITRAMFS): $(U_ROOT) $(INSTALL_GIT_DAEMON)
-	$(U_ROOT) -format=cpio -build=bb \
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON)
+	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
 	    -files "$(OBJ_INITRAMFS_DIR):/" \
 	    $(U_ROOT_PKGS)
@@ -243,8 +251,8 @@ $(OBJ_INITRAMFS): $(U_ROOT) $(INSTALL_GIT_DAEMON)
 # Ensure u-root initramfs is rebuilt if nitrohsm uinit sources change.
 # There might be a better way of doing this, but this will have to do for now.
 $(OBJ_INITRAMFS): \
-    $(GOPATH)/src/nitrohsm/uinit/uinit.go \
-    $(GOPATH)/src/nitrohsm/uinit/script/script.go
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
 
 MUEN_POLICY_OBJ_DIR := src/muen/policy/obj
 MUEN_PACK_OBJ_DIR := src/muen/pack/obj
@@ -266,8 +274,9 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	    $(MUEN_POLICY_OBJ_DIR)
 
 $(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
-	$(MAKE) -C src/muen --no-print-directory \
-	    SYSTEM=$(TOP_DIR)/src/muen-policy/nitrohsm_basic_system.xml NO_PROOF=1 \
+	$(MAKE) -C src/muen --silent --no-print-directory \
+	    NO_PROOF=1 \
+	    SYSTEM=$(TOP_DIR)/src/muen-policy/nitrohsm_basic_system.xml \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
 
@@ -344,11 +353,11 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
 .PHONY: clean
 clean: clean-keyfender
 	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
-	$(MAKE) -C src/muen clean
-	$(MAKE) -C src/git clean
-	$(MAKE) -C src/zlib distclean
+	$(MAKE) -C src/muen --silent --no-print-directory distclean
+	$(MAKE) -C src/git --silent --no-print-directory distclean
+	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
-	$(RM) $(U_ROOT)
+	$(RM) $(U_ROOT_BIN)
 	$(RM) -r $(OBJ_DIR) $(RUN_DIR)
 
 endif
