@@ -254,12 +254,12 @@ $(OBJ_INITRAMFS): \
     $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
     $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
 
-MUEN_POLICY_OBJ_DIR := src/muen/policy/obj
-MUEN_PACK_OBJ_DIR := src/muen/pack/obj
+MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
+MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
 MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
-MUEN_S_KEYFENDER_CSPEC := src/muen-policy/component_unikernel.xml
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/component_unikernel.xml
 MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
-MUEN_GEN_CSPEC := src/muen/tools/scripts/solo5-muen-gencspec.py
+MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
 # XXX: Using --bootparams= here is not currently possible without using
 # XXX: mirageos/compose.py, so we persist parameters at unikernel configure
 # XXX: time instead.
@@ -270,13 +270,13 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
 	    $(MUEN_GEN_CSPEC_EXTRA) \
 	    $< \
-	    src/muen/policy/xml/mirageos/cspec_src.xml \
+	    src/muen/muen/policy/xml/mirageos/cspec_src.xml \
 	    $(MUEN_POLICY_OBJ_DIR)
 
 $(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
-	$(MAKE) -C src/muen --silent --no-print-directory \
+	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
-	    SYSTEM=$(TOP_DIR)/src/muen-policy/nitrohsm_basic_system.xml \
+	    SYSTEM=$(TOP_DIR)/src/muen/policy/nitrohsm_basic_system.xml \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
 
@@ -353,7 +353,7 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
 .PHONY: clean
 clean: clean-keyfender
 	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
-	$(MAKE) -C src/muen --silent --no-print-directory distclean
+	$(MAKE) -C src/muen/muen --silent --no-print-directory distclean
 	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
