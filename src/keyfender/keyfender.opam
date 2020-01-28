@@ -34,7 +34,7 @@ depends: [
   "pbkdf"
   "mirage-kv" {>= "3.0.0"}
   "tls"
-  "x509" {>= "0.8.0"}
+  "x509" {>= "0.9.0"}
   "hex"
   "gmap" {>= "0.3.0"}
   "ipaddr"
@@ -52,6 +52,7 @@ depends: [
 synopsis: "Keyfender library"
 pin-depends: [
   ["conduit-mirage.dev" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
+  ["cohttp.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#post-create"]

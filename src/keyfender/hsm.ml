@@ -557,12 +557,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     and valid_until = Ptime.max
     in
     let csr, dn = generate_csr priv in
-    let cert =
-      X509.Signing_request.sign csr ~valid_from ~valid_until priv dn
-    in
-    lwt_error_fatal "write certificate to configuration store"
-      ~pp_error:KV.pp_write_error
-      (Config_store.set t.kv Certificate (cert, []) >|= fun () -> cert)
+    match X509.Signing_request.sign csr ~valid_from ~valid_until priv dn with
+    | Error `Msg msg ->
+      Log.err (fun m -> m "error %s while signing CSR" msg);
+      invalid_arg "fatal error"
+    | Ok cert ->
+      lwt_error_fatal "write certificate to configuration store"
+        ~pp_error:KV.pp_write_error
+        (Config_store.set t.kv Certificate (cert, []) >|= fun () -> cert)
 
   let certificate_chain t =
     Lwt_result.get_exn
