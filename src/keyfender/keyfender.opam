@@ -51,7 +51,7 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.dev" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
+  ["conduit-mirage.2.0.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
   ["cohttp.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
