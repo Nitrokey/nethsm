@@ -1,0 +1,31 @@
+<subject name="nic_sm">
+ <events>
+  <source>
+   <group name="vmx_exit">
+    <event id="33" logical="reset" physical="trap_to_sl_1"/>
+   </group>
+   <group name="vmcall">
+    <event id="0" logical="serial_irq4" physical="serial_irq4_linux_1"/>
+    <event id="1" logical="reset_linux" physical="reset_linux_1"/>
+   </group>
+  </source>
+  <target>
+   <event physical="reset_sm_1" logical="reset">
+    <reset/>
+   </event>
+  </target>
+ </events>
+ <monitor>
+  <state subject="nic_linux" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+ </monitor>
+ <component ref="sm">
+  <map logical="time_info" physical="time_info"/>
+  <map logical="debuglog" physical="debuglog_subject2"/>
+  <if variable="pciconf_emulation_enabled" value="true">
+   <map logical="dm_pciconf_req" physical="nic_dm_request"/>
+   <map logical="dm_pciconf_res" physical="nic_dm_response"/>
+  </if>
+  <map logical="resume_subject" physical="resume_linux_1"/>
+  <map logical="handle_subject_trap" physical="trap_to_sm_1"/>
+ </component>
+</subject>

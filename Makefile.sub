@@ -15,11 +15,21 @@ NET_EXTERNAL ?= tap200
 # "Internal" (169.254.169.0/24) network.
 NET_INTERNAL ?= tap201
 
+# Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
+# for the Keyfender unikernel. Default for MODE=muen is '--retry=1'.
+# (actual setting is performed later)
+
 # ------------------------------------------------------------------------------
 
-export TOP_DIR := $(abspath .)
+TOP_DIR := $(abspath .)
 
 .SUFFIXES:
+
+# Ensure that variables specified on the (top-level) 'make' command line are
+# NOT passed down to sub-makes invoked by this Makefile. Doing so would pass
+# down e.g. $(MODE), which is an overloaded name and breaks third-party
+# "downstream" Makefiles.
+MAKEOVERRIDES =
 
 # Do not run any jobs in *this* Makefile in parallel. This would not gain us
 # anything and complicates the output. -j is still passed to and honored by
@@ -41,8 +51,10 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
+KEYFENDER_CARGS ?=
 else ifeq ($(XMODE),muen)
 TARGET := muen
+KEYFENDER_CARGS ?= --retry=1
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -92,7 +104,7 @@ clean-keyfender:
 	-cd src/s_keyfender && mirage clean
 
 $(S_KEYFENDER): $(KEYFENDER_INSTALL)
-	cd src/s_keyfender && mirage configure -t $(TARGET)
+	cd src/s_keyfender && mirage configure -t $(TARGET) $(KEYFENDER_CARGS)
 	cd src/s_keyfender && $(MAKE) depend
 	cd src/s_keyfender && mirage build
 
@@ -157,7 +169,7 @@ clean: clean-keyfender
 	-test -f $(RUN_DIR)/git-daemon.pid && \
 	    kill $$(cat $(RUN_DIR)/git-daemon.pid) && \
 	    rm $(RUN_DIR)/git-daemon.pid
-	$(MAKE) -C src/git clean
+	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(RM) -r $(RUN_DIR)
 
 else ifeq ($(XMODE),muen)
@@ -166,12 +178,6 @@ else ifeq ($(XMODE),muen)
 # Rules for building and running an emulated Muen system.
 #
 # ------------------------------------------------------------------------------
-
-MUEN_POLICY_OBJ_DIR := src/muen/policy/obj
-MUEN_PACK_OBJ_DIR := src/muen/pack/obj
-MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
-MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
-MUEN_GEN_CSPEC := src/muen/tools/scripts/solo5-muen-gencspec.py
 
 OBJ_DIR := $(TOP_DIR)/obj
 OBJ_DATA_DIR := $(OBJ_DIR)/data
@@ -182,14 +188,11 @@ OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
 OBJ_QEMU_GRUB_IMG := $(OBJ_DIR)/grub.img
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/disk.img
 
-RUN_DIR := $(TOP_DIR)/run
-RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
+$(OBJ_DIR):
+	mkdir -p $@
 
 ZLIB_DIR := $(TOP_DIR)/src/zlib
 ZLIB_LIBZ := $(ZLIB_DIR)/libz.a
-
-$(OBJ_DIR):
-	mkdir -p $@
 
 # The symlinks below are so that we can pass $(ZLIB_DIR) directly to Git's
 # build system without a separate "install" step.
@@ -225,16 +228,56 @@ $(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
 
-$(MUEN_S_KEYFENDER): $(S_KEYFENDER)
-	$(MUEN_GEN_CSPEC) $< \
-	    src/muen/policy/xml/mirageos/cspec_src.xml \
-	    src/muen/policy/obj \
-	    --out_spec src/muen/policy/xml/mirageos/component_unikernel.xml
+OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
+OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
+U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
+U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
+U_ROOT_UINIT := nitrohsm/uinit
+U_ROOT_PKGS := core $(U_ROOT_UINIT)
 
-$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(INSTALL_GIT_DAEMON)
-	$(MAKE) -C src/muen --no-print-directory \
-	    SYSTEM=xml/mirage-solo5.xml NO_PROOF=1 \
-	    U_ROOT_EXTRA="-files $(OBJ_INITRAMFS_DIR):/" \
+# Rather than using "export GOPATH" and thus potentially polluting the
+# environment of *all* Makefiles called from this Makefile, ensure it is set
+# explicitly and only for those recipes/commands that require it.
+$(U_ROOT_BIN):
+	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
+
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON)
+	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
+	    -o $(OBJ_INITRAMFS_CPIO) \
+	    -files "$(OBJ_INITRAMFS_DIR):/" \
+	    $(U_ROOT_PKGS)
+	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
+
+# Ensure u-root initramfs is rebuilt if nitrohsm uinit sources change.
+# There might be a better way of doing this, but this will have to do for now.
+$(OBJ_INITRAMFS): \
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
+
+MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
+MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
+MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/component_unikernel.xml
+MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
+MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
+# XXX: Using --bootparams= here is not currently possible without using
+# XXX: mirageos/compose.py, so we persist parameters at unikernel configure
+# XXX: time instead.
+MUEN_GEN_CSPEC_EXTRA :=
+
+$(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
+	$(MUEN_GEN_CSPEC) \
+	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
+	    $(MUEN_GEN_CSPEC_EXTRA) \
+	    $< \
+	    src/muen/muen/policy/xml/mirageos/cspec_src.xml \
+	    $(MUEN_POLICY_OBJ_DIR)
+
+$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
+	$(MAKE) -C src/muen/muen --silent --no-print-directory \
+	    NO_PROOF=1 \
+	    SYSTEM=$(TOP_DIR)/src/muen/policy/nitrohsm_basic_system.xml \
+	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
 
 # XXX Files will be owned by the build user. Maybe run this from uinit once we
@@ -253,6 +296,9 @@ $(OBJ_QEMU_GRUB_IMG): tools/grub-qemu.cfg tools/grub-mkqemu.sh
 
 .PHONY: build
 build: $(OBJ_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG)
+
+RUN_DIR := $(TOP_DIR)/run
+RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
 
 $(RUN_QEMU_DISK_IMG): $(OBJ_QEMU_DISK_IMG)
 	mkdir -p $(RUN_DIR)
@@ -274,8 +320,6 @@ QEMU_OPTS := \
     -device ioh3420,id=pcie.1,chassis=1 \
     -device virtio-net-pci,bus=pcie.1,netdev=net0,disable-legacy=on,disable-modern=off,iommu_platform=on,ats=on \
     -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
-    -device qemu-xhci,id=xhci \
-    -device usb-tablet,bus=xhci.0 \
     -curses
 QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
 
@@ -308,11 +352,12 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
 
 .PHONY: clean
 clean: clean-keyfender
-	$(RM) $(MUEN_S_KEYFENDER)
-	$(MAKE) -C src/muen clean
-	$(MAKE) -C src/git clean
-	$(MAKE) -C src/zlib distclean
+	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
+	$(MAKE) -C src/muen/muen --silent --no-print-directory distclean
+	$(MAKE) -C src/git --silent --no-print-directory distclean
+	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
+	$(RM) $(U_ROOT_BIN)
 	$(RM) -r $(OBJ_DIR) $(RUN_DIR)
 
 endif

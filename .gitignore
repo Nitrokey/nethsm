@@ -6,3 +6,6 @@ obj/
 serial.out
 .stamp-mode
 .stamp-prepare
+src/muen/policy/component_unikernel.xml
+src/u-root/bin
+src/u-root/src/**/.bb/

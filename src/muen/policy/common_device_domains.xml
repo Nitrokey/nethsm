@@ -1,0 +1,34 @@
+<include>
+ <domain name="nic_domain">
+  <memory>
+   <memory logical="dma1" physical="nic_linux|lowmem" virtualAddress="16#0002_0000#" writable="true" executable="false"/>
+   <memory logical="dma2" physical="nic_linux|ram" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
+  </memory>
+  <devices>
+   <device logical="first_nic" physical="ethernet_controller_1"/>
+   <device logical="additional_nics" physical="additional_nics"/>
+  </devices>
+ </domain>
+ <domain name="storage_domain">
+  <memory>
+   <memory logical="dma1" physical="storage_linux|lowmem" virtualAddress="16#0002_0000#" writable="true" executable="false"/>
+   <memory logical="dma2" physical="storage_linux|ram" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
+  </memory>
+  <devices>
+   <device logical="storage_controller" physical="storage_controller"/>
+   <if variable="dbgserver_sink_xhcidbg" value="false">
+    <device logical="xhci" physical="usb_controller_1"/>
+   </if>
+  </devices>
+ </domain>
+ <if variable="dbgserver_sink_xhcidbg" value="true">
+  <domain name="usb_domain">
+   <memory>
+    <memory logical="dma1" physical="xhci_dma" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
+   </memory>
+   <devices>
+    <device logical="xhci" physical="usb_controller_1" mapReservedMemory="true"/>
+   </devices>
+  </domain>
+ </if>
+</include>
