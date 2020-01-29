@@ -23,7 +23,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok (user : Json.user_req) =
         let id = match Cohttp.Header.get rd.req_headers "new_id" with
-        | None -> assert false | Some path -> path in
+          | None -> assert false (* this can't happen since we set it ourselves,
+                                    and webmachine ensures that it already happened. *)
+          | Some path -> path
+        in
         Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd

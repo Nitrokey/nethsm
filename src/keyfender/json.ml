@@ -146,10 +146,12 @@ let purpose_of_yojson = function
   | `String _ as s -> purpose_of_yojson (`List [s])
   | _ -> Error "Expected JSON string for purpose"
 
-let purpose_to_yojson purpose =
-  match purpose_to_yojson purpose with
+let head = function
   | `List [l] -> l
-  | _ -> assert false
+  | _ -> assert false (* deriving yojson for polymorphic variants without
+                         arguments always returns a singleton *)
+
+let purpose_to_yojson purpose = head @@ purpose_to_yojson purpose
 
 type publicKey = {
   purpose : purpose ;
@@ -220,9 +222,7 @@ let decode_generate_key_req s =
 
 type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
 
-let role_to_yojson role =
-  match role_to_yojson role with
-   `List [l] -> l | _ -> assert false
+let role_to_yojson role = head @@ role_to_yojson role
 
 let role_of_yojson = function
   | `String _ as l -> role_of_yojson (`List [ l ] )
@@ -258,7 +258,7 @@ type state = [
 ][@@deriving yojson]
 
 let state_to_yojson state =
-  `Assoc [ "state", match state_to_yojson state with `List [l] -> l | _ -> assert false ]
+  `Assoc [ "state", head @@ state_to_yojson state ]
 
 type version = int * int
 

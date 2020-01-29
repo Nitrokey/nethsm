@@ -40,7 +40,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | _ -> Error "Request is missing valid purpose."
       in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
-      | None -> assert false | Some path -> path in
+        | None -> assert false (* this can't happen since we set it ourselves,
+                                  and webmachine ensures that it already happened. *)
+        | Some path -> path
+      in
       let ok purpose =
         Hsm.Key.add_pem hsm_state ~id purpose content >>= function
         | Ok () -> Wm.continue true rd
@@ -85,7 +88,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok (key : Json.generate_key_req) =
         let id = match key.id, Cohttp.Header.get rd.req_headers "new_id" with
         | "", Some path -> path
-        | "", None -> assert false
+        | "", None -> assert false (* can never happen, see above *)
         | id, _ -> id
         in
         Hsm.Key.generate hsm_state ~id key.purpose ~length:key.length >>= function

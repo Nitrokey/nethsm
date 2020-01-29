@@ -14,7 +14,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let one_second = Ptime.Span.of_int_s 1 in
       match Ptime.sub_span (Hsm.now ()) one_second with
       | Some ts -> ts
-      | None -> assert false
+      | None -> Ptime.epoch (* clamped to 0 *)
     in
     last_requests := List.filter (Ptime.is_later ~than:one_second_ago) !last_requests;
     let result = List.length !last_requests <= max_requests_per_second in

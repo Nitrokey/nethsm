@@ -5,7 +5,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   let get_authorization headers = Cohttp.Header.get headers "Authorization"
 
   let get_user headers = match get_authorization headers with
-    | None -> assert false
+    | None ->
+      (* this can never happen, due to webmachine's control flow. We always
+         set Authorization header in is_authorized, which has been called
+         before. *)
+      assert false
     | Some v -> v
 
   let replace_authorization auth headers =
@@ -34,7 +38,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         let one_second = Ptime.Span.of_int_s 1 in
         match Ptime.sub_span (Hsm.now ()) one_second with
         | Some ts -> ts
-        | None -> assert false
+        | None -> Ptime.epoch (* clamped to 0 *)
       in
       let requests' = List.filter (Ptime.is_later ~than:one_second_ago) last_requests in
       let result = List.length requests' <= max_requests_per_second in
