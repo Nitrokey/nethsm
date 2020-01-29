@@ -58,7 +58,7 @@ ifeq ($(XMODE),dev)
 TARGET := hvt
 KEYFENDER_CARGS ?=
 ifeq ($(NO_GIT),)
-REQUIRED_SUBMODULES += src/git src/zlib
+REQUIRED_SUBMODULES += src/git
 endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
