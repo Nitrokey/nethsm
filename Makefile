@@ -26,8 +26,8 @@ check-mode: .stamp-mode
 
 .PHONY: distclean
 distclean:
-	$(MAKE) -f Makefile.sub clean
-	$(RM) .stamp-prepare .stamp-mode
+	$(MAKE) -f Makefile.sub distclean
+	$(RM) .stamp-mode
 
 %:: check-mode
 	$(MAKE) -f Makefile.sub $@

@@ -4,17 +4,36 @@ The NitroHSM software can be built either as components that run on your local m
 
 In either case, running `make` in this directory will produce a short help. The following sections detail how to build and run the software.
 
+## Use of Git submodules in this repository
+
+This repository uses several large Git submodules, including recursive submodules for Muen. Cloning all submodules recursively is **NOT** recommended, unless you have a lot of patience, bandwidth and disk space (>3 GB).
+
+In order to avoid this, the `prepare` target (part of `make build`) will clone only those submodules that are required for the `MODE` you are building the system for, and use shallow clones where appropriate.
+
+If you are building the Muen System, you **must** add the following to your `~/.gitconfig` for all Git submodules to work:
+
+```
+[url "https://git.codelabs.ch/git/muen/"]
+insteadOf = git@git.dotplex.com:nitrokey/muen/
+[url "https://git.codelabs.ch/git/libxhcidbg.git"]
+insteadOf = git@git.dotplex.com:nitrokey/libxhcidbg.git
+```
+
+If you need all Git submodules to be fully cloned (e.g. when updating submodule references), then run:
+
+```
+git submodule update --init --no-recommend-shallow --recursive
+```
+
+in a **fresh** clone of this repository.
+
 ## Local Development System
+
+This is the default if a `MODE` is not specified to `make`.
 
 **Requirements:**
 
 Opam >= 2.0.0 and OCaml >= 4.07.0 and mirage >= 3.7.0 is required.
-
-Ensure that you have cloned this repository with all submodules, or run:
-
-```
-git submodule update --init --recursive
-```
 
 ### Building
 

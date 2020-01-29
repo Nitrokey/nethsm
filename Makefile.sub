@@ -52,9 +52,12 @@ endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
 KEYFENDER_CARGS ?=
+REQUIRED_SUBMODULES := src/git src/zlib
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=1
+REQUIRED_SUBMODULES := src/git src/zlib src/muen/muen \
+    src/u-root/src/github.com/u-root/u-root
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -66,6 +69,10 @@ endif
 # ------------------------------------------------------------------------------
 
 .stamp-prepare:
+	git submodule update --init -- $(REQUIRED_SUBMODULES)
+ifeq ($(XMODE),muen)
+	git -C src/muen/muen submodule update --init --depth 1
+endif
 	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 	opam install -y --deps-only keyfender
@@ -73,6 +80,10 @@ endif
 
 .PHONY: prepare
 prepare: .stamp-prepare
+
+distclean: clean
+	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
+	$(RM) .stamp-prepare
 
 # ------------------------------------------------------------------------------
 #
