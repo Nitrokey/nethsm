@@ -46,17 +46,24 @@ all:
 # .stamp-mode OR 'dev' if this is a fresh/distclean'd tree.
 XMODE := $(shell cat .stamp-mode 2>/dev/null)
 
+# List of top-level submodules required to be initialised and cloned in
+# 'make prepare'. This is initially empty, and set below depending on MODE and
+# NO_GIT.
+REQUIRED_SUBMODULES :=
+
 ifeq ($(XMODE),)
 XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
 KEYFENDER_CARGS ?=
-REQUIRED_SUBMODULES := src/git src/zlib
+ifeq ($(NO_GIT),)
+REQUIRED_SUBMODULES += src/git src/zlib
+endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=1
-REQUIRED_SUBMODULES := src/git src/zlib src/muen/muen \
+REQUIRED_SUBMODULES += src/git src/zlib src/muen/muen \
     src/u-root/src/github.com/u-root/u-root
 else
 $(error Invalid MODE '$(XMODE)')
@@ -69,9 +76,11 @@ endif
 # ------------------------------------------------------------------------------
 
 .stamp-prepare:
+ifneq ($(REQUIRED_SUBMODULES),)
 	git submodule update --init -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
 	git -C src/muen/muen submodule update --init --depth 1
+endif
 endif
 	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
@@ -177,10 +186,12 @@ run: build $(RUN_DIR)/git-daemon.pid
 
 .PHONY: clean
 clean: clean-keyfender
+ifeq ($(NO_GIT),)
 	-test -f $(RUN_DIR)/git-daemon.pid && \
 	    kill $$(cat $(RUN_DIR)/git-daemon.pid) && \
 	    rm $(RUN_DIR)/git-daemon.pid
 	$(MAKE) -C src/git --silent --no-print-directory distclean
+endif
 	$(RM) -r $(RUN_DIR)
 
 else ifeq ($(XMODE),muen)
