@@ -971,12 +971,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             let signature =
               match sign_mode with
               | Json.PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key to_sign
-              | PSS_MD5 -> Pss_md5.sign ~key to_sign
-              | PSS_SHA1 -> Pss_sha1.sign ~key to_sign
-              | PSS_SHA224 -> Pss_sha224.sign ~key to_sign
-              | PSS_SHA256 -> Pss_sha256.sign ~key to_sign
-              | PSS_SHA384 -> Pss_sha384.sign ~key to_sign
-              | PSS_SHA512 -> Pss_sha512.sign ~key to_sign
+              | PSS_MD5 -> Pss_md5.sign ~key (`Message to_sign)
+              | PSS_SHA1 -> Pss_sha1.sign ~key (`Message to_sign)
+              | PSS_SHA224 -> Pss_sha224.sign ~key (`Message to_sign)
+              | PSS_SHA256 -> Pss_sha256.sign ~key (`Message to_sign)
+              | PSS_SHA384 -> Pss_sha384.sign ~key (`Message to_sign)
+              | PSS_SHA512 -> Pss_sha512.sign ~key (`Message to_sign)
             in
             Metrics.key_op `Sign;
             Ok (Nocrypto.Base64.encode signature |> Cstruct.to_string)
