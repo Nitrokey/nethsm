@@ -941,12 +941,14 @@ let keys_key_cert_delete () =
     | _ -> false
   end
 
+let unlock_rate_limit = 100
+
 let rate_limit_for_unlock () =
   let path = "/unlock" in
   "rate limit for unlock"
   @? begin
     let hsm_state = locked_mock () in
-    for _ = 0 to 100 do
+    for _ = 1 to unlock_rate_limit do
       ignore (request ~hsm_state path)
     done;
     match request ~hsm_state path with
@@ -954,22 +956,58 @@ let rate_limit_for_unlock () =
     | _ -> false
   end
 
+let rate_limit = 50
+
 let rate_limit_for_get () =
   let path = "/system/info" in
   "rate limit for get"
   @? begin
     let hsm_state = operational_mock () in
-    let headers = admin_headers in
-    for _ = 0 to 100 do
+    let headers = auth_header "not a valid user" "no valid password" in
+    for _ = 0 to rate_limit do
       ignore (request ~hsm_state ~headers path)
     done;
     match request ~hsm_state ~headers path with
-    | _, Some (`Too_many_requests, _, _, _) -> 
-     begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+    | _, Some (`Too_many_requests, _, _, _) ->
+     begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
      | _, Some (`OK, _, _, _) -> true
      | _ -> false
      end
     | _ -> false
+  end
+
+let reset_rate_limit_after_successful_login () =
+  let path = "/system/info" in
+  "rate limit is reset after successful login"
+  @? begin
+    let hsm_state = operational_mock () in
+    let headers = auth_header "not a valid user" "no valid password" in
+    for _ = 1 to rate_limit - 1 do
+      ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
+    done;
+    (* one request left before the rate limit returns Too_many_requests *)
+    (* reset the rate limit by a successful request *)
+    begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
+      | _, Some (`OK, _, _, _) ->
+        (* test rate_limit requests again *)
+        begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+          | _, Some (`Unauthorized, _, _, _) ->
+            begin
+              for _ = 1 to rate_limit - 1 do
+                ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
+              done;
+              match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+              | _, Some (`Unauthorized, _, _, _) ->
+                begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+                  | _, Some (`Too_many_requests, _, _, _) -> true
+                  | _ -> false
+                end
+              | _ -> false
+            end
+        | _ -> false
+        end ;
+      | _ -> false
+    end
   end
 
 (* translate from ounit into boolean *)
@@ -1071,6 +1109,7 @@ let () =
     "/keys/keyID/cert" >:: keys_key_cert_delete;
     "/unlock" >:: rate_limit_for_unlock;
     "/system/info" >:: rate_limit_for_get;
+    "rate limit reset after successful login" >:: reset_rate_limit_after_successful_login;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in

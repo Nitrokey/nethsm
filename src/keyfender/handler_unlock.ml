@@ -17,7 +17,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | None -> assert false
     in
     last_requests := List.filter (Ptime.is_later ~than:one_second_ago) !last_requests;
-    let result = List.length !last_requests < max_requests_per_second in
+    let result = List.length !last_requests <= max_requests_per_second in
     last_requests := Hsm.now () :: !last_requests;
     result
 

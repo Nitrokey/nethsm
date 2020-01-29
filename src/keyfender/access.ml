@@ -37,9 +37,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | None -> assert false
       in
       let requests' = List.filter (Ptime.is_later ~than:one_second_ago) last_requests in
-      let result = List.length requests' < max_requests_per_second in
+      let result = List.length requests' <= max_requests_per_second in
       Hashtbl.replace requests ip (Hsm.now () :: requests');
       result
+
+  let reset_rate_limit ip = Hashtbl.remove requests ip
 
   let is_authorized hsm_state ip rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
@@ -51,10 +53,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           Wm.respond ~body:(`String "Too many requests") 429 rd
         else
           Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->
-          if auth then
+          if auth then begin
+            reset_rate_limit ip;
             let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
             Wm.continue `Authorized rd'
-          else
+          end else
             Wm.continue (`Basic "invalid authorization") rd
       | Error (`Msg msg) ->
         Logs.warn (fun m -> m "is_authorized failed with header value %s and message %s" auth msg);
