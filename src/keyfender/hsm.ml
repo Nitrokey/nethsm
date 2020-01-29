@@ -1275,10 +1275,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       get_length s >>=
       get_data
 
+    module Hash = Nocrypto.Hash.SHA256
+
     let update t s =
-      let empty = Cstruct.empty in
-      let update t _data = t in
-      let get t = t in
       let open Lwt_result.Infix in
       (* stream contains:
          - signature (hash of the rest)
@@ -1287,21 +1286,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          - software image,
          first three are prefixed by 4 byte length *)
       get_field s >>= fun (_signature, s') ->
-      let hash = empty in
+      let hash = Hash.empty in
       get_field s' >>= fun (changes, s'') ->
-      let hash' = update hash changes in
+      let hash' = Hash.feed hash (Cstruct.of_string changes) in
       get_field s'' >>= fun (version, s''') ->
       Lwt.return (version_of_string version) >>= fun version' ->
-      let hash'' = update hash' version in
+      let hash'' = Hash.feed hash' (Cstruct.of_string version) in
       Lwt_stream.fold_s (fun chunk acc ->
         match acc with
         | Error e -> Lwt.return (Error e)
         | Ok hash ->
           (*TODO stream to s_update*)
-          let hash' = update hash chunk in
+          let hash' = Hash.feed hash (Cstruct.of_string chunk) in
           Lwt.return @@ Ok hash')
         s''' (Ok hash'') >>= fun hash ->
-      let _final = get hash in
+      let _final_hash = Hash.get hash in
       let gc_stat = Gc.stat () in
       Logs.app (fun m -> m "%u top heap words" gc_stat.top_heap_words);
       (* TODO verify signature *)
