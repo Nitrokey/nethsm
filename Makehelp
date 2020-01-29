@@ -1,6 +1,7 @@
 Available targets:
 
-prepare:         (Build and) install keyfender OPAM dependencies
+prepare:         Initialise Git submodules required for MDOE,
+                 build and install keyfender OPAM dependencies
 build:           Build full system
 build-keyfender: Build keyfender library and unikernel only
 run:             Run the system
