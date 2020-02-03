@@ -185,13 +185,71 @@ let system_reset_ok () =
       | _ -> false
    end
 
+let update_key = {|-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDHuCF+uj5UR6li
+bLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wCvh9Yj2kbuJFfN7NrsMyOtCm3
+Mqx9LLp0EWZIRl6v6EnG452EEb8VfqmPBGtmls5DHKv5pOUTeObZc/XYKrHTCxgY
+igmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48TJXJwkfl8wEH2H7YHFzgHFo8
+oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K5JsGbzc6CpGF2TU/qv++o5Uq
+vFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8lO8a2o4S6CCK3fa1XXolcJmO
+dh48C+03AgMBAAECggEAYgLo3SpFIFMyuwyix5KJU8TVclX4JHV5sCPh5y7r3IP2
+NtDvfo/cSNRIyctHR8ViAhpxwK25FWcw+aiyoZNrxT4stddi7GzQl/xn9sJGxiOs
+znTayDPF8YWGmDLmAJJap+iSg40gS3OsVY6YeWjWf2JHeNroepQnSe1podxqnIqE
+jwohzFfFMdRQRFZKmdjxKfLNbSjZ1kIgN6w0lky00l9N8999v6SU+0lvCNVtLB7G
+lmmyTBeTXM033Zr3adUXObCPDc5RdyvU66Ubvso41d8KuQQyr+oWdnm/0yJvBEVz
+bQ5B8D7mmaQNLpwwx56MlnwtRnpCu6Z1PSsXwOnMkQKBgQD1rLH4NLjNh3r842wz
+PjpvE4WhizaMcyZLo7W0+eUj4ceZ7Zw4pLU1zUQB3cCYAHNRz1VQpupxEkiGdGaj
+vq4dr0WE/qFzB63tM4aRg2TFQAd9c6ME1L/une5WpDG6jd4Q46cWoj914O5suKjA
+q55xcgauy7hP9M8NknqEJypWNQKBgQDQHPwtbig3UrIHP3buTeAfLy2R/GgvqaFc
+qvHmcJILO9bxt13HFuoBJAuXYeN/QynWSmI96csKt/TTY8wCtFUrPU57HLbWlbWk
+uOa3Lacj+ZzaEJ7FXt3rnOeT/VCrlfbUcO550otE39UA26YRD/27F4+xeBRujHHY
+Xlyz81ezOwKBgQDU8A6BuBDF9Dvhna1W7QTw6dbVojhxnA0BWrBQYJj/dN7wyEaz
+we9e5r+fbnlURm+t5StpcIOb5eD+yT19h/SaviRfleSSM4HJKvPkhCJ/5XOYhPYz
+ZcPGKxU9+6suq3Bi6y8UKyUeIwwFKDj8ZsQ6SD8KmoDyrJoahW+zw86qUQKBgFNY
++Godbv/RH7mlYjVIfRUgKOkJpJRKJHTfhafbt7HGEmyWGnmspKU2UWocaydBt9S5
+z6SqKIYvbF7o3gDLRjzd/btyoYtJRAkngEcmgoT26CmxdFTpjIlbOqfbUN6XXdZx
+MCEcAGjiGAWS8mxs8hpm8kaKJ+yqVMHp8MilEZ+XAoGBANiqyXB3ONoSEgpVMYpA
+m4NUCkaDONP6/r9U10c+ZGqdDQqdGalG5mY8Vq2h8JvmalfA1Q7SqCdWKHtMT0Sx
+hKHPVcjl0CKq2SyddQ63uuaKDnrVDRCEO9o9J521GgoGAwPMwI4XqN+JyQgCMVOg
+z7vvltQ9fOTqe29fERS2ASgq
+-----END PRIVATE KEY-----|} |> Cstruct.of_string |> X509.Private_key.decode_pem |> function
+  | Ok `RSA key -> key
+  | Error `Msg m -> invalid_arg m
+
+module Pss_sha256 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA256)
+
+let sign_update u =
+  let signature = Pss_sha256.sign ~key:update_key (`Message (Cstruct.of_string u)) in
+  let length = Cstruct.len signature in
+  let len_buf = Cstruct.create 3 in
+  Cstruct.set_uint8 len_buf 0 (length lsr 16);
+  Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
+  Cstruct.hexdump len_buf;
+  Cstruct.hexdump signature;
+  Cstruct.to_string (Cstruct.append len_buf signature)
+
 let system_update_ok () =
-  let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0032.0binary data is here" in
+  let body =
+    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
+    `String (sign_update update ^ update)
+  in
   "a request for /system/update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
      | hsm_state, Some (`OK, _, `String release_notes, _) ->
        String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes &&
        Hsm.state hsm_state = `Operational
+     | _ -> false
+   end
+
+let system_update_signature_mismatch () =
+  let body =
+    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
+    let signature = sign_update update in
+    `String (signature ^ update ^ "BOGUS CONTENT")
+  in
+  "a request for /system/update with authenticated user returns 200"
+   @? begin match admin_post_request ~body "/system/update" with
+     | _, Some (`Bad_request, _, _, _) -> true
      | _ -> false
    end
 
@@ -206,7 +264,11 @@ let system_update_invalid_data () =
    end
 
 let system_update_version_downgrade () =
-  let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0030.5binary data is here" in
+  let body =
+    let update = "\000\000\018A new system image\000\000\0030.5binary data is here" in
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
   "a request for /system/update trying to send an older software fails."
    @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`Conflict, _, `String body, _) ->
@@ -216,7 +278,11 @@ let system_update_version_downgrade () =
    end
 
 let system_update_commit_ok () =
-  let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0032.0binary data is here" in
+  let body =
+    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in 
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
   "a request for /system/commit-update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) ->
@@ -235,7 +301,11 @@ let system_update_commit_fail () =
    end
 
 let system_update_cancel_ok () =
-  let body = `String "\000\000\003sig\000\000\018A new system image\000\000\0032.0binary data is here" in
+  let body =
+    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
   "a request for /system/cancel-update with authenticated user returns 200"
    @? begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) ->
@@ -1045,6 +1115,7 @@ let () =
     "/system/shutdown" >:: system_shutdown_ok;
     "/system/reset" >:: system_reset_ok;
     "/system/update" >:: system_update_ok;
+    "/system/update" >:: system_update_signature_mismatch;
     "/system/update" >:: system_update_invalid_data;
     "/system/update" >:: system_update_version_downgrade;
     "/system/commit-update" >:: system_update_commit_ok;

@@ -1275,7 +1275,30 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       get_length s >>=
       get_data
 
+    let prefix_len s = 
+      let len_buf = Cstruct.create 3 in
+      let length = String.length s in
+      assert (length < 1 lsl 24); (* TODO *)
+      Cstruct.set_uint8 len_buf 0 (length lsr 16);
+      Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
+      Cstruct.to_string len_buf ^ s
+
     module Hash = Nocrypto.Hash.SHA256
+    module Pss_sha256 = Nocrypto.Rsa.PSS(Hash)
+
+    let key = {|-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
+n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
+dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
+Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
+1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
+Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
+NwIDAQAB
+-----END PUBLIC KEY-----
+|} |> Cstruct.of_string |> X509.Public_key.decode_pem |> function
+    | Ok `RSA key -> key
+    | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer." (* TODO do we have a console? a logger? how to relay this message to the user? *)
+    | Error `Msg m -> invalid_arg m
 
     let update t s =
       let open Lwt_result.Infix in
@@ -1285,13 +1308,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          - version number
          - software image,
          first three are prefixed by 4 byte length *)
-      get_field s >>= fun (_signature, s') ->
+      get_field s >>= fun (signature, s') ->
       let hash = Hash.empty in
       get_field s' >>= fun (changes, s'') ->
-      let hash' = Hash.feed hash (Cstruct.of_string changes) in
+      let hash' = Hash.feed hash (Cstruct.of_string @@ prefix_len changes) in
       get_field s'' >>= fun (version, s''') ->
       Lwt.return (version_of_string version) >>= fun version' ->
-      let hash'' = Hash.feed hash' (Cstruct.of_string version) in
+      let hash'' = Hash.feed hash' (Cstruct.of_string @@ prefix_len version) in
       Lwt_stream.fold_s (fun chunk acc ->
         match acc with
         | Error e -> Lwt.return (Error e)
@@ -1300,19 +1323,20 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           let hash' = Hash.feed hash (Cstruct.of_string chunk) in
           Lwt.return @@ Ok hash')
         s''' (Ok hash'') >>= fun hash ->
-      let _final_hash = Hash.get hash in
-      let gc_stat = Gc.stat () in
-      Logs.app (fun m -> m "%u top heap words" gc_stat.top_heap_words);
-      (* TODO verify signature *)
-      let current = t.system_info.softwareVersion in
-      if version_is_upgrade ~current ~update:version' then
-      begin
-        (* store changelog *)
-        t.has_changes <- Some changes;
-        Lwt.return (Ok changes)
-      end
+      let final_hash = Hash.get hash in
+      let signature = Cstruct.of_string signature in
+      if Pss_sha256.verify ~key ~signature (`Digest final_hash) then
+        let current = t.system_info.softwareVersion in
+        if version_is_upgrade ~current ~update:version' then
+        begin
+          (* store changelog *)
+          t.has_changes <- Some changes;
+          Lwt.return (Ok changes)
+        end
+        else
+          Lwt.return (Error (Conflict, "Software version downgrade not allowed."))
       else
-        Lwt.return (Error (Conflict, "Software version downgrade not allowed."))
+        Lwt.return (Error (Bad_request, "Signature check of update image failed."))
 
     let commit_update t =
       match t.has_changes with
@@ -1323,14 +1347,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match t.has_changes with
       | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
       | Some _changes -> t.has_changes <- None; Ok ()
-
-    let prefix_len s = 
-      let len_buf = Cstruct.create 3 in
-      let length = String.length s in
-      assert (length < 1 lsl 24); (* TODO *)
-      Cstruct.set_uint8 len_buf 0 (length lsr 16);
-      Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-      Cstruct.to_string len_buf ^ s
 
     let backup_version = Version.V0
 

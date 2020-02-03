@@ -58,6 +58,6 @@ pin-depends: [
   ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#post-create"]
-  ["norypto.0.5.99" "git+https://github.com/roburio/ocaml-nocrypto.git#release-1.0"]
+  ["nocrypto.0.5.99" "git+https://github.com/roburio/ocaml-nocrypto.git#release-1.0"]
   ["tls.0.11.0" "git+https://github.com/roburio/ocaml-tls.git#adapt-to-nocrypto"]
 ]
