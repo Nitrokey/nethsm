@@ -345,6 +345,31 @@ let system_backup_and_restore_ok () =
     | _ -> false
   end
 
+let system_update_from_file_ok () =
+  let body =
+    let filename = "update.bin" in
+    let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
+    let filesize = (Unix.stat filename).Unix.st_size in
+    let buf = Bytes.create filesize in
+    let rec read off =
+      if off = filesize
+      then ()
+      else
+        let bytes_read = Unix.read fd buf off (filesize - off) in
+        read (bytes_read + off)
+    in
+    read 0;
+    Unix.close fd;
+    `String (Bytes.to_string buf)
+  in
+  "a request for /system/update with authenticated user and update read from disk returns 200"
+   @? begin match admin_post_request ~body "/system/update" with
+     | hsm_state, Some (`OK, _, `String _, _) ->
+       Hsm.state hsm_state = `Operational
+     | _ -> false
+   end
+
+
 let unlock_json = {|{ "passphrase": "test1234" }|}
 
 let unlock_ok () =
@@ -1121,6 +1146,7 @@ let () =
     "/system/commit-update" >:: system_update_commit_ok;
     "/system/commit-update" >:: system_update_commit_fail;
     "/system/cancel-update" >:: system_update_cancel_ok;
+    "/system/update from binary file" >:: system_update_from_file_ok;
     "/system/backup" >:: system_backup_and_restore_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;

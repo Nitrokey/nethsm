@@ -1,0 +1,5 @@
+(executable
+ (name sign_update)
+ (public_name sign-update)
+ (package keyfender)
+ (libraries nocrypto nocrypto.unix x509 cmdliner))
