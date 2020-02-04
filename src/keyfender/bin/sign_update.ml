@@ -1,5 +1,5 @@
-
-module Pss_sha256 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA256)
+module Hash = Nocrypto.Hash.SHA256
+module Pss_sha256 = Nocrypto.Rsa.PSS(Hash)
 
 let prefix_len s =
   let len_buf = Cstruct.create 3 in
@@ -9,8 +9,8 @@ let prefix_len s =
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
   Cstruct.to_string len_buf ^ s
 
-let sign_update key u =
-  let signature = Pss_sha256.sign ~key (`Message (Cstruct.of_string u)) in
+let sign_update key hash =
+  let signature = Pss_sha256.sign ~key (`Digest hash) in
   prefix_len (Cstruct.to_string signature)
 
 let read_file filename =
@@ -28,6 +28,27 @@ let read_file filename =
   Unix.close fd;
   Bytes.to_string buf
 
+let read_file_chunked filename hash (* prepend_length *) output =
+  let filesize = (Unix.stat filename).Unix.st_size in
+(*  let hash' =
+    if prepend_length
+    then ..
+    else hash *)
+  let chunksize = 4096 in
+  let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
+  let buf = Bytes.create chunksize in
+  let rec read hash off =
+    if off = filesize
+    then hash
+    else
+      let bytes_read = Unix.read fd buf 0 (min chunksize (filesize - off)) in
+      let hash' = output hash (Bytes.sub buf 0 bytes_read) in
+      read hash' (bytes_read + off)
+  in
+  let hash' = read hash 0 in
+  Unix.close fd;
+  hash'
+
 let sign key_file changelog_file version image_file output_file =
   let key =
     read_file key_file |> Cstruct.of_string |> X509.Private_key.decode_pem |>
@@ -35,13 +56,22 @@ let sign key_file changelog_file version image_file output_file =
     | Ok `RSA key -> key
     | Error `Msg m -> invalid_arg m
   in
+  let hash = Hash.empty in
   let changes = read_file changelog_file in
-  let image = read_file image_file in
-  let content = prefix_len changes ^ prefix_len version ^ image in
-  let signature = sign_update key content in
+  let hash' = Hash.feed hash (Cstruct.of_string @@ prefix_len changes) in
+  let hash'' = Hash.feed hash' (Cstruct.of_string @@ prefix_len version) in
+  let hash''' = read_file_chunked image_file hash''
+      (fun hash bytes -> Hash.feed hash (Cstruct.of_bytes bytes))
+  in
+  let final_hash = Hash.get hash''' in
+  let signature = sign_update key final_hash in
+  let content = prefix_len changes ^ prefix_len version in
   let content' = signature ^ content in
   (match output_file with
-   | None -> Printf.printf "%s" content'
+   | None ->
+     Printf.printf "%s" content';
+     read_file_chunked image_file ()
+       (fun () bytes -> Printf.printf "%s" (Bytes.unsafe_to_string bytes))
    | Some filename ->
      if Sys.file_exists filename
      then invalid_arg "Output file already exists"
@@ -56,6 +86,9 @@ let sign key_file changelog_file version image_file output_file =
            write (written + off)
        in
        write 0;
+       read_file_chunked image_file () (fun () bytes ->
+           let written = Unix.write fd bytes 0 (Bytes.length bytes) in
+           assert (written = Bytes.length bytes));
        Unix.close fd);
   Ok ()
 
