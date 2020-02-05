@@ -1,17 +1,19 @@
 module Hash = Nocrypto.Hash.SHA256
 module Pss_sha256 = Nocrypto.Rsa.PSS(Hash)
 
-let prefix_len s =
+let write_len length =
   let len_buf = Cstruct.create 3 in
-  let length = String.length s in
   assert (length < 1 lsl 24); (* TODO *)
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-  Cstruct.to_string len_buf ^ s
+  Cstruct.to_string len_buf
+
+let prepend_len s =
+  write_len (String.length s) ^ s
 
 let sign_update key hash =
   let signature = Pss_sha256.sign ~key (`Digest hash) in
-  prefix_len (Cstruct.to_string signature)
+  prepend_len (Cstruct.to_string signature)
 
 let read_file filename =
   let filesize = (Unix.stat filename).Unix.st_size in
@@ -28,12 +30,13 @@ let read_file filename =
   Unix.close fd;
   Bytes.to_string buf
 
-let read_file_chunked filename hash (* prepend_length *) output =
+let read_file_chunked filename hash prepend_length output =
   let filesize = (Unix.stat filename).Unix.st_size in
-(*  let hash' =
+  let hash' =
     if prepend_length
-    then ..
-    else hash *)
+    then output hash @@ Bytes.of_string @@ write_len filesize
+    else hash
+  in
   let chunksize = 4096 in
   let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
   let buf = Bytes.create chunksize in
@@ -45,9 +48,9 @@ let read_file_chunked filename hash (* prepend_length *) output =
       let hash' = output hash (Bytes.sub buf 0 bytes_read) in
       read hash' (bytes_read + off)
   in
-  let hash' = read hash 0 in
+  let hash'' = read hash' 0 in
   Unix.close fd;
-  hash'
+  hash''
 
 let sign key_file changelog_file version image_file output_file =
   let key =
@@ -56,40 +59,29 @@ let sign key_file changelog_file version image_file output_file =
     | Ok `RSA key -> key
     | Error `Msg m -> invalid_arg m
   in
+  let update_hash hash bytes = Hash.feed hash (Cstruct.of_bytes bytes) in
   let hash = Hash.empty in
-  let changes = read_file changelog_file in
-  let hash' = Hash.feed hash (Cstruct.of_string @@ prefix_len changes) in
-  let hash'' = Hash.feed hash' (Cstruct.of_string @@ prefix_len version) in
-  let hash''' = read_file_chunked image_file hash''
-      (fun hash bytes -> Hash.feed hash (Cstruct.of_bytes bytes))
-  in
+  let hash' = read_file_chunked changelog_file hash true update_hash in
+  let hash'' = Hash.feed hash' (Cstruct.of_string @@ prepend_len version) in
+  let hash''' = read_file_chunked image_file hash'' false update_hash in
   let final_hash = Hash.get hash''' in
   let signature = sign_update key final_hash in
-  let content = prefix_len changes ^ prefix_len version in
-  let content' = signature ^ content in
-  (match output_file with
-   | None ->
-     Printf.printf "%s" content';
-     read_file_chunked image_file ()
-       (fun () bytes -> Printf.printf "%s" (Bytes.unsafe_to_string bytes))
+  let fd = match output_file with
+   | None -> Unix.stdout
    | Some filename ->
      if Sys.file_exists filename
      then invalid_arg "Output file already exists"
-     else
-       let fd = Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400 in
-       let length = String.length content' in
-       let rec write off =
-         if off = length
-         then ()
-         else
-           let written = Unix.write fd (Bytes.unsafe_of_string content') off (length - off) in
-           write (written + off)
-       in
-       write 0;
-       read_file_chunked image_file () (fun () bytes ->
-           let written = Unix.write fd bytes 0 (Bytes.length bytes) in
-           assert (written = Bytes.length bytes));
-       Unix.close fd);
+     else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400 
+  in
+  let write_chunk () bytes =
+    let written = Unix.write fd bytes 0 (Bytes.length bytes) in
+    assert (written = Bytes.length bytes)
+  in
+  write_chunk () @@ Bytes.unsafe_of_string signature;
+  read_file_chunked changelog_file () true write_chunk;
+  write_chunk () @@ Bytes.unsafe_of_string @@ prepend_len version;
+  read_file_chunked image_file () false write_chunk;
+  Unix.close fd;
   Ok ()
 
 open Cmdliner
