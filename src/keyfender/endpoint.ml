@@ -35,6 +35,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class virtual base = object
     inherit [body] Wm.resource
 
+    method! uri_too_long : (bool, body) Wm.op = fun rd ->
+      Wm.continue (String.length (Uri.to_string rd.Webmachine.Rd.uri) > 2000) rd
+
     method! finish_request : (unit, body) Wm.op = fun rd ->
       let cc hdr = Cohttp.Header.replace hdr "Date" (date ()) in
       let rd' = Webmachine.Rd.with_resp_headers cc rd in
