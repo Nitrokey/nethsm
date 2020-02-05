@@ -5,6 +5,7 @@ let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NitroHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
 module Main
+    (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Static_assets: Mirage_kv.RO)
     (Internal_stack: Mirage_stack.V4) (Internal_resolver: Resolver_lwt.S) (Internal_conduit: Conduit_mirage.S)
@@ -26,6 +27,7 @@ struct
 
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
+  module Syslog = Logs_syslog_mirage.Udp(Console)(Pclock)(Ext_stack)
 
   let opt_static_file assets next ip request body =
     let uri = Cohttp.Request.uri request in
@@ -40,7 +42,7 @@ struct
       Http.respond ~headers ~status:`OK ~body:(`String data) ()
     | _ -> next ip request body
 
-  let start () () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
+  let start console () () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
@@ -66,6 +68,13 @@ struct
       Ext_udp.connect ipv4 >>= fun udp ->
       Ext_tcp.connect ipv4 >>= fun tcp ->
       Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >>= fun ext_stack ->
+      Hsm.Config.log hsm_state >>= fun log ->  
+      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0 
+      then begin
+        let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
+        Logs.set_reporter reporter
+      end ;
+      Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel) ;
       Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
       Http.connect conduit >>= fun http ->
       Hsm.certificate_chain hsm_state >>= fun (cert, chain, `RSA priv) ->

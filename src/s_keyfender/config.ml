@@ -49,17 +49,18 @@ let main =
     package ~min:"3.7.1" "mirage-runtime";
     package ~min:"2.0.0" "irmin-mirage";
     package ~min:"2.0.0" "irmin-mirage-git";
+    package ~sublibs:["mirage"] "logs-syslog";
   ] in
   let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ] in
   foreign
     ~packages ~keys ~deps:[abstract nocrypto]
     "Unikernel.Main"
-    (random @-> pclock @-> mclock @-> kv_ro @->
+    (console @-> random @-> pclock @-> mclock @-> kv_ro @->
      stackv4 @-> resolver @-> conduit @->
      network @-> ethernet @-> arpv4 @-> job)
 
 let () =
   register "keyfender"
-    [ main $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
+    [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
       internal_stack $ resolver_dns internal_stack $ conduit_direct internal_stack $
       external_netif $ external_eth $ external_arp ]
