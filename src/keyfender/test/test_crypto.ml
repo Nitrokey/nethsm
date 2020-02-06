@@ -4,7 +4,7 @@ let data = Mirage_random_test.generate 32
 let adata = Cstruct.of_string "my additional data"
 
 let basic_enc_dec_ok_1_byte () =
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
   let data = Cstruct.create 1 in
   let encrypted =
     Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
@@ -25,18 +25,18 @@ let basic_enc_dec_ok_multiple_bytes () =
   | _ -> false
 
 let basic_enc_dec_fail_not_authenticated () =
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
   let encrypted =
     Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
   in
-  let key' = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key' = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
   "decrypting an encrypted domain key fails (wrong unlock key)" @?
   match Keyfender.Crypto.decrypt ~key:key' ~adata encrypted with
   | Ok _ -> false
   | Error _ -> true (* expecting the not authenticated message *)
 
 let basic_enc_dec_fail_bad_adata () =
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
   let encrypted =
     Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
   in
@@ -47,7 +47,7 @@ let basic_enc_dec_fail_bad_adata () =
   | Error _ -> true (* expecting the not authenticated message *)
 
 let basic_enc_dec_fail_too_small () =
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
   "decrypting an encrypted domain key fails (bad encrypted)" @?
   match Keyfender.Crypto.decrypt ~key ~adata Cstruct.empty with
   | Ok _ -> false

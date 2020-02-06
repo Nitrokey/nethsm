@@ -8,8 +8,8 @@ let initial_key_rsa_bits = 1024 (*TODO up it*)
 let count = 1_000
 let salt_len = 16
 
-(* key length for AES128 is 16 byte = 128 bit *)
-let key_len = 16
+(* key length for AES256 is 32 byte = 256 bit *)
+let key_len = 32
 
 module K = Pbkdf.Make(Nocrypto.Hash.SHA256)
 
