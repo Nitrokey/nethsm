@@ -32,9 +32,9 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
 let operational_mock () =
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.boot >>= fun state ->
-    Hsm.provision state ~unlock:"unlock" ~admin:"test1" Ptime.epoch >>= fun _ ->
-    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >>= fun _ ->
-    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3" ~name:"backup" >|= fun _ ->
+    Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
+    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
+    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
     state)
 
 let locked_mock () =
@@ -43,7 +43,7 @@ let locked_mock () =
     Kv_mem.connect () >>= fun kv ->
     Hsm.boot kv >>= fun state ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
-    Hsm.provision state ~unlock:"test1234" ~admin:"test1" Ptime.epoch >>= fun r ->
+    Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
     Hsm.boot kv)
@@ -86,7 +86,7 @@ let health_state_ok () =
     end
 
 let provision_json = {| {
-  "unlockPassphrase": "Unlock",
+  "unlockPassphrase": "UnlockPassphrase",
   "adminPassphrase": "Administrator",
   "time": "2018-10-30T11:20:50Z"
 } |}
@@ -123,9 +123,9 @@ let auth_header user pass =
   let base64 = Cstruct.to_string (Nocrypto.Base64.encode (Cstruct.of_string (user ^ ":" ^ pass))) in
   Header.init_with "authorization" ("Basic " ^ base64)
 
-let admin_headers = auth_header "admin" "test1"
+let admin_headers = auth_header "admin" "test1Passphrase"
 
-let operator_headers = auth_header "operator" "test2"
+let operator_headers = auth_header "operator" "test2Passphrase"
 
 let admin_put_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
@@ -159,7 +159,7 @@ let system_info_error_precondition_failed () =
 
 let system_info_error_forbidden () =
   "a request for /system/info with authenticated operator returns 403"
-   @? begin match request ~hsm_state:(operational_mock ()) ~headers:(auth_header "operator" "test2") "/system/info" with
+   @? begin match request ~hsm_state:(operational_mock ()) ~headers:(auth_header "operator" "test2Passphrase") "/system/info" with
       | _, Some (`Forbidden, _, _, _) -> true
       | _ -> false
    end
@@ -323,7 +323,7 @@ let system_backup_and_restore_ok () =
     let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
     match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
     | hsm_state, Some (`No_content, _, _, _) ->
-      let headers = auth_header "backup" "test3" in
+      let headers = auth_header "backup" "test3Passphrase" in
       begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
         | _hsm_state, Some (`OK, _, `Stream s, _) ->
           let content_type = "application/octet-stream" in
@@ -332,7 +332,7 @@ let system_backup_and_restore_ok () =
           begin match request ~meth:`POST ~content_type ~query ~body:(`String data) "/system/restore" with
             | hsm_state', Some (`No_content, _, _, _) ->
               assert (Hsm.state hsm_state' = `Locked);
-              let unlock_json = {|{ "passphrase": "unlock" }|} in
+              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
               begin match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state:hsm_state' "/unlock" with
                 | _, Some (`No_content, _, _, _) ->
                   Hsm.state hsm_state' = `Operational && Lwt_main.run (Hsm.equal hsm_state hsm_state')
@@ -380,7 +380,7 @@ let sign_update_ok () =
      | _ -> false
    end
 
-let unlock_json = {|{ "passphrase": "test1234" }|}
+let unlock_json = {|{ "passphrase": "test1234Passphrase" }|}
 
 let unlock_ok () =
   "a request for /unlock unlocks the HSM"
@@ -451,7 +451,7 @@ let unattended_boot_succeeds () =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
         Hsm.boot store >>= fun state ->
-        Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
+        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
@@ -467,7 +467,7 @@ let unattended_boot_failed () =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
         Hsm.boot store >>= fun state ->
-        Hsm.provision state ~unlock:"" ~admin:"test1" Ptime.epoch >|= fun _ ->
+        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
@@ -735,7 +735,7 @@ let user_operator_delete () =
 let user_operator_delete_fails () =
   "DELETE on /users/operator fails (requires administrator privileges)"
   @? begin
-    let headers = auth_header "operator" "test2" in
+    let headers = auth_header "operator" "test2Passphrase" in
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/operator" with
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
@@ -788,7 +788,7 @@ let user_passphrase_post () =
 let user_passphrase_operator_post () =
   "POST on /users/operator/passphrase succeeds"
   @? begin
-    let headers = auth_header "operator" "test2" in
+    let headers = auth_header "operator" "test2Passphrase" in
     let new_passphrase = "my super new passphrase" in
     match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/operator/passphrase" with
   | _, Some (`No_content, _, _, _) -> true
@@ -798,7 +798,7 @@ let user_passphrase_operator_post () =
 let user_passphrase_administrator_post () =
   "POST on /users/admin/passphrase fails as operator"
   @? begin
-    let headers = auth_header "operator" "test2" in
+    let headers = auth_header "operator" "test2Passphrase" in
     let new_passphrase = "my super new passphrase" in
     match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
   | _, Some (`Forbidden, _, _, _) -> true

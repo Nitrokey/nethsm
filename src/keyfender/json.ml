@@ -6,7 +6,9 @@ let nonempty ~name s =
   else Ok ()
 
 let valid_passphrase ~name s =
-  nonempty ~name s
+  if 10 <= String.length s && String.length s <= 200
+  then Ok ()
+  else Error (Printf.sprintf "passphrase %s is not >= 10 and <= 200 characters" name)
 
 let to_ocaml parse json =
   Rresult.R.reword_error
