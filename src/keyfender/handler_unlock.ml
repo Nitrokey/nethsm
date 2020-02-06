@@ -22,7 +22,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     result
 
   class unlock hsm_state = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Locked ] as super
     inherit !Endpoint.put_json
     inherit !Endpoint.no_cache

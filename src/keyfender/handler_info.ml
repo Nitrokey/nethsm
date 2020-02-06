@@ -5,7 +5,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class info hsm_state = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit Endpoint.get_json
 
     method private to_json =

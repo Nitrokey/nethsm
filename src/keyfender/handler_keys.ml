@@ -5,7 +5,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class handler_keys hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role_operator_get hsm_state ip
 
@@ -77,7 +77,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_keys_generate hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.no_cache
@@ -119,7 +119,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role_operator_get hsm_state ip
 
@@ -175,7 +175,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_public hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
 
     method private get_pem rd =
@@ -213,7 +213,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_csr hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.no_cache
 
@@ -257,7 +257,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_decrypt hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator ip
     inherit !Endpoint.no_cache
@@ -295,7 +295,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_sign hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator ip
     inherit !Endpoint.no_cache
@@ -333,7 +333,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class handler_cert hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role_operator_get hsm_state ip
 

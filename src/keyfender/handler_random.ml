@@ -2,7 +2,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class random hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Operator ip
     inherit !Endpoint.post_json

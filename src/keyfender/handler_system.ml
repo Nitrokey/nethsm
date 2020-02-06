@@ -5,7 +5,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class info hsm_state ip = object(self)
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit Endpoint.get_json
@@ -25,7 +25,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class reboot hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
@@ -37,7 +37,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class shutdown hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
@@ -49,7 +49,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class reset hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
@@ -84,7 +84,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class commit_update hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
@@ -97,7 +97,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class cancel_update hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
     inherit !Endpoint.post
@@ -110,7 +110,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class backup hsm_state ip = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Backup ip
     inherit !Endpoint.post

@@ -44,6 +44,21 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue () rd'
   end
 
+  class virtual base_with_body_length = object
+    inherit base
+
+    method! valid_entity_length : (bool, body) Wm.op = fun rd ->
+      match Cohttp.Header.get rd.Webmachine.Rd.req_headers "content-length" with
+      | None -> (* chunked encoding? *) Wm.continue true rd
+      | Some len ->
+        try
+          let int_len = int_of_string len in
+          (* limit body to 1MB *)
+          let max_length = 1024 * 1024 in
+          Wm.continue (int_len <= max_length) rd
+        with Failure _ -> Wm.continue false rd
+  end
+
   class no_cache = object
     method finish_request : (unit, body) Wm.op = fun rd ->
       let cc hdr =

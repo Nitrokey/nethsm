@@ -3,7 +3,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   module Endpoint = Endpoint.Make(Wm)(Hsm)
 
   class alive hsm_state = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Locked ; `Unprovisioned ]
     inherit Endpoint.get_json
     inherit !Endpoint.no_cache
@@ -12,7 +12,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class ready hsm_state = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit Endpoint.get_json
     inherit !Endpoint.no_cache
@@ -21,7 +21,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   end
 
   class state hsm_state = object
-    inherit Endpoint.base
+    inherit Endpoint.base_with_body_length
     inherit Endpoint.get_json
     inherit !Endpoint.no_cache
 
