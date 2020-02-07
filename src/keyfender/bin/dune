@@ -2,4 +2,12 @@
  (name sign_update)
  (public_name sign-update)
  (package keyfender)
+ (modules sign_update)
  (libraries nocrypto nocrypto.unix x509 cmdliner))
+
+(executable
+ (name export_backup)
+ (public_name export-backup)
+ (package keyfender)
+ (modules export_backup)
+ (libraries keyfender nocrypto nocrypto.unix x509 cmdliner))

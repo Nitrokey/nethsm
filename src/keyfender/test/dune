@@ -11,6 +11,13 @@
   (name test_crypto)
   (package keyfender))
 
+(test
+  (libraries unix)
+  (modules test_export_backup)
+  (deps my_backup.bin ../bin/export_backup.exe)
+  (name test_export_backup)
+  (package keyfender))
+
 (executable
   (libraries logs.fmt fmt.tty keyfender mirage-random-test mirage-clock-unix mirage-kv-mem lwt.unix nocrypto.lwt)
   (modules test_stream)
