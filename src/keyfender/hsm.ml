@@ -178,7 +178,7 @@ end
 
 let to_hex str =
   let `Hex hex = Hex.of_string str in
-  Ok hex
+  hex
 
 let lwt_error_to_msg ~pp_error thing =
   let open Lwt.Infix in
