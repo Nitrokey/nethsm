@@ -807,6 +807,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       purpose : Json.purpose ;
       priv : priv ;
       cert : (string * string) option ;
+      operations : int ;
     } [@@deriving yojson]
 
     let encode_and_write t id key =
@@ -826,7 +827,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-        encode_and_write t id { purpose ; priv ; cert = None }
+        encode_and_write t id { purpose ; priv ; cert = None ; operations = 0 }
 
     let add_json ~id t purpose ~p ~q ~e =
       let open Nocrypto in
@@ -851,7 +852,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok `RSA priv -> add ~id t purpose priv
 
     let generate ~id t purpose ~length =
-      if 1024 <= length && length <= 8192 then begin 
+      if 1024 <= length && length <= 8192 then begin
         let priv = Nocrypto.Rsa.generate length in
         Metrics.key_op `Generate;
         add ~id t purpose priv
@@ -934,10 +935,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
-      Lwt.return @@
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
-      | None -> Error (Bad_request, "Couldn't decode data from base64.")
+      | None -> Lwt.return (Error (Bad_request, "Couldn't decode data from base64."))
       | Some encrypted_data ->
         if key_data.purpose = Encrypt then
           let dec_cs_opt =
@@ -954,12 +954,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
           in
           match dec_cs_opt with
-          | None -> Error (Bad_request, "Decryption failure.")
-          | Some cs -> 
+          | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
+          | Some cs ->
             Metrics.key_op `Decrypt;
+            (* ignore potential write error *)
+            let open Lwt.Infix in
+            let key_data' = { key_data with operations = succ key_data.operations } in
+            encode_and_write t id key_data' >|= fun _ ->
             Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
         else
-          Error (Bad_request, "Key purpose is not encrypt.")
+          Lwt.return (Error (Bad_request, "Key purpose is not encrypt."))
 
     module Pss_md5 = Nocrypto.Rsa.PSS(Nocrypto.Hash.MD5)
     module Pss_sha1 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA1)
@@ -972,10 +976,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
-      Lwt.return @@
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
-      | None -> Error (Bad_request, "Couldn't decode data from base64.")
+      | None -> Lwt.return (Error (Bad_request, "Couldn't decode data from base64."))
       | Some to_sign ->
         if key_data.purpose = Sign then
           try
@@ -990,10 +993,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               | PSS_SHA512 -> Pss_sha512.sign ~key (`Message to_sign)
             in
             Metrics.key_op `Sign;
+            (* ignore potential write error *)
+            let open Lwt.Infix in
+            let key_data' = { key_data with operations = succ key_data.operations } in
+            encode_and_write t id key_data' >|= fun _ ->
             Ok (Nocrypto.Base64.encode signature |> Cstruct.to_string)
-          with Nocrypto.Rsa.Insufficient_key -> Error (Bad_request, "Signing failure.")
+          with Nocrypto.Rsa.Insufficient_key ->
+            Lwt.return (Error (Bad_request, "Signing failure."))
         else
-          Error (Bad_request, "Key purpose is not sign.")
+          Lwt.return (Error (Bad_request, "Key purpose is not sign."))
 
     let list_digest t =
       let open Lwt.Infix in
