@@ -1,6 +1,7 @@
 module type S = sig
 
   module Metrics : sig
+    val http_status : Cohttp.Code.status_code -> unit
     val retrieve : unit -> (string * string) list
   end
 
@@ -190,17 +191,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let retrieve () =
       Hashtbl.fold (fun k v acc -> (k, v) :: acc) db []
 
-    let _src =
-      let open Metrics in
-      let doc = "Counters" in
-      let data () =
-        Data.v
-          [ int "keyOperations" 1 ;
-            int "uptime" 2 ;
-          ]
-      in
-      Src.v ~doc ~tags:Metrics.Tags.[] ~data "our_src"
-
     let sample_interval = Duration.of_sec 1
 
     let now () = Monotonic_clock.elapsed_ns ()
@@ -240,13 +230,34 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let ops = ref (0, 0, 0)
 
-    let key_op op = 
+    let key_op op =
       let g, s, d = !ops in
-      (match op with 
+      (match op with
       | `Generate -> ops := g + 1, s, d
       | `Sign -> ops := g, s + 1, d
       | `Decrypt -> ops := g, s, d + 1);
       Metrics.add key_ops_src (fun t -> t) (fun m -> m !ops)
+
+    let http_status = Hashtbl.create 7
+
+    let http_status_src =
+      let open Metrics in
+      let doc = "HTTP status" in
+      let data () =
+        let codes =
+          Hashtbl.fold
+            (fun k v acc -> uint ("http " ^ string_of_int k) v :: acc)
+            http_status []
+        in
+        Data.v codes
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "http status"
+
+    let http_status status =
+      let code = Cohttp.Code.code_of_status status in
+      let old_counter = match Hashtbl.find_opt http_status code with None -> 0 | Some x -> x in
+      Hashtbl.replace http_status code (succ old_counter);
+      Metrics.add http_status_src (fun t -> t) (fun m -> m ())
 
     let rec sample () =
       let open Lwt.Infix in
