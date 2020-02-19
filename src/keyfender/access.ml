@@ -28,7 +28,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   let requests : (Ipaddr.V4.t, Ptime.t list) Hashtbl.t = Hashtbl.create 7
 
-  let max_requests_per_second = 50
+  let max_requests_per_second = 10
 
   let within_rate_limit ip =
     match Hashtbl.find_opt requests ip with

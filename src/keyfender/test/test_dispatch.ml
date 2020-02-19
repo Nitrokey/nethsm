@@ -1046,7 +1046,7 @@ let keys_key_cert_delete () =
     | _ -> false
   end
 
-let unlock_rate_limit = 100
+let unlock_rate_limit = 10
 
 let rate_limit_for_unlock () =
   let path = "/unlock" in
@@ -1061,7 +1061,7 @@ let rate_limit_for_unlock () =
     | _ -> false
   end
 
-let rate_limit = 50
+let rate_limit = 10
 
 let rate_limit_for_get () =
   let path = "/system/info" in
