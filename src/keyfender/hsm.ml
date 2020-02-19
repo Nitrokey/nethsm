@@ -176,6 +176,10 @@ module type S = sig
   end
 end
 
+let to_hex str =
+  let `Hex hex = Hex.of_string str in
+  Ok hex
+
 let lwt_error_to_msg ~pp_error thing =
   let open Lwt.Infix in
   thing >|= fun x ->
@@ -749,14 +753,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt.Infix in
       let store = in_store t in
       Encrypted_store.digest store Mirage_kv.Key.empty >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let digest t ~id =
       let open Lwt.Infix in
       let store = in_store t in
       Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
 
@@ -1007,14 +1011,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt.Infix in
       let store = key_store t in
       Encrypted_store.digest store Mirage_kv.Key.empty >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let digest t ~id =
       let open Lwt.Infix in
       let store = key_store t in
       Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
 
@@ -1107,7 +1111,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let unattended_boot_digest t =
       let open Lwt.Infix in
       Config_store.digest t.kv Unattended_boot >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let tls_public_pem t =
@@ -1119,7 +1123,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let tls_public_pem_digest t =
       let open Lwt.Infix in
       Config_store.digest t.kv Private_key >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let tls_cert_pem t =
@@ -1159,7 +1163,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let tls_cert_digest t =
       let open Lwt.Infix in
       Config_store.digest t.kv Certificate >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let tls_csr_pem t subject =
@@ -1198,7 +1202,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let network_digest t =
       let open Lwt.Infix in
       Config_store.digest t.kv Ip_config >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let default_log = { Json.ipAddress = Ipaddr.V4.any ; port = 514 ; logLevel = Info }
@@ -1220,7 +1224,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let log_digest t =
       let open Lwt.Infix in
       Config_store.digest t.kv Log_config >|= function
-      | Ok digest -> Some (Digest.to_hex digest)
+      | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
 
