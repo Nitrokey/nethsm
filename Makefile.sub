@@ -16,7 +16,7 @@ NET_EXTERNAL ?= tap200
 NET_INTERNAL ?= tap201
 
 # Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
-# for the Keyfender unikernel. Default for MODE=muen is '--retry=1'.
+# for the Keyfender unikernel. Default for MODE=muen is '--retry=true'.
 # (actual setting is performed later)
 
 # ------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ REQUIRED_SUBMODULES += src/git
 endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
-KEYFENDER_CARGS ?= --retry=1
+KEYFENDER_CARGS ?= --retry=true
 REQUIRED_SUBMODULES += src/git src/zlib src/muen/muen \
     src/u-root/src/github.com/u-root/u-root
 else

@@ -28,8 +28,8 @@ let remote =
    (boolean) flags provided at configuration time (they are not preserved in
    key_gen.ml). TODO report and fix upstream. *)
 let retry =
-  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed (>0 for enable)." ["retry"] in
-  Key.(create "retry" Arg.(opt int 0 doc))
+  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
+  Key.(create "retry" Arg.(opt bool false doc))
 
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we

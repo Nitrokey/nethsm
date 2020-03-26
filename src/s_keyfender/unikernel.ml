@@ -58,7 +58,7 @@ struct
       in
       let rec connect_git () =
         Lwt.catch store_connect
-          (fun e -> if Key_gen.retry () > 0 then sleep e >>= connect_git else Lwt.fail e)
+          (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
       Hsm.boot store >>= fun hsm_state ->
