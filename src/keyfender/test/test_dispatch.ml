@@ -120,7 +120,7 @@ let provision_error_precondition_failed () =
     end
 
 let auth_header user pass =
-  let base64 = Cstruct.to_string (Nocrypto.Base64.encode (Cstruct.of_string (user ^ ":" ^ pass))) in
+  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   Header.init_with "authorization" ("Basic " ^ base64)
 
 let admin_headers = auth_header "admin" "test1Passphrase"
@@ -216,7 +216,7 @@ z7vvltQ9fOTqe29fERS2ASgq
   | Ok `RSA key -> key
   | Error `Msg m -> invalid_arg m
 
-module Pss_sha256 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA256)
+module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
 
 let sign_update u =
   let signature = Pss_sha256.sign ~key:update_key (`Message (Cstruct.of_string u)) in
@@ -224,8 +224,6 @@ let sign_update u =
   let len_buf = Cstruct.create 3 in
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-  Cstruct.hexdump len_buf;
-  Cstruct.hexdump signature;
   Cstruct.to_string (Cstruct.append len_buf signature)
 
 let system_update_ok () =
@@ -974,11 +972,9 @@ let operator_keys_key_decrypt () =
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with
         | `Assoc [ "decrypted", `String decrypted ] ->
-          begin match Nocrypto.Base64.decode @@ Cstruct.of_string decrypted with
-            | None -> false
-            | Some decoded ->
-              let decoded_str = Cstruct.to_string decoded in
-              String.equal message decoded_str
+          begin match Base64.decode decrypted with
+            | Error _ -> false
+            | Ok decoded -> String.equal message decoded
           end
         | _ -> false
       end
@@ -987,7 +983,7 @@ let operator_keys_key_decrypt () =
 
 let sign_request =
   Printf.sprintf {|{ mode: "PKCS1", message: "%s"}|}
-    (Cstruct.of_string message |> Nocrypto.Base64.encode |> Cstruct.to_string)
+    (Base64.encode_string message)
 
 let operator_keys_key_sign () =
   "POST on /keys/keyID/sign succeeds"
@@ -997,14 +993,14 @@ let operator_keys_key_sign () =
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with
         | `Assoc [ "signature", `String signature ] ->
-          begin match Nocrypto.Base64.decode @@ Cstruct.of_string signature with
-            | None -> false
-            | Some decoded ->
+          begin match Base64.decode signature with
+            | Error _ -> false
+            | Ok decoded ->
               match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
               | Error _ -> false
               | Ok `RSA private_key ->
-                let key = Nocrypto.Rsa.pub_of_priv private_key in
-                match Nocrypto.Rsa.PKCS1.sig_decode ~key decoded with
+                let key = Mirage_crypto_pk.Rsa.pub_of_priv private_key in
+                match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
                 | Some msg -> String.equal (Cstruct.to_string msg) message
                 | None -> false
           end
@@ -1132,7 +1128,7 @@ let () =
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug);
-  Lwt_main.run @@ Nocrypto_entropy_lwt.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   let tests = [
     "/" >:: empty;
     "/health/alive" >:: health_alive_ok;

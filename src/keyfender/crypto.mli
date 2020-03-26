@@ -7,7 +7,7 @@ val salt_len : int
 val key_len : int
 (** The length of the symmetric key, in bytes. *)
 
-module GCM : Nocrypto.Cipher_block.S.GCM
+module GCM : Mirage_crypto.Cipher_block.S.GCM
 
 val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t
 (** Derive a symmetric key from a passphrase, using PBKDF2. *)

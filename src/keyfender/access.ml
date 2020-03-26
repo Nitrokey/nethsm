@@ -18,10 +18,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   let decode_auth auth =
     match Astring.String.cut ~sep:"Basic " auth with
     | Some ("", b64) ->
-      begin match Nocrypto.Base64.decode (Cstruct.of_string b64) with
-        | None -> Error (`Msg ("invalid base64 encoding " ^ b64))
-        | Some data -> match Astring.String.cut ~sep:":" (Cstruct.to_string data) with
-          | None -> Error (`Msg ("invalid user:pass encoding" ^ Cstruct.to_string data))
+      begin match Base64.decode b64 with
+        | Error `Msg msg ->
+          Rresult.R.error_msgf "invalid base64 encoding: %s (data %s)" msg b64
+        | Ok data -> match Astring.String.cut ~sep:":" data with
+          | None -> Error (`Msg ("invalid user:pass encoding" ^ data))
           | Some (user, password) -> Ok (user, password)
       end
     | _ -> Error (`Msg ("invalid auth header " ^ auth))

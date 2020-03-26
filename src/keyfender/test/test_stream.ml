@@ -26,7 +26,7 @@ let operational_mock () =
   state
 
 let auth_header user pass =
-  let base64 = Cstruct.to_string (Nocrypto.Base64.encode (Cstruct.of_string (user ^ ":" ^ pass))) in
+  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   Header.init_with "authorization" ("Basic " ^ base64)
   
 let admin_headers = auth_header "admin" "test1"
@@ -120,8 +120,8 @@ let () =
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   (*Logs.set_level (Some Debug);*)
+  Mirage_crypto_rng_unix.initialize ();
   Lwt_main.run (
-    Nocrypto_entropy_lwt.initialize () >>= fun () ->
   (*  operational_mock () >>= fun hsm_state ->
     system_update hsm_state (1024*1024) 10000 *)(*>>= fun () ->*)
   (*  system_backup hsm_state >>= fun () ->*)

@@ -594,7 +594,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             cert, chain, priv)
        | None  ->
          (* no key -> generate, generate certificate *)
-         let priv = `RSA (Nocrypto.Rsa.generate Crypto.initial_key_rsa_bits) in
+         let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:Crypto.initial_key_rsa_bits ()) in
          generate_cert t priv >>= fun cert ->
          lwt_error_fatal "set private key to configuration store"
            ~pp_error:KV.pp_write_error
@@ -614,10 +614,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                    Config_store.pp_error e);
       default_network_configuration
 
-  let random n = Cstruct.to_string @@ Nocrypto.Base64.encode @@ Rng.generate n
+  let random n = Base64.encode_string @@ Cstruct.to_string @@ Mirage_crypto_rng.generate n
 
   let generate_id () =
-    let `Hex id = Hex.of_cstruct (Rng.generate 10) in
+    let `Hex id = Hex.of_cstruct (Mirage_crypto_rng.generate 10) in
     id
 
   module User = struct
@@ -782,13 +782,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         (Encrypted_store.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
-    (* how a key is persisted in the kv store. note that while nocrypto
+    (* how a key is persisted in the kv store. note that while mirage-crypto
        provides s-expression conversions, these have been removed from the
        trunk version -- it is also not safe to embed s-expressions into json.
        to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
        json is not safe as well)!
     *)
-    type priv = Nocrypto.Rsa.priv
+    type priv = Mirage_crypto_pk.Rsa.priv
     let priv_to_yojson p =
       `String (Cstruct.to_string (X509.Private_key.encode_pem (`RSA p)))
     let priv_of_yojson = function
@@ -834,20 +834,22 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         encode_and_write t id { purpose ; priv ; cert = None ; operations = 0 }
 
     let add_json ~id t purpose ~p ~q ~e =
-      let open Nocrypto in
       let to_z ctx data =
-        match Base64.decode (Cstruct.of_string data) with
-        | Some num -> Ok (Numeric.Z.of_cstruct_be num)
-        | None -> Error ("Invalid base64 encoded value in '" ^ ctx ^ "': " ^ data)
+        match Base64.decode data with
+        | Ok num -> Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be (Cstruct.of_string num))
+        | Error `Msg msg ->
+          Rresult.R.error_msgf
+            "Invalid base64 encoded value (error: %s) in %S: %s"
+            msg ctx data
       in
       match
         let open Rresult.R.Infix in
         to_z "p" p >>= fun p ->
         to_z "q" q >>= fun q ->
-        to_z "e" e >>| fun e ->
-        Rsa.priv_of_primes ~e ~p ~q
+        to_z "e" e >>= fun e ->
+        Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q
       with
-      | Error e -> Lwt.return (Error (Bad_request, e))
+      | Error `Msg e -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~id t purpose priv
 
     let add_pem ~id t purpose data =
@@ -857,7 +859,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let generate ~id t purpose ~length =
       if 1024 <= length && length <= 8192 then begin
-        let priv = Nocrypto.Rsa.generate length in
+        let priv = Mirage_crypto_pk.Rsa.generate ~bits:length () in
         Metrics.key_op `Generate;
         add ~id t purpose priv
       end
@@ -884,12 +886,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >|= fun key ->
       let z_to_b64 n =
-        Cstruct.to_string Nocrypto.(Base64.encode @@ Numeric.Z.to_cstruct_be n)
+        Base64.encode_string @@ Cstruct.to_string @@ Mirage_crypto_pk.Z_extra.to_cstruct_be n
       in
       { Json.purpose = key.purpose ;
         algorithm = "RSA" ;
-        modulus = z_to_b64 key.priv.Nocrypto.Rsa.n ;
-        publicExponent = z_to_b64 key.priv.Nocrypto.Rsa.e ;
+        modulus = z_to_b64 key.priv.Mirage_crypto_pk.Rsa.n ;
+        publicExponent = z_to_b64 key.priv.Mirage_crypto_pk.Rsa.e ;
         operations = 0 ;
       }
 
@@ -928,34 +930,36 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let key' = { key with cert = None } in
         encode_and_write t id key'
 
-    module Oaep_md5 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.MD5)
-    module Oaep_sha1 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA1)
-    module Oaep_sha224 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA224)
-    module Oaep_sha256 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA256)
-    module Oaep_sha384 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA384)
-    module Oaep_sha512 = Nocrypto.Rsa.OAEP(Nocrypto.Hash.SHA512)
+    module Oaep_md5 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.MD5)
+    module Oaep_sha1 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA1)
+    module Oaep_sha224 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA224)
+    module Oaep_sha256 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA256)
+    module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA384)
+    module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA512)
 
     let decrypt t ~id decrypt_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
-      match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
-      | None -> Lwt.return (Error (Bad_request, "Couldn't decode data from base64."))
-      | Some encrypted_data ->
+      match Base64.decode oneline with
+      | Error `Msg msg ->
+        Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
+      | Ok encrypted_data ->
+        let encrypted_cs = Cstruct.of_string encrypted_data in
         if key_data.purpose = Encrypt then
           let dec_cs_opt =
             match decrypt_mode with
             | Json.Raw ->
-              (try Some (Nocrypto.Rsa.decrypt ~key encrypted_data)
-               with Nocrypto.Rsa.Insufficient_key -> None)
-            | PKCS1 -> Nocrypto.Rsa.PKCS1.decrypt ~key encrypted_data
-            | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_data
-            | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_data
-            | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_data
-            | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_data
-            | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_data
-            | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
+              (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
+               with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+            | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
+            | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
+            | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
+            | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
+            | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
+            | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
+            | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
           in
           match dec_cs_opt with
           | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
@@ -965,44 +969,46 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             let open Lwt.Infix in
             let key_data' = { key_data with operations = succ key_data.operations } in
             encode_and_write t id key_data' >|= fun _ ->
-            Ok (Nocrypto.Base64.encode cs |> Cstruct.to_string)
+            Ok (Base64.encode_string @@ Cstruct.to_string cs)
         else
           Lwt.return (Error (Bad_request, "Key purpose is not encrypt."))
 
-    module Pss_md5 = Nocrypto.Rsa.PSS(Nocrypto.Hash.MD5)
-    module Pss_sha1 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA1)
-    module Pss_sha224 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA224)
-    module Pss_sha256 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA256)
-    module Pss_sha384 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA384)
-    module Pss_sha512 = Nocrypto.Rsa.PSS(Nocrypto.Hash.SHA512)
+    module Pss_md5 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.MD5)
+    module Pss_sha1 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA1)
+    module Pss_sha224 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA224)
+    module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
+    module Pss_sha384 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA384)
+    module Pss_sha512 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA512)
 
     let sign t ~id sign_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let key = key_data.priv in
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
-      match Nocrypto.Base64.decode (Cstruct.of_string oneline) with
-      | None -> Lwt.return (Error (Bad_request, "Couldn't decode data from base64."))
-      | Some to_sign ->
+      match Base64.decode oneline with
+      | Error `Msg msg ->
+        Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
+      | Ok to_sign ->
+        let to_sign_cs = Cstruct.of_string to_sign in
         if key_data.purpose = Sign then
           try
             let signature =
               match sign_mode with
-              | Json.PKCS1 -> Nocrypto.Rsa.PKCS1.sig_encode ~key to_sign
-              | PSS_MD5 -> Pss_md5.sign ~key (`Message to_sign)
-              | PSS_SHA1 -> Pss_sha1.sign ~key (`Message to_sign)
-              | PSS_SHA224 -> Pss_sha224.sign ~key (`Message to_sign)
-              | PSS_SHA256 -> Pss_sha256.sign ~key (`Message to_sign)
-              | PSS_SHA384 -> Pss_sha384.sign ~key (`Message to_sign)
-              | PSS_SHA512 -> Pss_sha512.sign ~key (`Message to_sign)
+              | Json.PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs
+              | PSS_MD5 -> Pss_md5.sign ~key (`Message to_sign_cs)
+              | PSS_SHA1 -> Pss_sha1.sign ~key (`Message to_sign_cs)
+              | PSS_SHA224 -> Pss_sha224.sign ~key (`Message to_sign_cs)
+              | PSS_SHA256 -> Pss_sha256.sign ~key (`Message to_sign_cs)
+              | PSS_SHA384 -> Pss_sha384.sign ~key (`Message to_sign_cs)
+              | PSS_SHA512 -> Pss_sha512.sign ~key (`Message to_sign_cs)
             in
             Metrics.key_op `Sign;
             (* ignore potential write error *)
             let open Lwt.Infix in
             let key_data' = { key_data with operations = succ key_data.operations } in
             encode_and_write t id key_data' >|= fun _ ->
-            Ok (Nocrypto.Base64.encode signature |> Cstruct.to_string)
-          with Nocrypto.Rsa.Insufficient_key ->
+            Ok (Base64.encode_string @@ Cstruct.to_string signature)
+          with Mirage_crypto_pk.Rsa.Insufficient_key ->
             Lwt.return (Error (Bad_request, "Signing failure."))
         else
           Lwt.return (Error (Bad_request, "Key purpose is not sign."))
@@ -1144,13 +1150,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok (cert :: chain) ->
         let open Lwt.Infix in
         certificate_chain t >>= fun (_, _, `RSA priv) ->
-        if `RSA (Nocrypto.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
+        if `RSA (Mirage_crypto_pk.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
           let valid = match List.rev chain with
             | [] -> Ok cert
             | ta :: chain' ->
               let our_chain = cert :: List.rev chain' in
+              let time () = Some (now ()) in
               Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
-                (X509.Validation.verify_chain ~anchors:[ta] our_chain)
+                (X509.Validation.verify_chain ~anchors:[ta] ~time ~host:None our_chain)
           in
           match valid with
           | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
@@ -1306,8 +1313,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
       Cstruct.to_string len_buf ^ s
 
-    module Hash = Nocrypto.Hash.SHA256
-    module Pss_sha256 = Nocrypto.Rsa.PSS(Hash)
+    module Hash = Mirage_crypto.Hash.SHA256
+    module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
     let key = {|-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
