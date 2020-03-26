@@ -42,7 +42,7 @@ struct
       Http.respond ~headers ~status:`OK ~body:(`String data) ()
     | _ -> next ip request body
 
-  let start console () () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp _nocrypto =
+  let start console _entropy () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->

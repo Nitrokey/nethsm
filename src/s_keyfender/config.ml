@@ -42,6 +42,7 @@ let external_arp = arp external_eth
 
 let main =
   let packages = [
+    package ~build:true ~min:"3.7.6" ~max:"3.7.7" "mirage" ;
     package "keyfender";
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
@@ -53,7 +54,7 @@ let main =
   ] in
   let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ] in
   foreign
-    ~packages ~keys ~deps:[abstract nocrypto]
+    ~packages ~keys
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @->
      stackv4 @-> resolver @-> conduit @->
