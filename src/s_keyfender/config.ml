@@ -28,8 +28,8 @@ let remote =
    (boolean) flags provided at configuration time (they are not preserved in
    key_gen.ml). TODO report and fix upstream. *)
 let retry =
-  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed (>0 for enable)." ["retry"] in
-  Key.(create "retry" Arg.(opt int 0 doc))
+  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
+  Key.(create "retry" Arg.(opt bool false doc))
 
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
@@ -42,6 +42,7 @@ let external_arp = arp external_eth
 
 let main =
   let packages = [
+    package ~build:true ~min:"3.7.6" ~max:"3.7.7" "mirage" ;
     package "keyfender";
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
@@ -53,7 +54,7 @@ let main =
   ] in
   let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ] in
   foreign
-    ~packages ~keys ~deps:[abstract nocrypto]
+    ~packages ~keys
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @->
      stackv4 @-> resolver @-> conduit @->

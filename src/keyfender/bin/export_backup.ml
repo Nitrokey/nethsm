@@ -125,8 +125,7 @@ let export passphrase backup_image_filename output =
              else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400 
           in
           let channel = Unix.out_channel_of_descr fd in
-          let base64 s = Cstruct.to_string @@ Nocrypto.Base64.encode @@ Cstruct.of_string s in
-          let json = `Assoc (List.map (fun (k, v) -> k, `String (base64 v)) kvs) in
+          let json = `Assoc (List.map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
           Yojson.Basic.pretty_to_channel channel json;
           Unix.close fd;
           Ok ()
@@ -161,5 +160,5 @@ let command =
   Term.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
-  Nocrypto_entropy_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   match Term.eval command with `Ok () -> exit 0 | _ -> exit 1

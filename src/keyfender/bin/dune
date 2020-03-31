@@ -3,11 +3,11 @@
  (public_name sign-update)
  (package keyfender)
  (modules sign_update)
- (libraries nocrypto nocrypto.unix x509 cmdliner))
+ (libraries mirage-crypto-rng.unix mirage-crypto-pk x509 cmdliner))
 
 (executable
  (name export_backup)
  (public_name export-backup)
  (package keyfender)
  (modules export_backup)
- (libraries keyfender nocrypto nocrypto.unix x509 cmdliner))
+ (libraries keyfender mirage-crypto-rng.unix base64 x509 cmdliner))

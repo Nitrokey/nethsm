@@ -1,5 +1,5 @@
 (test
-  (libraries logs.fmt fmt.tty nocrypto.lwt lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
+  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
   (modules test_dispatch)
   (deps update.bin ../bin/sign_update.exe key.pem changes)
   (name test_dispatch)
@@ -19,14 +19,14 @@
   (package keyfender))
 
 (executable
-  (libraries logs.fmt fmt.tty keyfender mirage-random-test mirage-clock-unix mirage-kv-mem lwt.unix nocrypto.lwt)
+  (libraries logs.fmt fmt.tty keyfender mirage-random-test mirage-clock-unix mirage-kv-mem lwt.unix mirage-crypto-rng.unix)
   (modules test_stream)
   (name test_stream)
   (public_name test_stream)
   (package keyfender))
 
 (executable
-  (libraries logs.fmt fmt.tty nocrypto.lwt keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test io-page-unix)
+  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test io-page-unix)
   (modules test_server)
   (name test_server)
   (public_name test_server)

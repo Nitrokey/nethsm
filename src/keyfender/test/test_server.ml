@@ -21,9 +21,9 @@ let () =
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug);
+  Mirage_crypto_rng_unix.initialize ();
   Lwt_main.run
   begin
-    Nocrypto_entropy_lwt.initialize () >>= fun () ->
     Store.connect () >>= fun store ->
     Hsm.boot store >>= fun hsm_state ->
     Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->

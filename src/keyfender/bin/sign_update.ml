@@ -1,5 +1,5 @@
-module Hash = Nocrypto.Hash.SHA256
-module Pss_sha256 = Nocrypto.Rsa.PSS(Hash)
+module Hash = Mirage_crypto.Hash.SHA256
+module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
 let write_len length =
   let len_buf = Cstruct.create 3 in
@@ -113,5 +113,5 @@ let command =
   Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
-  Nocrypto_entropy_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   match Term.eval command with `Ok () -> exit 0 | _ -> exit 1

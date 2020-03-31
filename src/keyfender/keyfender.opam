@@ -16,7 +16,7 @@ build: [
 ]
 
 depends: [
-  "ocaml" {>= "4.06.0"}
+  "ocaml" {>= "4.07.0"}
   "dune"
   "ounit" {with-test}
   "astring"
@@ -25,7 +25,7 @@ depends: [
   "ptime"
   "cohttp"
   "rresult"
-  "nocrypto"
+  "mirage-crypto" {= "0.6.2"}
   "webmachine"
   "cohttp-lwt"
   "yojson"
@@ -33,10 +33,11 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "ppx_deriving_yojson"
   "ppx_deriving"
-  "pbkdf"
+  "pbkdf" {>= "1.1.0"}
   "mirage-kv" {>= "3.0.0"}
-  "tls"
-  "x509" {>= "0.9.0"}
+  "tls" {= "0.11.0"}
+  "x509" {= "0.10.0"}
+  "base64" {>= "3.0.0"}
   "hex"
   "gmap" {>= "0.3.0"}
   "ipaddr"
@@ -53,11 +54,9 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.2.0.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
-  ["cohttp.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
+  ["conduit-mirage.2.1.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip2"]
+  ["cohttp.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
+  ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
+  ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
   ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#post-create"]
-  ["nocrypto.0.5.99" "git+https://github.com/roburio/ocaml-nocrypto.git#release-1.0"]
-  ["tls.0.11.0" "git+https://github.com/roburio/ocaml-tls.git#adapt-to-nocrypto"]
 ]

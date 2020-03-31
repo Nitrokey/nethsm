@@ -1,5 +1,5 @@
 
-module GCM = Nocrypto.Cipher_block.AES.GCM
+module GCM = Mirage_crypto.Cipher_block.AES.GCM
 
 let initial_key_rsa_bits = 1024 (*TODO up it*)
 
@@ -11,7 +11,7 @@ let salt_len = 16
 (* key length for AES256 is 32 byte = 256 bit *)
 let key_len = 32
 
-module K = Pbkdf.Make(Nocrypto.Hash.SHA256)
+module K = Pbkdf.Make(Mirage_crypto.Hash.SHA256)
 
 let key_of_passphrase ~salt password =
   K.pbkdf2
