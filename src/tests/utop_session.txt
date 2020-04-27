@@ -1,0 +1,461 @@
+# #require "yaml";;
+# #require "containers";;
+# CCIO.with_in "../../docs/nitrohsm-api.raml" (fun inc -> Yaml.of_string (CCIO.read_all inc));;
+- : Yaml.value Yaml.res =
+Result.Ok
+ (`O
+    [("title", `String "NitroHSM"); ("version", `String "v1");
+     ("baseUri", `String "https://{host}/api/{version}");
+     ("baseUriParameters",
+      `O
+        [("host",
+          `O
+            [("description",
+              `String
+                "NitroHSM hostname or IP address. For TLS certificate validation to succeed this should be the same as the <i>commonName</i> set in <a href=\"#config_tls_csr_pem_post\">/config/tls/csr.pem</a>. In an <i>Unprovisioned</i> state, this is always 192.168.1.1.")])]);
+     ("protocols", `A [`String "HTTPS"]);
+     ("mediaType", `String "application/json");
+     ("types",
+      `O
+        [("Passphrase",
+          `O [("type", `String "string"); ("minLength", `Float 1.)]);
+         ("ID",
+          `O
+            [("type", `String "string"); ("pattern", `String "^[a-zA-Z0-9]+$");
+             ("minLength", `Float 1.); ("maxLength", `Float 128.)]);
+         ("UserRole",
+          `O
+            [("enum",
+              `A
+                [`String "Administrator"; `String "Operator";
+                 `String "Metrics"; `String "Backup"])]);
+         ("User",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("realname", `String "string"); ("role", `String "UserRole");
+                 ("passphrase", `String "Passphrase")])]);
+         ("KeyList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("key", `String "ID")])])]);
+         ("UserList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("user", `String "ID")])])]);
+         ("KeyPurpose", `O [("enum", `A [`String "Sign"; `String "Decrypt"])]);
+         ("KeyAlgorithm", `O [("enum", `A [`String "RSA"])]);
+         ("PrivateKey",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("purpose", `String "KeyPurpose");
+                 ("algorithm", `String "KeyAlgorithm");
+                 ("key",
+                  `O
+                    [("properties",
+                      `O
+                        [("primeP", `String "string");
+                         ("primeQ", `String "string");
+                         ("publicExponent", `String "string")])])])]);
+         ("PublicKey",
+          `O
+            [("type", `String "object");
+             ("prop"... (* string length 10; truncated *), `O [(...); ...]);
+             ...]);
+         ...]);
+     ...])
+# #print_depth 1000
+;;
+# CCIO.with_in "nitrohsm-api.raml" (fun inc -> Yaml.of_string (CCIO.read_all inc));;
+- : Yaml.value Yaml.res =
+Result.Ok
+ (`O
+    [("title", `String "NitroHSM"); ("version", `String "v1");
+     ("baseUri", `String "https://{host}/api/{version}");
+     ("baseUriParameters",
+      `O
+        [("host",
+          `O
+            [("description",
+              `String
+                "NitroHSM hostname or IP address. For TLS certificate validation to succeed this should be the same as the <i>commonName</i> set in <a href=\"#config_tls_csr_pem_post\">/config/tls/csr.pem</a>. In an <i>Unprovisioned</i> state, this is always 192.168.1.1.")])]);
+     ("protocols", `A [`String "HTTPS"]);
+     ("mediaType", `String "application/json");
+     ("types",
+      `O
+        [("Passphrase",
+          `O [("type", `String "string"); ("minLength", `Float 1.)]);
+         ("ID",
+          `O
+            [("type", `String "string"); ("pattern", `String "^[a-zA-Z0-9]+$");
+             ("minLength", `Float 1.); ("maxLength", `Float 128.)]);
+         ("UserRole",
+          `O
+            [("enum",
+              `A
+                [`String "Administrator"; `String "Operator";
+                 `String "Metrics"; `String "Backup"])]);
+         ("User",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("realname", `String "string"); ("role", `String "UserRole");
+                 ("passphrase", `String "Passphrase")])]);
+         ("KeyList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("key", `String "ID")])])]);
+         ("UserList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("user", `String "ID")])])]);
+         ("KeyPurpose", `O [("enum", `A [`String "Sign"; `String "Decrypt"])]);
+         ("KeyAlgorithm", `O [("enum", `A [`String "RSA"])]);
+         ("PrivateKey",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("purpose", `String "KeyPurpose");
+                 ("algorithm", `String "KeyAlgorithm");
+                 ("key",
+                  `O
+                    [("properties",
+                      `O
+                        [("primeP", `String "string");
+                         ("primeQ", `String "string");
+                         ("publicExponent", `String "string")])])])]);
+         ("PublicKey",
+          `O
+            [("type", `String "object");
+             ("prop"... (* string length 10; truncated *), `O [(...); ...]);
+             ...]);
+         ...]);
+     ...])
+# #print_length 1000;;
+# CCIO.with_in "nitrohsm-api.raml" (fun inc -> Yaml.of_string (CCIO.read_all inc));;
+- : Yaml.value Yaml.res =
+Result.Ok
+ (`O
+    [("title", `String "NitroHSM"); ("version", `String "v1");
+     ("baseUri", `String "https://{host}/api/{version}");
+     ("baseUriParameters",
+      `O
+        [("host",
+          `O
+            [("description",
+              `String
+                "NitroHSM hostname or IP address. For TLS certificate validation to succeed this should be the same as the <i>commonName</i> set in <a href=\"#config_tls_csr_pem_post\">/config/tls/csr.pem</a>. In an <i>Unprovisioned</i> state, this is always 192.168.1.1.")])]);
+     ("protocols", `A [`String "HTTPS"]);
+     ("mediaType", `String "application/json");
+     ("types",
+      `O
+        [("Passphrase",
+          `O [("type", `String "string"); ("minLength", `Float 1.)]);
+         ("ID",
+          `O
+            [("type", `String "string"); ("pattern", `String "^[a-zA-Z0-9]+$");
+             ("minLength", `Float 1.); ("maxLength", `Float 128.)]);
+         ("UserRole",
+          `O
+            [("enum",
+              `A
+                [`String "Administrator"; `String "Operator";
+                 `String "Metrics"; `String "Backup"])]);
+         ("User",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("realname", `String "string"); ("role", `String "UserRole");
+                 ("passphrase", `String "Passphrase")])]);
+         ("KeyList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("key", `String "ID")])])]);
+         ("UserList",
+          `O
+            [("type", `String "array");
+             ("items",
+              `O
+                [("type", `String "object");
+                 ("properties", `O [("user", `String "ID")])])]);
+         ("KeyPurpose", `O [("enum", `A [`String "Sign"; `String "Decrypt"])]);
+         ("KeyAlgorithm", `O [("enum", `A [`String "RSA"])]);
+         ("PrivateKey",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("purpose", `String "KeyPurpose");
+                 ("algorithm", `String "KeyAlgorithm");
+                 ("key",
+                  `O
+                    [("properties",
+                      `O
+                        [("primeP", `String "string");
+                         ("primeQ", `String "string");
+                         ("publicExponent", `String "string")])])])]);
+         ("PublicKey",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("purpose", `String "KeyPurpose");
+                 ("algorithm", `String "KeyAlgorithm");
+                 ("key",
+                  `O
+                    [("properties",
+                      `O
+                        [("modulus", `String "string");
+                         ("publicExponent", `String "string")])]);
+                 ("operations", `String "integer")])]);
+         ("DistinguishedName",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("countryName", `String "string");
+                 ("stateOrProvinceName", `String "string");
+                 ("localityName", `String "string");
+                 ("organizationName", `String "string");
+                 ("organizationalUnitName", `String "string");
+                 ("commonName", `String "string");
+                 ("emailAddress", `String "string")])]);
+         ("SystemInformation",
+          `O
+            [("type", `String "object");
+             ("properties",
+              `O
+                [("vendor", `String "string"); ("product", `String "string");
+                 ("version", `String "string")])])]);
+     ("/info",
+      `O
+        [("description", `String "Public");
+         ("get",
+          `O
+            [("description",
+              `String "Information about the vendor, product, version.");
+             ("responses",
+              `O
+                [("200",
+                  `O
+                    [("body",
+                      `O
+                        [("application/json",
+                          `O [("type", `String "SystemInformation")]);
+                         ("example",
+                          `O
+                            [("vendor", `String "Nitrokey UG");
+                             ("product", `String "NitroHSM");
+                             ("version", `String "v1")])])])])])]);
+     ("/health",
+      `O
+        [("description", `String "Public");
+         ("/alive",
+          `O
+            [("get",
+              `O
+                [("description",
+                  `String
+                    "Retrieve wether NitroHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.");
+                 ("responses",
+                  `O
+                    [("200", `O [("description", `String "Yes, it is alive.")])])])]);
+         ("/ready",
+          `O
+            [("get",
+              `O
+                [("description",
+                  `String
+                    "Retrieve wether NitroHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.");
+                 ("responses",
+                  `O
+                    [("200",
+                      `O
+                        [("description", `String "Yes, it is alive and ready.")]);
+                     ("412",
+                      `O
+                        [("description",
+                          `String
+                            "Not alive and ready (not in operational state).")])])])]);
+         ("/state",
+          `O
+            [("get",
+              `O
+                [("description", `String "Retrieve the state of NitroHSM.");
+                 ("responses",
+                  `O
+                    [("200",
+                      `O
+                        [("body",
+                          `O
+                            [("application/json", `Null);
+                             ("properties",
+                              `O
+                                [("state",
+                                  `O
+                                    [("enum",
+                                      `A
+                                        [`String "Unprovisioned";
+                                         `String "Locked";
+                                         `String "Operational"])])]);
+                             ("example",
+                              `O [("state", `String "Unprovisioned")])])])])])])]);
+     ("/metrics",
+      `O
+        [("description", `String "Role: <b>R-Metrics</b>");
+         ("get",
+          `O
+            [("description",
+              `String
+                "Get metrics. Precondition: NitroHSM is <i>Unlocked</i> and a <b>R-Metrics</b> can be authenticated.");
+             ("securedBy", `String "basic");
+             ("responses",
+              `O
+                [("200",
+                  `O
+                    [("body",
+                      `O
+                        [("application/json", `Null);
+                         ("example",
+                          `O
+                            [("keyOperations", `Float 1132412.);
+                             ("someOtherMetric", `Float 2222.)])])]);
+                 ("401",
+                  `O
+                    [("description",
+                      `String "Authentication required but none provided.")]);
+                 ("403", `O [("description", `String "Access denied.")]);
+                 ("412",
+                  `O
+                    [("description",
+                      `String
+                        "Precondition failed (NitroHSM was not <i>Unlocked</i>).")])])])]);
+     ("/provision",
+      `O
+        [("description", `String "Public");
+         ("put",
+          `O
+            [("description",
+              `String
+                "Initial provisioning, only available in <i>Unprovisioned</i> state.");
+             ("body",
+              `O
+                [("application/json",
+                  `O
+                    [("properties",
+                      `O
+                        [("unlockPassphrase", `String "Passphrase");
+                         ("adminPassphrase", `String "Passphrase");
+                         ("systemTime", `String "RFC3339 (UTC only)")]);
+                     ("example",
+                      `O
+                        [("unlockPassphrase",
+                          `String "This is my unlock passphrase");
+                         ("adminPassphrase",
+                          `String "This is my administrator passphrase");
+                         ("systemTime", `String "2018-10-30T11:20:50Z")])])]);
+             ("responses",
+              `O
+                [("200",
+                  `O
+                    [("description",
+                      `String
+                        "Provisioning was successful, NitroHSM is <i>Operational</i> now.")]);
+                 ("400",
+                  `O
+                    [("description",
+                      `String
+                        "Malformed request data (e.g. malformed time, weak passphrase).")]);
+                 ("412",
+                  `O
+                    [("description",
+                      `String
+                        "Precondition failed (NitroHSM was not <i>Unprovisioned</i>).")])])])]);
+     ("/unlock",
+      `O
+        [("description", `String "Public");
+         ("post",
+          `O
+            [("description",
+              `String
+                "Brings a <i>Locked</i> NitroHSM into <i>Operational</i> state.");
+             ("body",
+              `O
+                [("application/json",
+                  `O
+                    [("properties", `O [("passphrase", `String "Passphrase")]);
+                     ("example",
+                      `O
+                        [("passphrase",
+                          `String "nhrfotu32409ru0rgert45z54z099u23r03498uhtr")])])]);
+             ("responses",
+              `O
+                [("200",
+                  `O
+                    [("description",
+                      `String
+                        "Unlock was successful, NitroHSM is <i>Operational</i> now.")]);
+                 ("403",
+                  `O
+                    [("description", `String "Unlock failed (access denied).")]);
+                 ("412",
+                  `O
+                    [("description",
+                      `String
+                        "Precondition failed (NitroHSM was not <i>Locked</i>).")])])])]);
+     ("/random",
+      `O
+        [("description", `String "Role: <b>R-Operator</b>");
+         ("post",
+          `O
+            [("description",
+              `String
+                "Retrieve cryptographically strong random bytes from NitroHSM. Precondition"... (* string length 149; truncated *));
+             ("securedBy", `String "basic");
+             ("body",
+              `O
+                [("application/json",
+                  `O
+                    [("properties",
+                      `O
+                        [("length",
+                          `O
+                            [("type", `String "integer");
+                             ("minimum", `Float 1.); ("maximum", `Float 1024.)])]);
+                     ("example", `O [("length", `Float 5.)])])]);
+             ("responses",
+              `O
+                [("200",
+                  `O
+                    [("description",
+                      `String "Successfu"... (* string length 50; truncated *));
+                     ("body",
+                      `O
+                        [("ap"... (* string length 16; truncated *), 
+                          `O ...); ...]);
+                      ...]);
+                  ...]);
+              ...]);
+          ...]);
+      ...])
