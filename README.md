@@ -17,6 +17,8 @@ If you are building the Muen System, you **must** add the following to your `~/.
 insteadOf = git@git.dotplex.com:nitrokey/muen/
 [url "https://git.codelabs.ch/git/libxhcidbg.git"]
 insteadOf = git@git.dotplex.com:nitrokey/libxhcidbg.git
+[url "https://git.codelabs.ch/git/sbs-tools"]
+    insteadOf = git@git.dotplex.com:nitrokey/sbs-tools
 ```
 
 If you need all Git submodules to be fully cloned (e.g. when updating submodule references), then run:
