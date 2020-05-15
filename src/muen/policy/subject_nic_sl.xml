@@ -1,5 +1,13 @@
 <subject name="nic_sl">
- <events/>
+ <events>
+  <source>
+   <group name="vmx_exit">
+    <default physical="system_panic">
+     <system_panic/>
+    </default>
+   </group>
+  </source>
+ </events>
  <monitor>
   <state  logical="monitor_state_nic_linux"  subject="nic_linux" virtualAddress="16#001e_0000#"      writable="true"/>
   <state  logical="monitor_state_nic_sm"     subject="nic_sm"    virtualAddress="16#001e_1000#"      writable="true"/>

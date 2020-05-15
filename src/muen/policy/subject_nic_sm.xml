@@ -2,6 +2,7 @@
  <events>
   <source>
    <group name="vmx_exit">
+    <default physical="trap_to_sl_1"/>
     <event id="33" logical="reset" physical="trap_to_sl_1"/>
    </group>
    <group name="vmcall">

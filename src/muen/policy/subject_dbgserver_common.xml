@@ -2,7 +2,12 @@
  <map logical="crash_audit" physical="crash_audit"/>
  <if variable="dbgserver_sink_serial" value="true">
   <map logical="debugconsole" physical="serial_device_1">
-   <map logical="port" physical="ioport1"/>
+   <if variable="hsuart_supported" value="false">
+    <map logical="port" physical="ioport1"/>
+   </if>
+   <if variable="hsuart_supported" value="true">
+    <map logical="mem" physical="mem1"/>
+   </if>
   </map>
  </if>
  <if variable="dbgserver_sink_xhcidbg" value="true">
@@ -17,4 +22,6 @@
    <map logical="Port_42_43" physical="Port_42_43"/>
   </map>
  </if>
+ <map logical="reboot" physical="system_reboot"/>
+ <map logical="shutdown" physical="system_poweroff"/>
 </include>

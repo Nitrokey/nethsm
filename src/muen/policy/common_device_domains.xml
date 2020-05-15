@@ -31,4 +31,11 @@
    </devices>
   </domain>
  </if>
+ <if variable="uefi_gop_rmrr_access" value="true">
+  <domain name="uefi_gop">
+   <devices>
+    <device logical="vga" physical="vga_compatible_controller_1" mapReservedMemory="true"/>
+   </devices>
+  </domain>
+ </if>
 </include>

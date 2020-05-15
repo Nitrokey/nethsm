@@ -45,6 +45,9 @@
     <event name="reboot_linux_1" mode="self"/>
     <event name="resume_unikernel_1" mode="switch"/>
     <event name="trap_to_sm_3" mode="switch"/>
+    <event name="system_reboot" mode="kernel"/>
+    <event name="system_poweroff" mode="kernel"/>
+    <event name="system_panic" mode="kernel"/>
   </events>
   <channels>
     <channel name="time_info" size="16#1000#"/>
@@ -77,7 +80,15 @@
     <include href="subject_time.xml"/>
     <include href="subject_nic_sl.xml"/>
     <subject name="dbgserver">
-      <events/>
+      <events>
+        <source>
+          <group name="vmx_exit">
+            <default physical="system_panic">
+              <system_panic/>
+            </default>
+          </group>
+        </source>
+      </events>
       <component ref="dbgserver">
         <map logical="log_channel2" physical="debuglog_subject2"/>
         <map logical="log_channel3" physical="debuglog_subject3"/>
@@ -176,7 +187,15 @@
       </component>
     </subject>
     <subject name="unikernel_sm">
-      <events/>
+      <events>
+        <source>
+          <group name="vmx_exit">
+            <default physical="system_panic">
+              <system_panic/>
+            </default>
+          </group>
+        </source>
+      </events>
       <monitor>
         <state subject="unikernel" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
       </monitor>

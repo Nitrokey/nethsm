@@ -5,6 +5,11 @@
     <event id="0" logical="serial_irq4" physical="serial_irq4_linux_2"/>
     <event id="1" logical="reset_linux" physical="reset_linux_2"/>
    </group>
+   <group name="vmx_exit">
+    <default physical="system_panic">
+     <system_panic/>
+    </default>
+   </group>
   </source>
  </events>
  <monitor>
