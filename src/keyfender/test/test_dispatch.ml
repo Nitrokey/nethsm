@@ -88,7 +88,7 @@ let health_state_ok () =
 let provision_json = {| {
   "unlockPassphrase": "UnlockPassphrase",
   "adminPassphrase": "Administrator",
-  "time": "2018-10-30T11:20:50Z"
+  "systemTime": "2018-10-30T11:20:50Z"
 } |}
 
 let provision_ok () =

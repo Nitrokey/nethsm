@@ -79,13 +79,13 @@ let decode_passphrase json =
   valid_passphrase ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
 
-type provision_req = { unlockPassphrase : string ; adminPassphrase : string ; time : string }[@@deriving yojson]
+type provision_req = { unlockPassphrase : string ; adminPassphrase : string ; systemTime : string }[@@deriving yojson]
 
 let decode_provision_req json =
   to_ocaml provision_req_of_yojson json >>= fun b ->
   valid_passphrase ~name:"unlockPassphrase" b.unlockPassphrase >>= fun () ->
   valid_passphrase ~name:"adminPassphrase" b.adminPassphrase >>= fun () ->
-  decode_time b.time >>| fun time ->
+  decode_time b.systemTime >>| fun time ->
   (b.unlockPassphrase, b.adminPassphrase, time)
 
 type ip = Ipaddr.V4.t
