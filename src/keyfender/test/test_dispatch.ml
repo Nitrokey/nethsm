@@ -983,6 +983,15 @@ let operator_keys_key_decrypt () =
     | _ -> false
   end
 
+let operator_keys_key_decrypt_fails () =
+  "POST on /keys/keyID/decrypt fails"
+  @? begin
+  let hsm_state = hsm_with_key ~mode:Keyfender.Json.Sign () in
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let sign_request =
   Printf.sprintf {|{ mode: "PKCS1", message: "%s"}|}
     (Base64.encode_string message)
@@ -1005,6 +1014,51 @@ let operator_keys_key_sign () =
                 match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
                 | Some msg -> String.equal (Cstruct.to_string msg) message
                 | None -> false
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let operator_keys_key_sign_fails () =
+  "POST on /keys/keyID/sign fails"
+  @? begin
+    let hsm_state = hsm_with_key ~mode:Keyfender.Json.Decrypt () in
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_sign_and_decrypt () =
+  "POST on /keys/keyID/decrypt succeeds with sign and decrypt key"
+  @? begin
+  let hsm_state = hsm_with_key ~mode:Keyfender.Json.SignAndDecrypt () in
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
+    | _, Some (`OK, _, `String data, _) ->
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "decrypted", `String decrypted ] ->
+          begin match Base64.decode decrypted with
+            | Error _ -> false
+            | Ok decoded ->
+              String.equal message decoded &&
+              (match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+               | _, Some (`OK, _, `String data, _) ->
+                 begin match Yojson.Safe.from_string data with
+                   | `Assoc [ "signature", `String signature ] ->
+                     begin match Base64.decode signature with
+                       | Error _ -> false
+                       | Ok decoded ->
+                         match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
+                         | Error _ -> false
+                         | Ok `RSA private_key ->
+                           let key = Mirage_crypto_pk.Rsa.pub_of_priv private_key in
+                           match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
+                           | Some msg -> String.equal (Cstruct.to_string msg) message
+                           | None -> false
+                     end
+                   | _ -> false
+                 end
+               | _ -> false)
           end
         | _ -> false
       end
@@ -1209,7 +1263,10 @@ let () =
     "/keys/keyID/csr.pem" >:: admin_keys_key_csr_pem;
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
+    "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
+    "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
+    "/keys/keyID/decrypt and /sign" >:: operator_keys_key_sign_and_decrypt;
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_put;
     "/keys/keyID/cert" >:: keys_key_cert_delete;

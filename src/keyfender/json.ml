@@ -147,7 +147,7 @@ type random_req = { length : int }[@@deriving yojson]
 
 type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
 
-type purpose = Sign | Decrypt [@@deriving yojson]
+type purpose = Sign | Decrypt | SignAndDecrypt [@@deriving yojson]
 
 let purpose_of_yojson = function
   | `String _ as s -> purpose_of_yojson (`List [s])

@@ -36,7 +36,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let purpose = match Uri.get_query_param rd.Webmachine.Rd.uri "purpose" with
       | Some "sign" -> Ok Json.Sign
-      | Some "encrypt" -> Ok Json.Decrypt
+      | Some "decrypt" -> Ok Json.Decrypt
+      | Some "signanddecrypt" -> Ok Json.SignAndDecrypt
       | _ -> Error "Request is missing valid purpose."
       in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with

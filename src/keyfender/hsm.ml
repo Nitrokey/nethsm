@@ -950,7 +950,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
       | Ok encrypted_data ->
         let encrypted_cs = Cstruct.of_string encrypted_data in
-        if key_data.purpose = Decrypt then
+        match key_data.purpose with
+         | Decrypt | SignAndDecrypt ->
           let dec_cs_opt =
             match decrypt_mode with
             | Json.Raw ->
@@ -964,17 +965,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
             | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
           in
-          match dec_cs_opt with
-          | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
-          | Some cs ->
-            Metrics.key_op `Decrypt;
-            (* ignore potential write error *)
-            let open Lwt.Infix in
-            let key_data' = { key_data with operations = succ key_data.operations } in
-            encode_and_write t id key_data' >|= fun _ ->
-            Ok (Base64.encode_string @@ Cstruct.to_string cs)
-        else
-          Lwt.return (Error (Bad_request, "Key purpose is not encrypt."))
+          begin match dec_cs_opt with
+            | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
+            | Some cs ->
+              Metrics.key_op `Decrypt;
+              (* ignore potential write error *)
+              let open Lwt.Infix in
+              let key_data' = { key_data with operations = succ key_data.operations } in
+              encode_and_write t id key_data' >|= fun _ ->
+              Ok (Base64.encode_string @@ Cstruct.to_string cs)
+          end
+        | Sign ->
+          Lwt.return (Error (Bad_request, "Key purpose is not decrypt."))
 
     module Pss_md5 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.MD5)
     module Pss_sha1 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA1)
@@ -993,8 +995,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
       | Ok to_sign ->
         let to_sign_cs = Cstruct.of_string to_sign in
-        if key_data.purpose = Sign then
-          try
+        match key_data.purpose with
+        | Sign | SignAndDecrypt ->
+          begin try
             let signature =
               match sign_mode with
               | Json.PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs
@@ -1013,7 +1016,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             Ok (Base64.encode_string @@ Cstruct.to_string signature)
           with Mirage_crypto_pk.Rsa.Insufficient_key ->
             Lwt.return (Error (Bad_request, "Signing failure."))
-        else
+          end
+        | Decrypt ->
           Lwt.return (Error (Bad_request, "Key purpose is not sign."))
 
     let list_digest t =
