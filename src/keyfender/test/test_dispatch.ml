@@ -846,7 +846,7 @@ let keys_post_pem () =
   | _ -> false
   end
 
-let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048 }|}
+let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048 }|}
 
 let keys_generate () =
   "POST on /keys/generate succeeds"
@@ -857,7 +857,7 @@ let keys_generate () =
   end
 
 let keys_generate_invalid_id () =
-  let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
+  let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -868,7 +868,7 @@ let keys_generate_invalid_id () =
   end
 
 let keys_generate_invalid_id_length () =
-  let generate_json = {|{ purpose: "Encrypt", algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
+  let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -894,7 +894,7 @@ q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 -----END RSA PRIVATE KEY-----
 |}
 
-let hsm_with_key ?(mode = Keyfender.Json.Encrypt) () =
+let hsm_with_key ?(mode = Keyfender.Json.Decrypt) () =
   let state = operational_mock () in
   Lwt_main.run (Hsm.Key.add_pem state mode ~id:"keyID" test_key_pem >|= function
   | Ok () -> state

@@ -950,7 +950,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
       | Ok encrypted_data ->
         let encrypted_cs = Cstruct.of_string encrypted_data in
-        if key_data.purpose = Encrypt then
+        if key_data.purpose = Decrypt then
           let dec_cs_opt =
             match decrypt_mode with
             | Json.Raw ->

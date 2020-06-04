@@ -340,7 +340,7 @@ types:
           description: Precondition failed (NitroHSM was not <i>Unlocked</i>).
 
 /keys/{KeyID}:
-    description: "Role: <b>R-Operator</b> can GET and POST, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /encrypt."
+    description: "Role: <b>R-Operator</b> can GET and POST, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /decrypt."
     get:
       description: Retrieve the public key.
       securedBy: basic # R-Operator or R-Administrator
