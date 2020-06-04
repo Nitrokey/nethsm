@@ -497,7 +497,7 @@ let get_config_tls_cert_pem () =
   end
 
 let put_config_tls_cert_pem () =
-  "post tls cert pem file succeeds"
+  "put tls cert pem file succeeds"
   @? begin
   let headers = admin_headers in
   match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
@@ -505,7 +505,7 @@ let put_config_tls_cert_pem () =
     begin
       let content_type = "application/x-pem-file" in
       match request ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String body) "/config/tls/cert.pem" with
-      | _, Some (`No_content, _, _, _) -> true
+      | _, Some (`Created, _, _, _) -> true
       | _ -> false
     end
   | _ -> false
@@ -708,7 +708,7 @@ let user_operator_add () =
   "PUT on /users/op succeeds"
   @? begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
-  | _, Some (`No_content, _, _, _) -> true
+  | _, Some (`Created, _, _, _) -> true
   | _ -> false
   end
 

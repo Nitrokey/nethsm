@@ -75,7 +75,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (user : Json.user_req) =
         Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-        | Ok _id -> Wm.continue true rd
+        | Ok _id -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
         | Error e -> Endpoint.respond_error e rd
       in
       let (>>==) = Rresult.R.bind in

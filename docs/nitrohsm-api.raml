@@ -161,7 +161,7 @@ types:
           adminPassphrase: "This is my administrator passphrase"
           systemTime: "2018-10-30T11:20:50Z"
     responses:
-      200:
+      204:
         description: Provisioning was successful, NitroHSM is <i>Operational</i> now.
       400:
         description: Malformed request data (e.g. malformed time, weak passphrase).
@@ -179,7 +179,7 @@ types:
         example:
           passphrase: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
     responses:
-      200:
+      204:
         description: Unlock was successful, NitroHSM is <i>Operational</i> now.
       403:
         description: Unlock failed (access denied).
@@ -378,7 +378,7 @@ types:
               primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
               publicExponent: "w367rg90jhj0asdf98gz"
       responses:
-        200:
+        204:
           description: Successful import of a private key.
         400:
           description: Bad request (specified properties are invalid).
@@ -394,7 +394,7 @@ types:
       description: Delete a pair of public and private key.
       securedBy: basic # R-Administrator
       responses:
-        200:
+        204:
           description: Key was successfully deleted.
         401:
           description: Authentication required but none provided.
@@ -696,7 +696,7 @@ types:
               35mqzHn+FjWq0eAtpzhO5Q==
               -----END PGP PRIVATE KEY BLOCK-----
         responses:
-          200:
+          201:
             description: Successful import of a certificate.
           401:
             description: Authentication required but none provided.
@@ -710,7 +710,7 @@ types:
         description: Delete the certificate.
         securedBy: basic # R-Administrator
         responses:
-          200:
+          204:
             description: Successful deletion of a certificate.
           401:
             description: Authentication required but none provided.
@@ -793,7 +793,7 @@ types:
         type: User
         example: { realName: "Jane User", role: "Administrator", passphrase: "Very secret" }
     responses:
-      200:
+      201:
         description: Successful creation of user.
       400:
         description: Bad request (specified properties are invalid, e.g. weak passphrase).
@@ -809,7 +809,7 @@ types:
     description: Delete a user from keyfender.
     securedBy: basic # R-Administrator
     responses:
-      200:
+      204:
         description: Successful deletion of user.
       401:
         description: Authentication required but none provided.
@@ -832,7 +832,7 @@ types:
             passphrase: Passphrase
           example: { "passphrase": "Some cool new passphrase" }
       responses:
-        200:
+        204:
           description: Successful change of passphrase.
         400:
           description: Bad request - weak passphrase.
@@ -858,7 +858,7 @@ types:
           example:
             passphrase: "This is my unlock passphrase"
       responses:
-        200:
+        204:
           description: Successful change of passphrase.
         400:
           description: Bad request - weak passphrase.
@@ -900,7 +900,7 @@ types:
           example:
             status: "on"
       responses:
-        200:
+        204:
           description: Successful change of unattended boot mode.
         400:
           description: Bad request - invalid status setting.
@@ -1017,7 +1017,7 @@ types:
               35mqzHn+FjWq0eAtpzhO5Q==
               -----END CERTIFICATE-----
         responses:
-          200:
+          201:
             description: Successfully set certificate.
           401:
             description: Authentication required but none provided.
@@ -1105,7 +1105,7 @@ types:
             netmask: 255.255.255.0
             gateway: 10.0.0.1
       responses:
-        200:
+        204:
           description: Succesful update of network configuration.
         400:
           description: Bad request - invalid input format.
@@ -1155,7 +1155,7 @@ types:
             port: 514
             logLevel: info
       responses:
-        200:
+        204:
           description: Succesful update of logging configuration.
         400:
           description: Bad request - invalid input format.
@@ -1176,7 +1176,7 @@ types:
           example:
             passphrase: "This is my backup passphrase"
       responses:
-        200:
+        204:
           description: Successful change of passphrase.
         400:
           description: Bad request - weak passphrase.
@@ -1215,7 +1215,7 @@ types:
           example:
             time: "2018-10-30T11:20:50Z"
       responses:
-        200:
+        204:
           description: Succesful update of system time.
         400:
           description: Bad request - invalid input format.
@@ -1258,7 +1258,7 @@ types:
       description: Reboot NitroHSM.
       securedBy: basic # R-Administrator
       responses:
-        200:
+        204:
           description: About to reboot NitroHSM.
         401:
           description: Authentication required but none provided.
@@ -1269,7 +1269,7 @@ types:
       description: Shut down NitroHSM.
       securedBy: basic # R-Administrator
       responses:
-        200:
+        204:
           description: About to shut down NitroHSM.
         401:
           description: Authentication required but none provided.
@@ -1280,7 +1280,7 @@ types:
       description: Reset NitroHSM to factory settings.
       securedBy: basic # R-Administrator
       responses:
-        200:
+        204:
           description: About to reset NitroHSM.
         401:
           description: Authentication required but none provided.
@@ -1315,7 +1315,7 @@ types:
       securedBy: basic # R-Administrator
       description: Commit update of NitroHSM software.
       responses:
-        200:
+        204:
           description: About to update NitroHSM.
         401:
           description: Authentication required but none provided.
@@ -1328,7 +1328,7 @@ types:
       securedBy: basic # R-Administrator
       description: Cancel update of NitroHSM software.
       responses:
-        200:
+        204:
           description: Update successfully cancelled.
         401:
           description: Authentication required but none provided.
@@ -1362,7 +1362,7 @@ types:
       body:
         application/octet-stream: {"encrypted backup"}
       responses:
-        200:
+        204:
           description: Successful restore from backup data.
         412:
           description: Precondition failed (NitroHSM was not <i>Unprovisioned</i>).
