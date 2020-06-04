@@ -42,7 +42,7 @@ let external_arp = arp external_eth
 
 let main =
   let packages = [
-    package ~build:true ~min:"3.7.6" ~max:"3.7.7" "mirage" ;
+    package ~build:true ~min:"3.7.7" ~max:"3.7.8" "mirage" ;
     package "keyfender";
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
