@@ -1,5 +1,10 @@
 open Rresult.R.Infix
 
+type err = { message : string }[@@deriving yojson]
+
+let error message =
+  Yojson.Safe.to_string (err_to_yojson { message })
+
 let nonempty ~name s =
   if String.length s == 0
   then Error (Printf.sprintf "JSON field %s is empty." name)

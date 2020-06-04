@@ -6,9 +6,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   type body = Cohttp_lwt.Body.t
 
-  let respond_error (e, body) rd =
+  let respond_error (e, msg) rd =
     let code = Hsm.error_to_code e in
-    Wm.respond ~body:(`String body) code rd
+    let cc hdr = Cohttp.Header.replace hdr "content-type" "application/json" in
+    let rd' = Webmachine.Rd.with_resp_headers cc rd in
+    Wm.respond ~body:(`String (Json.error msg)) code rd'
 
   let err_to_bad_request ok rd = function
     | Error m -> respond_error (Bad_request, m) rd
@@ -94,7 +96,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method service_available : (bool, body) Wm.op =
       if List.exists (Access.is_in_state hsm_state) allowed_input_states
       then Wm.continue true
-      else Wm.respond (Cohttp.Code.code_of_status `Precondition_failed)
+      else respond_error (Precondition_failed, "Service not available")
   end
 
   class virtual get_json = object(self)

@@ -861,7 +861,9 @@ let keys_generate_invalid_id () =
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
-  | _, Some (`Bad_request, _, _, _) -> true
+  | _, Some (`Bad_request, _, `String reply, _) ->
+    let expected = {|{"message":"ID may only contain alphanumeric characters."}|} in
+    String.equal reply expected
   | _ -> false
   end
 

@@ -12,6 +12,7 @@ module type S = sig
     | Bad_request
     | Precondition_failed
     | Conflict
+    | Too_many_requests
 
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -320,6 +321,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Bad_request
     | Precondition_failed
     | Conflict
+    | Too_many_requests
 
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -330,6 +332,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Bad_request -> `Bad_request
     | Precondition_failed -> `Precondition_failed
     | Conflict -> `Conflict
+    | Too_many_requests -> `Too_many_requests
     in
     Cohttp.Code.code_of_status status
 

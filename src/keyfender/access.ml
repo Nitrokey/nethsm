@@ -55,7 +55,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match decode_auth auth with
       | Ok (username, passphrase) ->
         if not (within_rate_limit ip) then
-          Wm.respond ~body:(`String "Too many requests") 429 rd
+          let cc hdr = Cohttp.Header.replace hdr "content-type" "application/json" in
+          let rd' = Webmachine.Rd.with_resp_headers cc rd in
+          Wm.respond ~body:(`String (Json.error "Too many requests")) 429 rd'
         else
           Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->
           if auth then begin

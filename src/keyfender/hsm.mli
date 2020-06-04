@@ -12,6 +12,7 @@ module type S = sig
     | Bad_request
     | Precondition_failed
     | Conflict
+    | Too_many_requests
 
   (* string is the body, which may contain error message *)
   type error = status_code * string

@@ -29,7 +29,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method !service_available : (bool, Cohttp_lwt.Body.t) Wm.op =
       if within_rate_limit hsm_state
       then super#service_available
-      else Wm.respond (Cohttp.Code.code_of_status `Too_many_requests)
+      else Endpoint.respond_error (Too_many_requests, "Service unavailable: too many requests")
 
     method private of_json json rd =
       let ok passphrase =
