@@ -16,6 +16,7 @@ let host = "localhost"
 let port = "2000"
 let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
+let allowed_request_types = [ "application/json" ; "application/x-pem-file" ]
 
 let get_endpoints meta = 
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> CCString.prefix ~pre:"/" key)
@@ -26,8 +27,18 @@ let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
 (* TODO for each mediatype, set a header, get the example request *)
 let make_req_data req = function
   | "get" -> ""
-  | "post" -> Ezjsonm.(value_to_string (find req ["body"]))
-  | "put" -> Ezjsonm.(value_to_string (find req ["body"]))
+  | "post" 
+  | "put" -> 
+    begin
+      let body = Ezjsonm.find req ["body"] in
+      let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
+      let f (mediatype, _req) =
+        if not @@ List.mem mediatype allowed_request_types
+        then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype
+      in
+      let _s = List.iter f mediatypes in
+      Ezjsonm.(value_to_string body)
+    end
   | m -> Printf.printf "method %s not allowed" m; ""
 
 let rec print_path (path, meta) =
