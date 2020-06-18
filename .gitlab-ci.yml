@@ -1,0 +1,18 @@
+image: "ocaml/opam2:debian-10-ocaml-4.10"
+
+library_test:
+  script:
+    - cd ~/opam-repository && git pull && opam update && cd -
+    - opam install depext
+    - cd src/keyfender
+    - opam pin add -k path --no-action --yes keyfender .
+    - opam depext --yes --update keyfender
+    - opam pin remove --no-action keyfender
+    - opam install --yes --deps-only -t .
+    - dune runtest
+
+make_keyfender:
+  script:
+    - cd ~/opam-repository && git pull && opam update && cd -
+    - sudo apt-get -y install libgmp-dev m4 build-essential git libseccomp-dev linux-libc-dev pkg-config
+    - make build-keyfender
