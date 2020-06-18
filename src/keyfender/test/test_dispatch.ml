@@ -852,7 +852,11 @@ let keys_generate () =
   "POST on /keys/generate succeeds"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
-  | _, Some (`Created, _, _, _) -> true
+  | _, Some (`Created, headers, _, _) ->
+    begin match Cohttp.Header.get headers "location" with
+    | None -> false
+    | Some loc -> (* /api/v1/keys/<keyid> *) List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+    end
   | _ -> false
   end
 

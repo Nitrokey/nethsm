@@ -104,7 +104,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! create_path rd =
       let path = Hsm.generate_id () in
-      let rd' = { rd with req_headers = Cohttp.Header.add rd.req_headers "new_id" path } in
+      let uri =
+        let parts = Astring.String.cuts ~sep:"/" (Uri.path rd.uri) in
+        let without_last = match List.rev parts with
+          | _::tl -> List.rev tl
+          | x -> x
+        in
+        Uri.with_path rd.uri (Astring.String.concat ~sep:"/" without_last)
+      in
+      let rd' = { rd with req_headers = Cohttp.Header.add rd.req_headers "new_id" path ; uri } in
       Wm.continue path rd'
 
     method! allowed_methods rd =
