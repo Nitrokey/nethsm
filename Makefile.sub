@@ -133,6 +133,11 @@ $(S_KEYFENDER): $(KEYFENDER_INSTALL)
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
 
+.PHONY: test-keyfender-lib
+test-keyfender-lib: .stamp-prepare
+	cd src/keyfender && opam install --deps-only -t .
+	cd src/keyfender && dune runtest
+
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
 #

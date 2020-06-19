@@ -1,13 +1,14 @@
 Available targets:
 
-prepare:         Initialise Git submodules required for MDOE,
-                 build and install keyfender OPAM dependencies
-build:           Build full system
-build-keyfender: Build keyfender library and unikernel only
-run:             Run the system
-clean:           Clean up everything except 'prepare' step
-clean-keyfender: Clean up keyfender library and unikernel only
-distclean:       Clean up everything, allows changing MODE
+prepare:            Initialise Git submodules required for MODE,
+                    build and install keyfender OPAM dependencies
+build:              Build full system
+build-keyfender:    Build keyfender library and unikernel only
+test-keyfender-lib: Test keyfender library
+run:                Run the system
+clean:              Clean up everything except 'prepare' step
+clean-keyfender:    Clean up keyfender library and unikernel only
+distclean:          Clean up everything, allows changing MODE
 
 Available MODEs:
 

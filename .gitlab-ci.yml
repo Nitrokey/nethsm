@@ -3,13 +3,7 @@ image: "ocaml/opam2:debian-10-ocaml-4.10"
 library_test:
   script:
     - cd ~/opam-repository && git pull && opam update && cd -
-    - opam install depext
-    - cd src/keyfender
-    - opam pin add -k path --no-action --yes keyfender .
-    - opam depext --yes --update keyfender
-    - opam pin remove --no-action keyfender
-    - opam install --yes --deps-only -t .
-    - dune runtest
+    - make test-keyfender-lib
 
 make_keyfender:
   script:
