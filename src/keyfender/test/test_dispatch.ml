@@ -716,7 +716,11 @@ let user_operator_add () =
   "PUT on /users/op succeeds"
   @? begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
-  | _, Some (`Created, _, _, _) -> true
+  | _, Some (`Created, headers, _, _) ->
+        begin match Cohttp.Header.get headers "location" with
+        | None -> false
+        | Some loc -> String.equal loc "/api/v1/users/op"
+        end
   | _ -> false
   end
 
