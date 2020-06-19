@@ -235,7 +235,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok subject ->
         Hsm.Key.csr_pem hsm_state ~id subject >>= function
         | Error e -> Endpoint.respond_error e rd
-        | Ok csr_pem -> Wm.respond 200 ~body:(`String csr_pem) rd
+        | Ok csr_pem -> 
+          let rd' = { rd with resp_body = `String csr_pem } in
+          Wm.continue true rd'
 
     method! resource_exists rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -279,7 +281,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Key.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
         | Ok decrypted ->
           let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
-          Wm.respond 200 ~body:(`String json) rd
+          let rd' = { rd with resp_body = `String json } in
+          Wm.continue true rd'
         | Error e -> Endpoint.respond_error e rd
       in
       Json.decode Json.decrypt_req_of_yojson content |> Endpoint.err_to_bad_request ok rd
@@ -317,7 +320,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         Hsm.Key.sign hsm_state ~id sign.mode sign.message >>= function
         | Ok signature ->
           let json = Yojson.Safe.to_string (`Assoc [ "signature", `String signature ]) in
-          Wm.respond 200 ~body:(`String json) rd
+          let rd' = { rd with resp_body = `String json } in
+          Wm.continue true rd'
         | Error e -> Endpoint.respond_error e rd
       in
       Json.decode Json.sign_req_of_yojson content |> Endpoint.err_to_bad_request ok rd

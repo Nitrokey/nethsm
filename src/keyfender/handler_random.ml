@@ -12,7 +12,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok ({ Json.length } : Json.random_req ) =
         let data = Hsm.random length in
         let json = Yojson.Safe.to_string (`Assoc [ "random" , `String data ]) in
-        Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd
+        let rd' = { rd with resp_body = `String json } in
+        Wm.continue true rd'
       in
       Json.to_ocaml Json.random_req_of_yojson json |> Endpoint.err_to_bad_request ok rd
   end

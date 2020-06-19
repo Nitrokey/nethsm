@@ -76,7 +76,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok changes ->
         let json = Yojson.Safe.to_string (`Assoc [ "releaseNotes", `String changes ]) in
         let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
-        Wm.respond ~body:(`String json) (Cohttp.Code.code_of_status `OK) rd'
+        let rd'' = { rd' with resp_body = `String json } in
+        Wm.continue true rd''
       | Error e -> Endpoint.respond_error e rd
 
     method! content_types_accepted =
