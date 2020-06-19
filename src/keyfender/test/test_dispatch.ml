@@ -505,7 +505,11 @@ let put_config_tls_cert_pem () =
     begin
       let content_type = "application/x-pem-file" in
       match request ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String body) "/config/tls/cert.pem" with
-      | _, Some (`Created, _, _, _) -> true
+      | _, Some (`Created, headers, _, _) ->
+        begin match Cohttp.Header.get headers "location" with
+        | None -> false
+        | Some loc -> String.equal loc "/api/v1/config/tls/cert.pem"
+        end
       | _ -> false
     end
   | _ -> false
