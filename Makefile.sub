@@ -138,6 +138,10 @@ test-keyfender-lib: .stamp-prepare
 	cd src/keyfender && opam install --deps-only -t .
 	cd src/keyfender && dune runtest
 
+.PHONY: e2e-tests
+e2e-tests: $(KEYFENDER)
+	cd src/tests/generated && ./test.sh
+
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
 #

@@ -9,3 +9,8 @@ make_keyfender:
   script:
     - cd ~/opam-repository && git pull && opam update && cd -
     - make build-keyfender
+
+e2e_tests:
+  script:
+    - cd ~/opam-repository && git pull && opam update && cd -
+    - make e2e-tests

@@ -5,6 +5,7 @@ prepare:            Initialise Git submodules required for MODE,
 build:              Build full system
 build-keyfender:    Build keyfender library and unikernel only
 test-keyfender-lib: Test keyfender library
+e2e-tests:          Test the API via curl.
 run:                Run the system
 clean:              Clean up everything except 'prepare' step
 clean-keyfender:    Clean up keyfender library and unikernel only
