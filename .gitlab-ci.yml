@@ -14,5 +14,4 @@ library_test:
 make_keyfender:
   script:
     - cd ~/opam-repository && git pull && opam update && cd -
-    - sudo apt-get -y install libgmp-dev m4 build-essential git libseccomp-dev linux-libc-dev pkg-config
     - make build-keyfender

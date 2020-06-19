@@ -82,8 +82,10 @@ ifeq ($(XMODE),muen)
 	git -C src/muen/muen submodule update --init --depth 1
 endif
 endif
-	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
+	opam install depext
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
+	opam depext --yes --update keyfender mirage solo5-bindings-$(TARGET) mirage-solo5
+	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
 	opam install -y --deps-only keyfender
 	touch $@
 
