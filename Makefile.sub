@@ -77,7 +77,7 @@ endif
 
 .stamp-prepare:
 ifneq ($(REQUIRED_SUBMODULES),)
-	git submodule update --init -- $(REQUIRED_SUBMODULES)
+	git submodule update --init --depth 1 -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
 	git -C src/muen/muen submodule update --init --depth 1
 endif
