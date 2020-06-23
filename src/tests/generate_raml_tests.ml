@@ -18,14 +18,26 @@ let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let allowed_request_types = [ "application/json" ; "application/x-pem-file" ; "application/octet-stream" ]
 
+let escape s =
+  let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
+  let l = String.length s' in
+  (* second part triggers Fatal error: exception (Invalid_argument "String.sub / Bytes.sub") *)
+  if l > 4 && String.sub s' 0 2 = "\\\"" (*&& String.sub s' (l-4) l = "\\\""*)
+  (* if its a string, remove escapes *)
+  then begin
+    let s' = String.sub s' 2 (l-4) in
+    "\"" ^ s' ^ "\""
+  end
+  else
+    "\"" ^ s' ^ "\""
+  ;;
+
 let get_endpoints meta = 
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> CCString.prefix ~pre:"/" key)
 
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
-(* TODO for each mediatype, set a header, get the example request *)
-(* TODO escape the request data *)
 let make_req_data req = function
   | "get" -> [""]
   | "post" 
@@ -35,7 +47,7 @@ let make_req_data req = function
       let f (mediatype, req') =
         if not @@ List.mem mediatype allowed_request_types
         then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
-        "--data " ^ Ezjsonm.(value_to_string @@ find req' ["example"])
+        "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
       in
       List.map f mediatypes
     end
