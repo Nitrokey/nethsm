@@ -1257,6 +1257,10 @@ types:
     post:
       description: Reboot NitroHSM.
       securedBy: basic # R-Administrator
+      body:
+        application/json:
+          example:
+            {}
       responses:
         204:
           description: About to reboot NitroHSM.
@@ -1268,6 +1272,10 @@ types:
     post:
       description: Shut down NitroHSM.
       securedBy: basic # R-Administrator
+      body:
+        application/json:
+          example:
+            {}
       responses:
         204:
           description: About to shut down NitroHSM.
@@ -1279,6 +1287,10 @@ types:
     post:
       description: Reset NitroHSM to factory settings.
       securedBy: basic # R-Administrator
+      body:
+        application/json:
+          example:
+            {}
       responses:
         204:
           description: About to reset NitroHSM.
@@ -1291,7 +1303,9 @@ types:
       securedBy: basic # R-Administrator
       description: Update NitroHSM software.
       body:
-        application/octet-stream: "encrypted backup"
+        application/octet-stream:
+          example:
+            "encrypted backup"
       # Add extra internal state for being in Update? nice to have
       responses:
         200:
@@ -1314,6 +1328,10 @@ types:
     post:
       securedBy: basic # R-Administrator
       description: Commit update of NitroHSM software.
+      body:
+        application/json:
+          example:
+            {}
       responses:
         204:
           description: About to update NitroHSM.
@@ -1327,6 +1345,10 @@ types:
     post:
       securedBy: basic # R-Administrator
       description: Cancel update of NitroHSM software.
+      body:
+        application/json:
+          example:
+            {}
       responses:
         204:
           description: Update successfully cancelled.
@@ -1342,11 +1364,15 @@ types:
     post:
       securedBy: basic # R-Backup
       description: Back up the key store to a backup file.
+      body:
+        application/json:
+          example:
+            {}
       responses:
         200:
           description: Successful retrieval of backup data.
           body:
-            application/octet-stream: {"encrypted backup"}
+            application/octet-stream: "encrypted backup"
         401:
           description: Authentication required but none provided.
         403:
@@ -1360,7 +1386,8 @@ types:
         backupPassphrase: Passphrase
         systemTime: RFC3339 (UTC only)
       body:
-        application/octet-stream: {"encrypted backup"}
+        application/octet-stream: 
+          example: "encrypted backup"
       responses:
         204:
           description: Successful restore from backup data.
