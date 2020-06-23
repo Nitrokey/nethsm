@@ -14,6 +14,7 @@ type raml = { header ..;
 
 let host = "localhost"
 let port = "8080"
+let prefix = "api/v1"
 let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let allowed_request_types = [ "application/json" ; "application/x-pem-file" ; "application/octet-stream" ]
@@ -47,7 +48,8 @@ let make_req_data req = function
       let f (mediatype, req') =
         if not @@ List.mem mediatype allowed_request_types
         then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
-        "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+        let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
+        header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
       in
       List.map f mediatypes
     end
@@ -66,7 +68,7 @@ let rec print_path (path, meta) =
     let p (meth, req) =
       if List.mem meth allowed_methods (* skips descriptions *)
       then begin 
-        let cmd = Printf.sprintf "curl http://%s:%s%s -X %s" host port path (String.uppercase_ascii meth) in
+        let cmd = Printf.sprintf "curl http://%s:%s/%s%s -X %s" host port prefix path (String.uppercase_ascii meth) in
         List.iter (Printf.printf "%s %s \n\n" cmd) (make_req_data req meth);
       end
     in
