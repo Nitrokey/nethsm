@@ -3,15 +3,6 @@
     dune exec ./generate_raml_tests.exe
 *)
 
-(*
-  Data structure:
-
-type raml = { header ..;
-  types ..;
-  endpoints ..}
-
-*)
-
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
@@ -39,20 +30,20 @@ let get_endpoints meta =
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
+let make_post_data req = 
+  let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
+  let f (mediatype, req') =
+    if not @@ List.mem mediatype allowed_request_types
+    then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
+    let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
+    header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+  in
+  List.map f mediatypes
+ 
 let make_req_data req = function
   | "get" -> [""]
   | "post" 
-  | "put" -> 
-    begin
-      let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
-      let f (mediatype, req') =
-        if not @@ List.mem mediatype allowed_request_types
-        then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
-        let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-        header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
-      in
-      List.map f mediatypes
-    end
+  | "put" -> make_post_data req
   | m -> Printf.printf "method %s not allowed" m; [""]
 
 let rec print_path (path, meta) =
@@ -79,13 +70,9 @@ let example = CCIO.with_in raml CCIO.read_all
   |> Yaml.of_string
   |> Stdlib.Result.get_ok
 
-(*let () = Sexplib.Sexp.pp_hum Format.std_formatter @@ Yaml.sexp_of_value example*)
-let (endpoints, metadata) = get_endpoints example 
-
-let types = List.assoc "types" metadata
-
 (*
-let () = List.iter print_path [List.nth endpoints 10]
+let (endpoints, metadata) = get_endpoints example 
+let types = List.assoc "types" metadata
 *)
 
 (* all paths, start from empty root *)
