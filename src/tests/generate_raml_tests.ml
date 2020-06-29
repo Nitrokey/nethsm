@@ -58,22 +58,29 @@ let print_method path (meth, req) =
   then begin 
     let reqs = make_req_data req meth in
     let cmd = Printf.sprintf "curl http://%s:%s/%s%s -X %s" host port prefix path (String.uppercase_ascii meth) in
-    List.iter (Printf.printf "%s %s \n\n" cmd) reqs;
+    let p req =
+      Printf.printf "%s %s \n\n" cmd req(*;
+      let outfile = Printf.sprintf "generated%s_%s" path meth in
+      write outfile cmd*)
+    in
+    List.iter p reqs;
   end
 
-let print_methods (path, meta) =
-    let methods = Ezjsonm.get_dict meta in
-    List.iter (print_method path) methods
+let print_methods (path, methods) =
+  List.iter (print_method path) methods
 
-let rec print_subpaths (path, meta) =
+let rec subpaths (path, meta) =
   let (endpoints, _) = get_endpoints meta in
   if endpoints = [] 
-  then print_methods (path, meta)
-  else List.iter (fun (subpath, m) -> print_subpaths (path ^ subpath, m)) endpoints
+  then [ (path, Ezjsonm.get_dict meta) ]
+  else List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
 
 let example = CCIO.with_in raml CCIO.read_all
   |> Yaml.of_string
   |> Stdlib.Result.get_ok
 
 (* all paths, start from empty root *)
-let () = print_subpaths ("", example)
+let () = 
+  let paths = subpaths ("", example) in
+  List.iter (fun (a, _b) -> Printf.printf "%s\n" a ) paths;
+  List.iter print_methods paths;
