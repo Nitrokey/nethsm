@@ -56,20 +56,28 @@ XMODE := $(shell cat .stamp-mode 2>/dev/null)
 # NO_GIT.
 REQUIRED_SUBMODULES :=
 
+DEPS :=
+
 ifeq ($(XMODE),)
 XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
+DEPS :=	solo5-bindings-$(TARGET) mirage-solo5
 KEYFENDER_CARGS ?=
 ifeq ($(NO_GIT),)
 REQUIRED_SUBMODULES += src/git
 endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
+DEPS :=	solo5-bindings-$(TARGET) mirage-solo5
 KEYFENDER_CARGS ?= --retry=true
 REQUIRED_SUBMODULES += src/git src/zlib src/e2fsprogs src/muen/muen \
     src/u-root/src/github.com/u-root/u-root
+else ifeq ($(XMODE),darwin-dev)
+TARGET := unix
+DEPS :=
+KEYFENDER_CARGS ?=
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -89,8 +97,8 @@ endif
 endif
 	opam install -y depext
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
-	opam depext --yes --update keyfender mirage solo5-bindings-$(TARGET) mirage-solo5
-	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
+	opam depext --yes --update keyfender mirage $(DEPS)
+	opam install -y mirage $(DEPS)
 	opam install -y --deps-only keyfender
 	touch $@
 
