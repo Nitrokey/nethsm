@@ -30,6 +30,13 @@ let get_endpoints meta =
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
+
+let write file content =
+  let oc = open_out file in
+  Printf.fprintf oc "%s\n" content;
+  close_out oc;
+  ()
+
 let make_post_data req = 
   let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
   let f (mediatype, req') =
@@ -46,15 +53,7 @@ let make_req_data req = function
   | "put" -> make_post_data req
   | m -> Printf.printf "method %s not allowed" m; [""]
 
-let rec print_path (path, meta) =
-  let (endpoints, _metadata) = get_endpoints meta in
-  if endpoints <> [] 
-  then List.iter (fun (subpath, m) -> print_path (path ^ subpath, m)) endpoints
-  else begin 
-    (*
-    Printf.printf "Path is %s\n" path;
-    Printf.printf "As YAML:\n%s\n=======\n" (Yaml.to_string_exn meta);
-    *)
+let print_methods (path, meta) =
     let methods = Ezjsonm.get_dict meta in
     let p (meth, req) =
       if List.mem meth allowed_methods (* skips descriptions *)
@@ -64,16 +63,16 @@ let rec print_path (path, meta) =
       end
     in
     List.iter p methods
-  end
+
+let rec print_path (path, meta) =
+  let (endpoints, _) = get_endpoints meta in
+  if endpoints = [] 
+  then print_methods (path, meta)
+  else List.iter (fun (subpath, m) -> print_path (path ^ subpath, m)) endpoints
 
 let example = CCIO.with_in raml CCIO.read_all
   |> Yaml.of_string
   |> Stdlib.Result.get_ok
-
-(*
-let (endpoints, metadata) = get_endpoints example 
-let types = List.assoc "types" metadata
-*)
 
 (* all paths, start from empty root *)
 let () = print_path ("", example)
