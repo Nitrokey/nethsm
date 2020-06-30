@@ -5,7 +5,7 @@ set -ex
 test_one () {
     "../../../keyfender/_build/default/test/test_server.exe" &
     PID=$!
-    sleep 1
+    sleep 2
     ./setup.sh || (kill $PID ; exit 3)
     ./command.sh || (kill $PID ; exit 4)
     kill $PID
