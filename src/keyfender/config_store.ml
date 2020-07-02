@@ -127,20 +127,16 @@ module Make (KV : Mirage_kv.RW) = struct
         String.sub data 0 4, String.sub data 4 4, String.sub data 8 4
       in
       Ipaddr.V4.of_octets route_str >>= fun route ->
-      Ipaddr.V4.of_octets ip_str >>= fun ip ->
+      Ipaddr.V4.of_octets ip_str >>= fun address ->
       Ipaddr.V4.of_octets netmask_str >>= fun netmask ->
-      (try
-         Ok (Ipaddr.V4.Prefix.of_netmask netmask ip)
-       with
-         Ipaddr.Parse_error (err, packet) ->
-         Rresult.R.error_msgf "error %s while parsing netmask %s" err packet) >>= fun prefix ->
+      Ipaddr.V4.Prefix.of_netmask ~netmask ~address >>= fun prefix ->
       (if Ipaddr.V4.compare route Ipaddr.V4.any = 0 then
          Ok None
        else if Ipaddr.V4.Prefix.mem route prefix then
          Ok (Some route)
        else
          Error (`Msg "route not on local network")) >>| fun route' ->
-      (ip, prefix, route')
+      (address, prefix, route')
     | Backup_salt -> Ok (Cstruct.of_string data)
     | Backup_key -> Ok (Cstruct.of_string data)
     | Log_config ->

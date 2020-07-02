@@ -1183,7 +1183,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let tls_csr_pem t subject =
       let open Lwt.Infix in
       certificate_chain t >|= fun (_, _, priv) ->
-      let dn = Json.to_distinguished_name subject in 
+      let dn = Json.to_distinguished_name subject in
       let csr, _ = generate_csr ~dn priv in
       Cstruct.to_string (X509.Signing_request.encode_pem csr)
 
@@ -1198,11 +1198,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let set_network t network =
       let open Lwt_result.Infix in
       Lwt.return (
-        try
-          Ok (Ipaddr.V4.Prefix.of_netmask network.Json.netmask network.ipAddress)
-        with
-          Ipaddr.Parse_error (err, packet) ->
-          Error (Bad_request, Fmt.strf "error %s parsing netmask %s" err packet)) >>= fun prefix ->
+        let netmask = network.Json.netmask
+        and address = network.ipAddress
+        in
+        Rresult.R.reword_error
+          (function `Msg err ->
+             Bad_request, "error parsing network configuration: " ^ err)
+          (Ipaddr.V4.Prefix.of_netmask ~netmask ~address)) >>= fun prefix ->
       let route =
         if Ipaddr.V4.compare network.gateway Ipaddr.V4.any = 0 then
           None

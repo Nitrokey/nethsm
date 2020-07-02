@@ -62,14 +62,15 @@ struct
       in
       connect_git () >>= fun store ->
       Hsm.boot store >>= fun hsm_state ->
-      Hsm.network_configuration hsm_state >>= fun (ip, network, gateway) ->
-      Ext_ipv4.connect ~ip:(network, ip) ?gateway ext_eth ext_arp >>= fun ipv4 ->
+      Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
+      let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
+      Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
       Ext_icmp.connect ipv4 >>= fun icmp ->
       Ext_udp.connect ipv4 >>= fun udp ->
       Ext_tcp.connect ipv4 >>= fun tcp ->
       Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >>= fun ext_stack ->
-      Hsm.Config.log hsm_state >>= fun log ->  
-      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0 
+      Hsm.Config.log hsm_state >>= fun log ->
+      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
       then begin
         let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
         Logs.set_reporter reporter

@@ -4,7 +4,7 @@ let internal_stack =
   let default_internal =
     let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
     let network = Ipaddr.V4.Prefix.make 24 ip in
-    { network = network, ip ; gateway = None }
+    { network = network ; gateway = None }
   in
   generic_stackv4 ~group:"internal" ~config:default_internal
     (netif ~group:"internal" "internal")
@@ -42,12 +42,12 @@ let external_arp = arp external_eth
 
 let main =
   let packages = [
-    package ~build:true ~min:"3.7.7" ~max:"3.7.8" "mirage" ;
+    package ~build:true ~min:"3.8.0" ~max:"3.8.1" "mirage" ;
     package "keyfender";
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
     package "cohttp-mirage";
-    package ~min:"3.7.1" "mirage-runtime";
+    package ~min:"3.8.0" "mirage-runtime";
     package ~min:"2.0.0" "irmin-mirage";
     package ~min:"2.0.0" "irmin-mirage-git";
     package ~sublibs:["mirage"] "logs-syslog";

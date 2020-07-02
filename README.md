@@ -35,7 +35,7 @@ This is the default if a `MODE` is not specified to `make`.
 
 **Requirements:**
 
-Opam >= 2.0.0 and OCaml >= 4.07.0 and mirage >= 3.7.7 is required.
+Opam >= 2.0.0 and OCaml >= 4.08.0 and mirage >= 3.8.0 is required.
 
 ### Building
 
@@ -110,7 +110,7 @@ At a minimum, the following system packages are required:
 build-essential git libseccomp-dev linux-libc-dev pkg-config
 ```
 
-OPAM >= 2.0.0 and OCaml >= 4.07.0 and mirage >= 3.7.7 are required.
+OPAM >= 2.0.0 and OCaml >= 4.08.0 and mirage >= 3.8.0 are required.
 
 **Muen SK**
 
