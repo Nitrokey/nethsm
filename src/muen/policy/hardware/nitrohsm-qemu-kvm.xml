@@ -1,0 +1,155 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- ==========================================
+     Generated with mugenhwcfg (commit v0.5-117-gd63a29e)
+     Linux kernel version: 4.19.0-8-amd64
+     Distribution: Debian GNU/Linux 10 (buster)
+     Product information:
+       Vendor: QEMU
+       Name: Standard PC (Q35 + ICH9, 2009)
+       Product Version: pc-q35-3.1
+     Board information:
+     BIOS information:
+       Vendor: coreboot
+       Version: 4.12
+       Date: 05/12/2020
+     Log:
+       * WARNING *: Skipping invalid IRQ resource for device 0000:00:03.0: None
+       * WARNING *: Skipping invalid IRQ resource for device 0000:00:1f.2: None
+       * WARNING *: Skipping invalid IRQ resource for device 0000:00:1f.3: None
+       * WARNING *: Skipping invalid IRQ resource for device 0000:01:00.0: None
+       * WARNING *: Board information in output description could not be obtained:
+       [Errno 2] No such file or directory: '/sys/devices/virtual/dmi/id/board_vendor'
+     ========================================== -->
+
+
+<hardware>
+  <processor cpuCores="2" speed="3093" vmxTimerRate="5">
+    <cpu apicId="0"/>
+    <cpu apicId="2"/>
+  </processor>
+  <memory>
+    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0000#" size="16#1000#"/>
+    <memoryBlock allocatable="false" name="System RAM" physicalAddress="16#1000#" size="16#0009_f000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#7fe6_0000#"/>
+    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#7ff6_0000#" size="16#000a_0000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#c000_0000#"/>
+  </memory>
+  <devices pciConfigAddress="16#b000_0000#">
+    <device name="system_board">
+      <ioPort end="16#0cf9#" name="reset" start="16#0cf9#"/>
+      <ioPort end="16#0604#" name="pm1a_cnt" start="16#0604#"/>
+      <capabilities>
+        <capability name="systemboard"/>
+        <capability name="pm1a_cnt_slp_typ">7168</capability>
+      </capabilities>
+    </device>
+    <device name="ioapic_1">
+      <memory caching="UC" name="mem1" physicalAddress="16#fec0_0000#" size="16#1000#"/>
+      <capabilities>
+        <capability name="ioapic"/>
+        <capability name="gsi_base">0</capability>
+        <capability name="max_redirection_entry">23</capability>
+        <capability name="source_id">16#ff00#</capability>
+      </capabilities>
+    </device>
+    <device name="iommu_1">
+      <memory caching="UC" name="mmio" physicalAddress="16#fed9_0000#" size="16#1000#"/>
+      <capabilities>
+        <capability name="iommu"/>
+        <capability name="agaw">39</capability>
+        <capability name="fr_offset">544</capability>
+        <capability name="iotlb_invalidate_offset">248</capability>
+      </capabilities>
+    </device>
+    <device name="com_1">
+      <irq name="irq1" number="4"/>
+      <ioPort end="16#03ff#" name="ioport1" start="16#03f8#"/>
+    </device>
+    <device name="host_bridge_1">
+      <description>Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller</description>
+      <pci bus="16#00#" device="16#00#" function="0">
+        <identification classcode="16#0600#" deviceId="16#29c0#" revisionId="16#00#" vendorId="16#8086#"/>
+        <iommuGroup id="0"/>
+      </pci>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b000_0000#" size="16#1000#"/>
+    </device>
+    <device name="vga_compatible_controller_1">
+      <pci bus="16#00#" device="16#01#" function="0">
+        <identification classcode="16#0300#" deviceId="16#1111#" revisionId="16#02#" vendorId="16#1234#"/>
+        <iommuGroup id="1"/>
+      </pci>
+      <memory caching="UC" name="mem1" physicalAddress="16#fd00_0000#" size="16#0100_0000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#fe21_4000#" size="16#1000#"/>
+      <memory caching="UC" name="mem3" physicalAddress="16#000c_0000#" size="16#0002_0000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b000_8000#" size="16#1000#"/>
+    </device>
+    <device name="usb_controller_1">
+      <description>Red Hat, Inc. QEMU XHCI Host Controller</description>
+      <pci bus="16#00#" device="16#03#" function="0">
+        <identification classcode="16#0c03#" deviceId="16#000d#" revisionId="16#01#" vendorId="16#1b36#"/>
+        <iommuGroup id="3"/>
+      </pci>
+      <irq name="irq1" number="20"> <!-- fake legacy IRQ number -->
+       <msi name="msi1"/>
+       <msi name="msi2"/>
+       <msi name="msi3"/>
+       <msi name="msi4"/>
+       <msi name="msi5"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#fe21_0000#" size="16#4000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b001_8000#" size="16#1000#"/>
+    </device>
+    <device name="isa_bridge_1">
+      <description>Intel Corporation 82801IB (ICH9) LPC Interface Controller</description>
+      <pci bus="16#00#" device="16#1f#" function="0">
+        <identification classcode="16#0601#" deviceId="16#2918#" revisionId="16#02#" vendorId="16#8086#"/>
+        <iommuGroup id="4"/>
+      </pci>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b00f_8000#" size="16#1000#"/>
+    </device>
+    <device name="sata_controller_1">
+      <description>Intel Corporation 82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode]</description>
+      <pci bus="16#00#" device="16#1f#" function="2">
+        <identification classcode="16#0106#" deviceId="16#2922#" revisionId="16#02#" vendorId="16#8086#"/>
+        <iommuGroup id="4"/>
+      </pci>
+      <irq name="irq1" number="16"> <!-- fake legacy IRQ number -->
+       <msi name="msi1"/>
+       <msi name="msi2"/>
+       <msi name="msi3"/>
+       <msi name="msi4"/>
+       <msi name="msi5"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#fe21_5000#" size="16#1000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b00f_a000#" size="16#1000#"/>
+      <ioPort end="16#581f#" name="ioport1" start="16#5800#"/>
+    </device>
+    <device name="smbus_1">
+      <description>Intel Corporation 82801I (ICH9 Family) SMBus Controller</description>
+      <pci bus="16#00#" device="16#1f#" function="3">
+        <identification classcode="16#0c05#" deviceId="16#2930#" revisionId="16#02#" vendorId="16#8086#"/>
+        <iommuGroup id="4"/>
+      </pci>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b00f_b000#" size="16#1000#"/>
+      <ioPort end="16#043f#" name="ioport1" start="16#0400#"/>
+    </device>
+    <device name="ethernet_controller_1">
+      <description>Red Hat, Inc. Virtio network device</description>
+      <pci bus="16#01#" device="16#00#" function="0">
+        <identification classcode="16#0200#" deviceId="16#1041#" revisionId="16#01#" vendorId="16#1af4#"/>
+        <iommuGroup id="2"/>
+      </pci>
+      <irq name="irq1" number="18"> <!-- fake legacy IRQ number -->
+       <msi name="msi1"/>
+       <msi name="msi2"/>
+       <msi name="msi3"/>
+       <msi name="msi4"/>
+       <msi name="msi5"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#fe14_0000#" size="16#1000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#fe00_0000#" size="16#4000#"/>
+      <memory caching="UC" name="mem3" physicalAddress="16#fe10_0000#" size="16#0004_0000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#b010_0000#" size="16#1000#"/>
+    </device>
+  </devices>
+</hardware>

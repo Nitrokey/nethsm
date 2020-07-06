@@ -218,7 +218,6 @@ OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
 OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
 OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
 OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
-OBJ_QEMU_GRUB_IMG := $(OBJ_DIR)/grub.img
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/disk.img
 
 $(OBJ_DIR):
@@ -290,7 +289,7 @@ $(OBJ_INITRAMFS): \
 MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
 MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
 MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
-MUEN_S_KEYFENDER_CSPEC := src/muen/policy/component_unikernel.xml
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/component_unikernel.xml
 MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
 MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
 # XXX: Using --bootparams= here is not currently possible without using
@@ -309,7 +308,9 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 $(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
-	    SYSTEM=$(TOP_DIR)/src/muen/policy/nitrohsm_basic_system.xml \
+	    SYSTEM=$(TOP_DIR)/src/muen/policy/xml/nitrohsm_basic_system.xml \
+	    HARDWARE=$(TOP_DIR)/src/muen/policy/hardware/nitrohsm-qemu-kvm.xml \
+	    PLATFORM=$(TOP_DIR)/src/muen/policy/platform/nitrohsm-qemu-kvm.xml \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
 
@@ -324,11 +325,8 @@ $(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
 $(OBJ_QEMU_DISK_IMG): $(MUEN_PACK_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.sh
 	tools/muen-mkdiskimage.sh $@ $< $(OBJ_DATA_DIR)
 
-$(OBJ_QEMU_GRUB_IMG): tools/grub-qemu.cfg tools/grub-mkqemu.sh
-	tools/grub-mkqemu.sh $@ $<
-
 .PHONY: build
-build: $(OBJ_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG)
+build: $(OBJ_QEMU_DISK_IMG)
 
 RUN_DIR := $(TOP_DIR)/run
 RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
@@ -341,8 +339,12 @@ $(RUN_DIR)/screenrc:
 	echo "logfile $(RUN_DIR)/emulate.out" >$@
 
 QEMU ?= qemu-system-x86_64
+
+# Built manually, see coreboot/README.md
+QEMU_BIOS_IMG := $(TOP_DIR)/coreboot/qemu/coreboot.rom
+
 QEMU_OPTS := \
-    -kernel $(OBJ_QEMU_GRUB_IMG) \
+    -bios $(QEMU_BIOS_IMG) \
     -drive file=$(RUN_QEMU_DISK_IMG),format=raw \
     -serial file:run/serial.out \
     -machine q35,accel=kvm,kernel-irqchip=split \
@@ -351,7 +353,9 @@ QEMU_OPTS := \
     -smp cores=2,threads=2,sockets=1 \
     -device intel-iommu,intremap=on,device-iotlb=on \
     -device ioh3420,id=pcie.1,chassis=1 \
-    -device virtio-net-pci,bus=pcie.1,netdev=net0,disable-legacy=on,disable-modern=off,iommu_platform=on,ats=on \
+    -device virtio-net-pci,bus=pcie.1,addr=0.0,netdev=net0,disable-legacy=on,disable-modern=off,iommu_platform=on,ats=on \
+    -device qemu-xhci,id=xhci,bus=pcie.0,addr=3.0 \
+    -device usb-tablet,bus=xhci.0 \
     -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
     -curses
 QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
@@ -366,7 +370,7 @@ check-running:
 	fi
 
 .PHONY: run
-run: $(RUN_QEMU_DISK_IMG) $(OBJ_QEMU_GRUB_IMG) $(RUN_DIR)/screenrc check-running
+run: $(RUN_QEMU_DISK_IMG) $(QEMU_BIOS_IMG) $(RUN_DIR)/screenrc check-running
 	screen -c $(RUN_DIR)/screenrc -L -dmS kvm-muen \
 	    $(QEMU) $(QEMU_OPTS) -pidfile $(RUN_DIR)/qemu.pid
 	@echo -n "* QEMU/KVM started for '$(RUN_QEMU_DISK_IMG)', waiting for boot: "
