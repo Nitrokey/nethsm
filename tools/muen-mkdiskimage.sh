@@ -12,6 +12,17 @@
 # Populate the data partition with a bare Git repository.
 # Support for updating an existing disk image with a new Muen system.
 
+TMPDIR=
+cleanup ()
+{
+    if [ -n "${TMPDIR}" ]; then
+        if [ -d "${TMPDIR}" ]; then
+            rm -f ${TMPDIR}/grub.cfg ${TMPDIR}/muen.img
+            rmdir ${TMPDIR}
+        fi
+    fi
+}
+
 usage ()
 {
     cat <<EOM 1>&2
@@ -28,6 +39,7 @@ EOM
 die ()
 {
     echo $0: ERROR: "$@" 1>&2
+    cleanup
     exit 1
 }
 
@@ -62,10 +74,15 @@ p2_size=1048576
     || die "While creating PMBR: cgpt failed"
 
 # Splice Muen image into system partition, wrapped as a CPIO image.
-MUEN_F=$(basename ${MUEN})
-MUEN_D=$(dirname ${MUEN})
-(set -x; echo "${MUEN_F}" | \
-    cpio -R +0:+0 --reproducible -D "${MUEN_D}" -o >${DISK}.system.cpio) \
+TMPDIR=$(mktemp -d)
+# We need to provide a grub.cfg for the firmware to chain into.
+cat <<EOM >${TMPDIR}/grub.cfg
+multiboot /muen.img
+boot
+EOM
+cp ${MUEN} ${TMPDIR}/muen.img || die "While creating system: cp failed"
+(set -x; echo -e grub.cfg\\nmuen.img | \
+    cpio -R +0:+0 --reproducible -D "${TMPDIR}" -o >${DISK}.system.cpio) \
     || die "While creating system: cpio failed"
 
 (set -x; dd if=${DISK}.system.cpio of=${DISK} \
@@ -78,3 +95,6 @@ fs_size=$((${p2_size} / 2048))
 (set -x; mkfs.ext4 -F -m0 -L data -E offset=${fs_offset} \
     ${POPULATE} ${DISK} ${fs_size}m) \
     || die "While creating data filesystem: mkfs.ext4 failed"
+
+cleanup
+
