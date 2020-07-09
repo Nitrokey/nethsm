@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+lb config noauto -a amd64 -d buster \
+        --binary-images "iso-hybrid" \
+        --bootloaders "grub-pc" \
+        --bootappend-live "boot=live components intel_iommu=on nomodeset console=ttyS0,115200" \
+	"${@}"

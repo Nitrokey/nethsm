@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -e
+
+# Clone the Git sources of devmem-full-access and mugengwcfg, placing them
+# in /home/src, and ensure this directory will be owned by the live user.
+mkdir -p /home/src
+git clone -b devel --recursive \
+    http://git.codelabs.ch/git/muen/mugenhwcfg.git \
+    /home/src/mugenhwcfg
+git clone \
+    git://github.com/ozgunawesome/devmem-full-access \
+    /home/src/devmem-full-access
+chown -R 1000:1000 /home/src

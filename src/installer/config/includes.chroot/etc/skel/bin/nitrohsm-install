@@ -1,0 +1,75 @@
+#!/bin/bash
+#
+# This is a basic "installer" script for NitroHSM.
+#
+# XXX: This still has various unexpected failure modes, use at your
+# own risk!
+
+usage ()
+{
+    cat <<EOM 1>&2
+Usage: $0 DISK SYSTEM_IMAGE
+
+Formats the block device at DISK and installs the NitroHSM image at
+SYSTEM_IMAGE to it. SYSTEM_IMAGE should be the binary contents of
+the 'system' partition, normally obj/disk.image.cpio from the build
+process.
+EOM
+    exit 1
+}
+
+die ()
+{
+    echo $0: ERROR: "$@" 1>&2
+    exit 1
+}
+
+if [ $# -lt 2 ]; then
+    usage
+fi
+
+DISK="$1"
+MUEN="$2"
+[ -b "${DISK}" ] || die "Not a block device: ${DISK}"
+[ -f "${MUEN}" ] || die "Not found: ${MUEN}"
+
+# Create GPT partition table.
+disk_size=$(blockdev --getsz ${DISK})
+p1_start=128
+p1_size=524288
+p2_start=$((${p1_start} + ${p1_size}))
+p2_size=$((${disk_size} - ${p2_start} - 33))
+(set -x; cgpt create ${DISK}) \
+    || die "While creating GPT: cgpt failed"
+(set -x; cgpt add -b ${p1_start} -s ${p1_size} -t kernel -l system ${DISK}) \
+    || die "While creating parition 1: cgpt failed"
+(set -x; cgpt add -b ${p2_start} -s ${p2_size} -t data -l data ${DISK}) \
+    || die "While creating parition 2: cgpt failed"
+(set -x; cgpt boot -p ${DISK}) \
+    || die "While creating PMBR: cgpt failed"
+
+# Force the kernel to re-read the partition table on the drive.
+# XXX: This behaves very non-deterministically. Perhaps ditch the use of
+# XXX: the partition block devices and use direct offsets as for QEMU?
+(set -x; blockdev --rereadpt ${DISK} && sleep 1) \
+    || die "Failed to re-read partition table"
+
+# Dump the Muen image to the system partition.
+(set -x; dd if=${MUEN} of=${DISK}1 bs=1M) \
+    || die "While installing image: dd failed"
+
+# In a temporary directory, create the Git repository required for Keyfender
+# to run. This is easier than mounting the filesystem later.
+TMPDIR=$(mktemp -d)
+mkdir -p ${TMPDIR}/git/keyfender-data.git || die "mkdir failed"
+git init --bare ${TMPDIR}/git/keyfender-data.git || die "git init failed"
+
+# Create an empty ext4 filesystem in the data parition.
+(set -x; mkfs.ext4 -F -m0 -L data \
+    -d ${TMPDIR} ${DISK}2) \
+    || die "While creating data filesystem: mkfs.ext4 failed"
+
+# Clean up.
+rm -rf ${TMPDIR}
+sync
+
