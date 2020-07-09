@@ -19,6 +19,11 @@ NET_INTERNAL ?= tap201
 # for the Keyfender unikernel. Default for MODE=muen is '--retry=true'.
 # (actual setting is performed later)
 
+# Set MUEN_TARGET to qemu-kvm or supermicro-x11ssh-tf.
+# TODO: This should be persisted similarly to MODE=, or otherwise detect that
+# it changed?
+MUEN_TARGET ?= qemu-kvm
+
 # ------------------------------------------------------------------------------
 
 TOP_DIR := $(abspath .)
@@ -212,6 +217,19 @@ else ifeq ($(XMODE),muen)
 #
 # ------------------------------------------------------------------------------
 
+POLICY_DIR=$(TOP_DIR)/src/muen/policy
+ifeq ($(MUEN_TARGET),qemu-kvm)
+MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
+MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
+MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/muen/components/linux/config/linux64-4.18
+else ifeq ($(MUEN_TARGET),supermicro-x11ssh-tf)
+MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
+MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
+MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/linux/config-4.18-$(MUEN_TARGET)
+else
+$(error Invalid MUEN_TARGET)
+endif
+
 OBJ_DIR := $(TOP_DIR)/obj
 OBJ_DATA_DIR := $(OBJ_DIR)/data
 OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
@@ -309,8 +327,9 @@ $(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
 	    SYSTEM=$(TOP_DIR)/src/muen/policy/xml/nitrohsm_basic_system.xml \
-	    HARDWARE=$(TOP_DIR)/src/muen/policy/hardware/nitrohsm-qemu-kvm.xml \
-	    PLATFORM=$(TOP_DIR)/src/muen/policy/platform/nitrohsm-qemu-kvm.xml \
+	    HARDWARE=$(MUEN_HARDWARE) \
+	    PLATFORM=$(MUEN_PLATFORM) \
+	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
 

@@ -1,0 +1,26 @@
+<platform>
+ <config>
+  <boolean name="serial_supported" value="true"/>
+  <boolean name="hsuart_supported" value="false"/>
+  <boolean name="xhcidbg_supported" value="false"/>
+  <boolean name="uefi_gop_rmrr_access" value="false"/>
+ </config>
+ <mappings>
+  <aliases>
+   <alias name="serial_device_1" physical="com_1">
+    <resource name="ioport1" physical="ioport1"/>
+   </alias>
+   <alias name="nic_1" physical="ethernet_controller_1"/>
+   <alias name="storage_controller" physical="sata_controller_1"/>
+  </aliases>
+  <classes>
+   <class name="additional_nics">
+   </class>
+  </classes>
+ </mappings>
+ <kernelDiagnostics type="uart">
+  <device physical="com_1">
+   <ioPort physical="ioport1"/>
+  </device>
+ </kernelDiagnostics>
+</platform>
