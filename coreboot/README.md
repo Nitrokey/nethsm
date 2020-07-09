@@ -2,6 +2,8 @@
 
 The Coreboot images in this directory are currently built manually.
 
+### QEMU/KVM Q35
+
 For QEMU, the image in `qemu/` can be reproduced as follows:
 
 Clone Coreboot for NitroHSM:
@@ -53,3 +55,27 @@ qemu-system-x86_64 \
     -blockdev file,node-name=usb0,filename=usbdisk.img \
     -netdev user,id=net0,ipv6=off
 ```
+
+### Supermicro X11SSH-TF
+
+Similar to the above, but use the following to configure Coreboot:
+
+```
+make defconfig KBUILD_DEFCONFIG=configs/config.nitrohsm_qemu_q35
+```
+
+In order to build Coreboot, you will need to procure the binary blobs required. Assuming you have an original OEM ROM dump in `./supermicro_bios.bin`, you can extract them from it as follows:
+
+```
+# ifdtool is built by Coreboot in build/util/ifdtool/ifdtool
+ifdtool -x ./supermicro_bios.bin
+# Disable ME by switching on the HAP bit
+ifdtool -M 1 ./flashregion_0_flashdescriptor.bin
+# Copy to your Coreboot tree
+DESTDIR=PATH/TO/coreboot/3rdparty/blobs/mainboard/supermicro/x11-lga1151-series/
+mkdir -p $DESTDIR
+cp flashregion_0_flashdescriptor.bin.new $DESTDIR/descriptor.bin
+cp flashregion_2_intel_me.bin $DESTDIR/me.bin
+```
+
+The Flash IC is [located](https://doc.coreboot.org/mainboard/supermicro/x11-lga1151-series/x11ssh-tf/x11ssh-tf.html) near the battery, with an arrow marking pin 1.
