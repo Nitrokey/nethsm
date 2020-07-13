@@ -44,29 +44,6 @@ let write file content =
   close_out oc;
   ()
 
-let make_post_data req = 
-  let states = Ezjsonm.get_strings @@ Ezjsonm.find req ["state"] in
-  let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
-  let f (mediatype, req') =
-    if not @@ List.mem mediatype allowed_request_types
-    then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
-    let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-    states, header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
-  in
-  List.map f mediatypes
-
-let make_req_data req meth =
-  let states_and_data_for_mediatype = match meth with
-  | "get" -> [(all_states, "")]
-  | "post" 
-  | "put" -> make_post_data req
-  | m -> Printf.printf "Error: Method %s not allowed" m; [(all_states,"")]
-  in
-  let unroll_states (states, data) =
-    List.map (fun s -> (s, data)) states
-  in
-  List.concat_map unroll_states states_and_data_for_mediatype
-
 let path_to_filename state meth path =
   let path = Str.global_replace (Str.regexp_string "/") "_" path in
   let path = Str.global_replace (Str.regexp_string ".") "_" path in
@@ -92,6 +69,43 @@ let prepare_setup _meth _path _cmd (prereq_state, _req) =
   let prepare_role = "" in
   prepare_state ^ "\n" ^ prepare_role
 
+
+let make_post_data req = 
+  let states = Ezjsonm.get_strings @@ Ezjsonm.find req ["state"] in
+  let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
+  let f (mediatype, req') =
+    if not @@ List.mem mediatype allowed_request_types
+    then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
+    let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
+    states, header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+  in
+  List.map f mediatypes
+
+let make_req_data req meth =
+  let states_and_data_for_mediatype = match meth with
+  | "get" -> [(all_states, "")]
+  | "post" 
+  | "put" -> make_post_data req
+  | m -> Printf.printf "Error: Method %s not allowed" m; [(all_states,"")]
+  in
+  let unroll_states (states, data) =
+    List.map (fun s -> (s, data)) states
+  in
+  List.concat_map unroll_states states_and_data_for_mediatype
+
+let make_resp_data raml =
+  let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml ["responses"] in
+  let get_example (code, meta) = match code with
+  | "200"     -> 
+    begin (* TODO do we need loop? should be just JSON *)
+      let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] in
+      List.map (fun example -> ("200", Some example)) mediatypes
+    end
+  | somecode  -> [(somecode, None)]; 
+  in
+  let codes_and_examples = List.concat_map get_example response_codes in
+  codes_and_examples
+
 let tests_for_states meth path cmd (prereq_state, req) =
   let (outdir, test_file) = path_to_filename prereq_state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
@@ -115,6 +129,7 @@ let print_method path (meth, req) =
   then begin 
     let reqs = make_req_data req meth in
     let cmd = Printf.sprintf "curl http://%s:%s/%s%s -X %s" host port prefix path (String.uppercase_ascii meth) in
+    let _responses = make_resp_data req in
     List.iter (tests_for_states meth path cmd) reqs;
   end
 
