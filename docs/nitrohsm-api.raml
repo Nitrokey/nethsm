@@ -107,6 +107,9 @@ types:
       description: Retrieve wether NitroHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.
       responses:
         200:
+          body:
+            application/json:
+              alive: true
           description: Yes, it is alive.
   /ready:
     get:
@@ -114,6 +117,9 @@ types:
       description: Retrieve wether NitroHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.
       responses:
         200:
+          body:
+            application/json:
+              ready: true
           description: Yes, it is alive and ready.
         412:
           description: Not alive and ready (not in operational state).
@@ -1109,9 +1115,9 @@ types:
       securedBy: basic # R-Administrator
       responses:
         200:
-          application/json:
-            description: Successful retrieval of network configuration.
-            body:
+          body:
+            application/json:
+              description: Successful retrieval of network configuration.
               properties:
                 ipAddress: string
                 netmask: string
