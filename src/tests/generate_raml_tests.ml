@@ -67,13 +67,13 @@ let make_req_data req meth =
   in
   List.concat_map unroll_states states_and_data_for_mediatype
 
-let path_to_filename meth path =
+let path_to_filename state meth path =
   let path = Str.global_replace (Str.regexp_string "/") "_" path in
   let path = Str.global_replace (Str.regexp_string ".") "_" path in
-  let path = Str.global_replace (Str.regexp_string "{") "_" path in
-  let path = Str.global_replace (Str.regexp_string "}") "_" path in
+  let path = Str.global_replace (Str.regexp_string "{") "" path in
+  let path = Str.global_replace (Str.regexp_string "}") "" path in
   let path = String.sub path 1 (String.length path -1) in (* remove leading / *)
-  let outdir = Printf.sprintf "generated/%s_%s" path meth in
+  let outdir = Printf.sprintf "generated/%s_%s_%s" state path meth in
   let outfile = Printf.sprintf "%s/command.sh" outdir in
   (outdir, outfile)
 
@@ -93,14 +93,14 @@ let prepare_setup _meth _path _cmd (prereq_state, _req) =
   prepare_state ^ "\n" ^ prepare_role
 
 let tests_for_states meth path cmd (prereq_state, req) =
-  let (outdir, test_file) = path_to_filename meth path in
+  let (outdir, test_file) = path_to_filename prereq_state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
   let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd req in
   write test_file test_cmd;
   let _ = Sys.command("chmod u+x " ^ test_file) in
 
-  (* Which state can the server be in before the test? *)
+  (* prepare required state and role *)
   let setup_file = outdir ^ "/setup.sh" in
   let setup_cmd = prepare_setup meth path cmd (prereq_state, req) in
   write setup_file setup_cmd;
