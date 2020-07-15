@@ -245,7 +245,7 @@ types:
 /keys:
   description: "Role: <b>R-Operator</b> can GET keys. <b>R-Administrator</b> can GET and POST keys, and also POST /generate."
   get:
-    role: [ Operator, Administrator ]
+    role: [ Administrator, Operator ]
     state: [ Operational ]
     description: Get a list of the identifiers of all keys that are currently stored in NitroHSM. Separate requests need to be made to request the individual key data.
     securedBy: basic # R-Operator or R-Administrator
@@ -370,7 +370,7 @@ types:
           description: Precondition failed (NitroHSM was not <i>Operational</i>).
 
 /keys/{KeyID}:
-    description: "Role: <b>R-Operator</b> can GET and POST, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /decrypt."
+    description: "Role: <b>R-Operator</b> can GET, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /decrypt."
     get:
       role: [ Administrator, Operator ]
       state: [ Operational ]
@@ -397,7 +397,7 @@ types:
         404:
           description: Key for KeyID not found.
     put:
-      role: [ Administrator, Operator ]
+      role: [ Administrator ]
       state: [ Operational ]
       description: Import a private key into NitroHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
       securedBy: basic # R-Administrator
@@ -443,6 +443,7 @@ types:
 
     /public.pem:
       get:
+        role: [ Administrator, Operator ]
         state: [ Operational ]
         description: Retrieve public key in PEM format.
         securedBy: basic # R-Administrator or R-Operator
@@ -471,7 +472,7 @@ types:
 
     /csr.pem:
       post:
-        role: [ Operator ]
+        role: [ Administrator, Operator ]
         state: [ Operational ]
         description: Retrieve a certificate signing request in PEM format.
         securedBy: basic # R-Administrator or R-Operator
@@ -672,7 +673,7 @@ types:
           404:
             description: Certificate for KeyID not found.
       put:
-        role: [ Administrator, Operator ]
+        role: [ Administrator ]
         state: [ Operational ]
         description: Store a certificate. Maximum size 1MB. The content-type header provides the media type.
         securedBy: basic # R-Administrator
@@ -754,7 +755,7 @@ types:
           409:
             description: Conflict, certificate already exists for this KeyID.
       delete:
-        role: [ Administrator, Operator ]
+        role: [ Administrator ]
         state: [ Operational ]
         description: Delete the certificate.
         securedBy: basic # R-Administrator
@@ -1385,7 +1386,7 @@ types:
   /reset:
     post:
       role: [ Administrator ]
-      state: [ Operational, Locked ]
+      state: [ Operational ]
       description: Reset NitroHSM to factory settings.
       securedBy: basic # R-Administrator
       body:
@@ -1400,7 +1401,7 @@ types:
         403:
           description: Access denied.
         412:
-          description: Precondition failed (NitroHSM was not <i>Operational</i> or <i>Locked</i>).
+          description: Precondition failed (NitroHSM was not <i>Operational</i>).
   /update:
     post:
       role: [ Administrator ]
