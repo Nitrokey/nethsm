@@ -56,8 +56,13 @@ let path_to_filename state meth path =
 
 let prepare_setup _meth _path _cmd (prereq_state, _req) =
   (* 1. prepare server state *)
+  (*
   let provision = "curl -X PUT http://localhost:8080/api/v1/provision -H \"Content-Type: application/json\" -v --data @../../../keyfender/test/provision.json" in
-  let unlock = "do the unlock" in
+  *)
+  let provision = "curl http://localhost:8080/api/v1/provision -X PUT -H \"Content-Type: application/json\" --data \"{\\\"unlockPassphrase\\\":\\\"This is my unlock passphrase\\\",\\\"adminPassphrase\\\":\\\"This is my administrator passphrase\\\",\\\"systemTime\\\":\\\"2018-10-30T11:20:50Z\\\"}\""
+  in
+  let unlock = "curl http://localhost:8080/api/v1/unlock -X POST -H \"Content-Type: application/json\" --data \"{\\\"passphrase\\\":\\\"nhrfotu32409ru0rgert45z54z099u23r03498uhtr\\\"}\""
+  in
   let prepare_state = match prereq_state with
   | "Unprovisioned" -> "";
   | "Locked" -> provision
@@ -81,12 +86,24 @@ let make_post_data req =
   in
   List.map f mediatypes
 
+let req_states req = 
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
+
+(*
+adminPassphrase: This is my administrator passphrase
+*)
+let auth_header user pass =
+  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
+  " -H \"Authorization: Basic " ^ base64 ^ "\" "
+
 let make_req_data req meth =
+  (* TODO add auth header here? *)
+  let auth_header = auth_header "admin" "This is my administrator passphrase" in
   let states_and_data_for_mediatype = match meth with
-  | "get" -> [(all_states, "")]
+  | "get" -> [(req_states req, auth_header)]
   | "post" 
-  | "put" -> make_post_data req
-  | m -> Printf.printf "Error: Method %s not allowed" m; [(all_states,"")]
+  | "put" -> List.map (fun (s, d) -> (s, auth_header ^ d)) (make_post_data req)
+  | m -> Printf.printf "Error: Method %s not allowed" m; [(req_states req, auth_header)]
   in
   let unroll_states (states, data) =
     List.map (fun s -> (s, data)) states
@@ -128,6 +145,7 @@ let print_method path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *)
   then begin 
     let reqs = make_req_data req meth in
+    (* TODO where to add auth header? *)
     let cmd = Printf.sprintf "curl http://%s:%s/%s%s -X %s" host port prefix path (String.uppercase_ascii meth) in
     let _responses = make_resp_data req in
     List.iter (tests_for_states meth path cmd) reqs;
@@ -149,5 +167,6 @@ let example = CCIO.with_in raml CCIO.read_all
 (* all paths, start from empty root *)
 let () = 
   let paths = subpaths ("", example) in
+  let paths = [List.nth paths 1] in
   List.iter (fun (a, _b) -> Printf.printf "%s\n" a ) paths;
   List.iter print_methods paths;
