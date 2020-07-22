@@ -16,16 +16,18 @@ USERS=$(curl http://admin:Administrator@localhost:8080/api/v1/users)
 echo $USERS # should be admin and operator
 echo
 
-# generate signing key
-curl -v -H "Content-Type: application/json" -X POST http://admin:Administrator@localhost:8080/api/v1/keys/generate --data @keys_generate.json
-# put a decrypt key
-curl -v -H "Content-Type: application/json" -X PUT http://admin:Administrator@localhost:8080/api/v1/keys/myKey1 --data '{ purpose: "Decrypt", algorithm: "RSA", key: { primeP: "APWssfg0uM2HevzjbDM+Om8ThaGLNoxzJkujtbT55SPhx5ntnDiktTXNRAHdwJgAc1HPVVCm6nESSIZ0ZqO+rh2vRYT+oXMHre0zhpGDZMVAB31zowTUv+6d7lakMbqN3hDjpxaiP3Xg7my4qMCrnnFyBq7LuE/0zw2SeoQnKlY1", primeQ : "ANAc/C1uKDdSsgc/du5N4B8vLZH8aC+poVyq8eZwkgs71vG3XccW6gEkC5dh439DKdZKYj3pywq39NNjzAK0VSs9TnscttaVtaS45rctpyP5nNoQnsVe3euc55P9UKuV9tRw7nnSi0Tf1QDbphEP/bsXj7F4FG6McdheXLPzV7M7", publicExponent : "AQAB" } }'
+# put a sign decrypt key
+curl -v -H "Content-Type: application/json" -X PUT http://admin:Administrator@localhost:8080/api/v1/keys/myKey1 --data '{ purpose: "SignAndDecrypt", algorithm: "RSA", key: { primeP: "APWssfg0uM2HevzjbDM+Om8ThaGLNoxzJkujtbT55SPhx5ntnDiktTXNRAHdwJgAc1HPVVCm6nESSIZ0ZqO+rh2vRYT+oXMHre0zhpGDZMVAB31zowTUv+6d7lakMbqN3hDjpxaiP3Xg7my4qMCrnnFyBq7LuE/0zw2SeoQnKlY1", primeQ : "ANAc/C1uKDdSsgc/du5N4B8vLZH8aC+poVyq8eZwkgs71vG3XccW6gEkC5dh439DKdZKYj3pywq39NNjzAK0VSs9TnscttaVtaS45rctpyP5nNoQnsVe3euc55P9UKuV9tRw7nnSi0Tf1QDbphEP/bsXj7F4FG6McdheXLPzV7M7", publicExponent : "AQAB" } }'
 
 echo "Setup compete."
 
 echo "Starting key generation test."
 # 400 times, and 4 at a time
 seq 400 | parallel -n0 -j4 "curl -X POST http://admin:Administrator@localhost:8080/api/v1/keys/generate --data @keys_generate.json -H \"Content-Type: application/json\""
+
+echo "Starting signing test."
+# NOTE: only " in json and not '
+seq 400 | parallel -n0 -j4 "curl -v -H 'Content-Type: application/json' -X POST http://operator:OperatorOperator@localhost:8080/api/v1/keys/myKey1/sign --data '{ mode: \"PKCS1\", message: \"SGkgQWxpY2UhIFBsZWFzZSBicmluZyBtYWxhY3DDtnJrw7ZsdCBmb3IgZGlubmVyIQo=\"}'" 
 
 echo "Starting decryption test."
 # NOTE: only " in json and not '
