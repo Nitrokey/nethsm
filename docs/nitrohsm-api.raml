@@ -520,10 +520,10 @@ types:
             type: object
             properties:
               mode:
-                enum: ["pkcs1", "pss/md5", "pss/sha1", "pss/sha224", "pss/sha256", "pss/sha384", "pss/sha512"]
+                enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512"]
               message: base64
             example:
-              mode: "pkcs1"
+              mode: "PKCS1"
               message: "this is a message"
         responses:
           200:
@@ -744,7 +744,7 @@ types:
     body:
       application/json:
         type: User
-        example: { realname : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
+        example: { realName : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
     responses:
       200:
         description: Successful creation of user. The response contains a Location header, e.g. "https://nitrohsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
