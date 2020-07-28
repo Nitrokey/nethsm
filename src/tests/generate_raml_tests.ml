@@ -21,16 +21,13 @@ let all_states = ["Unprovisioned"; "Locked"; "Unlocked"; "Operational"]
 let escape s =
   let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
   let l = String.length s' in
-  (* second part triggers Fatal error: exception (Invalid_argument "String.sub / Bytes.sub") *)
-  if l > 4 && String.sub s' 0 2 = "\\\"" (*&& String.sub s' (l-4) l = "\\\""*)
-  (* if its a string, remove escapes *)
-  then begin
-    let s' = String.sub s' 2 (l-4) in
-    "\"" ^ s' ^ "\""
-  end
-  else
-    "\"" ^ s' ^ "\""
-  ;;
+  let s'' =
+    if l > 4 && String.sub s' 0 2 = {|\"|} && String.sub s' (l-2) 2 = {|\"|}
+    (* if its a JSON string, remove escapes *)
+    then String.sub s' 2 (l-4)
+    else s'
+  in
+  "\"" ^ s'' ^ "\""
 
 let get_endpoints meta = 
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> CCString.prefix ~pre:"/" key)
@@ -103,9 +100,10 @@ let make_req_data req meth =
   let roles = req_roles req in
   let auth_header = match roles with
   | ["Public"] -> ""
-  | ["Admin"] -> auth_header "admin" "This is my administrator passphrase"
-  | ["Operator"] -> auth_header "operator" "This is my operator passphrase"
-  | _ -> Printf.printf "unknown roles"; assert false
+  | "Admin" :: _ -> auth_header "admin" "This is my administrator passphrase"
+  | "Operator" :: _ -> auth_header "operator" "This is my operator passphrase"
+  | x :: _ -> Printf.printf "unknown role %s" x; "" (*assert false*)
+  | _ -> assert false
   in
   let states_and_data_for_mediatype = match meth with
   | "get" -> [(req_states req, req_roles req, auth_header)]
@@ -176,6 +174,6 @@ let example = CCIO.with_in raml CCIO.read_all
 (* all paths, start from empty root *)
 let () = 
   let paths = subpaths ("", example) in
-  let paths = [List.nth paths 1] in
+  (*let paths = [List.nth paths 1] in*)
   List.iter (fun (a, _b) -> Printf.printf "%s\n" a ) paths;
   List.iter print_methods paths;
