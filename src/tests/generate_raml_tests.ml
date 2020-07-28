@@ -16,8 +16,7 @@ let allowed_request_types = [
   "application/x-x509-ca-cert" ;
   "application/pgp-keys";
 ]
-(* TODO what's the diff beween the last two? *)
-let all_states = ["Unprovisioned"; "Locked"; "Unlocked"; "Operational"]
+let all_states = ["Unprovisioned"; "Locked"; "Operational"]
 
 let escape s =
   let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
@@ -52,17 +51,22 @@ let path_to_filename state meth path =
   let outfile = Printf.sprintf "%s/command.sh" outdir in
   (outdir, outfile)
 
+let auth_header user pass =
+  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
+  " -H \"Authorization: Basic " ^ base64 ^ "\" "
+
 let prepare_setup _meth _path _cmd (prereq_state, _req) =
   (* 1. prepare server state *)
-  let provision = cmd "provision" "PUT" ^ "-H \"Content-Type: application/json\" --data \"{\\\"unlockPassphrase\\\":\\\"This is my unlock passphrase\\\",\\\"adminPassphrase\\\":\\\"This is my administrator passphrase\\\",\\\"systemTime\\\":\\\"2018-10-30T11:20:50Z\\\"}\""
+  let provision = cmd "provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
   in
-  let unlock = cmd "unlock" "POST" ^ "-H \"Content-Type: application/json\" --data \"{\\\"passphrase\\\":\\\"nhrfotu32409ru0rgert45z54z099u23r03498uhtr\\\"}\""
+  let lock =
+    let header = auth_header "admin" "Administrator" in
+    cmd "lock" "POST" ^ header
   in
   let prepare_state = match prereq_state with
-  | "Unprovisioned" -> "";
-  | "Locked" -> provision
-  | "Operational"
-  | "Unlocked" -> provision ^ "\n" ^ unlock
+  | "Unprovisioned" -> ""
+  | "Locked" -> provision ^ "\n" ^ lock
+  | "Operational" -> provision
   | s -> Printf.printf "Error: Unknown prerequisite state in raml: %s\n" s; ""
   in
   (* 2. prepare role *)
@@ -87,19 +91,14 @@ let make_post_data req =
   in
   List.map f mediatypes
 
-(*
-adminPassphrase: This is my administrator passphrase
-*)
-let auth_header user pass =
-  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
-  " -H \"Authorization: Basic " ^ base64 ^ "\" "
-
 let make_req_data req meth =
   let roles = req_roles req in
   let auth_header = match roles with
   | ["Public"] -> ""
-  | "Admin" :: _ -> auth_header "admin" "This is my administrator passphrase"
+  | "Administrator" :: _ -> auth_header "admin" "Administrator"
   | "Operator" :: _ -> auth_header "operator" "This is my operator passphrase"
+  | [ "Metrics" ] -> auth_header "metrics" "This is my metrics passphrase"
+  | [ "Backup" ] -> auth_header "backup" "This is my backup passphrase"
   | x :: _ -> Printf.printf "unknown role %s" x; "" (*assert false*)
   | _ -> assert false
   in
@@ -155,6 +154,7 @@ let print_method path (meth, req) =
   end
 
 let print_methods (path, methods) =
+  Printf.printf "generating tests for %s\n" path;
   List.iter (print_method path) methods
 
 let rec subpaths (path, meta) =
@@ -171,5 +171,4 @@ let example = CCIO.with_in raml CCIO.read_all
 let () = 
   let paths = subpaths ("", example) in
   (*let paths = [List.nth paths 1] in*)
-  List.iter (fun (a, _b) -> Printf.printf "%s\n" a ) paths;
   List.iter print_methods paths;
