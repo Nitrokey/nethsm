@@ -74,20 +74,23 @@ let prepare_setup _meth _path _cmd (prereq_state, _req) =
   let prepare_role = "" in
   prepare_state ^ "\n" ^ prepare_role
 
+let req_states req =
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
+
+let req_roles req =
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["role"]
 
 let make_post_data req = 
-  let states = Ezjsonm.get_strings @@ Ezjsonm.find req ["state"] in
+  let states = req_states req in
+  let roles = req_roles req in
   let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
   let f (mediatype, req') =
     if not @@ List.mem mediatype allowed_request_types
     then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
     let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-    states, header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+    states, roles, header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
   in
   List.map f mediatypes
-
-let req_states req = 
-  Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
 
 (*
 adminPassphrase: This is my administrator passphrase
@@ -97,15 +100,21 @@ let auth_header user pass =
   " -H \"Authorization: Basic " ^ base64 ^ "\" "
 
 let make_req_data req meth =
-  (* TODO add auth header here? *)
-  let auth_header = auth_header "admin" "This is my administrator passphrase" in
-  let states_and_data_for_mediatype = match meth with
-  | "get" -> [(req_states req, auth_header)]
-  | "post" 
-  | "put" -> List.map (fun (s, d) -> (s, auth_header ^ d)) (make_post_data req)
-  | m -> Printf.printf "Error: Method %s not allowed" m; [(req_states req, auth_header)]
+  let roles = req_roles req in
+  let auth_header = match roles with
+  | ["Public"] -> ""
+  | ["Admin"] -> auth_header "admin" "This is my administrator passphrase"
+  | ["Operator"] -> auth_header "operator" "This is my operator passphrase"
+  | _ -> Printf.printf "unknown roles"; assert false
   in
-  let unroll_states (states, data) =
+  let states_and_data_for_mediatype = match meth with
+  | "get" -> [(req_states req, req_roles req, auth_header)]
+  | "post" 
+  | "put" -> List.map (fun (s, r, d) -> (s, r, auth_header ^ d)) (make_post_data req)
+  | m -> Printf.printf "Error: Method %s not allowed" m; [(req_states req, req_roles req, auth_header)]
+  in
+  (* TODO unroll roles? *)
+  let unroll_states (states, _roles, data) =
     List.map (fun s -> (s, data)) states
   in
   List.concat_map unroll_states states_and_data_for_mediatype
