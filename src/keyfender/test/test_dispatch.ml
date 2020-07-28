@@ -408,6 +408,23 @@ let unlock_twice () =
   | _ -> false
   end
 
+let lock_ok () =
+  "a request for /lock locks the HSM"
+  @? begin match admin_post_request ~hsm_state:(operational_mock ()) "/lock" with
+  | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Locked
+  | _ -> false
+  end
+
+let lock_failed () =
+  "a request for /lock with the wrong passphrase fails"
+  @? begin
+  let headers = operator_headers in
+  let hsm_state = operational_mock() in
+  match request ~meth:`POST ~hsm_state ~headers "/lock" with
+  | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Operational
+  | _ -> false
+  end
+
 (* /config *)
 
 let change_unlock_passphrase () =
@@ -1230,6 +1247,8 @@ let () =
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
     "/unlock" >:: unlock_twice;
+    "/lock" >:: lock_ok;
+    "/lock" >:: lock_failed;
     "/config/unattended_boot" >:: get_unattended_boot_ok;
     "/config/unattended_boot" >:: unattended_boot_succeeds;
     "/config/unattended_boot" >:: unattended_boot_failed;

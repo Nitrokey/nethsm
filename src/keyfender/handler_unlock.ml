@@ -39,4 +39,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       in
       Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
   end
+
+  class lock hsm_state ip = object
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator ip
+    inherit !Endpoint.post
+    inherit !Endpoint.no_cache
+
+    method! process_post rd =
+      Hsm.lock hsm_state ;
+      Wm.continue true rd
+  end
 end

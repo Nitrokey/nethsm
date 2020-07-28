@@ -208,6 +208,25 @@ types:
       412:
         description: Precondition failed (NitroHSM was not <i>Locked</i>).
 
+/lock:
+  description: "Administrator"
+  post:
+    role: [ Administrator ]
+    state: [ Operational ]
+    description: Brings an <i>Operational</i> NitroHSM into <i>Locked</i> state.
+    securedBy: basic # R-Administrator
+    body:
+      application/json:
+        example:
+          {}
+    responses:
+      204:
+        description: Lock was successful, NitroHSM is <i>Locked</i> now.
+      403:
+        description: Lock failed (access denied).
+      412:
+        description: Precondition failed (NitroHSM was not <i>Operational</i>).
+
 /random:
   description: "Role: <b>R-Operator</b>"
   post:
