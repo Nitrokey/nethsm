@@ -37,7 +37,7 @@ let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
 
 let write file content =
   let oc = open_out file in
-  Printf.fprintf oc "%s\n" content;
+  Printf.fprintf oc "%s" content;
   close_out oc;
   ()
 
@@ -120,14 +120,18 @@ let make_resp_data raml =
   | "200"     -> 
     begin (* TODO do we need loop? should be just JSON *)
       let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] in
-      List.map (fun example -> ("200", Some example)) mediatypes
+      List.iter (fun (t, data) -> Printf.printf "typ is %s: %s\n" t (Ezjsonm.value_to_string data)) mediatypes;
+      List.map (fun (typ, example) ->
+        let subtree = Ezjsonm.find example ["example"] in
+        Printf.printf "example subtree is %s\n" (Ezjsonm.value_to_string subtree);
+        ("200", Some (typ, subtree))) mediatypes
     end
   | somecode  -> [(somecode, None)]; 
   in
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd (prereq_state, req) =
+let tests_for_states meth path cmd responses (prereq_state, req) =
   let (outdir, test_file) = path_to_filename prereq_state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
@@ -141,7 +145,13 @@ let tests_for_states meth path cmd (prereq_state, req) =
   write setup_file setup_cmd;
   let _ = Sys.command("chmod u+x " ^ setup_file) in
 
-  let _ = Sys.command("touch " ^ outdir ^ "/body.expected") in
+  let expected_body =
+    match List.find_opt (fun (c, _) -> c = "200") responses with
+    | None -> ""
+    | Some (_, Some (_typ, example)) -> Ezjsonm.value_to_string example
+    | Some (_, _) -> ""
+  in
+  write (outdir ^ "/body.expected") expected_body;
   let _ = Sys.command("touch " ^ outdir ^ "/headers.expected") in
   ()
 
@@ -149,8 +159,8 @@ let print_method path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *)
   then begin 
     let reqs = make_req_data req meth in
-    let _responses = make_resp_data req in
-    List.iter (tests_for_states meth path (cmd path meth)) reqs;
+    let responses = make_resp_data req in
+    List.iter (tests_for_states meth path (cmd path meth) responses) reqs;
   end
 
 let print_methods (path, methods) =

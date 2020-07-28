@@ -95,10 +95,10 @@ types:
         body:
           application/json:
             type: SystemInformation
-          example:
-            vendor: Nitrokey UG
-            product: NitroHSM
-            version: v1 # API version
+            example:
+              vendor: Nitrokey UG
+              product: NitroHSM
+              version: v1 # API version
 
 /health:
   description: "Public"
@@ -111,7 +111,8 @@ types:
         200:
           body:
             application/json:
-              alive: true
+              example:
+                alive: true
           description: Yes, it is alive.
         412:
           description: Not locked or unprovisioned (in operational state).
@@ -124,7 +125,8 @@ types:
         200:
           body:
             application/json:
-              ready: true
+              example:
+                ready: true
           description: Yes, it is alive and ready.
         412:
           description: Not alive and ready (not in operational state).
@@ -137,11 +139,11 @@ types:
         200:
           body:
             application/json:
-            properties:
-              state:
-                enum: ["Unprovisioned", "Locked", "Operational"]
-            example:
-              state: "Unprovisioned"
+              properties:
+                state:
+                  enum: ["Unprovisioned", "Locked", "Operational"]
+              example:
+                state: "Unprovisioned"
 
 /metrics:
   description: "Role: <b>R-Metrics</b>"
@@ -154,9 +156,9 @@ types:
       200:
         body:
           application/json:
-          example:
-            keyOperations: 1132412
-            someOtherMetric: 2222
+            example:
+              keyOperations: 1132412
+              someOtherMetric: 2222
       401: # unauthorized
         description: Authentication required but none provided.
       403: # forbidden
@@ -1503,7 +1505,8 @@ types:
         200:
           description: Successful retrieval of backup data.
           body:
-            application/octet-stream: "encrypted backup"
+            application/octet-stream: 
+              example: "encrypted backup"
         401:
           description: Authentication required but none provided.
         403:
