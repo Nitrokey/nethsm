@@ -51,26 +51,44 @@ let path_to_filename state meth path =
   let outfile = Printf.sprintf "%s/command.sh" outdir in
   (outdir, outfile)
 
-let auth_header user pass =
+let auth_header (user, pass) =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   " -H \"Authorization: Basic " ^ base64 ^ "\" "
 
-let prepare_setup _meth _path _cmd (prereq_state, _req) =
+let passphrase = function
+  | "Administrator" -> ("admin", "Administrator")
+  | "Operator" -> ("operator", "This is my operator passphrase")
+  | "Metrics" -> ("metrics", "This is my metrics passphrase")
+  | "Backup" -> ("backup", "This is my backup passphrase")
+  | _ -> assert false
+
+let prepare_setup _meth _path _cmd (state, role, _req) =
   (* 1. prepare server state *)
-  let provision = cmd "provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
+  let provision = cmd "/provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
   in
   let lock =
-    let header = auth_header "admin" "Administrator" in
-    cmd "lock" "POST" ^ header
+    let header = auth_header (passphrase "Administrator") in
+    cmd "/lock" "POST" ^ header
   in
-  let prepare_state = match prereq_state with
+  let prepare_state = match state with
   | "Unprovisioned" -> ""
   | "Locked" -> provision ^ "\n" ^ lock
   | "Operational" -> provision
   | s -> Printf.printf "Error: Unknown prerequisite state in raml: %s\n" s; ""
   in
   (* 2. prepare role *)
-  let prepare_role = "" in
+  let add_user role =
+    let user, pass = passphrase role in
+    let header = auth_header (passphrase "Administrator") in
+    let data = Printf.sprintf "{ realName: %S , role: %S , passphrase: %S }" user role pass in
+    cmd ("/users/" ^ user) "PUT" ^ header ^ "-H \"Content-Type: application/json\" --data " ^ escape data
+  in
+  let prepare_role = match role with
+    | Some "Operator" -> add_user "Operator"
+    | Some "Metrics" -> add_user "Metrics"
+    | Some "Backup" -> add_user "Backup"
+    | _ -> ""
+  in
   prepare_state ^ "\n" ^ prepare_role
 
 let req_states req =
@@ -80,37 +98,36 @@ let req_roles req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["role"]
 
 let make_post_data req = 
-  let states = req_states req in
-  let roles = req_roles req in
   let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
   let f (mediatype, req') =
     if not @@ List.mem mediatype allowed_request_types
     then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
     let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-    states, roles, header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+    header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
   in
   List.map f mediatypes
 
 let make_req_data req meth =
   let roles = req_roles req in
-  let auth_header = match roles with
-  | ["Public"] -> ""
-  | "Administrator" :: _ -> auth_header "admin" "Administrator"
-  | "Operator" :: _ -> auth_header "operator" "This is my operator passphrase"
-  | [ "Metrics" ] -> auth_header "metrics" "This is my metrics passphrase"
-  | [ "Backup" ] -> auth_header "backup" "This is my backup passphrase"
-  | x :: _ -> Printf.printf "unknown role %s" x; "" (*assert false*)
+  let role, auth_header = match roles with
+  | ["Public"] -> None, ""
+  | "Administrator" :: _ -> Some "Administrator", auth_header (passphrase "Administrator")
+  | "Operator" :: _ -> Some "Operator", auth_header (passphrase "Operator")
+  | [ "Metrics" ] -> Some "Metrics", auth_header (passphrase "Metrics")
+  | [ "Backup" ] -> Some "Backup", auth_header (passphrase "Backup")
+  | x :: _ -> Printf.printf "unknown role %s" x; None, "" (*assert false*)
   | _ -> assert false
   in
+  let states = req_states req in
   let states_and_data_for_mediatype = match meth with
-  | "get" -> [(req_states req, req_roles req, auth_header)]
+  | "get" -> [(states, role, auth_header)]
   | "post" 
-  | "put" -> List.map (fun (s, r, d) -> (s, r, auth_header ^ d)) (make_post_data req)
-  | m -> Printf.printf "Error: Method %s not allowed" m; [(req_states req, req_roles req, auth_header)]
+  | "put" -> List.map (fun d -> (states, role, auth_header ^ d)) (make_post_data req)
+  | m -> Printf.printf "Error: Method %s not allowed" m; [(states, role, auth_header)]
   in
   (* TODO unroll roles? *)
-  let unroll_states (states, _roles, data) =
-    List.map (fun s -> (s, data)) states
+  let unroll_states (states, role, data) =
+    List.map (fun s -> (s, role, data)) states
   in
   List.concat_map unroll_states states_and_data_for_mediatype
 
@@ -131,8 +148,8 @@ let make_resp_data raml =
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd responses (prereq_state, req) =
-  let (outdir, test_file) = path_to_filename prereq_state meth path in
+let tests_for_states meth path cmd responses (state, role, req) =
+  let (outdir, test_file) = path_to_filename state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
   let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd req in
@@ -141,7 +158,7 @@ let tests_for_states meth path cmd responses (prereq_state, req) =
 
   (* prepare required state and role *)
   let setup_file = outdir ^ "/setup.sh" in
-  let setup_cmd = prepare_setup meth path cmd (prereq_state, req) in
+  let setup_cmd = prepare_setup meth path cmd (state, role, req) in
   write setup_file setup_cmd;
   let _ = Sys.command("chmod u+x " ^ setup_file) in
 
