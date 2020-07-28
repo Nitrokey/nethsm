@@ -6,6 +6,7 @@
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
+let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let allowed_request_types = [
@@ -53,12 +54,9 @@ let path_to_filename state meth path =
 
 let prepare_setup _meth _path _cmd (prereq_state, _req) =
   (* 1. prepare server state *)
-  (*
-  let provision = "curl -X PUT http://localhost:8080/api/v1/provision -H \"Content-Type: application/json\" -v --data @../../../keyfender/test/provision.json" in
-  *)
-  let provision = "curl http://localhost:8080/api/v1/provision -X PUT -H \"Content-Type: application/json\" --data \"{\\\"unlockPassphrase\\\":\\\"This is my unlock passphrase\\\",\\\"adminPassphrase\\\":\\\"This is my administrator passphrase\\\",\\\"systemTime\\\":\\\"2018-10-30T11:20:50Z\\\"}\""
+  let provision = cmd "provision" "PUT" ^ "-H \"Content-Type: application/json\" --data \"{\\\"unlockPassphrase\\\":\\\"This is my unlock passphrase\\\",\\\"adminPassphrase\\\":\\\"This is my administrator passphrase\\\",\\\"systemTime\\\":\\\"2018-10-30T11:20:50Z\\\"}\""
   in
-  let unlock = "curl http://localhost:8080/api/v1/unlock -X POST -H \"Content-Type: application/json\" --data \"{\\\"passphrase\\\":\\\"nhrfotu32409ru0rgert45z54z099u23r03498uhtr\\\"}\""
+  let unlock = cmd "unlock" "POST" ^ "-H \"Content-Type: application/json\" --data \"{\\\"passphrase\\\":\\\"nhrfotu32409ru0rgert45z54z099u23r03498uhtr\\\"}\""
   in
   let prepare_state = match prereq_state with
   | "Unprovisioned" -> "";
@@ -152,10 +150,8 @@ let print_method path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *)
   then begin 
     let reqs = make_req_data req meth in
-    (* TODO where to add auth header? *)
-    let cmd = Printf.sprintf "curl http://%s:%s/%s%s -X %s" host port prefix path (String.uppercase_ascii meth) in
     let _responses = make_resp_data req in
-    List.iter (tests_for_states meth path cmd) reqs;
+    List.iter (tests_for_states meth path (cmd path meth)) reqs;
   end
 
 let print_methods (path, methods) =
