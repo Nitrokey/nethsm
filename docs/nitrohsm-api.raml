@@ -217,10 +217,6 @@ types:
     state: [ Operational ]
     description: Brings an <i>Operational</i> NitroHSM into <i>Locked</i> state.
     securedBy: basic # R-Administrator
-    body:
-      application/json:
-        example:
-          {}
     responses:
       204:
         description: Lock was successful, NitroHSM is <i>Locked</i> now.
@@ -1372,10 +1368,6 @@ types:
       state: [ Operational ]
       description: Reboot NitroHSM.
       securedBy: basic # R-Administrator
-      body:
-        application/json:
-          example:
-            {}
       responses:
         204:
           description: About to reboot NitroHSM.
@@ -1391,10 +1383,6 @@ types:
       state: [ Operational ]
       description: Shut down NitroHSM.
       securedBy: basic # R-Administrator
-      body:
-        application/json:
-          example:
-            {}
       responses:
         204:
           description: About to shut down NitroHSM.
@@ -1410,10 +1398,6 @@ types:
       state: [ Operational ]
       description: Reset NitroHSM to factory settings.
       securedBy: basic # R-Administrator
-      body:
-        application/json:
-          example:
-            {}
       responses:
         204:
           description: About to reset NitroHSM.
@@ -1457,10 +1441,6 @@ types:
       state: [ Operational ]
       securedBy: basic # R-Administrator
       description: Commit update of NitroHSM software.
-      body:
-        application/json:
-          example:
-            {}
       responses:
         204:
           description: About to update NitroHSM.
@@ -1476,10 +1456,6 @@ types:
       state: [ Operational ]
       securedBy: basic # R-Administrator
       description: Cancel update of NitroHSM software.
-      body:
-        application/json:
-          example:
-            {}
       responses:
         204:
           description: Update successfully cancelled.
@@ -1497,10 +1473,6 @@ types:
       state: [ Operational ]
       securedBy: basic # R-Backup
       description: Back up the key store to a backup file.
-      body:
-        application/json:
-          example:
-            {}
       responses:
         200:
           description: Successful retrieval of backup data.
