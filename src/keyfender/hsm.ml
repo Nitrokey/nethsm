@@ -901,7 +901,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let get_pem t ~id =
       let open Lwt_result.Infix in
       get_key t id >|= fun key ->
-      Cstruct.to_string @@ X509.Private_key.encode_pem (`RSA key.priv)
+      let public = Mirage_crypto_pk.Rsa.pub_of_priv key.priv in
+      Cstruct.to_string @@ X509.Public_key.encode_pem (`RSA public)
 
     let csr_pem t ~id subject =
       let open Lwt_result.Infix in
@@ -954,7 +955,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          | Decrypt | SignAndDecrypt ->
           let dec_cs_opt =
             match decrypt_mode with
-            | Json.Raw ->
+            | Json.RAW ->
               (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
                with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
             | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs

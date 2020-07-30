@@ -109,10 +109,6 @@ types:
       description: Retrieve wether NitroHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.
       responses:
         200:
-          body:
-            application/json:
-              example:
-                alive: true
           description: Yes, it is alive.
         412:
           description: Not locked or unprovisioned (in operational state).
@@ -123,10 +119,6 @@ types:
       description: Retrieve wether NitroHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.
       responses:
         200:
-          body:
-            application/json:
-              example:
-                ready: true
           description: Yes, it is alive and ready.
         412:
           description: Not alive and ready (not in operational state).
@@ -368,15 +360,8 @@ types:
             length: 2048
             id: "myKey1" # KeyID is optional, will be created if not present
       responses:
-        200:
-          description: Successful creation of new public and private key pair.
-          body:
-            application/json:
-              properties:
-                key: ID
-              example:
-                Location-Header: "https://nitrohsm.local/v1/keys/myKey1"
-                key: "myKey1"
+        201:
+          description: Successful creation of new public and private key pair. Set Location header to the new KeyID.
         400:
           description: Bad request (specified properties are invalid).
         401:
@@ -470,13 +455,10 @@ types:
               application/x-pem-file:
                 example: |
                   -----BEGIN PUBLIC KEY-----
-                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAseU3o1Ix2euXUi50ht/m
-                  pDYnE2J4maJrIOLmDrmz+jv20hsRvPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3A
-                  q71Ls1wqOnW9++bZAvqvEVUtlHh05Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZL
-                  uDYiVy1/gzARjpf2hCmTyQSAvtcA07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2l
-                  XrwXehVaw9KZzg7KuRO0Qnk+IfR6LZjiKiEB9malzqSx3N20vibI672bMR+fqID2
-                  oC+ovNOEdRhPlCnztaY1HsnDhJt8MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3
-                  TwIDAQAB
+                  MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC+nLGAzexDmjvkDZp/dn5Y+pvd
+                  6yvYc/NjDx7saogVYaiGHmWgKiKMaJcuvYxDfvziVseSUIbCJFikfBlbi3yF6D+f
+                  u0m249fvVlOeJcm8j4/aKZTavlmOVOpV4BS0fK20aavJicN9YWf1+q40JyQ67QQ7
+                  DZo9G0QN97nPGzzyiwIDAQAB
                   -----END PUBLIC KEY-----
           401:
             description: Authentication required but none provided.
@@ -511,19 +493,15 @@ types:
               application/x-pem-file:
                 example: |
                   -----BEGIN CERTIFICATE REQUEST-----
-                  MIICUjCCAToCAQAwDTELMAkGA1UEBhMCZGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB
-                  DwAwggEKAoIBAQCx5TejUjHZ65dSLnSG3+akNicTYniZomsg4uYOubP6O/bSGxG8
-                  +xacp69hmoRia9AU07Yy/0MHkxl+cneMvcCrvUuzXCo6db375tkC+q8RVS2UeHTl
-                  HP2TUZrfb85occRmP6Ub0+UojzLrcr6wpku4NiJXLX+DMBGOl/aEKZPJBIC+1wDT
-                  tZcCqis0jyaFxsiGesYJ4p8HwdgnVPe6TaVevBd6FVrD0pnODsq5E7RCeT4h9Hot
-                  mOIqIQH2ZqXOpLHc3bS+JsjrvZsxH5+ogPagL6i804R1GE+UKfO1pjUeycOEm3ww
-                  NOOVUa94ISW96y5JWc1UeZW6AOMRhNTUpXdPAgMBAAGgADANBgkqhkiG9w0BAQsF
-                  AAOCAQEAqA+22efrmbc1l+rnBtqeHJJWPZybRFDhqxkUoMAOMLIgd92TM6mnzlYu
-                  RmKZr2ExlbODOnaJJVcnbq2XYuHPiWYjhNFLTJ4bHJzo2yq+UUB0d409jQ0zkgVw
-                  CqfSauVZq7gqLLJ67KqqDDzJtsWEjeuJxIRh+cKPre1vtQp4uCncwRXOymxzaoTg
-                  KdJ6vwLLEkLVKwk1NEuvMe4IAa2+CtWf2z/jjoEKBeg/rxoFUwAmIxp/vWsZaDmY
-                  K0X2haYIM4Ihz+tTbAPlO/hMAs/spxYvmWu46BpBpX4naxhOKJzpwO2NeZtZkjL6
-                  7wSAdo8xe7eWf/eaMebITfIRfgyczA==
+                  MIIBpDCCAQ0CAQAwZDFiMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
+                  DAhOaXRyb2tleTAVBgNVBAMMDm5pdHJvaHNtLmxvY2FsMB4GCSqGSIb3DQEJAQwR
+                  aW5mb0BuaXRyb2tleS5jb20wgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAL6c
+                  sYDN7EOaO+QNmn92flj6m93rK9hz82MPHuxqiBVhqIYeZaAqIoxoly69jEN+/OJW
+                  x5JQhsIkWKR8GVuLfIXoP5+7Sbbj1+9WU54lybyPj9oplNq+WY5U6lXgFLR8rbRp
+                  q8mJw31hZ/X6rjQnJDrtBDsNmj0bRA33uc8bPPKLAgMBAAGgADANBgkqhkiG9w0B
+                  AQsFAAOBgQCOBLc4LgwVfzk8bG7C7GJikh/Yle8guUrIlWXQ3vRbGeWZhh0Jg6V/
+                  QnaYXmmmVsIT/+j1puABqzhnyZgJZh5b2cgiiVOdMBmPf7KvPcdu7KtGzzsukk3M
+                  wJ0Mm4n2rrlXcCeKns035Y4LhAF+tGgMKZ4il+dWi14OyUXCP+KBTA==
                   -----END CERTIFICATE REQUEST-----
           401:
             description: Authentication required but none provided.
@@ -545,11 +523,11 @@ types:
             type: object
             properties:
               mode:
-                enum: ["raw", "pkcs1", "oaep/md5", "oaep/sha1", "oaep/sha224", "oaep/sha256", "oaep/sha384", "oaep/sha512"]
+                enum: ["RAW", "PKCS1", "OAEP_MD5", "OAEP_SHA1", "OAEP_SHA224", "OAEP_SHA256", "OAEP_SHA384", "OAEP_SHA512"]
               encrypted: base64
             example:
-              mode: "raw"
-              encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
+              mode: "RAW"
+              encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
         responses:
           200:
             body:
@@ -558,7 +536,7 @@ types:
                 properties:
                   decrypted: base64
                 example:
-                  decrypted: "Important message."
+                  decrypted: "FCghYzk4cX5REui5PgF55lHrQpZOvawOwOoXWiPaHjo85OMo1zMiszOYvEn2rgiarhXekVhe8gW3yBENcJ+cy1OD7Fh32NhiZQNAD0eWMVL2UTFetnhEzYxx+PlYKhUSX+HiHyuzrZ8t5vAMYhiaQEcIyxfRA71IfL3mT5gxeH0="
           401:
             description: Authentication required but none provided.
           403:
@@ -585,7 +563,7 @@ types:
               message: base64
             example:
               mode: "PKCS1"
-              message: "this is a message"
+              message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
         responses:
           200:
             body:
@@ -594,7 +572,7 @@ types:
                 properties:
                   signature: base64
                 example:
-                  signature: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr"
+                  signature: "XLD5UAIFidr8bRXMOfibH3wFDXCLfzYY5AoLbU+u5nn0Kt9Mvvn2V7LRyPRbB0oivAz7mwEVS+C0Rkv4LXJhk0FWNByBOe9vlPIhBuQ6hsawKxPDNsW3lYBv/vBM34ZjJuHq0b1UPmyMUjIepndAYXmdCB/FyVBn0CPRVpmuKfI="
           401:
             description: Authentication required but none provided.
           403:
@@ -800,7 +778,7 @@ types:
         body:
           application/json:
             type: UserList
-            example: [ user: "juser", user: "manfred" ]
+            example: [ user: "admin" ]
       401:
         description: Authentication required but none provided.
       403:
@@ -817,14 +795,8 @@ types:
         type: User
         example: { realName : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
     responses:
-      200:
+      201:
         description: Successful creation of user. The response contains a Location header, e.g. "https://nitrohsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
-        body:
-          application/json:
-            properties:
-              user: ID
-            example:
-              user: "I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K"
       400:
         description: Bad request (specified properties are invalid, e.g. weak passphrase).
       401:
@@ -964,7 +936,7 @@ types:
                 status: 
                   enum: ["on", "off"]
               example:
-                status: "on"
+                status: "off"
         401:
           description: Authentication required but none provided.
         403:
@@ -1177,9 +1149,9 @@ types:
                 netmask: string
                 gateway: string
               example:
-                ipAddress: 10.0.0.23
+                ipAddress: 192.168.1.1
                 netmask: 255.255.255.0
-                gateway: 10.0.0.1
+                gateway: 0.0.0.0
         401:
           description: Authentication required but none provided.
         403:
@@ -1230,7 +1202,7 @@ types:
                 logLevel: 
                   enum: [ "debug", "info", "warn", "error" ]
               example:
-                ipAddress: 10.0.0.42
+                ipAddress: 0.0.0.0
                 port: 514
                 logLevel: info
         401:
@@ -1352,9 +1324,9 @@ types:
                 softwareVersion: string
                 hardwareVersion: string
               example:
-                firmwareVersion: 1.0
-                softwareVersion: 0.7
-                hardwareVersion: 2.2.2
+                firmwareVersion: "1"
+                softwareVersion: "1.7"
+                hardwareVersion: "2.2.2"
         401:
           description: Authentication required but none provided.
         403:

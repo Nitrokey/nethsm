@@ -219,7 +219,9 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private get rd =
       Hsm.Config.time hsm_state >>= fun timestamp ->
-      let time = Ptime.to_rfc3339 timestamp in
+      (* Ptime.to_rfc3339 would emit a timezone (-00:00) *)
+      let ((y, m, d), ((hh, mm, ss), _)) = Ptime.to_date_time timestamp in
+      let time = Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ" y m d hh mm ss in
       let json = Json.time_req_to_yojson { time } in
       Wm.continue (`String (Yojson.Safe.to_string json)) rd
 

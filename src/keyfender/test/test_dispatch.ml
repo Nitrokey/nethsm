@@ -725,7 +725,13 @@ let users_post () =
   "POST on /users/ succeeds"
   @? begin
   match admin_post_request ~body:(`String operator_json) "/users" with
-  | _, Some (`Created, _, _, _) -> true
+  | _, Some (`Created, headers, _, _) ->
+        begin match Cohttp.Header.get headers "location" with
+        | None -> false
+        | Some loc -> 
+           let prefix = "/api/v1/users/" in
+           String.equal (String.sub loc 0 (String.length prefix)) prefix
+        end
   | _ -> false
   end
 

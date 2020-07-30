@@ -3,9 +3,30 @@
     dune exec ./generate_raml_tests.exe
 *)
 
+(* TODO
+- UserID: braucht ein beispiel (im setup)
+- header vergleichen (headers.expected erzeugen)
+  - zuerst die status zeile (HTTP code)
+- curl in setup.sh failed --> exit code? -- curl exit codes beruecksichtigen
+- auffaechern von rollen (Operator, Administrator)
+- unterschiedliche content types -> setzen der header
+- test code generierung: aktuell nur success, auch failures programmatisch erzeugen
+  - fuer nicht authorisierte rollen sollten endpunkte nicht verfuegbar sein
+- minimiere skip_endpoints
+
+--> evaluate test coverage
+- standalone tests vs vermeidung von resets
+
+DONE
+- exclude spezial-endpoints (zB /random)
+- keyID setup command
+- endpunkte durchtesten (mit abgeschaltetem header vergleich)
+*)
+
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
+let keyid = "mykey"
 let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
@@ -17,8 +38,8 @@ let allowed_request_types = [
   "application/pgp-keys";
 ]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
-let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"]
-let skip_body_endpoints = ["/random"; "/config/tls/csr.pem" ]
+let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"]
+let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics" ]
 
 let is_quoted s =
   let l = String.length s in
@@ -32,10 +53,9 @@ let unquote s =
   else s
 
 let escape s =
-  let l = String.length s in
   if is_quoted s
   (* if its not a JSON object *)
-  then String.sub s 1 (l-2)
+  then s
   else
     let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
     "\"" ^ s' ^ "\""
@@ -73,7 +93,7 @@ let passphrase = function
   | "Backup" -> ("backup", "This is my backup passphrase")
   | _ -> assert false
 
-let prepare_setup _meth _path _cmd (state, role, _req) =
+let prepare_setup _meth path _cmd (state, role, _req) =
   (* 1. prepare server state *)
   let provision = cmd "/provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
   in
@@ -100,7 +120,13 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
     | Some "Backup" -> add_user "Backup"
     | _ -> ""
   in
-  prepare_state ^ "\n" ^ prepare_role
+  let prepare_data =
+    let keyid_path = "/keys/{KeyID}" in
+    if String.length path >= String.length keyid_path && String.sub path 0 (String.length keyid_path) = keyid_path
+    then cmd ("/keys/" ^ keyid) "PUT" ^ (auth_header (passphrase "Administrator")) ^ "-H \"Content-Type: application/json\" --data @../../key.json"
+    else ""
+  in
+  prepare_state ^ "\n" ^ prepare_role ^ "\n" ^ prepare_data
 
 let req_states req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
@@ -147,12 +173,14 @@ let make_req_data req meth =
 let make_resp_data raml =
   let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml ["responses"] in
   let get_example (code, meta) = match code with
-  | "200"     -> 
+  | "200" -> 
     begin
-      let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] in
-      List.map (fun (typ, example) ->
-        let subtree = Ezjsonm.find example ["example"] in
-        ("200", Some (typ, subtree))) mediatypes
+      match Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] with
+      | exception Not_found -> [("200", None)]
+      | mediatypes ->
+        List.map (fun (typ, example) ->
+          let subtree = Ezjsonm.find example ["example"] in
+          ("200", Some (typ, subtree))) mediatypes
     end
   | somecode  -> [(somecode, None)]; 
   in
@@ -163,7 +191,10 @@ let tests_for_states meth path cmd responses (state, role, req) =
   let (outdir, test_file) = path_to_filename state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
-  let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd req in
+  let cmd' =
+    Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd
+  in
+  let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd' req in
   write test_file test_cmd;
   let _ = Sys.command("chmod u+x " ^ test_file) in
 

@@ -175,7 +175,7 @@ type private_key_req = {
 }[@@deriving yojson]
 
 type decrypt_mode =
-  | Raw
+  | RAW
   | PKCS1
   | OAEP_MD5
   | OAEP_SHA1
