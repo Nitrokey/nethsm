@@ -17,11 +17,23 @@ let allowed_request_types = [
   "application/pgp-keys";
 ]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
-let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/random"]
+let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"]
+let skip_body_endpoints = ["/random"; "/config/tls/csr.pem" ]
+
+let is_quoted s =
+  let l = String.length s in
+  l >= 2 && String.get s 0 = '"' && String.get s (l-1) = '"'
+
+let unquote s =
+  let l = String.length s in
+  if is_quoted s
+  (* if its not a JSON object *)
+  then String.sub s 1 (l-2)
+  else s
 
 let escape s =
   let l = String.length s in
-  if l >= 2 && String.get s 0 = '"' && String.get s (l-1) = '"'
+  if is_quoted s
   (* if its not a JSON object *)
   then String.sub s 1 (l-2)
   else
@@ -165,11 +177,16 @@ let tests_for_states meth path cmd responses (state, role, req) =
     match List.find_opt (fun (c, _) -> c = "200") responses with
     | None -> ""
     | Some (_, Some (_typ, example)) ->
-      let escaped = escape @@ Ezjsonm.value_to_string example in
+      let escaped = unquote @@ Ezjsonm.value_to_string example in
       Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
     | Some (_, _) -> ""
   in
   write (outdir ^ "/body.expected") expected_body;
+
+  if List.mem path skip_body_endpoints then
+    let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
+    ();
+
   let _ = Sys.command("touch " ^ outdir ^ "/headers.expected") in
   ()
 

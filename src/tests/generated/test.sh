@@ -11,7 +11,9 @@ test_one () {
     kill $PID
 
     #diff -u <(grep -v "^date: " headers.out) <(grep -v "^date: " headers.expected)
-    diff -u body.out body.expected
+    if [ ! -f body.skip ]; then
+      diff -u body.out body.expected
+    fi
 }
 
 for x in $(find . -type d -maxdepth 1 | grep -v '^.$' | grep -v '^..$'); do
