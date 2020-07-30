@@ -10,8 +10,8 @@ test_one () {
     ./command.sh || (kill $PID ; exit 4)
     kill $PID
 
-    diff <(grep -v "^date: " headers.out) <(grep -v "^date: " headers.expected)
-    diff body.out body.expected
+    #diff -u <(grep -v "^date: " headers.out) <(grep -v "^date: " headers.expected)
+    diff -u body.out body.expected
 }
 
 for x in $(find . -type d -maxdepth 1 | grep -v '^.$' | grep -v '^..$'); do

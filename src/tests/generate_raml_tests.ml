@@ -17,17 +17,16 @@ let allowed_request_types = [
   "application/pgp-keys";
 ]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
+let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/random"]
 
 let escape s =
-  let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
-  let l = String.length s' in
-  let s'' =
-    if l > 4 && String.sub s' 0 2 = {|\"|} && String.sub s' (l-2) 2 = {|\"|}
-    (* if its a JSON string, remove escapes *)
-    then String.sub s' 2 (l-4)
-    else s'
-  in
-  "\"" ^ s'' ^ "\""
+  let l = String.length s in
+  if l >= 2 && String.get s 0 = '"' && String.get s (l-1) = '"'
+  (* if its not a JSON object *)
+  then String.sub s 1 (l-2)
+  else
+    let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
+    "\"" ^ s' ^ "\""
 
 let get_endpoints meta = 
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> CCString.prefix ~pre:"/" key)
@@ -98,14 +97,16 @@ let req_roles req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["role"]
 
 let make_post_data req = 
-  let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] in
-  let f (mediatype, req') =
-    if not @@ List.mem mediatype allowed_request_types
-    then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
-    let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-    header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
-  in
-  List.map f mediatypes
+  match Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] with
+  | exception Not_found -> [""]
+  | mediatypes ->
+    let f (mediatype, req') =
+      if not @@ List.mem mediatype allowed_request_types
+      then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
+      let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
+      header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+    in
+    List.map f mediatypes
 
 let make_req_data req meth =
   let roles = req_roles req in
@@ -135,12 +136,10 @@ let make_resp_data raml =
   let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml ["responses"] in
   let get_example (code, meta) = match code with
   | "200"     -> 
-    begin (* TODO do we need loop? should be just JSON *)
+    begin
       let mediatypes = Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] in
-      List.iter (fun (t, data) -> Printf.printf "typ is %s: %s\n" t (Ezjsonm.value_to_string data)) mediatypes;
       List.map (fun (typ, example) ->
         let subtree = Ezjsonm.find example ["example"] in
-        Printf.printf "example subtree is %s\n" (Ezjsonm.value_to_string subtree);
         ("200", Some (typ, subtree))) mediatypes
     end
   | somecode  -> [(somecode, None)]; 
@@ -165,7 +164,9 @@ let tests_for_states meth path cmd responses (state, role, req) =
   let expected_body =
     match List.find_opt (fun (c, _) -> c = "200") responses with
     | None -> ""
-    | Some (_, Some (_typ, example)) -> Ezjsonm.value_to_string example
+    | Some (_, Some (_typ, example)) ->
+      let escaped = escape @@ Ezjsonm.value_to_string example in
+      Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
     | Some (_, _) -> ""
   in
   write (outdir ^ "/body.expected") expected_body;
@@ -181,8 +182,13 @@ let print_method path (meth, req) =
   end
 
 let print_methods (path, methods) =
-  Printf.printf "generating tests for %s\n" path;
-  List.iter (print_method path) methods
+  Printf.printf "generating tests for %s.." path;
+  if not (List.mem path skip_endpoints)
+  then begin
+    List.iter (print_method path) methods;
+    Printf.printf "done\n"
+  end
+  else Printf.printf "(skipped endpoint)\n"
 
 let rec subpaths (path, meta) =
   let (endpoints, _) = get_endpoints meta in
