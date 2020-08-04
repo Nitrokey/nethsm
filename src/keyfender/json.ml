@@ -1,19 +1,19 @@
 open Rresult.R.Infix
 
+let guard p err = if p then Ok () else Error err
+
 type err = { message : string }[@@deriving yojson]
 
 let error message =
   Yojson.Safe.to_string (err_to_yojson { message })
 
 let nonempty ~name s =
-  if String.length s == 0
-  then Error (Printf.sprintf "JSON field %s is empty." name)
-  else Ok ()
+  guard (String.length s > 0)
+    (Printf.sprintf "JSON field %s is empty." name)
 
 let valid_passphrase ~name s =
-  if 10 <= String.length s && String.length s <= 200
-  then Ok ()
-  else Error (Printf.sprintf "passphrase %s is not >= 10 and <= 200 characters" name)
+  guard (10 <= String.length s && String.length s <= 200)
+    (Printf.sprintf "passphrase %s is not >= 10 and <= 200 characters" name)
 
 let to_ocaml parse json =
   Rresult.R.reword_error
@@ -145,7 +145,12 @@ type log =
 
 type random_req = { length : int }[@@deriving yojson]
 
-type rsa_key = { primeP : string ; primeQ : string ; publicExponent : string } [@@deriving yojson]
+type key = {
+  primeP : (string [@default ""]) ;
+  primeQ : (string [@default ""]) ;
+  publicExponent : (string [@default ""]) ;
+  data : (string [@default ""]) ;
+} [@@deriving yojson]
 
 type purpose = Sign | Decrypt | SignAndDecrypt [@@deriving yojson]
 
@@ -160,7 +165,7 @@ let head = function
 
 let purpose_to_yojson purpose = head @@ purpose_to_yojson purpose
 
-type publicKey = {
+type rsaPublicKey = {
   purpose : purpose ;
   algorithm : string ;
   modulus : string ;
@@ -168,10 +173,17 @@ type publicKey = {
   operations : int
 } [@@deriving yojson]
 
+type ed25519PublicKey = {
+  purpose : purpose ;
+  algorithm : string ;
+  data : string ;
+  operations : int
+} [@@deriving yojson]
+
 type private_key_req = {
   purpose: purpose ;
   algorithm: string ;
-  key : rsa_key
+  key : key
 }[@@deriving yojson]
 
 type decrypt_mode =
@@ -199,6 +211,7 @@ type sign_mode =
   | PSS_SHA256
   | PSS_SHA384
   | PSS_SHA512
+  | ED25519
 [@@deriving yojson]
 
 let sign_mode_of_yojson = function
@@ -207,23 +220,30 @@ let sign_mode_of_yojson = function
 
 type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
 
-type generate_key_req = { purpose: purpose ; algorithm : string ; length : int ; id : (string [@default ""]) } [@@deriving yojson]
+type generate_key_req = {
+  purpose: purpose ;
+  algorithm : string ;
+  length : (int [@default 0]) ;
+  id : (string [@default ""])
+} [@@deriving yojson]
 
 let is_alphanum s = Astring.String.for_all (function 'a'..'z'|'A'..'Z'|'0'..'9' -> true | _ -> false) s
 
 let valid_id id =
-  (if String.length id <= 128
-    then Ok ()
-    else Error "ID cannot be longer than 128 characters.") >>= fun () ->
-   if is_alphanum id then Ok () else Error "ID may only contain alphanumeric characters."
+  guard (String.length id <= 128)
+    "ID cannot be longer than 128 characters." >>= fun () ->
+  guard (is_alphanum id) "ID may only contain alphanumeric characters."
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
   (* purpose already checked by json parser *)
-  (if "RSA" = r.algorithm then Ok () else Error "Only RSA algorithm supported.") >>= fun () ->
-  (if 1024 <= r.length && r.length <= 8192
-    then Ok ()
-    else Error "Key length must be between 1024 and 8192.") >>= fun () ->
+  (if "RSA" = r.algorithm then
+     guard (1024 <= r.length && r.length <= 8192)
+       "RSA key length must be between 1024 and 8192."
+   else if "ED25519" = r.algorithm then
+     guard (r.purpose = Sign) "Purpose must be sign for ED25519 key."
+   else
+     Error "Only RSA and ED25519 algorithms supported.") >>= fun () ->
   valid_id r.id >>| fun () ->
   r
 
@@ -278,4 +298,3 @@ type system_info = {
   softwareVersion : version ;
   hardwareVersion : string ;
 }[@@deriving yojson]
-

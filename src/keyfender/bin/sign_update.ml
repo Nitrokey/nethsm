@@ -57,6 +57,7 @@ let sign key_file changelog_file version image_file output_file =
     read_file key_file |> Cstruct.of_string |> X509.Private_key.decode_pem |>
     function
     | Ok `RSA key -> key
+    | Ok _ -> invalid_arg "not a RSA key"
     | Error `Msg m -> invalid_arg m
   in
   let update_hash hash bytes = Hash.feed hash (Cstruct.of_bytes bytes) in

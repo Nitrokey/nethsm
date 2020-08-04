@@ -45,26 +45,50 @@ types:
   KeyPurpose:
     enum: ["Sign", "Decrypt", "SignAndDecrypt"]
   KeyAlgorithm:
-    enum: ["RSA"]
+    enum: ["RSA", "ED25519"]
   PrivateKey:
     type: object
     properties:
       purpose: KeyPurpose
+      # keyPurpose is constrained by algorithm, only RSA keys can decrypt
       algorithm: KeyAlgorithm
       key:
+        # this should express:
+        #   keyAlgorithm = RSA, primeP, primeQ, publicExponent are required
+        #   keyAlgorithm = ED25519, data is required
         properties:
-          primeP: string
-          primeQ: string
-          publicExponent: string
+          primeP:
+            type: string
+            required: false
+          primeQ:
+            type: string
+            required: false
+          publicExponent:
+            type: string
+            required: false
+          data:
+            type: string
+            required: false
   PublicKey:
     type: object
     properties:
       purpose: KeyPurpose
+      # keyPurpose is constrained by algorithm, only RSA keys can decrypt
       algorithm: KeyAlgorithm
       key:
+        # this should express:
+        #   keyAlgorithm = RSA, modulus and publicExponent are required
+        #   keyAlgorithm = ED25519, data is required
         properties:
-          modulus: string
-          publicExponent: string
+          modulus:
+            type: string
+            required: false
+          publicExponent:
+            type: string
+            required: false
+          data:
+            type: string
+            required: false
       operations: integer
   DistinguishedName:
     type: object
@@ -278,7 +302,7 @@ types:
     description: Import a private key into NitroHSM and let NitroHSM generate a KeyID. The public key will be automatically derived.
     securedBy: basic # R-Administrator
     queryParameters:
-      purpose: KeyPurpose 
+      purpose: KeyPurpose
     body:
       application/json:
         type: PrivateKey
@@ -346,18 +370,21 @@ types:
         application/json:
           properties:
             purpose: KeyPurpose
+            # purpose is constrained by algorithm, only RSA allows decrypt
             algorithm: KeyAlgorithm
             length:
+              # required for RSA keys
               type: int
               mimimum: 1024
               maximum: 8192
+              required: false
             id:
               type: ID
               required: false
           example:
             purpose: "Sign"
             algorithm: "RSA"
-            length: 2048
+            length: 2048 # Not required for EC keys
             id: "myKey1" # KeyID is optional, will be created if not present
       responses:
         201:
@@ -559,7 +586,7 @@ types:
             type: object
             properties:
               mode:
-                enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512"]
+                enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512", "ED25519"]
               message: base64
             example:
               mode: "PKCS1"
@@ -626,12 +653,12 @@ types:
                   -----END CERTIFICATE-----
               application/x-x509-ca-cert:
                 example: |
-                  some binary data here 
+                  some binary data here
               application/pgp-keys:
                 example: |
                   -----BEGIN PGP PRIVATE KEY BLOCK-----
                   Version: GnuPG v2
-    
+
                   MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
                   ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
                   MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
@@ -933,7 +960,7 @@ types:
           body:
             application/json:
               properties:
-                status: 
+                status:
                   enum: ["on", "off"]
               example:
                 status: "off"
@@ -952,7 +979,7 @@ types:
       body:
         application/json:
           properties:
-            status: 
+            status:
               enum: ["on", "off"]
           example:
             status: "on"
@@ -1199,7 +1226,7 @@ types:
               properties:
                 ipAddress: string
                 port: string
-                logLevel: 
+                logLevel:
                   enum: [ "debug", "info", "warn", "error" ]
               example:
                 ipAddress: 0.0.0.0
@@ -1221,7 +1248,7 @@ types:
           properties:
             ipAddress: string
             port: string
-            logLevel: 
+            logLevel:
               enum: [ "debug", "info", "warn", "error" ]
           example:
             ipAddress: 10.0.0.42
@@ -1449,7 +1476,7 @@ types:
         200:
           description: Successful retrieval of backup data.
           body:
-            application/octet-stream: 
+            application/octet-stream:
               example: "encrypted backup"
         401:
           description: Authentication required but none provided.
@@ -1466,7 +1493,7 @@ types:
         backupPassphrase: Passphrase
         systemTime: RFC3339 (UTC only)
       body:
-        application/octet-stream: 
+        application/octet-stream:
           example: "encrypted backup"
       responses:
         204:

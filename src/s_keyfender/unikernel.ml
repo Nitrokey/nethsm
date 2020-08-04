@@ -78,21 +78,23 @@ struct
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel) ;
       Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
       Http.connect conduit >>= fun http ->
-      Hsm.certificate_chain hsm_state >>= fun (cert, chain, `RSA priv) ->
-      let certificates = `Single (cert :: chain, priv) in
-      let tls_cfg = Tls.Config.server ~certificates () in
-      let https_port = Key_gen.https_port () in
-      let tls = `TLS (tls_cfg, `TCP https_port) in
-      let http_port = Key_gen.http_port () in
-      let tcp = `TCP http_port in
-      let open Webserver in
-      let https =
-        Log.info (fun f -> f "listening on %d/TCP" https_port);
-        http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
-      in
-      let http =
-        Log.info (fun f -> f "listening on %d/TCP" http_port);
-        http tcp @@ serve (redirect https_port)
-      in
-      Lwt.join [ https; http ]
+      Hsm.certificate_chain hsm_state >>= function
+      | (cert, chain, `RSA priv) ->
+        let certificates = `Single (cert :: chain, priv) in
+        let tls_cfg = Tls.Config.server ~certificates () in
+        let https_port = Key_gen.https_port () in
+        let tls = `TLS (tls_cfg, `TCP https_port) in
+        let http_port = Key_gen.http_port () in
+        let tcp = `TCP http_port in
+        let open Webserver in
+        let https =
+          Log.info (fun f -> f "listening on %d/TCP" https_port);
+          http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
+        in
+        let http =
+          Log.info (fun f -> f "listening on %d/TCP" http_port);
+          http tcp @@ serve (redirect https_port)
+        in
+        Lwt.join [ https; http ]
+      | _ -> Lwt.fail_with "Only RSA private key supported."
 end

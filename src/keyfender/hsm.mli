@@ -144,18 +144,18 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.purpose -> p:string -> q:string -> e:string ->
+    val add_json : id:string -> t -> Json.purpose -> string -> Json.key ->
       (unit, error) result Lwt.t
 
     val add_pem : id:string -> t -> Json.purpose -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> Json.purpose -> length:int ->
+    val generate : id:string -> t -> string -> Json.purpose -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
 
-    val get_json : t -> id:string -> (Json.publicKey, error) result Lwt.t
+    val get_json : t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
 
     val get_pem : t -> id:string -> (string, error) result Lwt.t
 

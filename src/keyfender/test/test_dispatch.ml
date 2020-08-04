@@ -214,6 +214,7 @@ hKHPVcjl0CKq2SyddQ63uuaKDnrVDRCEO9o9J521GgoGAwPMwI4XqN+JyQgCMVOg
 z7vvltQ9fOTqe29fERS2ASgq
 -----END PRIVATE KEY-----|} |> Cstruct.of_string |> X509.Private_key.decode_pem |> function
   | Ok `RSA key -> key
+  | Ok _ -> invalid_arg "not an RSA key"
   | Error `Msg m -> invalid_arg m
 
 module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
@@ -915,6 +916,30 @@ let keys_generate_invalid_id_length () =
   | _ -> false
   end
 
+let generate_ed25519 = {|{ purpose: "Sign", algorithm: "ED25519" }|}
+
+let keys_generate_ed25519 () =
+  "POST on /keys/generate with ED25519 succeeds"
+  @? begin
+  match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
+  | _, Some (`Created, headers, _, _) ->
+    begin match Cohttp.Header.get headers "location" with
+    | None -> false
+    | Some loc -> (* /api/v1/keys/<keyid> *)
+      List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+    end
+  | _ -> false
+  end
+
+let keys_generate_ed25519_fail () =
+  let generate_ed25519 = {|{ purpose: "Decrypt", algorithm: "ED25519" }|} in
+  "POST on /keys/generate with ED25519 fails (wrong purpose)"
+  @? begin
+  match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let test_key_pem = {|
 -----BEGIN RSA PRIVATE KEY-----
 MIICXQIBAAKBgQCwMWUcsAEksFrhssoZK09w9iTMe77qJrks542+InrqD8qj31gw
@@ -932,6 +957,11 @@ UMO1xgRDHHXpBpFVEeXPAkA1JUjkAwT934dsaE5UJKw6UbSuO/aJtC3zzwlJxJ/+
 q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 -----END RSA PRIVATE KEY-----
 |}
+
+let test_key =
+  match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
+  | Ok `RSA key -> key
+  | _ -> assert false
 
 let hsm_with_key ?(mode = Keyfender.Json.Decrypt) () =
   let state = operational_mock () in
@@ -1046,13 +1076,10 @@ let operator_keys_key_sign () =
           begin match Base64.decode signature with
             | Error _ -> false
             | Ok decoded ->
-              match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
-              | Error _ -> false
-              | Ok `RSA private_key ->
-                let key = Mirage_crypto_pk.Rsa.pub_of_priv private_key in
-                match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
-                | Some msg -> String.equal (Cstruct.to_string msg) message
-                | None -> false
+              let key = Mirage_crypto_pk.Rsa.pub_of_priv test_key in
+              match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
+              | Some msg -> String.equal (Cstruct.to_string msg) message
+              | None -> false
           end
         | _ -> false
       end
@@ -1087,13 +1114,10 @@ let operator_keys_key_sign_and_decrypt () =
                      begin match Base64.decode signature with
                        | Error _ -> false
                        | Ok decoded ->
-                         match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
-                         | Error _ -> false
-                         | Ok `RSA private_key ->
-                           let key = Mirage_crypto_pk.Rsa.pub_of_priv private_key in
-                           match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
-                           | Some msg -> String.equal (Cstruct.to_string msg) message
-                           | None -> false
+                         let key = Mirage_crypto_pk.Rsa.pub_of_priv test_key in
+                         match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key @@ Cstruct.of_string decoded with
+                         | Some msg -> String.equal (Cstruct.to_string msg) message
+                         | None -> false
                      end
                    | _ -> false
                  end
@@ -1102,6 +1126,88 @@ let operator_keys_key_sign_and_decrypt () =
         | _ -> false
       end
     | _ -> false
+  end
+
+let ed25519_priv_pem =
+  {|-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
+-----END PRIVATE KEY-----
+|}
+
+let hsm_with_ed25519_key () =
+  let hsm_state = operational_mock () in
+  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.Sign ~id:"keyID" ed25519_priv_pem >|= function
+    | Ok () -> hsm_state
+    | Error _ -> assert false)
+
+let ed25519_priv = match X509.Private_key.decode_pem (Cstruct.of_string ed25519_priv_pem) with
+  | Ok `ED25519 priv -> priv
+  | _ -> assert false
+
+let ed25519_pub = Hacl_ed25519.priv_to_public ed25519_priv
+
+let operator_sign_ed25519_succeeds () =
+  "POST on /keys/keyID/sign succeeds with ed25519 sign key"
+  @? begin
+    let hsm_state = hsm_with_ed25519_key () in
+    let sign_request =
+      Printf.sprintf {|{ mode: "ED25519", message: "%s"}|}
+        (Base64.encode_string message)
+    in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`OK, _, `String data, _) ->
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "signature", `String signature ] ->
+          begin match Base64.decode signature with
+            | Error _ -> false
+            | Ok signature ->
+              let signature = Cstruct.of_string signature in
+              Hacl_ed25519.verify ~pub:ed25519_pub ~msg:(Cstruct.of_string message) ~signature
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let operator_sign_ed25519_fails () =
+  "POST on /keys/keyID/sign fails with ed25519 sign key (bad mode)"
+  @? begin
+    let hsm_state = hsm_with_ed25519_key () in
+    let sign_request =
+      Printf.sprintf {|{ mode: "PKCS1", message: "%s"}|}
+        (Base64.encode_string message)
+    in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_get_ed25519 () =
+  "GET on /keys/keyID succeeds with ED25519 key"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_ed25519_key ()) "/keys/keyID" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let ed25519_json =
+  let b64 = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.encode_priv ed25519_priv)) in
+  Printf.sprintf {| { purpose: "Sign", algorithm: "ED25519", key: { data: "%s" } } |} b64
+
+let keys_key_put_ed25519 () =
+  "PUT on /keys/keyID succeeds with ED25519 key"
+  @? begin
+  match admin_put_request ~body:(`String ed25519_json) "/keys/keyID" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let operator_keys_key_public_pem_ed25519 () =
+  "GET on /keys/keyID/public.pem succeeds"
+  @? begin
+  match request ~headers:operator_headers ~hsm_state:(hsm_with_ed25519_key ()) "/keys/keyID/public.pem" with
+  | _, Some (`OK, _, `String body, _) -> String.equal body (Cstruct.to_string (X509.Public_key.encode_pem (`ED25519 ed25519_pub)))
+  | _ -> false
   end
 
 let keys_key_cert_get () =
@@ -1296,6 +1402,8 @@ let () =
     "/keys/generate" >:: keys_generate;
     "/keys/generate" >:: keys_generate_invalid_id;
     "/keys/generate" >:: keys_generate_invalid_id_length;
+    "/keys/generate" >:: keys_generate_ed25519;
+    "/keys/generate" >:: keys_generate_ed25519_fail;
     "/keys/keyID" >:: keys_key_get;
     "/keys/keyID" >:: keys_key_put;
     "/keys/keyID" >:: keys_key_delete;
@@ -1308,6 +1416,11 @@ let () =
     "/keys/keyID/sign" >:: operator_keys_key_sign;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
     "/keys/keyID/decrypt and /sign" >:: operator_keys_key_sign_and_decrypt;
+    "/keys/keyID/sign" >:: operator_sign_ed25519_succeeds;
+    "/keys/keyID/sign" >:: operator_sign_ed25519_fails;
+    "/keys/keyID" >:: keys_key_get_ed25519;
+    "/keys/keyID" >:: keys_key_put_ed25519;
+    "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_ed25519;
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_put;
     "/keys/keyID/cert" >:: keys_key_cert_delete;
