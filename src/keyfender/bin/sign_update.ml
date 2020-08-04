@@ -71,7 +71,7 @@ let sign key_file changelog_file version image_file output_file =
    | Some filename ->
      if Sys.file_exists filename
      then invalid_arg "Output file already exists"
-     else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400 
+     else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
   in
   let write_chunk () bytes =
     let written = Unix.write fd bytes 0 (Bytes.length bytes) in

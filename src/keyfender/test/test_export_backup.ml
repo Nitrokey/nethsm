@@ -32,10 +32,10 @@ let readfile filename =
   read 0;
   Unix.close fd;
   Bytes.to_string buf
- 
+
 let () =
   let returncode = Sys.command "../bin/export_backup.exe backup_passphrase my_backup.bin --output=my_backup.json" in
   assert (returncode = 0);
   let body = readfile "my_backup.json" in
   assert (String.equal output body)
-   
+

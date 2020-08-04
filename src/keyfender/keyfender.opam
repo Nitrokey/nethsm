@@ -25,7 +25,7 @@ depends: [
   "ptime"
   "cohttp"
   "rresult"
-  "mirage-crypto" {= "0.8.0"}
+  "mirage-crypto" {= "0.8.3"}
   "webmachine"
   "dispatch" {< "0.5.0"}
   "cohttp-lwt"
@@ -36,7 +36,7 @@ depends: [
   "ppx_deriving"
   "pbkdf" {>= "1.1.0"}
   "mirage-kv" {>= "3.0.0"}
-  "tls" {= "0.12.2"}
+  "tls" {>= "0.12.2"}
   "x509" {= "0.11.2"}
   "base64" {>= "3.0.0"}
   "hex"

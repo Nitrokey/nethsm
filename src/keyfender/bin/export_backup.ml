@@ -78,7 +78,7 @@ let get_field s =
   String.sub s 3 len, String.sub s offset (String.length s - offset)
 
 let version = "0"
-  
+
 let err_to_msg = function
   | Error e -> Error (`Msg e)
   | Ok a -> Ok a
@@ -102,7 +102,7 @@ let export passphrase backup_image_filename output =
     if String.equal version (Cstruct.to_string backup_version) then
       begin
         let rec next acc backup_data =
-          if backup_data = "" then Ok acc else 
+          if backup_data = "" then Ok acc else
           let item, rest = get_field backup_data in
           let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
           match Crypto.decrypt ~key ~adata (Cstruct.of_string item) with
@@ -112,17 +112,17 @@ let export passphrase backup_image_filename output =
             Error "Could not decrypt stored key-value pair. Authentication failed midway. Backup is corrupted?"
           | Ok key_value_pair ->
           let key, value = get_field (Cstruct.to_string key_value_pair) in
-          next ((key, value) :: acc) rest 
+          next ((key, value) :: acc) rest
         in
         match next [] backup_data'' with
         | Error e -> Error e
-        | Ok kvs -> 
+        | Ok kvs ->
           let fd = match output with
            | None -> Unix.stdout
            | Some filename ->
              if Sys.file_exists filename
              then invalid_arg "Output file already exists"
-             else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400 
+             else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
           in
           let channel = Unix.out_channel_of_descr fd in
           let json = `Assoc (List.map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
@@ -137,7 +137,7 @@ let export passphrase backup_image_filename output =
           (Cstruct.to_string backup_version) version
       in
       Error msg
- 
+
 
 open Cmdliner
 

@@ -498,7 +498,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
       (Config_store.get_opt t.kv Time_offset >|= function
         | None -> ()
-        | Some span -> 
+        | Some span ->
           let `Raw now_raw = Clock.now_raw () in
           match Ptime.add_span now_raw span with
           | None -> Log.warn (fun m -> m "time offset from config store out of range")
@@ -1301,7 +1301,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
      let byte = Cstruct.get_uint8 data' 0 in
      let len = Cstruct.BE.get_uint16 data' 1 in
      byte lsl 16 + len
- 
+
     let get_length stream =
       let open Lwt_result.Infix in
       read_n stream 3 >|= fun (data, stream') ->
@@ -1315,7 +1315,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       get_length s >>=
       get_data
 
-    let prefix_len s = 
+    let prefix_len s =
       let len_buf = Cstruct.create 3 in
       let length = String.length s in
       assert (length < 1 lsl 24); (* TODO *)
@@ -1453,9 +1453,9 @@ NwIDAQAB
       (* len:key len:value *)
       let msg = "Missing length field in backup data. Backup not readable, try another one." in
       let key_len = decode_length data in
-      if String.length data < key_len + 3 
+      if String.length data < key_len + 3
       then Error (Bad_request, msg)
-      else 
+      else
         let key = String.sub data 3 key_len in
         let val_start = 3 + key_len in
         let value = String.sub data val_start (String.length data - val_start) in
