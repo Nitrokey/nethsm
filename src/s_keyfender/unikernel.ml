@@ -27,7 +27,17 @@ struct
 
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
-  module Syslog = Logs_syslog_mirage.Udp(Console)(Pclock)(Ext_stack)
+
+  module HsmClock = struct
+    let now_d_ps () = Ptime.Span.to_d_ps (Ptime.to_span (Hsm.now ()))
+
+    let current_tz_offset_s () = None
+
+    let period_d_ps () = None
+  end
+
+  module Log_reporter = Mirage_logs.Make(HsmClock)
+  module Syslog = Logs_syslog_mirage.Udp(Console)(HsmClock)(Ext_stack)
 
   let opt_static_file assets next ip request body =
     let uri = Cohttp.Request.uri request in
@@ -70,11 +80,12 @@ struct
       Ext_tcp.connect ipv4 >>= fun tcp ->
       Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >>= fun ext_stack ->
       Hsm.Config.log hsm_state >>= fun log ->
-      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
-      then begin
-        let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
-        Logs.set_reporter reporter
-      end ;
+      (if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
+       then
+         let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
+         Logs.set_reporter reporter
+       else
+         Log_reporter.set_reporter (Log_reporter.create ()));
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel) ;
       Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
       Http.connect conduit >>= fun http ->
