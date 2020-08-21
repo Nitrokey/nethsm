@@ -703,12 +703,12 @@ let invalid_config_version () =
          Hsm.boot data))
 
 let config_version_but_no_salt () =
-  Lwt_main.run (
-    Kv_mem.connect () >>= fun data ->
-    Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
-    Hsm.boot data >|= fun hsm ->
-    assert_bool "hsm state is unprovisioned if only config/version is present"
-      (Hsm.state hsm = `Unprovisioned))
+  assert_raises (Invalid_argument "fatal!")
+    (fun () ->
+       Lwt_main.run (
+         Kv_mem.connect () >>= fun data ->
+         Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
+         Hsm.boot data))
 
 let users_get () =
   "GET on /users/ succeeds"

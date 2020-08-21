@@ -31,8 +31,7 @@ module type S = sig
 
   val lock : t -> unit
 
-  val certificate_chain : t ->
-    (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
+  val own_cert : t -> Tls.Config.own_cert
 
   val network_configuration : t ->
     (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
@@ -391,6 +390,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   type t = {
     mutable state : internal_state ;
     mutable has_changes : string option ;
+    key : X509.Private_key.t ;
+    mutable cert : X509.Certificate.t ;
+    mutable chain : X509.Certificate.t list ;
     kv : KV.t ;
     info : Json.info ;
     system_info : Json.system_info ;
@@ -449,17 +451,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     internal_server_error "Write time offset" KV.pp_write_error
       (Config_store.set t.kv Time_offset span)
 
-  let prepare_keys t slot credentials =
+  let prepare_keys kv slot credentials =
     let open Lwt_result.Infix in
     let get_salt_key = function
       | Domain_key_store.Passphrase -> Config_store.Unlock_salt
       | Domain_key_store.Device_id -> Config_store.Device_id_salt
     in
     internal_server_error "Prepare keys" Config_store.pp_error
-      (Config_store.get t.kv (get_salt_key slot)) >>= fun salt ->
+      (Config_store.get kv (get_salt_key slot)) >>= fun salt ->
     let unlock_key = Crypto.key_of_passphrase ~salt credentials in
     Lwt_result.map_err (function `Msg m -> Bad_request, m)
-      (Domain_key_store.get t.kv slot ~unlock_key) >|= fun domain_key ->
+      (Domain_key_store.get kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
@@ -479,80 +481,107 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device id, depending on boot mode *)
-  let unlock t slot credentials =
+  let unlock kv slot credentials =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    assert (state t = `Locked) ;
-    prepare_keys t slot credentials >>= fun (domain_key, as_key, ks_key) ->
-    unlock_store t.kv Authentication as_key >>= fun auth_store ->
-    unlock_store t.kv Key ks_key >|= fun key_store ->
+    prepare_keys kv slot credentials >>= fun (domain_key, as_key, ks_key) ->
+    unlock_store kv Authentication as_key >>= fun auth_store ->
+    unlock_store kv Key ks_key >|= fun key_store ->
     let keys = { domain_key ; auth_store ; key_store } in
-    t.state <- Operational keys
+    Operational keys
 
-  let unlock_with_device_id t ~device_id = unlock t Device_id device_id
+  let unlock_with_device_id kv ~device_id = unlock kv Device_id device_id
 
-  let unlock_with_passphrase t ~passphrase = unlock t Passphrase passphrase
+  let unlock_with_passphrase t ~passphrase =
+    let open Lwt_result.Infix in
+    unlock t.kv Passphrase passphrase >|= fun state' ->
+    t.state <- state'
 
-  let boot_config_store t =
+  let generate_cert () =
+    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:Crypto.initial_key_rsa_bits ()) in
+    (* this is before provisioning, our posix time may be not accurate *)
+    let valid_from = Ptime.epoch
+    and valid_until = Ptime.max
+    in
+    let dn = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN "keyfender")) ] in
+    let csr = X509.Signing_request.create dn priv in
+    match X509.Signing_request.sign csr ~valid_from ~valid_until priv dn with
+    | Error e ->
+      fatal "signing certificate signing request"
+        ~pp_error:X509.Validation.pp_signature_error e
+    | Ok cert -> cert, priv
+
+  let certificate_chain kv =
+    let open Lwt_result.Infix in
+    lwt_error_fatal "get private key from configuration store"
+      ~pp_error:Config_store.pp_error
+      (Config_store.get kv Private_key) >>= fun priv ->
+    lwt_error_fatal "get certificate from configuration store"
+      ~pp_error:Config_store.pp_error
+      (Config_store.get kv Certificate) >|= fun (cert, chain) ->
+    cert, chain, priv
+
+  let boot_config_store kv =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
-      (Config_store.get_opt t.kv Time_offset >|= function
+      (Config_store.get_opt kv Time_offset >|= function
         | None -> ()
         | Some span ->
           let `Raw now_raw = Clock.now_raw () in
           match Ptime.add_span now_raw span with
-          | None -> Log.warn (fun m -> m "time offset from config store out of range")
+          | None ->
+            Log.warn (fun m -> m "time offset from config store out of range")
           | Some ts -> Clock.set ts) >>= fun () ->
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
-      (Config_store.get_opt t.kv Unlock_salt) >>= function
-        | None -> Lwt.return (Ok t)
-        | Some _ ->
-          t.state <- Locked;
-          lwt_error_fatal "get unattended boot" ~pp_error:Config_store.pp_error
-            (Config_store.get_opt t.kv Unattended_boot) >>= function
-          | Some true ->
-            begin
-              let open Lwt.Infix in
-              let device_id = "my device id, psst" in
-              (unlock_with_device_id t ~device_id >|= function
-                | Ok () -> ()
-                | Error (_, msg) ->
-                  Log.err (fun m -> m "unattended boot failed with %s" msg)) >|= fun () ->
-              Ok t
-            end
-          | None | Some false -> Lwt.return (Ok t)
+      (Config_store.get kv Unlock_salt) >>= fun _ ->
+    lwt_error_fatal "get unattended boot" ~pp_error:Config_store.pp_error
+      (Config_store.get_opt kv Unattended_boot) >>= function
+    | Some true ->
+      begin
+        let open Lwt.Infix in
+        (* TODO retrieve device ID from S-Kitchen-Sink *)
+        let device_id = "my device id, psst" in
+        unlock_with_device_id kv ~device_id >|= function
+        | Ok s -> Ok s
+        | Error (_, msg) ->
+          Log.err (fun m -> m "unattended boot failed with %s" msg);
+          Ok Locked
+      end
+    | None | Some false -> Lwt.return (Ok Locked)
 
   let boot kv =
     Metrics.set_mem_reporter ();
-    let t =
-      {
-        state = Unprovisioned ;
-        has_changes = None ;
-        kv ;
-        info = { vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" } ;
-        system_info = { firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" } ;
-      }
+    let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
+    and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
+    and has_changes = None
     in
     let open Lwt.Infix in
     begin
       let open Lwt_result.Infix in
       lwt_error_to_msg ~pp_error:Config_store.pp_error
-        (Config_store.get_opt t.kv Version) >>= function
+        (Config_store.get_opt kv Version) >>= function
       | None ->
-        (* uninitialized / unprovisioned device, write version *)
-        lwt_error_to_msg ~pp_error:KV.pp_write_error
-          (Config_store.set t.kv Version Version.current >|= fun () -> t)
+        (* uninitialized / unprovisioned device *)
+        let state = Unprovisioned
+        and cert, key = generate_cert ()
+        and chain = []
+        in
+        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info } in
+        Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
-        | `Equal -> boot_config_store t
+        | `Equal ->
+          boot_config_store kv >>= fun state ->
+          certificate_chain kv >|= fun (cert, chain, key) ->
+          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"
           in
-        Lwt.return (Error (`Msg msg))
+          Lwt.return (Error (`Msg msg))
         | `Greater ->
           (* here's the place to embed migration code, at least for the
-              configuration store *)
+             configuration store *)
           let msg =
             "store has smaller version than software, data will be migrated!"
           in
@@ -565,44 +594,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let info t = t.info
 
-  let generate_csr ?(dn = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN "keyfender")) ]) priv =
-    X509.Signing_request.create dn priv, dn
-
-  let generate_cert t priv =
-    let open Lwt_result.Infix in
-    (* this is before provisioning, our posix time may be not accurate *)
-    let valid_from = Ptime.epoch
-    and valid_until = Ptime.max
-    in
-    let csr, dn = generate_csr priv in
-    match X509.Signing_request.sign csr ~valid_from ~valid_until priv dn with
-    | Error e ->
-      Log.err (fun m -> m "error %a while signing CSR" X509.Validation.pp_signature_error e);
-      invalid_arg "fatal error"
-    | Ok cert ->
-      lwt_error_fatal "write certificate to configuration store"
-        ~pp_error:KV.pp_write_error
-        (Config_store.set t.kv Certificate (cert, []) >|= fun () -> cert)
-
-  let certificate_chain t =
-    Lwt_result.get_exn
-      (let open Lwt_result.Infix in
-       lwt_error_fatal "get private key from configuration store"
-         ~pp_error:Config_store.pp_error
-         (Config_store.get_opt t.kv Private_key) >>= function
-       | Some priv ->
-         lwt_error_fatal "get certificate from configuration store"
-           ~pp_error:Config_store.pp_error
-           (Config_store.get t.kv Certificate >|= fun (cert, chain) ->
-            cert, chain, priv)
-       | None  ->
-         (* no key -> generate, generate certificate *)
-         let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:Crypto.initial_key_rsa_bits ()) in
-         generate_cert t priv >>= fun cert ->
-         lwt_error_fatal "set private key to configuration store"
-           ~pp_error:KV.pp_write_error
-           (Config_store.set t.kv Private_key priv >|= fun () ->
-            (cert, [], priv)))
+  let own_cert t =
+    match t.key with
+    | `RSA pk -> `Single (t.cert :: t.chain, pk)
+    | _ -> `None (* cannot happen *)
 
   let default_network_configuration =
     let ip = Ipaddr.V4.of_string_exn "192.168.1.1" in
@@ -1086,6 +1081,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let provision t ~unlock ~admin time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
+        (* TODO: needs to write everything as a single transaction *)
         let open Lwt_result.Infix in
         (* state already checked in Handler_provision.service_available *)
         assert (state t = `Unprovisioned);
@@ -1095,6 +1091,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let auth_store_key, key_store_key =
           Cstruct.split domain_key Crypto.key_len
         in
+        internal_server_error
+          "Initializing configuration store" KV.pp_write_error
+          (Config_store.set t.kv Version Version.current) >>= fun () ->
+        internal_server_error
+          "Writing private RSA key" KV.pp_write_error
+          (Config_store.set t.kv Private_key t.key) >>= fun () ->
+        internal_server_error
+          "Writing certificate chain key" KV.pp_write_error
+          (Config_store.set t.kv Certificate (t.cert, t.chain)) >>= fun () ->
+        internal_server_error
+          "Initializing configuration store" KV.pp_write_error
+          (Config_store.set t.kv Version Version.current) >>= fun () ->
         internal_server_error
           "Initializing authentication store" Encrypted_store.pp_write_error
           (Encrypted_store.initialize Version.current Authentication ~key:auth_store_key t.kv)
@@ -1175,10 +1183,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error _ -> None
 
     let tls_public_pem t =
-      let open Lwt.Infix in
-      certificate_chain t >|= fun (certificate, _, _) ->
-      let public = X509.Certificate.public_key certificate in
-      Cstruct.to_string (X509.Public_key.encode_pem public)
+      let public = X509.Private_key.public t.key in
+      Lwt.return (Cstruct.to_string (X509.Public_key.encode_pem public))
 
     let tls_public_pem_digest t =
       let open Lwt.Infix in
@@ -1187,42 +1193,35 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error _ -> None
 
     let tls_cert_pem t =
-      let open Lwt.Infix in
-      certificate_chain t >|= fun (cert, chain, _) ->
-      Cstruct.to_string (X509.Certificate.encode_pem_multiple (cert :: chain))
+      let chain = t.cert :: t.chain in
+      Lwt.return (Cstruct.to_string (X509.Certificate.encode_pem_multiple chain))
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
          - there's one server certificate at either end (matching our private key)
          - the chain itself is properly signed (i.e. a full chain missing the TA)
          --> take the last element as TA (unchecked), and verify the chain!
-         - TODO use current system time for verification
       *)
       match X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data) with
       | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
-        let open Lwt.Infix in
-        certificate_chain t >>= function
-        | (_, _, `RSA priv) ->
-          if `RSA (Mirage_crypto_pk.Rsa.pub_of_priv priv) = X509.Certificate.public_key cert then
-            let valid = match List.rev chain with
-              | [] -> Ok cert
-              | ta :: chain' ->
-                let our_chain = cert :: List.rev chain' in
-                let time () = Some (now ()) in
-                Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
-                  (X509.Validation.verify_chain ~anchors:[ta] ~time ~host:None our_chain)
-            in
-            match valid with
-            | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
-            | Ok _ ->
-              internal_server_error "Write certificate" KV.pp_write_error
-                (Config_store.set t.kv Certificate (cert, chain))
-          else
-            Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key.")
-        | _ ->
-          Lwt.return @@ Error (Bad_request, "Private key is not an RSA key.")
+        if X509.Private_key.public t.key = X509.Certificate.public_key cert then
+          let valid = match List.rev chain with
+            | [] -> Ok cert
+            | ta :: chain' ->
+              let our_chain = cert :: List.rev chain' in
+              let time () = Some (now ()) in
+              Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
+                (X509.Validation.verify_chain ~anchors:[ta] ~time ~host:None our_chain)
+          in
+          match valid with
+          | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
+          | Ok _ ->
+            internal_server_error "Write certificate" KV.pp_write_error
+              (Config_store.set t.kv Certificate (cert, chain))
+        else
+          Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key.")
 
     let tls_cert_digest t =
       let open Lwt.Infix in
@@ -1231,11 +1230,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error _ -> None
 
     let tls_csr_pem t subject =
-      let open Lwt.Infix in
-      certificate_chain t >|= fun (_, _, priv) ->
       let dn = Json.to_distinguished_name subject in
-      let csr, _ = generate_csr ~dn priv in
-      Cstruct.to_string (X509.Signing_request.encode_pem csr)
+      let csr = X509.Signing_request.create dn t.key in
+      Lwt.return (Cstruct.to_string (X509.Signing_request.encode_pem csr))
 
     let network t =
       let open Lwt.Infix in

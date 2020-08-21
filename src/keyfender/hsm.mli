@@ -31,8 +31,7 @@ module type S = sig
 
   val lock : t -> unit
 
-  val certificate_chain : t ->
-    (X509.Certificate.t * X509.Certificate.t list * X509.Private_key.t) Lwt.t
+  val own_cert : t -> Tls.Config.own_cert
 
   val network_configuration : t ->
     (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
