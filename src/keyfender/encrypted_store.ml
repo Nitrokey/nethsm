@@ -72,8 +72,6 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     let key', encrypted = prepare_set t key value in
     KV.set t.kv key' encrypted
 
-  let version_filename = Mirage_kv.Key.v ".version"
-
   let prefix slot =
     let p = slot_to_string slot in
     Mirage_kv.Key.v p
@@ -87,7 +85,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   let initialize version store ~key kv =
     let open Lwt_result.Infix in
     let t = v store ~key kv in
-    set t version_filename (Version.to_string version) >|= fun () ->
+    set t Version.filename (Version.to_string version) >|= fun () ->
     t
 
   type connect_error =
@@ -106,7 +104,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     and key = Crypto.GCM.of_secret key
     in
     let t = { kv ; prefix ; key } in
-    get t version_filename >>= fun stored_version ->
+    get t Version.filename >>= fun stored_version ->
     Lwt.return (Version.of_string stored_version) >>= fun v ->
     Lwt.return (match Version.compare version v with
         | `Equal -> Ok (`Kv t)

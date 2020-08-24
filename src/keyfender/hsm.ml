@@ -1103,12 +1103,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error
               "Initializing configuration store" KV.pp_write_error
               (Config_store.set b Version Version.current) >>= fun () ->
-            let version = Mirage_kv.Key.v ".version" in
             let auth_store =
               Encrypted_store.v Authentication ~key:auth_store_key t.kv
             in
             let a_v_key, a_v_value =
-              Encrypted_store.prepare_set auth_store version Version.(to_string current)
+              Encrypted_store.prepare_set auth_store Version.filename Version.(to_string current)
             in
             internal_server_error
               "Initializing authentication store" KV.pp_write_error
@@ -1117,7 +1116,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               Encrypted_store.v Key ~key:key_store_key t.kv
             in
             let k_v_key, k_v_value =
-              Encrypted_store.prepare_set key_store version Version.(to_string current)
+              Encrypted_store.prepare_set key_store Version.filename Version.(to_string current)
             in
             internal_server_error
               "Initializing key store" KV.pp_write_error

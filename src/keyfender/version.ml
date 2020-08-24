@@ -12,3 +12,5 @@ let of_string = function
   | s -> Rresult.R.error_msgf "unknown version %S" s
 
 let current = V0
+
+let filename = Mirage_kv.Key.v ".version"

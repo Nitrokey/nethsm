@@ -9,3 +9,5 @@ val of_string : string -> (t, [> `Msg of string ]) result
 val pp : t Fmt.t
 
 val current : t
+
+val filename : Mirage_kv.Key.t
