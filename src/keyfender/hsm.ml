@@ -445,11 +445,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let now () = Clock.now ()
 
-  let set_time_offset t timestamp =
+  let set_time_offset kv timestamp =
     Clock.set timestamp;
     let span = Clock.get_offset () in
     internal_server_error "Write time offset" KV.pp_write_error
-      (Config_store.set t.kv Time_offset span)
+      (Config_store.set kv Time_offset span)
 
   let prepare_keys kv slot credentials =
     let open Lwt_result.Infix in
@@ -699,6 +699,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         (read_decode store id >|= fun user ->
          user.name, user.role)
 
+    let prepare_user ~name ~passphrase ~role =
+      let salt = Rng.generate Crypto.salt_len in
+      let digest = Crypto.key_of_passphrase ~salt passphrase in
+      { name ; salt = Cstruct.to_string salt ; digest = Cstruct.to_string digest ; role }
+
     (* TODO: validate username/id *)
     let add ~id t ~role ~passphrase ~name =
       let open Lwt_result.Infix in
@@ -706,12 +711,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Lwt.bind (read_decode store id)
         (function
           | Error `Encrypted_store `Kv (`Not_found _) ->
-            let user =
-              let salt = Rng.generate Crypto.salt_len in
-              let digest = Crypto.key_of_passphrase ~salt passphrase in
-              { name ; salt = Cstruct.to_string salt ;
-                digest = Cstruct.to_string digest ; role }
-            in
+            let user = prepare_user ~name ~passphrase ~role in
             write store id user >|= fun () ->
             Access.info (fun m -> m "added %s (%s)" name id)
           | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
@@ -1081,7 +1081,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let provision t ~unlock ~admin time =
     Lwt_mutex.with_lock provision_mutex (fun () ->
-        (* TODO: needs to write everything as a single transaction *)
         let open Lwt_result.Infix in
         (* state already checked in Handler_provision.service_available *)
         assert (state t = `Unprovisioned);
@@ -1091,42 +1090,53 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let auth_store_key, key_store_key =
           Cstruct.split domain_key Crypto.key_len
         in
-        internal_server_error
-          "Initializing configuration store" KV.pp_write_error
-          (Config_store.set t.kv Version Version.current) >>= fun () ->
-        internal_server_error
-          "Writing private RSA key" KV.pp_write_error
-          (Config_store.set t.kv Private_key t.key) >>= fun () ->
-        internal_server_error
-          "Writing certificate chain key" KV.pp_write_error
-          (Config_store.set t.kv Certificate (t.cert, t.chain)) >>= fun () ->
-        internal_server_error
-          "Initializing configuration store" KV.pp_write_error
-          (Config_store.set t.kv Version Version.current) >>= fun () ->
-        internal_server_error
-          "Initializing authentication store" Encrypted_store.pp_write_error
-          (Encrypted_store.initialize Version.current Authentication ~key:auth_store_key t.kv)
-        >>= fun auth_store ->
-        internal_server_error
-          "Initializing key store" Encrypted_store.pp_write_error
-          (Encrypted_store.initialize Version.current Key ~key:key_store_key t.kv)
-        >>= fun key_store ->
-        let keys = { domain_key ; auth_store ; key_store } in
-        t.state <- Operational keys;
-        (* to avoid dangerous persistent states, do the exact sequence:
-           (1) write admin user
-           (2) write domain key
-           (3) write unlock-salt
-
-           reading back on system start first reads unlock-salt, if this fails,
-           the HSM is in unprovisioned state *)
-        User.add ~id:"admin" t ~role:`Administrator ~passphrase:admin ~name:"admin" >>= fun _id ->
-        internal_server_error "set domain key" KV.pp_write_error
-          (Domain_key_store.set t.kv Passphrase ~unlock_key domain_key) >>= fun () ->
-        internal_server_error "set unlock-salt" KV.pp_write_error
-          (Config_store.set t.kv Unlock_salt unlock_salt) >>= fun () ->
-        set_time_offset t time
-      )
+        KV.batch t.kv (fun b ->
+            internal_server_error
+              "Initializing configuration store" KV.pp_write_error
+              (Config_store.set b Version Version.current) >>= fun () ->
+            internal_server_error
+              "Writing private RSA key" KV.pp_write_error
+              (Config_store.set b Private_key t.key) >>= fun () ->
+            internal_server_error
+              "Writing certificate chain key" KV.pp_write_error
+              (Config_store.set b Certificate (t.cert, t.chain)) >>= fun () ->
+            internal_server_error
+              "Initializing configuration store" KV.pp_write_error
+              (Config_store.set b Version Version.current) >>= fun () ->
+            let version = Mirage_kv.Key.v ".version" in
+            let auth_store =
+              Encrypted_store.v Authentication ~key:auth_store_key t.kv
+            in
+            let a_v_key, a_v_value =
+              Encrypted_store.prepare_set auth_store version Version.(to_string current)
+            in
+            internal_server_error
+              "Initializing authentication store" KV.pp_write_error
+              (KV.set b a_v_key a_v_value) >>= fun () ->
+            let key_store =
+              Encrypted_store.v Key ~key:key_store_key t.kv
+            in
+            let k_v_key, k_v_value =
+              Encrypted_store.prepare_set key_store version Version.(to_string current)
+            in
+            internal_server_error
+              "Initializing key store" KV.pp_write_error
+              (KV.set b k_v_key k_v_value) >>= fun () ->
+            let keys = { domain_key ; auth_store ; key_store } in
+            t.state <- Operational keys;
+            let admin_k, admin_v =
+              let name = "admin" in
+              let admin = User.prepare_user ~name ~passphrase:admin ~role:`Administrator in
+              let value = Yojson.Safe.to_string (User.user_to_yojson admin) in
+              Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name) value
+            in
+            internal_server_error "set Administrator user" KV.pp_write_error
+              (KV.set b admin_k admin_v) >>= fun () ->
+            internal_server_error "set domain key" KV.pp_write_error
+              (Domain_key_store.set b Passphrase ~unlock_key domain_key) >>= fun () ->
+            internal_server_error "set unlock-salt" KV.pp_write_error
+              (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
+            set_time_offset b time))
 
   module Config = struct
 
@@ -1140,11 +1150,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational keys ->
         let open Lwt_result.Infix in
         let unlock_salt, unlock_key = salted passphrase in
-        (* TODO the two writes below should be a transaction *)
-        internal_server_error "Write unlock salt" KV.pp_write_error
-          (Config_store.set t.kv Unlock_salt unlock_salt) >>= fun () ->
-        internal_server_error "Write passphrase" KV.pp_write_error
-          (Domain_key_store.set t.kv Passphrase ~unlock_key keys.domain_key)
+        KV.batch t.kv (fun b ->
+            internal_server_error "Write unlock salt" KV.pp_write_error
+              (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
+            internal_server_error "Write passphrase" KV.pp_write_error
+              (Domain_key_store.set b Passphrase ~unlock_key keys.domain_key))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
@@ -1164,15 +1174,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           (Config_store.set t.kv Unattended_boot status) >>= fun () ->
         if status then begin
           let salt, unlock_key = salted "my device id, psst" in
-          internal_server_error "Write device ID salt" KV.pp_write_error
-            (Config_store.set t.kv Device_id_salt salt) >>= fun () ->
-          internal_server_error "Write device ID" KV.pp_write_error
-            (Domain_key_store.set t.kv Device_id ~unlock_key keys.domain_key)
+          KV.batch t.kv (fun b ->
+              internal_server_error "Write device ID salt" KV.pp_write_error
+                (Config_store.set b Device_id_salt salt) >>= fun () ->
+              internal_server_error "Write device ID" KV.pp_write_error
+                (Domain_key_store.set b Device_id ~unlock_key keys.domain_key))
         end else begin
-          internal_server_error "Remove device ID salt" KV.pp_write_error
-            (Config_store.remove t.kv Device_id_salt) >>= fun () ->
-          internal_server_error "Remove device ID" KV.pp_write_error
-            (Domain_key_store.remove t.kv Device_id)
+          KV.batch t.kv (fun b ->
+              internal_server_error "Remove device ID salt" KV.pp_write_error
+                (Config_store.remove b Device_id_salt) >>= fun () ->
+              internal_server_error "Remove device ID" KV.pp_write_error
+                (Domain_key_store.remove b Device_id))
         end
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
@@ -1296,16 +1308,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational _keys ->
         let open Lwt_result.Infix in
         let backup_salt, backup_key = salted passphrase in
-        (* TODO the two writes below should be a transaction *)
-        internal_server_error "Write backup salt" KV.pp_write_error
-          (Config_store.set t.kv Backup_salt backup_salt) >>= fun () ->
-        internal_server_error "Write backup key" KV.pp_write_error
-          (Config_store.set t.kv Backup_key backup_key)
+        KV.batch t.kv (fun b ->
+            internal_server_error "Write backup salt" KV.pp_write_error
+              (Config_store.set b Backup_salt backup_salt) >>= fun () ->
+            internal_server_error "Write backup key" KV.pp_write_error
+              (Config_store.set b Backup_key backup_key))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let time _t = Lwt.return (now ())
 
-    let set_time = set_time_offset
+    let set_time t = set_time_offset t.kv
   end
 
   module System = struct
@@ -1564,7 +1576,7 @@ NwIDAQAB
             let `Raw stop_ts = Clock.now_raw () in
             let elapsed = Ptime.diff stop_ts start_ts in
             match Ptime.add_span new_time elapsed with
-            | Some ts -> set_time_offset t ts
+            | Some ts -> set_time_offset t.kv ts
             | None ->
               t.state <- Unprovisioned;
               Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")

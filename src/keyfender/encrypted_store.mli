@@ -28,6 +28,14 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
       [kv], and [key] is the symmetric secret for encryption and decryption. The
       version is written encrypted and authenticated to the store. *)
 
+  val v : slot -> key:Cstruct.t -> KV.t -> t
+  (** [v slot ~key kv] is an encrypted store. *)
+
+  val prepare_set : t -> key -> string -> key * string
+  (** [prepare_set t key value] prepares [key, value] being set in [t]. The
+      returned key is the key to be used in the underlying store, and the value
+      is the encrypted and authenticated value. *)
+
   type connect_error =
     [ error | `Msg of string | `Version_smaller of Version.t * Version.t ]
   (** The type of connection failures. *)

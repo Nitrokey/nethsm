@@ -61,12 +61,16 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
       | Ok decrypted -> Ok (Cstruct.to_string decrypted)
       | Error e -> Error (`Crypto e)
 
-  let set t key value =
+  let prepare_set t key value =
     let key' = prefix t key in
     let adata = Cstruct.of_string (Mirage_kv.Key.to_string key') in
     let data = Cstruct.of_string value in
     let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
-    KV.set t.kv key' (Cstruct.to_string encrypted)
+    key', Cstruct.to_string encrypted
+
+  let set t key value =
+    let key', encrypted = prepare_set t key value in
+    KV.set t.kv key' encrypted
 
   let version_filename = Mirage_kv.Key.v ".version"
 
@@ -74,12 +78,15 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     let p = slot_to_string slot in
     Mirage_kv.Key.v p
 
-  let initialize version store ~key kv =
-    let open Lwt_result.Infix in
+  let v store ~key kv =
     let prefix = prefix store
     and key = Crypto.GCM.of_secret key
     in
-    let t = { kv ; prefix ; key } in
+    { kv ; prefix ; key }
+
+  let initialize version store ~key kv =
+    let open Lwt_result.Infix in
+    let t = v store ~key kv in
     set t version_filename (Version.to_string version) >|= fun () ->
     t
 
