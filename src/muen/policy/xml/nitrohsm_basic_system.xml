@@ -207,6 +207,16 @@
       </component>
     </subject>
     <subject name="unikernel">
+      <vcpu> <!-- <vcpu> must come first -->
+        <vmx>
+          <controls>
+            <proc>
+              <!-- Enable access to full-precision RDTSC -->
+              <RDTSCExiting>0</RDTSCExiting>
+            </proc>
+          </controls>
+        </vmx>
+      </vcpu>
       <bootparams></bootparams>
       <events>
         <source>
