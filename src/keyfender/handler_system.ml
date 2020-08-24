@@ -32,7 +32,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method! process_post rd =
-      Hsm.System.reboot hsm_state ;
+      Hsm.System.reboot hsm_state >>= fun () ->
       Wm.continue true rd
   end
 
@@ -44,7 +44,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method! process_post rd =
-      Hsm.System.shutdown hsm_state ;
+      Hsm.System.shutdown hsm_state >>= fun () ->
       Wm.continue true rd
   end
 

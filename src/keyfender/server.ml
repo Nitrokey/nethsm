@@ -105,7 +105,7 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
   let redirect port _ip request _body =
     let uri = Cohttp.Request.uri request in
     let new_uri = Uri.with_scheme uri (Some "https") in
-    let new_uri = Uri.with_port new_uri (Some port) in
+    let new_uri = Uri.with_port new_uri (if port = 443 then None else Some port) in
     Logs.info (fun f -> f "[%s] -> [%s]"
                       (Uri.to_string uri) (Uri.to_string new_uri)
                   );

@@ -71,38 +71,70 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
-      Hsm.boot store >>= fun hsm_state ->
-      Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
-      let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
-      Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
-      Ext_icmp.connect ipv4 >>= fun icmp ->
-      Ext_udp.connect ipv4 >>= fun udp ->
-      Ext_tcp.connect ipv4 >>= fun tcp ->
-      Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >>= fun ext_stack ->
-      Hsm.Config.log hsm_state >>= fun log ->
-      (if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
-       then
-         let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
-         Logs.set_reporter reporter
-       else
-         Log_reporter.set_reporter (Log_reporter.create ()));
-      Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel) ;
-      Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
-      Http.connect conduit >>= fun http ->
-      let certificates = Hsm.own_cert hsm_state in
-      let tls_cfg = Tls.Config.server ~certificates () in
-      let https_port = Key_gen.https_port () in
-      let tls = `TLS (tls_cfg, `TCP https_port) in
-      let http_port = Key_gen.http_port () in
-      let tcp = `TCP http_port in
-      let open Webserver in
-      let https =
-        Log.info (fun f -> f "listening on %d/TCP" https_port);
+      Hsm.boot store >>= fun (hsm_state, mvar) ->
+      let setup_stack ?gateway cidr =
+        Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
+        Ext_icmp.connect ipv4 >>= fun icmp ->
+        Ext_udp.connect ipv4 >>= fun udp ->
+        Ext_tcp.connect ipv4 >>= fun tcp ->
+        Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp
+      and setup_conduit ext_stack =
+        Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
+        Http.connect conduit
+      and setup_log ext_stack log =
+        Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
+        if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
+        then
+          let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
+          Logs.set_reporter reporter
+        else
+          Log_reporter.set_reporter (Log_reporter.create ())
+      and setup_http_listener http =
+        let http_port = Key_gen.http_port () in
+        let tcp = `TCP http_port in
+        let open Webserver in
+        Log.info (fun f -> f "listening on %d/TCP for HTTP" http_port);
+        http tcp @@ serve (redirect (Key_gen.https_port ()))
+      and setup_https_listener http certificates =
+        let tls_cfg = Tls.Config.server ~certificates () in
+        let https_port = Key_gen.https_port () in
+        let tls = `TLS (tls_cfg, `TCP https_port) in
+        let open Webserver in
+        Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
         http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
       in
-      let http =
-        Log.info (fun f -> f "listening on %d/TCP" http_port);
-        http tcp @@ serve (redirect https_port)
+      let reconfigure_network cidr gateway =
+        setup_stack ?gateway cidr >>= fun ext_stack ->
+        setup_conduit ext_stack >>= fun http ->
+        Lwt.async (fun () -> setup_http_listener http);
+        Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
+        Hsm.Config.log hsm_state >|= fun log ->
+        setup_log ext_stack log;
+        ext_stack, http
       in
-      Lwt.join [ https; http ]
+      let rec handle_cb ext_stack http =
+        Lwt_mvar.take mvar >>= function
+        | Hsm.Log log ->
+          setup_log ext_stack log;
+          handle_cb ext_stack http
+        | Hsm.Shutdown ->
+          (* TODO teardown connections *)
+          (* wait for HTTP reply being send out *)
+          Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
+          print_endline "preparing for shutdown";
+          Lwt.return_unit
+        | Hsm.Tls certificates ->
+          Lwt.async (fun () -> setup_https_listener http certificates);
+          handle_cb ext_stack http
+        | Hsm.Network (cidr, gateway) ->
+          (* TODO teardown connections *)
+          (* wait for HTTP reply being send out *)
+          Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
+          reconfigure_network cidr gateway >>= fun (ext_stack, http) ->
+          handle_cb ext_stack http
+      in
+      Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
+      let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
+      reconfigure_network cidr gateway >>= fun (ext_stack, http) ->
+      handle_cb ext_stack http
 end

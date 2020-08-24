@@ -21,6 +21,12 @@ module type S = sig
 
   val pp_state : Json.state Fmt.t
 
+  type cb =
+    | Log of Json.log
+    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Tls of Tls.Config.own_cert
+    | Shutdown
+
   type t
 
   val equal : t -> t -> bool Lwt.t
@@ -94,9 +100,9 @@ module type S = sig
   module System : sig
     val system_info : t -> Json.system_info
 
-    val reboot : t -> unit
+    val reboot : t -> unit Lwt.t
 
-    val shutdown : t -> unit
+    val shutdown : t -> unit Lwt.t
 
     val reset : t -> (unit, error) result Lwt.t
 
@@ -179,5 +185,5 @@ end
 module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
-  val boot : KV.t -> t Lwt.t
+  val boot : KV.t -> (t * cb Lwt_mvar.t) Lwt.t
 end

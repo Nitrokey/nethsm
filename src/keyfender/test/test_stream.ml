@@ -17,7 +17,7 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()
   Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
 
 let unprovisioned_mock () =
-  Kv_mem.connect () >>= Hsm.boot 
+  Kv_mem.connect () >>= Hsm.boot >|= fst
 
 let operational_mock () =
   unprovisioned_mock () >>= fun state ->

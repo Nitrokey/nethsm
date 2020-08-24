@@ -11,6 +11,20 @@ let salt_len = 16
 (* key length for AES256 is 32 byte = 256 bit *)
 let key_len = 32
 
+(* TODO before deploying, insert an appropriate RSA key *)
+let software_update_key =
+  {|-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
+n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
+dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
+Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
+1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
+Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
+NwIDAQAB
+-----END PUBLIC KEY-----
+|} |> Cstruct.of_string
+
+
 module K = Pbkdf.Make(Mirage_crypto.Hash.SHA256)
 
 let key_of_passphrase ~salt password =

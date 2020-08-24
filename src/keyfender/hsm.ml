@@ -21,6 +21,12 @@ module type S = sig
 
   val pp_state : Json.state Fmt.t
 
+  type cb =
+    | Log of Json.log
+    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Tls of Tls.Config.own_cert
+    | Shutdown
+
   type t
 
   val equal : t -> t -> bool Lwt.t
@@ -94,9 +100,9 @@ module type S = sig
   module System : sig
     val system_info : t -> Json.system_info
 
-    val reboot : t -> unit
+    val reboot : t -> unit Lwt.t
 
-    val shutdown : t -> unit
+    val shutdown : t -> unit Lwt.t
 
     val reset : t -> (unit, error) result Lwt.t
 
@@ -350,6 +356,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | `Locked -> "locked"
         | `Busy -> "busy")
 
+  type cb =
+    | Log of Json.log
+    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Tls of Tls.Config.own_cert
+    | Shutdown
+
   let version_of_string s = match Astring.String.cut ~sep:"." s with
     | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
     | Some (major, minor) ->
@@ -396,6 +408,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     kv : KV.t ;
     info : Json.info ;
     system_info : Json.system_info ;
+    mbox : cb Lwt_mvar.t ;
   }
 
   let state t = to_external_state t.state
@@ -556,6 +569,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
     and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
     and has_changes = None
+    and mbox = Lwt_mvar.create_empty ()
     in
     let open Lwt.Infix in
     begin
@@ -568,14 +582,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert ()
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info } in
+        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
           boot_config_store kv >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info }
+          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"
@@ -589,7 +603,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           in
           Lwt.return (Error (`Msg msg))
     end >|= function
-    | Ok t -> t
+    | Ok t -> t, t.mbox
     | Error `Msg msg ->
       Log.err (fun m -> m "error booting %s" msg);
       invalid_arg "broken NitroHSM"
@@ -1179,6 +1193,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
+              (* TODO retrieve device-id from S-Kitchen-Sink *)
               let salt, unlock_key = salted "my device id, psst" in
               KV.batch t.kv (fun b ->
                   internal_server_error "Write device ID salt" KV.pp_write_error
@@ -1236,9 +1251,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           match valid with
           | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
           | Ok _ ->
+            let open Lwt_result.Infix in
             Lwt_mutex.with_lock write_lock (fun () ->
                 internal_server_error "Write certificate" KV.pp_write_error
-                  (Config_store.set t.kv Certificate (cert, chain)))
+                  (Config_store.set t.kv Certificate (cert, chain))) >>= fun r ->
+            t.cert <- cert; t.chain <- chain;
+            Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >|= fun () ->
+            r
         else
           Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key.")
 
@@ -1277,10 +1296,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         else
           Some network.gateway
       in
-      (* TODO if successful, reboot (or set the IP address) after responding *)
       Lwt_mutex.with_lock write_lock (fun () ->
           internal_server_error "Write network configuration" KV.pp_write_error
-            Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route)))
+            Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))) >>= fun r ->
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Network (prefix, route))) >|= fun () ->
+      r
 
     let network_digest t =
       let open Lwt.Infix in
@@ -1301,9 +1321,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         default_log
 
     let set_log t log =
+      let open Lwt_result.Infix in
       Lwt_mutex.with_lock write_lock (fun () ->
           internal_server_error "Write log config" KV.pp_write_error
-            (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel)))
+            (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))) >>= fun r ->
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () ->
+      r
 
     let log_digest t =
       let open Lwt.Infix in
@@ -1336,18 +1359,23 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     (* TODO call hardware *)
     let reboot t =
-      t.state <- Busy
+      t.state <- Busy;
+      Lwt_mvar.put t.mbox Shutdown
 
     (* TODO call hardware *)
     let shutdown t =
-      t.state <- Busy
+      t.state <- Busy;
+      Lwt_mvar.put t.mbox Shutdown
 
     let reset t =
+      let open Lwt_result.Infix in
       t.state <- Unprovisioned;
+      (* TODO call hardware (instead of removing "/"), also reboot *)
       Lwt_mutex.with_lock write_lock (fun () ->
           internal_server_error "Reset" KV.pp_write_error
-            (KV.remove t.kv Mirage_kv.Key.empty))
-      (* TODO reboot the hardware *)
+            (KV.remove t.kv Mirage_kv.Key.empty)) >>= fun r ->
+      Lwt_result.ok (Lwt_mvar.put t.mbox Shutdown) >|= fun () ->
+      r
 
     let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
 
@@ -1396,19 +1424,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Hash = Mirage_crypto.Hash.SHA256
     module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
-    let key = {|-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
-n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
-dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
-Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
-1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
-Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
-NwIDAQAB
------END PUBLIC KEY-----
-|} |> Cstruct.of_string |> X509.Public_key.decode_pem |> function
-    | Ok `RSA key -> key
-    | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer." (* TODO do we have a console? a logger? how to relay this message to the user? *)
-    | Error `Msg m -> invalid_arg m
+    let key = match X509.Public_key.decode_pem Crypto.software_update_key with
+      | Ok `RSA key -> key
+      | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
+      | Error `Msg m -> invalid_arg m
 
     let update t s =
       let open Lwt_result.Infix in

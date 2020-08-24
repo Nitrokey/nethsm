@@ -25,7 +25,10 @@ let () =
   Lwt_main.run
   begin
     Store.connect () >>= fun store ->
-    Hsm.boot store >>= fun hsm_state ->
+    Hsm.boot store >>= fun (hsm_state, mvar) ->
+    Lwt.async (fun () ->
+        let rec ign_mvar () = Lwt_mvar.take mvar >>= fun _ -> ign_mvar () in
+        ign_mvar ());
     Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->
     Tcpv4_socket.connect (Some ip) >>= fun tcp ->
     Udpv4_socket.connect (Some ip) >>= fun udp ->
