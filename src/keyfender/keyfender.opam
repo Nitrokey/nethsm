@@ -61,4 +61,5 @@ pin-depends: [
   ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
   ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#d1e0909"]
   ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc"]
+  ["tcpip.5.0.99~dev" "git+https://github.com/hannesm/mirage-tcpip.git#tcp-disconnect"]
 ]

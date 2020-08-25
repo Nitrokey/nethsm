@@ -77,7 +77,11 @@ struct
         Ext_icmp.connect ipv4 >>= fun icmp ->
         Ext_udp.connect ipv4 >>= fun udp ->
         Ext_tcp.connect ipv4 >>= fun tcp ->
-        Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp
+        Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >|= fun ext_stack ->
+        tcp, ext_stack
+      and shutdown_stack tcp stack =
+        Ext_tcp.disconnect tcp >>= fun () ->
+        Ext_stack.disconnect stack
       and setup_conduit ext_stack =
         Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
         Http.connect conduit
@@ -104,37 +108,30 @@ struct
         http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
       in
       let reconfigure_network cidr gateway =
-        setup_stack ?gateway cidr >>= fun ext_stack ->
+        setup_stack ?gateway cidr >>= fun (tcp, ext_stack) ->
         setup_conduit ext_stack >>= fun http ->
         Lwt.async (fun () -> setup_http_listener http);
         Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
         Hsm.Config.log hsm_state >|= fun log ->
         setup_log ext_stack log;
-        ext_stack, http
+        tcp, ext_stack, http
       in
-      let rec handle_cb ext_stack http =
+      let rec handle_cb tcp ext_stack http =
         Lwt_mvar.take mvar >>= function
         | Hsm.Log log ->
           setup_log ext_stack log;
-          handle_cb ext_stack http
-        | Hsm.Shutdown ->
-          (* TODO teardown connections *)
-          (* wait for HTTP reply being send out *)
-          Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
-          print_endline "preparing for shutdown";
-          Lwt.return_unit
+          handle_cb tcp ext_stack http
+        | Hsm.Shutdown -> shutdown_stack tcp ext_stack
         | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
-          handle_cb ext_stack http
+          handle_cb tcp ext_stack http
         | Hsm.Network (cidr, gateway) ->
-          (* TODO teardown connections *)
-          (* wait for HTTP reply being send out *)
-          Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
-          reconfigure_network cidr gateway >>= fun (ext_stack, http) ->
-          handle_cb ext_stack http
+          shutdown_stack tcp ext_stack >>= fun () ->
+          reconfigure_network cidr gateway >>= fun (tcp, ext_stack, http) ->
+          handle_cb tcp ext_stack http
       in
       Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
       let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
-      reconfigure_network cidr gateway >>= fun (ext_stack, http) ->
-      handle_cb ext_stack http
+      reconfigure_network cidr gateway >>= fun (tcp, ext_stack, http) ->
+      handle_cb tcp ext_stack http
 end
