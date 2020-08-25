@@ -445,6 +445,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let now () = Clock.now ()
 
+  let write_lock = Lwt_mutex.create ()
+
   let set_time_offset kv timestamp =
     Clock.set timestamp;
     let span = Clock.get_offset () in
@@ -651,8 +653,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      internal_server_error "Write user" Encrypted_store.pp_write_error
-        (Encrypted_store.set store (Mirage_kv.Key.v id) user_str)
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Write user" Encrypted_store.pp_write_error
+            (Encrypted_store.set store (Mirage_kv.Key.v id) user_str))
 
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
@@ -729,9 +732,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error "Remove user" Encrypted_store.pp_write_error
-        (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
-         Access.info (fun m -> m "removed (%s)" id))
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Remove user" Encrypted_store.pp_write_error
+            (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
+             Access.info (fun m -> m "removed (%s)" id)))
+
 
     let set_passphrase t ~id ~passphrase =
       let open Lwt_result.Infix in
@@ -817,8 +822,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       and value = key_to_yojson key
       and kv_key = Mirage_kv.Key.v id
       in
-      internal_server_error "Write key" Encrypted_store.pp_write_error
-        (Encrypted_store.set store kv_key (Yojson.Safe.to_string value))
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Write key" Encrypted_store.pp_write_error
+            (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
     let add ~id t purpose priv =
       let open Lwt_result.Infix in
@@ -881,9 +887,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      internal_server_error "Remove key" Encrypted_store.pp_write_error
-        (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
-         Access.info (fun m -> m "removed (%s)" id))
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Remove key" Encrypted_store.pp_write_error
+            (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
+             Access.info (fun m -> m "removed (%s)" id)))
 
     let get_key t id =
       let open Lwt_result.Infix in
@@ -1077,19 +1084,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error _ -> None
   end
 
-  let provision_mutex = Lwt_mutex.create ()
-
   let provision t ~unlock ~admin time =
-    Lwt_mutex.with_lock provision_mutex (fun () ->
-        let open Lwt_result.Infix in
-        (* state already checked in Handler_provision.service_available *)
-        assert (state t = `Unprovisioned);
-        let unlock_salt = Rng.generate Crypto.salt_len in
-        let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-        let domain_key = Rng.generate (Crypto.key_len * 2) in
-        let auth_store_key, key_store_key =
-          Cstruct.split domain_key Crypto.key_len
-        in
+    let open Lwt_result.Infix in
+    (* state already checked in Handler_provision.service_available *)
+    assert (state t = `Unprovisioned);
+    let unlock_salt = Rng.generate Crypto.salt_len in
+    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+    let domain_key = Rng.generate (Crypto.key_len * 2) in
+    let auth_store_key, key_store_key =
+      Cstruct.split domain_key Crypto.key_len
+    in
+    Lwt_mutex.with_lock write_lock (fun () ->
         KV.batch t.kv (fun b ->
             internal_server_error
               "Initializing configuration store" KV.pp_write_error
@@ -1149,11 +1154,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational keys ->
         let open Lwt_result.Infix in
         let unlock_salt, unlock_key = salted passphrase in
-        KV.batch t.kv (fun b ->
-            internal_server_error "Write unlock salt" KV.pp_write_error
-              (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
-            internal_server_error "Write passphrase" KV.pp_write_error
-              (Domain_key_store.set b Passphrase ~unlock_key keys.domain_key))
+        Lwt_mutex.with_lock write_lock (fun () ->
+            KV.batch t.kv (fun b ->
+                internal_server_error "Write unlock salt" KV.pp_write_error
+                  (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
+                internal_server_error "Write passphrase" KV.pp_write_error
+                  (Domain_key_store.set b Passphrase ~unlock_key keys.domain_key)))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
@@ -1169,22 +1175,23 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       (* (c) add or remove to domain_key store *)
       match t.state with
       | Operational keys ->
-        internal_server_error "Write unattended boot" KV.pp_write_error
-          (Config_store.set t.kv Unattended_boot status) >>= fun () ->
-        if status then begin
-          let salt, unlock_key = salted "my device id, psst" in
-          KV.batch t.kv (fun b ->
-              internal_server_error "Write device ID salt" KV.pp_write_error
-                (Config_store.set b Device_id_salt salt) >>= fun () ->
-              internal_server_error "Write device ID" KV.pp_write_error
-                (Domain_key_store.set b Device_id ~unlock_key keys.domain_key))
-        end else begin
-          KV.batch t.kv (fun b ->
-              internal_server_error "Remove device ID salt" KV.pp_write_error
-                (Config_store.remove b Device_id_salt) >>= fun () ->
-              internal_server_error "Remove device ID" KV.pp_write_error
-                (Domain_key_store.remove b Device_id))
-        end
+        Lwt_mutex.with_lock write_lock (fun () ->
+            internal_server_error "Write unattended boot" KV.pp_write_error
+              (Config_store.set t.kv Unattended_boot status) >>= fun () ->
+            if status then begin
+              let salt, unlock_key = salted "my device id, psst" in
+              KV.batch t.kv (fun b ->
+                  internal_server_error "Write device ID salt" KV.pp_write_error
+                    (Config_store.set b Device_id_salt salt) >>= fun () ->
+                  internal_server_error "Write device ID" KV.pp_write_error
+                    (Domain_key_store.set b Device_id ~unlock_key keys.domain_key))
+            end else begin
+              KV.batch t.kv (fun b ->
+                  internal_server_error "Remove device ID salt" KV.pp_write_error
+                    (Config_store.remove b Device_id_salt) >>= fun () ->
+                  internal_server_error "Remove device ID" KV.pp_write_error
+                    (Domain_key_store.remove b Device_id))
+        end)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot_digest t =
@@ -1229,8 +1236,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           match valid with
           | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
           | Ok _ ->
-            internal_server_error "Write certificate" KV.pp_write_error
-              (Config_store.set t.kv Certificate (cert, chain))
+            Lwt_mutex.with_lock write_lock (fun () ->
+                internal_server_error "Write certificate" KV.pp_write_error
+                  (Config_store.set t.kv Certificate (cert, chain)))
         else
           Lwt.return @@ Error (Bad_request, "public key in certificate does not match private key.")
 
@@ -1270,8 +1278,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Some network.gateway
       in
       (* TODO if successful, reboot (or set the IP address) after responding *)
-      internal_server_error "Write network configuration" KV.pp_write_error
-        Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Write network configuration" KV.pp_write_error
+            Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route)))
 
     let network_digest t =
       let open Lwt.Infix in
@@ -1292,8 +1301,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         default_log
 
     let set_log t log =
-      internal_server_error "Write log config" KV.pp_write_error
-        (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Write log config" KV.pp_write_error
+            (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel)))
 
     let log_digest t =
       let open Lwt.Infix in
@@ -1307,16 +1317,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational _keys ->
         let open Lwt_result.Infix in
         let backup_salt, backup_key = salted passphrase in
-        KV.batch t.kv (fun b ->
-            internal_server_error "Write backup salt" KV.pp_write_error
-              (Config_store.set b Backup_salt backup_salt) >>= fun () ->
-            internal_server_error "Write backup key" KV.pp_write_error
-              (Config_store.set b Backup_key backup_key))
+        Lwt_mutex.with_lock write_lock (fun () ->
+            KV.batch t.kv (fun b ->
+                internal_server_error "Write backup salt" KV.pp_write_error
+                  (Config_store.set b Backup_salt backup_salt) >>= fun () ->
+                internal_server_error "Write backup key" KV.pp_write_error
+                  (Config_store.set b Backup_key backup_key)))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let time _t = Lwt.return (now ())
 
-    let set_time t = set_time_offset t.kv
+    let set_time t time =
+      Lwt_mutex.with_lock write_lock (fun () -> set_time_offset t.kv time)
   end
 
   module System = struct
@@ -1332,8 +1344,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let reset t =
       t.state <- Unprovisioned;
-      internal_server_error "Reset" KV.pp_write_error
-        (KV.remove t.kv Mirage_kv.Key.empty)
+      Lwt_mutex.with_lock write_lock (fun () ->
+          internal_server_error "Reset" KV.pp_write_error
+            (KV.remove t.kv Mirage_kv.Key.empty))
       (* TODO reboot the hardware *)
 
     let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
@@ -1559,33 +1572,34 @@ NwIDAQAB
       | Error `Not_authenticated ->
         Lwt.return @@ Error (Bad_request, "Could not decrypt backup version, authentication failed. Is the passphrase correct?")
       | Ok version ->
-        match Version.of_string (Cstruct.to_string version) with
-        | Ok v when Version.compare backup_version v = `Equal ->
-          begin
-            let rec next stream =
-              Lwt_stream.is_empty stream >>= function
-              | true -> t.state <- Locked ; Lwt.return (Ok ())
-              | false ->
-                read_and_decrypt stream key >>== fun ((k, v), stream) ->
-                internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
-                  (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
-                next stream
-            in
-            next stream'' >>== fun () ->
-            let `Raw stop_ts = Clock.now_raw () in
-            let elapsed = Ptime.diff stop_ts start_ts in
-            match Ptime.add_span new_time elapsed with
-            | Some ts -> set_time_offset t.kv ts
-            | None ->
-              t.state <- Unprovisioned;
-              Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
-          end
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "Version mismatch on restore, provided backup version is %s, server expects %s"
-              (Cstruct.to_string version) (Version.to_string backup_version)
-          in
-          Lwt.return @@ Error (Bad_request, msg)
+        Lwt_mutex.with_lock write_lock (fun () ->
+            match Version.of_string (Cstruct.to_string version) with
+            | Ok v when Version.compare backup_version v = `Equal ->
+              begin
+                let rec next stream =
+                  Lwt_stream.is_empty stream >>= function
+                  | true -> t.state <- Locked ; Lwt.return (Ok ())
+                  | false ->
+                    read_and_decrypt stream key >>== fun ((k, v), stream) ->
+                    internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
+                      (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
+                    next stream
+                in
+                next stream'' >>== fun () ->
+                let `Raw stop_ts = Clock.now_raw () in
+                let elapsed = Ptime.diff stop_ts start_ts in
+                match Ptime.add_span new_time elapsed with
+                | Some ts -> set_time_offset t.kv ts
+                | None ->
+                  t.state <- Unprovisioned;
+                  Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+              end
+            | _ ->
+              let msg =
+                Printf.sprintf
+                  "Version mismatch on restore, provided backup version is %s, server expects %s"
+                  (Cstruct.to_string version) (Version.to_string backup_version)
+              in
+              Lwt.return @@ Error (Bad_request, msg))
   end
 end
