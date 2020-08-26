@@ -4,7 +4,7 @@ source "$(dirname $0)/common_functions.sh"
 
 # provision hsm
 echo "Provisioning."
-SYSTEM_TIME="$(date --utc +%FT%TZ)"
+SYSTEM_TIME="$(date -u +%FT%TZ)"
 PUT /v1/provision <<EOM
 { 
   "unlockPassphrase": "UnlockPassphrase",
@@ -42,5 +42,5 @@ PUT_admin /v1/keys/myKey1 <<EOM
   }
 }
 EOM
-echo "Setup compete."
+echo "Setup complete."
 
