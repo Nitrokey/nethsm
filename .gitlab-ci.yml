@@ -25,5 +25,8 @@ test_keyfender_api:
 
 test_keyfender_e2e:
   stage: test
+  before_script:
+    - cd ~/opam-repository && git pull && opam update && cd -
+    - sudo apt-get -y --no-install-recommends install parallel
   script:
     - make test-keyfender-e2e
