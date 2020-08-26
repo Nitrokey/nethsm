@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 
-source common_functions.sh
-
-# start a hsm test server 
-# keyfender/_build/default/test/test_server.exe
+source "$(dirname $0)/common_functions.sh"
 
 # provision hsm
 echo "Provisioning."

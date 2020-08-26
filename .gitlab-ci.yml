@@ -1,16 +1,29 @@
 image: "ocaml/opam2:debian-10-ocaml-4.10"
 
-library_test:
-  script:
+default:
+  before_script:
     - cd ~/opam-repository && git pull && opam update && cd -
-    - make test-keyfender-lib
 
-make_keyfender:
+stages:
+  - build
+  - test
+
+build_keyfender:
+  stage: build
   script:
-    - cd ~/opam-repository && git pull && opam update && cd -
     - make build-keyfender
 
-e2e_tests:
+test_keyfender_lib:
+  stage: test
   script:
-    - cd ~/opam-repository && git pull && opam update && cd -
-    - make e2e-tests
+    - make test-keyfender-lib
+
+test_keyfender_api:
+  stage: test
+  script:
+    - make test-keyfender-api
+
+test_keyfender_e2e:
+  stage: test
+  script:
+    - make test-keyfender-e2e

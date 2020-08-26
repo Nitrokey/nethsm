@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 
-source common_functions.sh
-
-# start a hsm test server 
-# keyfender/_build/default/test/test_server.exe
+source "$(dirname $0)/common_functions.sh"
 
 JOBS="${JOBS:-4}"
 ITERS="${ITERS:-400}"
@@ -22,7 +19,7 @@ rm ${REQUEST}
 echo "Starting signing test."
 REQUEST=$(mktemp)
 cat <<EOF >${REQUEST}
-source common_functions.sh
+source "$(dirname $0)/common_functions.sh"
 POST_operator /v1/keys/myKey1/sign <<EOM
 {
   mode: "PKCS1",
@@ -36,7 +33,7 @@ rm ${REQUEST}
 echo "Starting decryption test."
 REQUEST=$(mktemp)
 cat <<EOF >${REQUEST}
-source common_functions.sh
+source "$(dirname $0)/common_functions.sh"
 POST_operator /v1/keys/myKey1/decrypt <<EOM
 {
   mode: "PKCS1",
@@ -50,7 +47,7 @@ rm ${REQUEST}
 echo "Starting random generation test."
 REQUEST=$(mktemp)
 cat <<EOF >${REQUEST}
-source common_functions.sh
+source "$(dirname $0)/common_functions.sh"
 POST_operator /v1/random <<EOM
 {
   "length": 1024
