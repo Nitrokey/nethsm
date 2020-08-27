@@ -25,7 +25,7 @@ depends: [
   "ptime"
   "cohttp"
   "rresult"
-  "mirage-crypto" {= "0.8.3"}
+  "mirage-crypto" {= "0.8.4"}
   "webmachine"
   "dispatch" {< "0.5.0"}
   "cohttp-lwt"
