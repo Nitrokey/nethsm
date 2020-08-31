@@ -243,11 +243,21 @@ let tests_for_states meth path cmd responses (state, role, req) =
   in
   write (outdir ^ "/body.expected") expected_body;
 
+  let expected_header =
+    match List.find_opt (fun (c, _) -> c = "200") responses with
+    | None -> ""
+    | Some (c, Some (_typ, example)) ->
+      Printf.printf "\nExpected header %s\n" c;
+      let escaped = unquote @@ Ezjsonm.value_to_string example in
+      Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
+    | Some (_, _) -> ""
+  in
+  write (outdir ^ "/header.expected") expected_header;
+
   if List.mem path skip_body_endpoints then
     let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
     ();
 
-  let _ = Sys.command("touch " ^ outdir ^ "/headers.expected") in
   ()
 
 let print_method path (meth, req) =
