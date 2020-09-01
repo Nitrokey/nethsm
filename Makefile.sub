@@ -152,9 +152,9 @@ test-keyfender-e2e: $(KEYFENDER)
 	pkill test_server.exe || true
 	src/keyfender/_build/default/test/test_server.exe &
 	sleep 2
-	NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 src/tests/provision_test.sh
+	NITROHSM_URL="http://localhost:8080/api" src/tests/provision_test.sh
 	NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 src/tests/load_test.sh
-	pkill test_server.exe || true
+	NITROHSM_URL="http://localhost:8080/api" src/tests/shutdown_test.sh
 
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
