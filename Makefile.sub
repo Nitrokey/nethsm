@@ -145,7 +145,11 @@ test-keyfender-lib: .stamp-prepare
 	cd src/keyfender && BISECT_ENABLE=yes dune runtest
 	cd src/keyfender && bisect-ppx-report summary
 
-test-keyfender-api: $(KEYFENDER)
+test-keyfender-api: .stamp-prepare
+	opam install bisect_ppx
+	cd src/keyfender && BISECT_ENABLE=yes dune build
+	`cd src/tests && dune external-lib-deps --missing ./generate_raml_tests.exe 2>&1 | grep "opam install"` || true
+	cd src/tests && dune exec ./generate_raml_tests.exe
 	cd src/tests/generated && ./test.sh
 
 test-keyfender-e2e: $(KEYFENDER)
