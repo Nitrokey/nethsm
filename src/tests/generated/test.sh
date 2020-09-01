@@ -8,7 +8,7 @@ test_one () {
     sleep 2
     ./setup.sh || (kill $PID ; exit 3)
     ./command.sh || (kill $PID ; exit 4)
-    kill $PID
+    NITROHSM_URL="http://localhost:8080/api" ../../shutdown_test.sh || (kill $PID ; exit 5)
 
     #diff -u <(grep -v "^date: " headers.out) <(grep -v "^date: " headers.expected)
     if [ ! -f body.skip ]; then
