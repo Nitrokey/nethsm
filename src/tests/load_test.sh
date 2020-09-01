@@ -8,7 +8,7 @@ ITERS="${ITERS:-400}"
 echo "Starting key generation test."
 REQUEST=$(mktemp)
 cat <<EOF >${REQUEST}
-source common_functions.sh
+source "$(dirname $0)/common_functions.sh"
 POST_admin /v1/keys/generate <<EOM
 { "purpose": "Sign", "algorithm": "RSA", "length": 2048 }
 EOM
