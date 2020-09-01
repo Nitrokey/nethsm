@@ -141,7 +141,9 @@ build-keyfender: $(S_KEYFENDER)
 .PHONY: test-keyfender-lib test-keyfender-api test-keyfender-e2e
 test-keyfender-lib: .stamp-prepare
 	cd src/keyfender && opam install --deps-only -t .
-	cd src/keyfender && dune runtest
+	opam install bisect_ppx
+	cd src/keyfender && BISECT_ENABLE=yes dune runtest
+	cd src/keyfender && bisect-ppx-report summary
 
 test-keyfender-api: $(KEYFENDER)
 	cd src/tests/generated && ./test.sh
