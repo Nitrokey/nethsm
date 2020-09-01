@@ -41,11 +41,11 @@
   <channels>
     <channel name="time_info" size="16#1000#"/>
 
-    <channel name="debuglog_subject1" size="$logchannel_size"/>
-    <channel name="debuglog_subject2" size="$logchannel_size"/>
-    <channel name="debuglog_subject3" size="$logchannel_size"/>
-    <channel name="debuglog_subject7" size="$logchannel_size"/>
-    <channel name="debuglog_subject8" size="$logchannel_size"/>
+    <channel name="debuglog_nic_linux" size="$logchannel_size"/>
+    <channel name="debuglog_storage_linux" size="$logchannel_size"/>
+    <channel name="debuglog_time" size="$logchannel_size"/>
+    <channel name="debuglog_unikernel_sm" size="$logchannel_size"/>
+    <channel name="debuglog_unikernel" size="$logchannel_size"/>
 
     <if variable="dbgserver_sink_shmem" value="true">
       <channel name="debug_shm_sink_memory" size="16#0002_0000#"/>
@@ -77,11 +77,11 @@
         </source>
       </events>
       <component ref="dbgserver">
-        <map logical="log_channel1" physical="debuglog_subject1"/>
-        <map logical="log_channel2" physical="debuglog_subject2"/>
-        <map logical="log_channel3" physical="debuglog_subject3"/>
-        <map logical="log_channel7" physical="debuglog_subject7"/>
-        <map logical="log_channel8" physical="debuglog_subject8"/>
+        <map logical="log_channel1" physical="debuglog_nic_linux"/>
+        <map logical="log_channel2" physical="debuglog_storage_linux"/>
+        <map logical="log_channel3" physical="debuglog_time"/>
+        <map logical="log_channel4" physical="debuglog_unikernel_sm"/>
+        <map logical="log_channel5" physical="debuglog_unikernel"/>
         <include href="subject_dbgserver_common.xml"/>
       </component>
     </subject>
@@ -182,7 +182,7 @@
       </monitor>
       <component ref="sm">
         <map logical="time_info" physical="time_info"/>
-        <map logical="debuglog" physical="debuglog_subject7"/>
+        <map logical="debuglog" physical="debuglog_unikernel_sm"/>
 	<map logical="resume_subject" physical="resume_unikernel_1"/>
 	<map logical="handle_subject_trap" physical="trap_to_sm_3"/>
         <map logical="status" physical="status_unikernel_sm"/>
@@ -213,7 +213,7 @@
       </events>
       <component ref="unikernel">
         <map logical="time_info" physical="time_info"/>
-        <map logical="debuglog" physical="debuglog_subject8"/>
+        <map logical="debuglog" physical="debuglog_unikernel"/>
         <map logical="external|in" physical="unikernel_external_in"/>
         <map logical="external|out" physical="unikernel_external_out"/>
         <map logical="internal|in" physical="unikernel_internal_in"/>

@@ -10,7 +10,7 @@
  </events>
  <component ref="time">
   <map logical="time_export1" physical="time_info"/>
-  <map logical="debuglog" physical="debuglog_subject3"/>
+  <map logical="debuglog" physical="debuglog_time"/>
   <map logical="cmos_rtc" physical="cmos_rtc">
    <map logical="ports" physical="ports"/>
   </map>

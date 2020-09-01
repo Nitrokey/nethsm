@@ -18,7 +18,7 @@
  </monitor>
  <component ref="sm">
   <map logical="time_info" physical="time_info"/>
-  <map logical="debuglog" physical="debuglog_subject1"/>
+  <map logical="debuglog" physical="debuglog_nic_linux"/>
   <if variable="pciconf_emulation_enabled" value="true">
    <map logical="dm_pciconf_req" physical="nic_dm_request"/>
    <map logical="dm_pciconf_res" physical="nic_dm_response"/>
