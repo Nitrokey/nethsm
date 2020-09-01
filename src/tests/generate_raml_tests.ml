@@ -23,6 +23,33 @@ DONE
 - endpunkte durchtesten (mit abgeschaltetem header vergleich)
 *)
 
+(*
+cat 2020-09-01
+1) shutdown in generated tests
+multiple cases:
+- operational
+ --> script verwenden, wenn der user (admin) das gleiche passwort hat
+- locked
+ --> script verwenden, dass zuerst unlock macht und dann shutdown
+- unprovisioned
+ --> script verwenden, dass zuerst provisioned und dann shutdown
+
+unprovisioned_provisioned -> im RAML sind admin + unlock passphrase anders ~> RAML an scripte anpassen
+
+--> script anpassen, um zu schauen in welchem state wir sind, und je nachdem handeln
+
+2) measure code coverage of generated tests (Makefile)
+--> yes, generate_raml_tests.exe ausfuehren und dependencies
+< bisect-ppx-report fehlt noch
+
+3) use common-functions.sh in generate_raml_tests.exe for command.sh, use provision_test.sh for setup.sh
+setup could use an argument "desired state", and execute the HTTP requests required to get into that state
+--> one script, not per-test
+
+4) gitlab pages code coverage
+5) improve code coverage of unit tests
+*)
+
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
@@ -96,6 +123,8 @@ let passphrase = function
 let prepare_setup _meth path _cmd (state, role, _req) =
   (* 1. prepare server state *)
   let provision = cmd "/provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
+
+  (* TODO NITROHSM_URL="http://localhost:8080/api" ../../provision_test.sh || (kill $PID ; exit 5) *)
   in
   let lock =
     let header = auth_header (passphrase "Administrator") in
