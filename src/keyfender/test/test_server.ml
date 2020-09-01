@@ -26,9 +26,6 @@ let () =
   begin
     Store.connect () >>= fun store ->
     Hsm.boot store >>= fun (hsm_state, mvar) ->
-    Lwt.async (fun () ->
-        let rec ign_mvar () = Lwt_mvar.take mvar >>= fun _ -> ign_mvar () in
-        ign_mvar ());
     Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->
     Tcpv4_socket.connect (Some ip) >>= fun tcp ->
     Udpv4_socket.connect (Some ip) >>= fun udp ->
@@ -50,5 +47,12 @@ let () =
       Log.info (fun f -> f "listening on %d/TCP" http_port);
       http tcp @@ serve @@ dispatch hsm_state
     in
-    Lwt.join [ https; http ]
+    Lwt.async (fun () -> https);
+    Lwt.async (fun () -> http);
+    let rec handle_cb () =
+      Lwt_mvar.take mvar >>= function
+      | Hsm.Shutdown -> Lwt.return_unit
+      | _ -> handle_cb ()
+    in
+    handle_cb ()
   end
