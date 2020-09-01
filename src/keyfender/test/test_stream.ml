@@ -12,6 +12,7 @@ module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 
 let request hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query path =
   let headers = Header.replace headers "content-type" content_type in
+  let path = "/api/v1" ^ path in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
   Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
