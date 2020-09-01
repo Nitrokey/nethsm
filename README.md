@@ -86,10 +86,10 @@ For OCaml there is a PPX (preprocessor) which can collect coverage information c
 
 To collect coverage information about the tests:
 
-1. install `bisect_ppx` (`opam install bisect_ppx`)
+1. install `bisect_ppx` (`opam install 'bisect_ppx>=2.1.0'`)
 2. `export BISECT_ENABLE=yes` in your shell
 3. `dune runtest`
-4. `mkdir coverage && bisect-ppx-report -I _build/default/src/keyfender -html coverage _build/default/src/keyfender/test/bisect000*`
+4. `mkdir -p coverage && bisect-ppx-report html --source-path _build/default/src/keyfender -o coverage`
 5. browse to coverage/index.html
 
 ## Muen System
