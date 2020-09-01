@@ -225,12 +225,14 @@
     Static scheduling plan is included here directly, no dependency on
     upstream's policy/scheduling/...
   -->
-  <scheduling tickRate="1000">
+  <scheduling tickRate="10000">
     <majorFrame>
       <cpu id="0">
         <minorFrame subject="tau0" ticks="5"/>
-        <minorFrame subject="unikernel" ticks="80"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="unikernel" ticks="40"/>
+        <minorFrame subject="dbgserver" ticks="5"/>
+        <minorFrame subject="unikernel" ticks="40"/>
+        <minorFrame subject="dbgserver" ticks="5"/>
       </cpu>
       <cpu id="1">
         <minorFrame subject="time" ticks="5"/>
@@ -245,8 +247,10 @@
     <majorFrame>
       <cpu id="0">
          <minorFrame subject="tau0" ticks="5"/>
-         <minorFrame subject="unikernel" ticks="80"/>
-         <minorFrame subject="dbgserver" ticks="10"/>
+         <minorFrame subject="unikernel" ticks="40"/>
+         <minorFrame subject="dbgserver" ticks="5"/>
+         <minorFrame subject="unikernel" ticks="40"/>
+         <minorFrame subject="dbgserver" ticks="5"/>
       </cpu>
       <cpu id="1">
          <minorFrame subject="nic_linux" ticks="5"/>
