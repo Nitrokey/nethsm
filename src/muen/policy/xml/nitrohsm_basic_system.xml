@@ -16,14 +16,7 @@
   </config>
   <include href="common_expressions.xml"/>
   <memory>
-    <memory name="initramfs" size="16#0100_0000#" caching="WB" type="subject_initrd">
-      <file filename="initramfs.cpio.gz" offset="none"/>
-    </memory>
-    <memory name="nic_linux|ram" size="16#1000_0000#" caching="WB"/>
-    <memory name="nic_linux|lowmem" size="16#0008_0000#" caching="WB"/>
-    <memory name="storage_linux|ram" size="16#1000_0000#" caching="WB"/>
-    <memory name="storage_linux|lowmem" size="16#0008_0000#" caching="WB"/>
-    <memory name="crash_audit" physicalAddress="16#0001_0000_0000#" size="16#1000#" caching="UC" type="subject_crash_audit"/>
+    <include href="common_memory.xml"/>
   </memory>
   <deviceDomains>
     <include href="common_device_domains.xml"/>
@@ -33,16 +26,12 @@
     <event name="resume_linux_2" mode="switch"/>
     <event name="trap_to_sm_1" mode="switch"/>
     <event name="trap_to_sm_2" mode="switch"/>
-    <event name="trap_to_sl_1" mode="switch"/>
-    <event name="start_linux_1" mode="switch"/>
     <event name="reset_linux_1" mode="switch"/>
     <event name="reset_linux_2" mode="switch"/>
-    <event name="reset_sm_1" mode="switch"/>
     <event name="serial_irq4_linux_1" mode="async"/>
     <event name="serial_irq4_linux_2" mode="async"/>
     <event name="timer_linux_1" mode="self"/>
     <event name="timer_linux_2" mode="self"/>
-    <event name="reboot_linux_1" mode="self"/>
     <event name="resume_unikernel_1" mode="switch"/>
     <event name="trap_to_sm_3" mode="switch"/>
     <event name="system_reboot" mode="kernel"/>
@@ -52,10 +41,9 @@
   <channels>
     <channel name="time_info" size="16#1000#"/>
 
+    <channel name="debuglog_subject1" size="$logchannel_size"/>
     <channel name="debuglog_subject2" size="$logchannel_size"/>
     <channel name="debuglog_subject3" size="$logchannel_size"/>
-    <channel name="debuglog_subject4" size="$logchannel_size"/>
-    <channel name="debuglog_subject5" size="$logchannel_size"/>
     <channel name="debuglog_subject7" size="$logchannel_size"/>
     <channel name="debuglog_subject8" size="$logchannel_size"/>
 
@@ -78,7 +66,6 @@
     <include href="subject_nic_sm.xml"/>
     <include href="subject_storage_sm.xml"/>
     <include href="subject_time.xml"/>
-    <include href="subject_nic_sl.xml"/>
     <subject name="dbgserver">
       <events>
         <source>
@@ -90,10 +77,9 @@
         </source>
       </events>
       <component ref="dbgserver">
+        <map logical="log_channel1" physical="debuglog_subject1"/>
         <map logical="log_channel2" physical="debuglog_subject2"/>
         <map logical="log_channel3" physical="debuglog_subject3"/>
-        <map logical="log_channel4" physical="debuglog_subject4"/>
-        <map logical="log_channel5" physical="debuglog_subject5"/>
         <map logical="log_channel7" physical="debuglog_subject7"/>
         <map logical="log_channel8" physical="debuglog_subject8"/>
         <include href="subject_dbgserver_common.xml"/>
@@ -111,20 +97,14 @@
         <source>
           <group name="vmx_exit">
             <default physical="trap_to_sm_1"/>
-            <event id="33" logical="reset" physical="reset_sm_1"/>
           </group>
           <group name="vmcall">
-            <event id="30" logical="reboot" physical="reboot_linux_1"/>
             <event id="31" logical="timer" physical="timer_linux_1"/>
           </group>
         </source>
         <target>
           <event logical="resume_after_trap" physical="resume_linux_1"/>
-          <event logical="resume_after_reset" physical="start_linux_1"/>
           <event logical="reset" physical="reset_linux_1">
-            <reset/>
-          </event>
-          <event logical="reboot" physical="reboot_linux_1">
             <reset/>
           </event>
           <event logical="serial_irq4" physical="serial_irq4_linux_1">
@@ -198,12 +178,15 @@
       </events>
       <monitor>
         <state subject="unikernel" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+        <loader logical="reload" subject="unikernel_sm" virtualAddress="16#0000#"/>
       </monitor>
       <component ref="sm">
         <map logical="time_info" physical="time_info"/>
         <map logical="debuglog" physical="debuglog_subject7"/>
 	<map logical="resume_subject" physical="resume_unikernel_1"/>
 	<map logical="handle_subject_trap" physical="trap_to_sm_3"/>
+        <map logical="status" physical="status_unikernel_sm"/>
+        <map logical="control" physical="control_unikernel_sm"/>
       </component>
     </subject>
     <subject name="unikernel">
