@@ -68,20 +68,35 @@ struct
           T.close flow >|= fun () ->
           Error (`Write (Fmt.to_to_string T.pp_write_error we))
         | Ok () ->
-          T.read flow >>= function
-          | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
-          | Ok `Data d ->
-            T.close flow >|= fun () ->
-            let str = Cstruct.to_string d in
-            if Astring.String.is_prefix ~affix:"OK" str then
-              Ok Cstruct.(to_string (shift d 2))
-            else if Astring.String.is_prefix ~affix:"ERROR" str then
-              Error (`Remote Cstruct.(to_string (shift d 5)))
-            else
-              Error (`Parse str)
-          | Error e ->
-            T.close flow >|= fun () ->
-            Error (`Read (Fmt.to_to_string T.pp_error e))
+          let rec read data =
+            T.read flow >>= function
+            | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
+            | Ok `Data d ->
+              let data' = Cstruct.append data d in
+              let str = Cstruct.to_string data' in
+              let get_data off str =
+                let str = Astring.String.drop ~min:off ~max:off str in
+                if Astring.String.is_prefix ~affix:" " str then
+                  Astring.String.drop ~min:1 ~max:1 str
+                else
+                  str
+              in
+              if Astring.String.is_suffix ~affix:"\n" str then
+                T.close flow >|= fun () ->
+                let str = Astring.String.drop ~rev:true ~min:1 ~max:1 str in
+                if Astring.String.is_prefix ~affix:"OK" str then
+                  Ok (get_data 2 str)
+                else if Astring.String.is_prefix ~affix:"ERROR" str then
+                  Error (`Remote (get_data 5 str))
+                else
+                  Error (`Parse str)
+              else
+                read data'
+            | Error e ->
+              T.close flow >|= fun () ->
+              Error (`Read (Fmt.to_to_string T.pp_error e))
+          in
+          read Cstruct.empty
     ]
 
   let pp_platform_err ppf = function
