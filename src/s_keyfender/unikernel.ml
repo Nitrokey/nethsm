@@ -52,7 +52,48 @@ struct
       Http.respond ~headers ~status:`OK ~body:(`String data) ()
     | _ -> next ip request body
 
-  let start console _entropy () () assets _internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp =
+  module T = Internal_stack.TCPV4
+  let write_platform stack cmd =
+    Logs.info (fun m -> m "sending %s to platform" cmd);
+    Lwt.pick [
+      (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
+       Logs.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
+       Error `Timeout) ;
+      T.create_connection (Internal_stack.tcpv4 stack) (Key_gen.platform (), Key_gen.platform_port ()) >>= function
+      | Error e ->
+        Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
+      | Ok flow ->
+        T.write flow (Cstruct.of_string (cmd ^ "\n")) >>= function
+        | Error we ->
+          T.close flow >|= fun () ->
+          Error (`Write (Fmt.to_to_string T.pp_write_error we))
+        | Ok () ->
+          T.read flow >>= function
+          | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
+          | Ok `Data d ->
+            T.close flow >|= fun () ->
+            let str = Cstruct.to_string d in
+            if Astring.String.is_prefix ~affix:"OK" str then
+              Ok Cstruct.(to_string (shift d 2))
+            else if Astring.String.is_prefix ~affix:"ERROR" str then
+              Error (`Remote Cstruct.(to_string (shift d 5)))
+            else
+              Error (`Parse str)
+          | Error e ->
+            T.close flow >|= fun () ->
+            Error (`Read (Fmt.to_to_string T.pp_error e))
+    ]
+
+  let pp_platform_err ppf = function
+    | `Write err -> Format.fprintf ppf "write error %s" err
+    | `Read err -> Format.fprintf ppf "read error %s" err
+    | `Create err -> Format.fprintf ppf "error %s while establishing connection" err
+    | `Eof -> Format.fprintf ppf "received eof"
+    | `Remote err -> Format.fprintf ppf "received error %s" err
+    | `Parse err -> Format.fprintf ppf "couldn't decode message %s" err
+    | `Timeout -> Format.fprintf ppf "timeout"
+
+  let start console _entropy () () assets internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
@@ -71,7 +112,14 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
-      Hsm.boot store >>= fun (hsm_state, mvar) ->
+      (write_platform internal_stack "DEVICE-ID" >|= function
+        | Error e ->
+          Logs.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
+          "device id"
+        | Ok device_id ->
+          Logs.info (fun m -> m "received device id %s" device_id);
+          device_id) >>= fun device_id ->
+      Hsm.boot ~device_id store >>= fun (hsm_state, mvar) ->
       let setup_stack ?gateway cidr =
         Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
         Ext_icmp.connect ipv4 >>= fun icmp ->
@@ -106,6 +154,12 @@ struct
         let open Webserver in
         Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
         http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
+      and write_to_platform cmd =
+        write_platform internal_stack (Hsm.cb_to_string cmd) >|= function
+        | Ok _ -> ()
+        | Error e ->
+          Logs.err (fun m -> m "error %a communicating with platform"
+                       pp_platform_err e)
       in
       let reconfigure_network cidr gateway =
         setup_stack ?gateway cidr >>= fun (tcp, ext_stack) ->
@@ -121,7 +175,9 @@ struct
         | Hsm.Log log ->
           setup_log ext_stack log;
           handle_cb tcp ext_stack http
-        | Hsm.Shutdown -> shutdown_stack tcp ext_stack
+        | Hsm.Shutdown | Hsm.Reboot | Hsm.Reset as cmd ->
+          shutdown_stack tcp ext_stack >>= fun () ->
+          write_to_platform cmd
         | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
           handle_cb tcp ext_stack http

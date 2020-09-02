@@ -26,6 +26,10 @@ module type S = sig
     | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
     | Tls of Tls.Config.own_cert
     | Shutdown
+    | Reboot
+    | Reset
+
+  val cb_to_string : cb -> string
 
   type t
 
@@ -185,5 +189,5 @@ end
 module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
-  val boot : KV.t -> (t * cb Lwt_mvar.t) Lwt.t
+  val boot : device_id:string -> KV.t -> (t * cb Lwt_mvar.t) Lwt.t
 end

@@ -24,6 +24,15 @@ let remote =
   let doc = Key.Arg.info ~doc:"Remote git repository." ["remote"] in
   Key.(create "remote" Arg.(opt string "git://169.254.169.2/keyfender-data.git" doc))
 
+let platform =
+  let doc = Key.Arg.info ~doc:"Platform IP." ["platform"] in
+  let default_ip = Ipaddr.V4.of_string_exn "169.254.169.2" in
+  Key.(create "platform" Arg.(opt ipv4_address default_ip doc))
+
+let platform_port =
+  let doc = Key.Arg.info ~doc:"Platform port." ["platform-port"] in
+  Key.(create "platform-port" Arg.(opt int 12345 doc))
+
 (* This parameter uses an integer since mirage does not properly handle
    (boolean) flags provided at configuration time (they are not preserved in
    key_gen.ml). TODO report and fix upstream. *)
@@ -52,7 +61,7 @@ let main =
     package ~min:"2.0.0" "irmin-mirage-git";
     package ~sublibs:["mirage"] "logs-syslog";
   ] in
-  let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ] in
+  let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ; abstract platform ; abstract platform_port ] in
   foreign
     ~packages ~keys
     "Unikernel.Main"

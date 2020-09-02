@@ -25,7 +25,7 @@ let () =
   Lwt_main.run
   begin
     Store.connect () >>= fun store ->
-    Hsm.boot store >>= fun (hsm_state, mvar) ->
+    Hsm.boot ~device_id:"test server" store >>= fun (hsm_state, mvar) ->
     Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->
     Tcpv4_socket.connect (Some ip) >>= fun tcp ->
     Udpv4_socket.connect (Some ip) >>= fun udp ->

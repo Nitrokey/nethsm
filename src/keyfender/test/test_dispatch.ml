@@ -20,7 +20,7 @@ module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
-    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot >|= fst)
+    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >|= fst)
     | Some x -> x
   in
   let path = "/api/v1" ^ endpoint in
@@ -31,7 +31,7 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
 
 let operational_mock () =
   Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.boot >>= fun (state, _) ->
+    Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _) ->
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
     Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
@@ -41,12 +41,12 @@ let locked_mock () =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
-    Hsm.boot kv >>= fun (state, _) ->
+    Hsm.boot ~device_id:"test dispatch" kv >>= fun (state, _) ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
     Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
-    Hsm.boot kv >|= fst)
+    Hsm.boot ~device_id:"test dispatch" kv >|= fst)
 
 let empty () =
   "a request for / will produce no result"
@@ -466,13 +466,29 @@ let unattended_boot_succeeds () =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot store >>= fun (state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (Hsm.boot store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Operational)
+      Lwt_main.run (Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Operational)
+    | _ -> false
+  end
+
+let unattended_boot_failed_wrong_device_id () =
+  "unattended boot failed (wrong device ID)"
+  @? begin
+    let store, hsm_state =
+      Lwt_main.run (
+        Kv_mem.connect () >>= fun store ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
+        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
+        store, state)
+    in
+    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
+    | _hsm_state', Some (`No_content, _, _, _) ->
+      Lwt_main.run (Hsm.boot ~device_id:"test other dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Locked)
     | _ -> false
   end
 
@@ -482,7 +498,7 @@ let unattended_boot_failed () =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot store >>= fun (state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
@@ -490,7 +506,7 @@ let unattended_boot_failed () =
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (
         Kv_mem.remove store (Mirage_kv.Key.v "/config/device-id-salt") >>= fun _ ->
-        Hsm.boot store >|= fun (hsm_state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _) ->
         Hsm.state hsm_state = `Locked)
     | _ -> false
   end
@@ -694,13 +710,13 @@ let invalid_config_version () =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
-         Hsm.boot data)) ;
+         Hsm.boot ~device_id:"test dispatch" data)) ;
   assert_raises (Invalid_argument "broken NitroHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
-         Hsm.boot data))
+         Hsm.boot ~device_id:"test dispatch" data))
 
 let config_version_but_no_salt () =
   assert_raises (Invalid_argument "fatal!")
@@ -708,7 +724,7 @@ let config_version_but_no_salt () =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
-         Hsm.boot data))
+         Hsm.boot ~device_id:"test dispatch" data))
 
 let users_get () =
   "GET on /users/ succeeds"
@@ -1363,6 +1379,7 @@ let () =
     "/lock" >:: lock_failed;
     "/config/unattended_boot" >:: get_unattended_boot_ok;
     "/config/unattended_boot" >:: unattended_boot_succeeds;
+    "/config/unattended_boot" >:: unattended_boot_failed_wrong_device_id;
     "/config/unattended_boot" >:: unattended_boot_failed;
     "/config/unlock-passphrase" >:: change_unlock_passphrase;
     "/config/unlock-passphrase" >:: change_unlock_passphrase_empty;

@@ -26,6 +26,10 @@ module type S = sig
     | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
     | Tls of Tls.Config.own_cert
     | Shutdown
+    | Reboot
+    | Reset
+
+  val cb_to_string : cb -> string
 
   type t
 
@@ -361,6 +365,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
     | Tls of Tls.Config.own_cert
     | Shutdown
+    | Reboot
+    | Reset
+
+  let cb_to_string = function
+    | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
+    | Network (prefix, gw) ->
+      let gw = match gw with None -> "no" | Some ip -> Ipaddr.V4.to_string ip in
+      "NETWORK " ^ Ipaddr.V4.Prefix.to_string prefix ^ ", gateway: " ^ gw
+    | Tls _ -> "TLS_CERTIFICATE"
+    | Shutdown -> "SHUTDOWN"
+    | Reboot -> "REBOOT"
+    | Reset -> "RESET"
 
   let version_of_string s = match Astring.String.cut ~sep:"." s with
     | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
@@ -409,6 +425,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     info : Json.info ;
     system_info : Json.system_info ;
     mbox : cb Lwt_mvar.t ;
+    device_id : string ;
   }
 
   let state t = to_external_state t.state
@@ -536,7 +553,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       (Config_store.get kv Certificate) >|= fun (cert, chain) ->
     cert, chain, priv
 
-  let boot_config_store kv =
+  let boot_config_store kv device_id =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
       (Config_store.get_opt kv Time_offset >|= function
@@ -554,8 +571,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Some true ->
       begin
         let open Lwt.Infix in
-        (* TODO retrieve device ID from S-Kitchen-Sink *)
-        let device_id = "my device id, psst" in
         unlock_with_device_id kv ~device_id >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
@@ -564,7 +579,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       end
     | None | Some false -> Lwt.return (Ok Locked)
 
-  let boot kv =
+  let boot ~device_id kv =
     Metrics.set_mem_reporter ();
     let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
     and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
@@ -582,14 +597,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert ()
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox } in
+        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
-          boot_config_store kv >>= fun state ->
+          boot_config_store kv device_id >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox }
+          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"
@@ -1193,8 +1208,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
-              (* TODO retrieve device-id from S-Kitchen-Sink *)
-              let salt, unlock_key = salted "my device id, psst" in
+              let salt, unlock_key = salted t.device_id in
               KV.batch t.kv (fun b ->
                   internal_server_error "Write device ID salt" KV.pp_write_error
                     (Config_store.set b Device_id_salt salt) >>= fun () ->
@@ -1357,12 +1371,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   module System = struct
     let system_info t = t.system_info
 
-    (* TODO call hardware *)
     let reboot t =
       t.state <- Busy;
-      Lwt_mvar.put t.mbox Shutdown
+      Lwt_mvar.put t.mbox Reboot
 
-    (* TODO call hardware *)
     let shutdown t =
       t.state <- Busy;
       Lwt_mvar.put t.mbox Shutdown
@@ -1370,11 +1382,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let reset t =
       let open Lwt_result.Infix in
       t.state <- Unprovisioned;
-      (* TODO call hardware (instead of removing "/"), also reboot *)
       Lwt_mutex.with_lock write_lock (fun () ->
           internal_server_error "Reset" KV.pp_write_error
             (KV.remove t.kv Mirage_kv.Key.empty)) >>= fun r ->
-      Lwt_result.ok (Lwt_mvar.put t.mbox Shutdown) >|= fun () ->
+      Lwt_result.ok (Lwt_mvar.put t.mbox Reset) >|= fun () ->
       r
 
     let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
