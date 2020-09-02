@@ -31,7 +31,7 @@ let platform =
 
 let platform_port =
   let doc = Key.Arg.info ~doc:"Platform port." ["platform-port"] in
-  Key.(create "platform-port" Arg.(opt int 12345 doc))
+  Key.(create "platform-port" Arg.(opt int 1023 doc))
 
 (* This parameter uses an integer since mirage does not properly handle
    (boolean) flags provided at configuration time (they are not preserved in
