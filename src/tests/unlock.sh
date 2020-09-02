@@ -3,8 +3,8 @@
 source "$(dirname $0)/common_functions.sh"
 
 echo "Unlocking."
-PUT /v1/unlock <<EOM
-{ 
+POST /v1/unlock <<EOM
+{
   "passphrase": "UnlockPassphrase"
 }
 EOM

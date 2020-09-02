@@ -332,7 +332,7 @@ let system_backup_and_restore_ok () =
             | hsm_state', Some (`No_content, _, _, _) ->
               assert (Hsm.state hsm_state' = `Locked);
               let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-              begin match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state:hsm_state' "/unlock" with
+              begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state' "/unlock" with
                 | _, Some (`No_content, _, _, _) ->
                   Hsm.state hsm_state' = `Operational && Lwt_main.run (Hsm.equal hsm_state hsm_state')
                 | _ -> false
@@ -383,7 +383,7 @@ let unlock_json = {|{ "passphrase": "test1234Passphrase" }|}
 
 let unlock_ok () =
   "a request for /unlock unlocks the HSM"
-  @? begin match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
+  @? begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
   | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
   end
@@ -392,17 +392,17 @@ let unlock_failed () =
   "a request for /unlock with the wrong passphrase fails"
   @? begin
     let wrong_passphrase = {|{ "passphrase": "wrong" }|} in
-    match request ~meth:`PUT ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
+    match request ~meth:`POST ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
   | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Locked
   | _ -> false
   end
 
 let unlock_twice () =
   "the first request for /unlock unlocks the HSM, the second fails"
-  @? begin match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
+  @? begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
   | hsm_state, Some (`No_content, _, _, _) ->
     begin
-      match request ~meth:`PUT ~body:(`String unlock_json) ~hsm_state "/unlock" with
+      match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock" with
       | hsm', Some (`Precondition_failed, _, _, _) -> Hsm.state hsm' = `Operational
       | _ -> false
     end
@@ -435,7 +435,7 @@ let change_unlock_passphrase () =
   match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
     Hsm.lock hsm_state;
-    begin match admin_put_request ~body:(`String passphrase) ~hsm_state "/unlock" with
+    begin match request ~meth:`POST ~body:(`String passphrase) ~hsm_state "/unlock" with
     | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
     | _ -> false
     end
