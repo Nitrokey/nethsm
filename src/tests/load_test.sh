@@ -4,6 +4,7 @@ source "$(dirname $0)/common_functions.sh"
 
 JOBS="${JOBS:-4}"
 ITERS="${ITERS:-400}"
+PARALLEL="parallel --halt now,fail=1 -n0 -j${JOBS}"
 
 echo "Starting key generation test."
 REQUEST=$(mktemp)
@@ -13,7 +14,7 @@ POST_admin /v1/keys/generate <<EOM
 { "purpose": "Sign", "algorithm": "RSA", "length": 2048 }
 EOM
 EOF
-seq ${ITERS} | parallel -n0 -j${JOBS} bash ${REQUEST}
+seq ${ITERS} | ${PARALLEL} bash ${REQUEST} || exit 1
 rm ${REQUEST}
 
 echo "Starting signing test."
@@ -27,7 +28,7 @@ POST_operator /v1/keys/myKey1/sign <<EOM
 }
 EOM
 EOF
-seq ${ITERS} | parallel -n0 -j${JOBS} bash ${REQUEST}
+seq ${ITERS} | ${PARALLEL} bash ${REQUEST} || exit 1
 rm ${REQUEST}
 
 echo "Starting decryption test."
@@ -41,7 +42,7 @@ POST_operator /v1/keys/myKey1/decrypt <<EOM
 }
 EOM
 EOF
-seq ${ITERS} | parallel -n0 -j${JOBS} bash ${REQUEST}
+seq ${ITERS} | ${PARALLEL} bash ${REQUEST} || exit 1
 rm ${REQUEST}
 
 echo "Starting random generation test."
@@ -54,6 +55,6 @@ POST_operator /v1/random <<EOM
 }
 EOM
 EOF
-seq ${ITERS} | parallel -n0 -j${JOBS} bash ${REQUEST}
+seq ${ITERS} | ${PARALLEL} bash ${REQUEST} || exit 1
 rm ${REQUEST}
 
