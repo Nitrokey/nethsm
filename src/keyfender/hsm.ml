@@ -357,8 +357,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     Fmt.string ppf (match s with
         | `Unprovisioned -> "unprovisioned"
         | `Operational -> "operational"
-        | `Locked -> "locked"
-        | `Busy -> "busy")
+        | `Locked -> "locked")
 
   type cb =
     | Log of Json.log
@@ -406,14 +405,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Unprovisioned
     | Operational of keys
     | Locked
-    | Busy
       [@@deriving eq]
 
   let to_external_state = function
     | Unprovisioned -> `Unprovisioned
     | Operational _ -> `Operational
     | Locked -> `Locked
-    | Busy -> `Busy
 
   type t = {
     mutable state : internal_state ;
@@ -1371,16 +1368,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   module System = struct
     let system_info t = t.system_info
 
-    let reboot t =
-      t.state <- Busy;
-      Lwt_mvar.put t.mbox Reboot
+    let reboot t = Lwt_mvar.put t.mbox Reboot
 
-    let shutdown t =
-      t.state <- Busy;
-      Lwt_mvar.put t.mbox Shutdown
+    let shutdown t = Lwt_mvar.put t.mbox Shutdown
 
     let reset t =
       let open Lwt_result.Infix in
+      (* TODO when the platform clears the data, no need to do anything here *)
       t.state <- Unprovisioned;
       Lwt_mutex.with_lock write_lock (fun () ->
           internal_server_error "Reset" KV.pp_write_error

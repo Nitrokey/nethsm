@@ -281,7 +281,6 @@ type state = [
   | `Unprovisioned
   | `Operational
   | `Locked
-  | `Busy
 ][@@deriving yojson]
 
 let state_to_yojson state =

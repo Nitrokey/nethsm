@@ -167,14 +167,14 @@ let system_info_error_forbidden () =
 let system_reboot_ok () =
   "a request for /system/reboot with authenticated user returns 200"
    @? begin match admin_post_request "/system/reboot" with
-      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
+      | _, Some (`No_content, _, _, _) -> true
       | _ -> false
    end
 
 let system_shutdown_ok () =
   "a request for /system/shutdown with authenticated user returns 200"
    @? begin match admin_post_request "/system/shutdown" with
-      | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Busy
+      | _, Some (`No_content, _, _, _) -> true
       | _ -> false
    end
 
