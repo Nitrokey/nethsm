@@ -142,6 +142,12 @@
           </group>
           <group name="vmcall">
             <event id="31" logical="timer" physical="timer_linux_2"/>
+            <event id="30" logical="poweroff" physical="system_poweroff">
+              <system_poweroff/>
+            </event>
+            <event id="29" logical="reboot" physical="system_reboot">
+              <system_reboot/>
+            </event>
           </group>
         </source>
         <target>

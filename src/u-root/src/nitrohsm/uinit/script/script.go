@@ -69,6 +69,38 @@ func (s *Script) Execf(format string, a ...interface{}) {
 	}
 }
 
+// BackgroundExecf executes a fmt-formatted command in the background. No provision is
+// made for retrieving it's exit status, however the child is reaped and a message is
+// logged on exit.
+func (s *Script) BackgroundExecf(format string, a ...interface{}) {
+	if s.err != nil {
+		return
+	}
+
+	cmdString := fmt.Sprintf(format, a...)
+	cmdSplit := strings.Split(cmdString, " ")
+	if len(cmdSplit) == 0 {
+		s.err = fmt.Errorf("Empty command string")
+		return
+	}
+
+	cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	if err := cmd.Start(); err != nil {
+		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
+	}
+	go func(child *exec.Cmd) {
+		err := child.Wait()
+		if err != nil {
+			log.Printf("Background process '%s' exited with status: %v", cmdSplit[0], err)
+		} else {
+			log.Printf("Background process '%s' exited", cmdSplit[0])
+		}
+	}(cmd)
+}
+
 // ReadLine reads a line from standard input.
 func (s *Script) ReadLine() string {
 	if s.err != nil {
