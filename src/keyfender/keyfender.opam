@@ -43,7 +43,8 @@ depends: [
   "hex"
   "gmap" {>= "0.3.0"}
   "ipaddr" {>= "5.0.0"}
-  "metrics"
+  "metrics" {>= "0.2.0"}
+  "metrics-lwt" {>= "0.2.0"}
   "mirage-time"
   "duration"
   "conduit-mirage" #{with-test}

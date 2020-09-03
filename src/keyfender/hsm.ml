@@ -212,8 +212,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let uptime_src =
       let open Metrics in
       let doc = "Uptime" in
-      let data now =
-        let seconds = Duration.to_sec now in
+      let data () =
+        let seconds = Duration.to_sec (now ()) in
         Data.v [ int "uptime" seconds ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "uptime"
@@ -221,7 +221,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let log_src =
       let open Metrics in
       let doc = "Log message types" in
-      let data (warns, errs) =
+      let data () =
+        let warns = Logs.warn_count ()
+        and errs = Logs.err_count ()
+        in
         Data.v [ int "warn msgs" warns ; int "err msgs" errs ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "log msg type"
@@ -229,7 +232,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let gc_src =
       let open Metrics in
       let doc = "Garbage collection" in
-      let data (live, free) =
+      let data () =
+        let gc_stat = Gc.stat () in
+        let live = gc_stat.live_words * 8
+        and free = gc_stat.free_words * 8
+        in
         Data.v [ int "live_words_bytes" live ; int "free_words_bytes" free ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "gc"
@@ -260,27 +267,31 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let data () =
         let codes =
           Hashtbl.fold
-            (fun k v acc -> uint ("http " ^ string_of_int k) v :: acc)
+            (fun k v acc ->
+               let key = "http " ^ (if k = 0 then "total" else string_of_int k) in
+               uint key v :: acc)
             http_status []
         in
         Data.v codes
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "http status"
 
+    let total_code = 0
+
     let http_status status =
       let code = Cohttp.Code.code_of_status status in
       let old_counter = match Hashtbl.find_opt http_status code with None -> 0 | Some x -> x in
       Hashtbl.replace http_status code (succ old_counter);
+      let total = match Hashtbl.find_opt http_status total_code with None -> 0 | Some x -> x in
+      Hashtbl.replace http_status total_code (succ total);
       Metrics.add http_status_src (fun t -> t) (fun m -> m ())
 
-    let rec sample () =
-      let open Lwt.Infix in
-      Metrics.add uptime_src (fun t -> t) (fun m -> m (now ()));
-      Metrics.add log_src (fun t -> t) (fun m -> m (Logs.warn_count (), Logs.err_count ()));
-      let gc_stat = Gc.stat () in
-      Metrics.add gc_src (fun t -> t) (fun m -> m (gc_stat.live_words * 8, gc_stat.free_words * 8));
-      Time.sleep_ns sample_interval >>=
-      sample
+    let sample () =
+      Metrics_lwt.periodically uptime_src;
+      Metrics_lwt.periodically log_src;
+      Metrics_lwt.periodically gc_src;
+      let sleeper () = Time.sleep_ns sample_interval in
+      Metrics_lwt.init_periodic ~gc:`None ~logs:false sleeper
 
     let set_mem_reporter () =
       let report ~tags:_ ~data ~over _src k =
@@ -304,7 +315,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let at_exit () = () in
       Metrics.enable_all ();
       Metrics.set_reporter {Metrics.report; now; at_exit};
-      Lwt.async sample
+      sample ()
   end
 
   (* fatal is called on error conditions we do not expect (hardware failure,

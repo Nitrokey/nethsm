@@ -9,6 +9,6 @@ let () =
   (public_name keyfender)
   (preprocessor_deps update.pem)
   (preprocess (pps ppx_blob ppx_deriving_yojson ppx_deriving.std %s))
-  (libraries astring logs lwt ptime cohttp rresult mirage-crypto mirage-crypto-pk webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf mirage-kv tls x509 hex gmap ipaddr metrics mirage-time duration))
+  (libraries astring logs lwt ptime cohttp rresult mirage-crypto mirage-crypto-pk webmachine cohttp-lwt yojson mirage-clock mirage-random pbkdf mirage-kv tls x509 hex gmap ipaddr metrics metrics-lwt mirage-time duration))
   |}
  (if bisect then "bisect_ppx --conditional" else "")
