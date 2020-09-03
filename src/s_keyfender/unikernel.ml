@@ -127,6 +127,7 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
+      (* TODO revise error handling for production (no device-id is fatal) *)
       (write_platform internal_stack "DEVICE-ID" >|= function
         | Error e ->
           Logs.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
