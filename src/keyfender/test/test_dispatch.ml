@@ -320,7 +320,7 @@ let system_backup_and_restore_ok () =
   @? begin
     let backup_passphrase = "backup passphrase" in
     let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
-    match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
+    match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
     | hsm_state, Some (`No_content, _, _, _) ->
       let headers = auth_header "backup" "test3Passphrase" in
       begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
@@ -432,7 +432,7 @@ let change_unlock_passphrase () =
   "change unlock passphrase succeeds"
   @? begin
   let passphrase = {|{ "passphrase" : "new passphrase" }|} in
-  match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
     Hsm.lock hsm_state;
     begin match request ~meth:`POST ~body:(`String passphrase) ~hsm_state "/unlock" with
@@ -446,7 +446,7 @@ let change_unlock_passphrase_empty () =
   "change to empty unlock passphrase fails"
   @? begin
   let passphrase = {|{ "passphrase" : "" }|} in
-  match admin_post_request ~body:(`String passphrase) "/config/unlock-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/unlock-passphrase" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
@@ -470,7 +470,7 @@ let unattended_boot_succeeds () =
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
-    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
+    match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Operational)
     | _ -> false
@@ -486,7 +486,7 @@ let unattended_boot_failed_wrong_device_id () =
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
-    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
+    match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (Hsm.boot ~device_id:"test other dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Locked)
     | _ -> false
@@ -502,7 +502,7 @@ let unattended_boot_failed () =
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
-    match admin_post_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
+    match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (
         Kv_mem.remove store (Mirage_kv.Key.v "/config/device-id-salt") >>= fun _ ->
@@ -573,7 +573,7 @@ let subject = {|{
 let post_config_tls_csr_pem () =
   "post tls csr pem file succeeds"
   @? begin
-  match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
+  match admin_put_request ~body:(`String subject) "/config/tls/csr.pem" with
   | _, Some (`OK, _, `String body, _) ->
      begin match X509.Signing_request.decode_pem (Cstruct.of_string body) with
      | Ok _ -> true
@@ -690,7 +690,7 @@ let set_backup_passphrase () =
   "set backup passphrase succeeds"
   @? begin
   let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
-  match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
   end
@@ -699,7 +699,7 @@ let set_backup_passphrase_empty () =
   "set empty backup passphrase fails"
   @? begin
   let passphrase = {|{ "passphrase" : "" }|} in
-  match admin_post_request ~body:(`String passphrase) "/config/backup-passphrase" with
+  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end

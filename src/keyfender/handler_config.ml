@@ -60,7 +60,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
-    inherit !Endpoint.post_json
+    inherit !Endpoint.put_json
     inherit !Endpoint.no_cache
 
     method private of_json json rd =
@@ -80,7 +80,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
-    inherit !Endpoint.post_json
+    inherit !Endpoint.put_json
     inherit !Endpoint.no_cache
 
     method private of_json json rd =
@@ -114,9 +114,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
 
-    method !allowed_methods = Wm.continue [ `GET ; `POST ]
-
-    method !process_post = self#set
+    method !allowed_methods = Wm.continue [ `GET ; `PUT ]
 
     method content_types_provided =
       Wm.continue [ ("application/json", self#get) ]
@@ -199,7 +197,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
-    inherit !Endpoint.post_json
+    inherit !Endpoint.put_json
     inherit !Endpoint.no_cache
 
     method private of_json json rd =

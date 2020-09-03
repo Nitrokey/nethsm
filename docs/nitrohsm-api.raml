@@ -926,7 +926,7 @@ types:
 /config:
   description: "Role: <b>R-Administrator</b>"
   /unlock-passphrase:
-    post:
+    put:
       role: [ Administrator ]
       state: [ Operational ]
       description: Update the unlock passphrase.
@@ -971,7 +971,7 @@ types:
         412:
           description: Precondition failed (NitroHSM was not <i>Operational</i>).
 
-    post:
+    put:
       role: [ Administrator ]
       state: [ Operational ]
       description: "Configure unattended boot: switch it on or off (flip the switch)."
@@ -1117,7 +1117,7 @@ types:
             description: Precondition failed (NitroHSM was not <i>Operational</i>).
 
     /csr.pem:
-      post:
+      put:
         role: [ Administrator ]
         state: [ Operational ]
         description: Get NitroHSM certificate signing request e.g. to replace self-signed intital certificate.
@@ -1266,7 +1266,7 @@ types:
         412:
           description: Precondition failed (NitroHSM was not <i>Operational</i>).
   /backup-passphrase:
-    post:
+    put:
       role: [ Administrator ]
       state: [ Operational ]
       description: Update the backup passphrase.
