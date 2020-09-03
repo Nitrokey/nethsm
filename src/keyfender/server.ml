@@ -99,6 +99,7 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
                          (Uri.path (Cohttp.Request.uri request))
                          (Astring.String.concat ~sep:", " path)) ;
     Hsm.Metrics.http_status status;
+    Hsm.Metrics.http_response_time (Ptime.Span.to_float_s diff);
     Http.respond ~headers ~body ~status ()
 
   (* Redirect to https *)

@@ -60,6 +60,7 @@ let main =
     package ~min:"2.0.0" "irmin-mirage";
     package ~min:"2.0.0" "irmin-mirage-git";
     package ~sublibs:["mirage"] "logs-syslog";
+    package "metrics-lwt";
   ] in
   let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ; abstract platform ; abstract platform_port ] in
   foreign

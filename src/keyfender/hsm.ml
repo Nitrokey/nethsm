@@ -2,6 +2,7 @@ module type S = sig
 
   module Metrics : sig
     val http_status : Cohttp.Code.status_code -> unit
+    val http_response_time : float -> unit
     val retrieve : unit -> (string * string) list
   end
 
@@ -233,11 +234,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Metrics in
       let doc = "Garbage collection" in
       let data () =
-        let gc_stat = Gc.stat () in
-        let live = gc_stat.live_words * 8
+        let gc_stat = Gc.quick_stat () in
+        (* let live = gc_stat.live_words * 8
         and free = gc_stat.free_words * 8
-        in
-        Data.v [ int "live_words_bytes" live ; int "free_words_bytes" free ]
+           in *)
+        let major_bytes = gc_stat.heap_words * 8 in
+        (* Data.v [ int "gc_live_bytes" live ; int "gc_free_bytes" free ] *)
+        Data.v [ int "gc_major_bytes" major_bytes ;
+                 int "gc_major_collections" gc_stat.major_collections ;
+                 int "gc_minor_collections" gc_stat.minor_collections ;
+               ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "gc"
 
@@ -268,7 +274,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let codes =
           Hashtbl.fold
             (fun k v acc ->
-               let key = "http " ^ (if k = 0 then "total" else string_of_int k) in
+               let key =
+                 let v = if k = 0 then "total" else string_of_int k in
+                 "http response " ^ v
+               in
                uint key v :: acc)
             http_status []
         in
@@ -286,6 +295,35 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Hashtbl.replace http_status total_code (succ total);
       Metrics.add http_status_src (fun t -> t) (fun m -> m ())
 
+    let response_time = ref 0.0
+
+    let http_response_time_src =
+      let open Metrics in
+      let doc = "HTTP response time" in
+      let data () =
+        Data.v [ float "http response time" !response_time ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "http response time"
+
+    let http_response_time measured =
+      (* exponentially weighted moving average / exponential smoothed / holt linear*)
+      response_time := 0.7 *. !response_time +. 0.3 *. measured;
+      Metrics.add http_response_time_src (fun t -> t) (fun m -> m ())
+
+    let writes = ref 0
+
+    let write_src =
+      let open Metrics in
+      let doc = "KV writes" in
+      let data () =
+        Data.v [ int "kv write" !writes ]
+      in
+      Src.v ~doc ~tags:Metrics.Tags.[] ~data "KV writes"
+
+    let write () =
+      incr writes;
+      Metrics.add write_src (fun t -> t) (fun m -> m ())
+
     let sample () =
       Metrics_lwt.periodically uptime_src;
       Metrics_lwt.periodically log_src;
@@ -295,6 +333,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let set_mem_reporter () =
       let report ~tags:_ ~data ~over _src k =
+        (* TODO take tags into account (for mirage-net-solo5 sources) *)
         let data_fields = Metrics.Data.fields data in
         (* let name = Metrics.Src.name src in *)
         let field f =
@@ -691,6 +730,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Write user" Encrypted_store.pp_write_error
             (Encrypted_store.set store (Mirage_kv.Key.v id) user_str))
 
@@ -770,6 +810,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       let store = in_store t in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Remove user" Encrypted_store.pp_write_error
             (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
@@ -860,6 +901,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       and kv_key = Mirage_kv.Key.v id
       in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Write key" Encrypted_store.pp_write_error
             (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
@@ -925,6 +967,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       let store = key_store t in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Remove key" Encrypted_store.pp_write_error
             (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
@@ -1132,6 +1175,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Cstruct.split domain_key Crypto.key_len
     in
     Lwt_mutex.with_lock write_lock (fun () ->
+        Metrics.write ();
         KV.batch t.kv (fun b ->
             internal_server_error
               "Initializing configuration store" KV.pp_write_error
@@ -1192,6 +1236,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let open Lwt_result.Infix in
         let unlock_salt, unlock_key = salted passphrase in
         Lwt_mutex.with_lock write_lock (fun () ->
+            Metrics.write ();
             KV.batch t.kv (fun b ->
                 internal_server_error "Write unlock salt" KV.pp_write_error
                   (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
@@ -1213,6 +1258,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match t.state with
       | Operational keys ->
         Lwt_mutex.with_lock write_lock (fun () ->
+            Metrics.write ();
             internal_server_error "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
@@ -1275,6 +1321,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | Ok _ ->
             let open Lwt_result.Infix in
             Lwt_mutex.with_lock write_lock (fun () ->
+                Metrics.write ();
                 internal_server_error "Write certificate" KV.pp_write_error
                   (Config_store.set t.kv Certificate (cert, chain))) >>= fun r ->
             t.cert <- cert; t.chain <- chain;
@@ -1319,6 +1366,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Some network.gateway
       in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Write network configuration" KV.pp_write_error
             Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))) >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Network (prefix, route))) >|= fun () ->
@@ -1345,6 +1393,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let set_log t log =
       let open Lwt_result.Infix in
       Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
           internal_server_error "Write log config" KV.pp_write_error
             (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))) >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () ->
@@ -1363,6 +1412,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let open Lwt_result.Infix in
         let backup_salt, backup_key = salted passphrase in
         Lwt_mutex.with_lock write_lock (fun () ->
+            Metrics.write ();
             KV.batch t.kv (fun b ->
                 internal_server_error "Write backup salt" KV.pp_write_error
                   (Config_store.set b Backup_salt backup_salt) >>= fun () ->
@@ -1373,7 +1423,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      Lwt_mutex.with_lock write_lock (fun () -> set_time_offset t.kv time)
+      Lwt_mutex.with_lock write_lock (fun () -> Metrics.write (); set_time_offset t.kv time)
   end
 
   module System = struct
@@ -1594,7 +1644,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error `Not_authenticated ->
         Lwt.return @@ Error (Bad_request, "Could not decrypt backup version, authentication failed. Is the passphrase correct?")
       | Ok version ->
+        (* TODO could be a batch *)
         Lwt_mutex.with_lock write_lock (fun () ->
+            Metrics.write ();
             match Version.of_string (Cstruct.to_string version) with
             | Ok v when Version.compare backup_version v = `Equal ->
               begin

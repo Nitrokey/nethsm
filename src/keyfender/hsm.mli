@@ -2,6 +2,7 @@ module type S = sig
 
   module Metrics : sig
     val http_status : Cohttp.Code.status_code -> unit
+    val http_response_time : float -> unit
     val retrieve : unit -> (string * string) list
   end
 
