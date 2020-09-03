@@ -5,8 +5,8 @@ source "$(dirname $0)/common_functions.sh"
 # provision hsm
 echo "Provisioning."
 SYSTEM_TIME="$(date -u +%FT%TZ)"
-PUT /v1/provision <<EOM
-{ 
+POST /v1/provision <<EOM
+{
   "unlockPassphrase": "UnlockPassphrase",
   "adminPassphrase": "Administrator",
   "systemTime": "${SYSTEM_TIME}"

@@ -94,7 +94,7 @@ let provision_json = {| {
 let provision_ok () =
   let body = `String provision_json in
   "an initial provision request is successful (state transition to operational, HTTP response 204)"
-    @? begin match request ~body ~meth:`PUT "/provision" with
+    @? begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
        | _ -> false
     end
@@ -102,7 +102,7 @@ let provision_ok () =
 let provision_error_malformed_request () =
   let body = `String ("hallo" ^ provision_json) in
   "an initial provision request with invalid json returns a malformed request with 400"
-    @? begin match request ~body ~meth:`PUT "/provision" with
+    @? begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Unprovisioned
        | _ -> false
     end
@@ -110,9 +110,9 @@ let provision_error_malformed_request () =
 let provision_error_precondition_failed () =
   let body = `String provision_json in
   "an initial provision request is successful, a subsequent provision fails with 412"
-    @? begin match request ~body ~meth:`PUT "/provision" with
+    @? begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`No_content, _, _, _) ->
-         begin match request ~hsm_state ~body ~meth:`PUT "/provision" with
+         begin match request ~hsm_state ~body ~meth:`POST "/provision" with
           | _, Some (`Precondition_failed, _, _, _) -> true
           | _ -> false
          end
