@@ -56,9 +56,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method! process_post rd =
-      Hsm.System.reset hsm_state >>= function
-      | Ok () -> Wm.continue true rd
-      | Error e -> Endpoint.respond_error e rd
+      Hsm.System.reset hsm_state >>= fun () ->
+      Wm.continue true rd
   end
 
   class update hsm_state ip = object(self)

@@ -108,7 +108,7 @@ module type S = sig
 
     val shutdown : t -> unit Lwt.t
 
-    val reset : t -> (unit, error) result Lwt.t
+    val reset : t -> unit Lwt.t
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 

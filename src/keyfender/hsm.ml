@@ -108,7 +108,7 @@ module type S = sig
 
     val shutdown : t -> unit Lwt.t
 
-    val reset : t -> (unit, error) result Lwt.t
+    val reset : t -> unit Lwt.t
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
@@ -1372,15 +1372,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let shutdown t = Lwt_mvar.put t.mbox Shutdown
 
-    let reset t =
-      let open Lwt_result.Infix in
-      (* TODO when the platform clears the data, no need to do anything here *)
-      t.state <- Unprovisioned;
-      Lwt_mutex.with_lock write_lock (fun () ->
-          internal_server_error "Reset" KV.pp_write_error
-            (KV.remove t.kv Mirage_kv.Key.empty)) >>= fun r ->
-      Lwt_result.ok (Lwt_mvar.put t.mbox Reset) >|= fun () ->
-      r
+    let reset t = Lwt_mvar.put t.mbox Reset
 
     let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
 
