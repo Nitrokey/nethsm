@@ -15,3 +15,8 @@
 [submodule "src/u-root/src/github.com/u-root/u-root"]
 	path = src/u-root/src/github.com/u-root/u-root
 	url = https://github.com/u-root/u-root.git
+[submodule "src/e2fsprogs"]
+	path = src/e2fsprogs
+	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
+	branch = maint
+	shallow = true

@@ -68,7 +68,7 @@ endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
-REQUIRED_SUBMODULES += src/git src/zlib src/muen/muen \
+REQUIRED_SUBMODULES += src/git src/zlib src/e2fsprogs src/muen/muen \
     src/u-root/src/github.com/u-root/u-root
 else
 $(error Invalid MODE '$(XMODE)')
@@ -287,6 +287,25 @@ $(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
 
+E2FSPROGS_DIR := src/e2fsprogs/build
+MKE2FS := $(E2FSPROGS_DIR)/misc/mke2fs
+INSTALL_MKE2FS := $(OBJ_INITRAMFS_DIR)/bin/mke2fs
+
+$(E2FSPROGS_DIR)/Makefile: src/e2fsprogs/configure
+	mkdir -p $(E2FSPROGS_DIR)
+	cd $(E2FSPROGS_DIR) && LDFLAGS=-static ../configure \
+	    --host=x86_64-linux-musl \
+	    --enable-libuuid \
+	    --enable-libblkid \
+	    --disable-nls
+
+$(MKE2FS): $(E2FSPROGS_DIR)/Makefile
+	$(MAKE) -C $(E2FSPROGS_DIR) PROG_SUBDIRS=misc
+
+$(INSTALL_MKE2FS): $(MKE2FS)
+	cp $< $@
+	strip $@
+
 OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
@@ -300,7 +319,7 @@ U_ROOT_PKGS := core $(U_ROOT_UINIT)
 $(U_ROOT_BIN):
 	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
 
-$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON)
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS)
 	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
 	    -files "$(OBJ_INITRAMFS_DIR):/" \
@@ -422,6 +441,7 @@ clean: clean-keyfender
 	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
+	$(RM) -r $(E2FSPROGS_DIR)
 	$(RM) $(U_ROOT_BIN)
 	$(RM) -r $(OBJ_DIR) $(RUN_DIR)
 
