@@ -284,7 +284,17 @@ func storageActions() {
 		log.Printf("System will reboot now.")
 		triggerMuenEvent("reboot")
 	case "RESET":
-		log.Printf("RESET not implemented yet.")
+		s.Logf("Formatting data partition.")
+		s.Execf("/bbin/mkdir -p /tmp/empty /tmp/data/git")
+		s.Execf("/bin/git init --bare --template=/tmp/empty /tmp/data/git/keyfender-data.git")
+		s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sda2")
+
+		if err := s.Err(); err != nil {
+			log.Printf("Script failed: %v", err)
+		}
+
+		log.Printf("System will reboot now.")
+		triggerMuenEvent("reboot")
 	default:
 		log.Printf("Unknown request, exiting anyway.")
 	}
