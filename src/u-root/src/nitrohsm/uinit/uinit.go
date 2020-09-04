@@ -279,9 +279,11 @@ func storageActions() {
 	switch request {
 	case "SHUTDOWN":
 		log.Printf("System will power off now.")
+		time.Sleep(2 * time.Second)
 		triggerMuenEvent("poweroff")
 	case "REBOOT":
 		log.Printf("System will reboot now.")
+		time.Sleep(2 * time.Second)
 		triggerMuenEvent("reboot")
 	case "RESET":
 		s.Logf("Formatting data partition.")
@@ -294,6 +296,7 @@ func storageActions() {
 		}
 
 		log.Printf("System will reboot now.")
+		time.Sleep(2 * time.Second)
 		triggerMuenEvent("reboot")
 	default:
 		log.Printf("Unknown request, exiting anyway.")
