@@ -4,50 +4,44 @@
 *)
 
 (* TODO
-- UserID: braucht ein beispiel (im setup)
-- header vergleichen (headers.expected erzeugen)
-  - zuerst die status zeile (HTTP code)
-- curl in setup.sh failed --> exit code? -- curl exit codes beruecksichtigen
-- auffaechern von rollen (Operator, Administrator)
-- unterschiedliche content types -> setzen der header
-- test code generierung: aktuell nur success, auch failures programmatisch erzeugen
-  - fuer nicht authorisierte rollen sollten endpunkte nicht verfuegbar sein
-- minimiere skip_endpoints
 
---> evaluate test coverage
-- standalone tests vs vermeidung von resets
+- raml / code: should alive and ready be 204?
+- case unprovisioned_provisioned -> im RAML sind admin + unlock passphrase anders ~> RAML an scripte anpassen
 
-DONE
-- exclude spezial-endpoints (zB /random)
-- keyID setup command
-- endpunkte durchtesten (mit abgeschaltetem header vergleich)
-*)
+- add set -e to setup.sh to pass on error from provision_..sh
+- minimize skip_endpoints
 
-(*
-cat 2020-09-01
-1) shutdown in generated tests
-multiple cases:
-- operational
- --> script verwenden, wenn der user (admin) das gleiche passwort hat
-- locked
- --> script verwenden, dass zuerst unlock macht und dann shutdown
-- unprovisioned
- --> script verwenden, dass zuerst provisioned und dann shutdown
+- comapre response header (create headers.expected)
+  - content types -> different header
+  - check location header
 
-unprovisioned_provisioned -> im RAML sind admin + unlock passphrase anders ~> RAML an scripte anpassen
-
+- handle shutdown in generated tests based on state:
+  - operational --> script verwenden, wenn der user (admin) das gleiche passwort hat
+  - locked --> script verwenden, dass zuerst unlock macht und dann shutdown
+  - unprovisioned --> script verwenden, dass zuerst provisioned und dann shutdown
 --> script anpassen, um zu schauen in welchem state wir sind, und je nachdem handeln
 
-2) measure code coverage of generated tests (Makefile)
---> yes, generate_raml_tests.exe ausfuehren und dependencies
-< bisect-ppx-report fehlt noch
+- measure code coverage of generated tests (Makefile)
+  - add bisect-ppx-report
 
-3) use common-functions.sh in generate_raml_tests.exe for command.sh, use provision_test.sh for setup.sh
-setup could use an argument "desired state", and execute the HTTP requests required to get into that state
+- use common-functions.sh in generate_raml_tests.exe for command.sh
+
+- setup could use an argument "desired state", and execute the HTTP requests required to get into that state
 --> one script, not per-test
 
-4) gitlab pages code coverage
-5) improve code coverage of unit tests
+LATER:
+
+- gitlab pages code coverage
+- improve code coverage of unit tests
+
+- Negative test cases we want to cover:
+- non-allowed http methods (=> 405 method not allowed)
+- invalid state (=> 412 precondition failed)
+- wrong user (=> 403 forbidden)
+- if we have request bodys, what happens when they are invalid
+- guessed keyid
+- guessed userid
+
 *)
 
 let host = "localhost"
