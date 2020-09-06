@@ -122,9 +122,7 @@ let passphrase = function
 
 let prepare_setup _meth path _cmd (state, role, _req) =
   (* 1. prepare server state *)
-  let provision = cmd "/provision" "PUT" ^ "-H \"Content-Type: application/json\" --data @../../provision.json"
-
-  (* TODO NITROHSM_URL="http://localhost:8080/api" ../../provision_test.sh || (kill $PID ; exit 5) *)
+  let provision = "NITROHSM_URL=\"http://localhost:8080/api\" ../../provision_test.sh || (kill $PID ; exit 5)"
   in
   let lock =
     let header = auth_header (passphrase "Administrator") in
@@ -246,15 +244,13 @@ let tests_for_states meth path cmd responses (state, role, req) =
   let get_header (c, data) =
     match data with
     | None -> ""
-    | Some (_typ, example) ->
-      Printf.printf "\nExpected header %s\n" c;
-      let escaped = unquote @@ Ezjsonm.value_to_string example in
-      Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
+    | Some (_typ, _example) ->
+      Printf.sprintf "HTTP/1.1 %s OK\n" c
   in
   let expected_headers =
     List.map get_header responses
   in
-  List.iter (write (outdir ^ "/header.expected")) expected_headers;
+  List.iter (write (outdir ^ "/headers.expected")) expected_headers;
 
   if List.mem path skip_body_endpoints then
     let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
