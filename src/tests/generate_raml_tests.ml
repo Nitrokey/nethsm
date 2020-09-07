@@ -208,7 +208,7 @@ let make_resp_data raml =
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd responses (state, role, req) =
+let tests_for_states meth path cmd (response_code, response_body) (state, role, req) =
   let (outdir, test_file) = path_to_filename state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
@@ -226,25 +226,19 @@ let tests_for_states meth path cmd responses (state, role, req) =
   let _ = Sys.command("chmod u+x " ^ setup_file) in
 
   let expected_body =
-    match List.find_opt (fun (c, _) -> c = "200") responses with
+    match response_body with
     | None -> ""
-    | Some (_, Some (_typ, example)) ->
+    | Some (_typ, example) ->
       let escaped = unquote @@ Ezjsonm.value_to_string example in
       Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
-    | Some (_, _) -> ""
   in
   write (outdir ^ "/body.expected") expected_body;
 
-  let get_header (c, data) =
-    match data with
-    | None -> ""
-    | Some (_typ, _example) ->
-      Printf.sprintf "HTTP/1.1 %s OK\n" c
+  let reply =
+   let status = Cohttp.Code.(reason_phrase_of_code (int_of_string response_code)) in
+   Printf.sprintf "HTTP/1.1 %s %s" response_code status
   in
-  let expected_headers =
-    List.map get_header responses
-  in
-  List.iter (write (outdir ^ "/headers.expected")) expected_headers;
+  write (outdir ^ "/headers.expected") reply;
 
   if List.mem path skip_body_endpoints then
     let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
@@ -257,7 +251,8 @@ let print_method path (meth, req) =
   then begin 
     let reqs = make_req_data req meth in
     let responses = make_resp_data req in
-    List.iter (tests_for_states meth path (cmd path meth) responses) reqs;
+    let success_response = List.find (fun (c, _) -> String.get c 0 = '2') responses in
+    List.iter (tests_for_states meth path (cmd path meth) success_response) reqs;
   end
 
 let print_methods (path, methods) =
