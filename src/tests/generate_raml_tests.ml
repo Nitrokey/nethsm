@@ -9,20 +9,11 @@
 - case unprovisioned_provisioned -> im RAML sind admin + unlock passphrase anders ~> RAML an scripte anpassen
 
 - add set -e to setup.sh to pass on error from provision_..sh
-- minimize skip_endpoints
+- minimize skip_endpoints: add a reason, split by HTTP method
 
 - comapre response header (create headers.expected)
   - content types -> different header
   - check location header
-
-- handle shutdown in generated tests based on state:
-  - operational --> script verwenden, wenn der user (admin) das gleiche passwort hat
-  - locked --> script verwenden, dass zuerst unlock macht und dann shutdown
-  - unprovisioned --> script verwenden, dass zuerst provisioned und dann shutdown
---> script anpassen, um zu schauen in welchem state wir sind, und je nachdem handeln
-
-- measure code coverage of generated tests (Makefile)
-  - add bisect-ppx-report
 
 - use common-functions.sh in generate_raml_tests.exe for command.sh
 
@@ -35,19 +26,20 @@ LATER:
 - improve code coverage of unit tests
 
 - Negative test cases we want to cover:
-- non-allowed http methods (=> 405 method not allowed)
-- invalid state (=> 412 precondition failed)
-- wrong user (=> 403 forbidden)
-- if we have request bodys, what happens when they are invalid
-- guessed keyid
-- guessed userid
+  - non-allowed http methods (=> 405 method not allowed)
+  - invalid state (=> 412 precondition failed)
+  - wrong user (=> 403 forbidden)
+  - if we have request bodys, what happens when they are invalid
+  - guessed keyid
+  - guessed userid
 
 *)
 
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
-let keyid = "mykey"
+let keyid = "myKey1"
+let userid = "operator"
 let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let raml = "../../docs/nitrohsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
@@ -59,8 +51,8 @@ let allowed_request_types = [
   "application/pgp-keys";
 ]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
-let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"]
-let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics" ]
+let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"; "/config/tls/cert.pem"]
+let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics"; "/config/time" ]
 
 let is_quoted s =
   let l = String.length s in
@@ -109,14 +101,14 @@ let auth_header (user, pass) =
 
 let passphrase = function
   | "Administrator" -> ("admin", "Administrator")
-  | "Operator" -> ("operator", "This is my operator passphrase")
+  | "Operator" -> ("operator", "OperatorOperator")
   | "Metrics" -> ("metrics", "This is my metrics passphrase")
   | "Backup" -> ("backup", "This is my backup passphrase")
   | _ -> assert false
 
-let prepare_setup _meth path _cmd (state, role, _req) =
+let prepare_setup _meth _path _cmd (state, role, _req) =
   (* 1. prepare server state *)
-  let provision = "NITROHSM_URL=\"http://localhost:8080/api\" ../../provision_test.sh || (kill $PID ; exit 5)"
+  let provision = "NITROHSM_URL=\"http://localhost:8080/api\" ../../provision_test.sh"
   in
   let lock =
     let header = auth_header (passphrase "Administrator") in
@@ -136,18 +128,11 @@ let prepare_setup _meth path _cmd (state, role, _req) =
     cmd ("/users/" ^ user) "PUT" ^ header ^ "-H \"Content-Type: application/json\" --data " ^ escape data
   in
   let prepare_role = match role with
-    | Some "Operator" -> add_user "Operator"
     | Some "Metrics" -> add_user "Metrics"
     | Some "Backup" -> add_user "Backup"
     | _ -> ""
   in
-  let prepare_data =
-    let keyid_path = "/keys/{KeyID}" in
-    if String.length path >= String.length keyid_path && String.sub path 0 (String.length keyid_path) = keyid_path
-    then cmd ("/keys/" ^ keyid) "PUT" ^ (auth_header (passphrase "Administrator")) ^ "-H \"Content-Type: application/json\" --data @../../key.json"
-    else ""
-  in
-  prepare_state ^ "\n" ^ prepare_role ^ "\n" ^ prepare_data
+  prepare_state ^ "\n" ^ prepare_role
 
 let req_states req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
@@ -212,10 +197,9 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let (outdir, test_file) = path_to_filename state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
-  let cmd' =
-    Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd
-  in
-  let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd' req in
+  let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
+  let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
+  let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd'' req in
   write test_file test_cmd;
   let _ = Sys.command("chmod u+x " ^ test_file) in
 
@@ -224,6 +208,14 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let setup_cmd = prepare_setup meth path cmd (state, role, req) in
   write setup_file setup_cmd;
   let _ = Sys.command("chmod u+x " ^ setup_file) in
+
+  let shutdown_file = outdir ^ "/shutdown.sh" in
+  let shutdown_cmd =
+    if path = "/system/shutdown" then "" else
+    {|NITROHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
+  in
+  write shutdown_file shutdown_cmd;
+  let _ = Sys.command("chmod u+x " ^ shutdown_file) in
 
   let expected_body =
     match response_body with

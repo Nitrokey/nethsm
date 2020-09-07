@@ -159,6 +159,7 @@ test-keyfender-api: .stamp-prepare
 	`cd src/tests && dune external-lib-deps --missing ./generate_raml_tests.exe 2>&1 | grep "opam install"` || true
 	cd src/tests && dune exec ./generate_raml_tests.exe
 	cd src/tests/generated && ./test.sh
+	cd src/tests/generated && bisect-ppx-report summary */*coverage
 
 test-keyfender-e2e: $(KEYFENDER)
 	pkill test_server.exe || true

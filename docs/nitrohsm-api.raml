@@ -195,8 +195,8 @@ types:
           adminPassphrase: Passphrase
           systemTime: RFC3339 (UTC only)
         example:
-          unlockPassphrase: "This is my unlock passphrase"
-          adminPassphrase: "This is my administrator passphrase"
+          unlockPassphrase: "UnlockPassphrase"
+          adminPassphrase: "Administrator"
           systemTime: "2018-10-30T11:20:50Z"
     responses:
       204:
@@ -385,7 +385,7 @@ types:
             purpose: "Sign"
             algorithm: "RSA"
             length: 2048 # Not required for EC keys
-            id: "myKey1" # KeyID is optional, will be created if not present
+            id: "myKey2" # KeyID is optional, will be created if not present
       responses:
         201:
           description: Successful creation of new public and private key pair. Set Location header to the new KeyID.
@@ -482,10 +482,13 @@ types:
               application/x-pem-file:
                 example: |
                   -----BEGIN PUBLIC KEY-----
-                  MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC+nLGAzexDmjvkDZp/dn5Y+pvd
-                  6yvYc/NjDx7saogVYaiGHmWgKiKMaJcuvYxDfvziVseSUIbCJFikfBlbi3yF6D+f
-                  u0m249fvVlOeJcm8j4/aKZTavlmOVOpV4BS0fK20aavJicN9YWf1+q40JyQ67QQ7
-                  DZo9G0QN97nPGzzyiwIDAQAB
+                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
+                  n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
+                  dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
+                  Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
+                  1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
+                  Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
+                  NwIDAQAB
                   -----END PUBLIC KEY-----
           401:
             description: Authentication required but none provided.
@@ -520,15 +523,21 @@ types:
               application/x-pem-file:
                 example: |
                   -----BEGIN CERTIFICATE REQUEST-----
-                  MIIBpDCCAQ0CAQAwZDFiMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
+                  MIICqTCCAZECAQAwZDFiMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
                   DAhOaXRyb2tleTAVBgNVBAMMDm5pdHJvaHNtLmxvY2FsMB4GCSqGSIb3DQEJAQwR
-                  aW5mb0BuaXRyb2tleS5jb20wgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAL6c
-                  sYDN7EOaO+QNmn92flj6m93rK9hz82MPHuxqiBVhqIYeZaAqIoxoly69jEN+/OJW
-                  x5JQhsIkWKR8GVuLfIXoP5+7Sbbj1+9WU54lybyPj9oplNq+WY5U6lXgFLR8rbRp
-                  q8mJw31hZ/X6rjQnJDrtBDsNmj0bRA33uc8bPPKLAgMBAAGgADANBgkqhkiG9w0B
-                  AQsFAAOBgQCOBLc4LgwVfzk8bG7C7GJikh/Yle8guUrIlWXQ3vRbGeWZhh0Jg6V/
-                  QnaYXmmmVsIT/+j1puABqzhnyZgJZh5b2cgiiVOdMBmPf7KvPcdu7KtGzzsukk3M
-                  wJ0Mm4n2rrlXcCeKns035Y4LhAF+tGgMKZ4il+dWi14OyUXCP+KBTA==
+                  aW5mb0BuaXRyb2tleS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
+                  AQDHuCF+uj5UR6libLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wCvh9Yj2kb
+                  uJFfN7NrsMyOtCm3Mqx9LLp0EWZIRl6v6EnG452EEb8VfqmPBGtmls5DHKv5pOUT
+                  eObZc/XYKrHTCxgYigmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48TJXJwkfl
+                  8wEH2H7YHFzgHFo8oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K5JsGbzc6
+                  CpGF2TU/qv++o5UqvFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8lO8a2o4S
+                  6CCK3fa1XXolcJmOdh48C+03AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEAT7y5
+                  5HI8HYlfjwoZnRBgrGdaCnfnJ48Z4wSk/kHSgD/hc98gXJOLp7jTO7Q+M5QkLBqr
+                  Hgy58B/axJv1wBLbxZF9c4AhpobH6XV2aiXSNWqBAmvFv8UkzNnTe1gOJQ1nOnes
+                  qaUzF3py58xj3oHGAcp9NvGRINXnFMI+A2Ol5WsDcdm619Y3+ew0xeKx0jAmawMo
+                  EZnI6sIt46WYumGBHAkjuDVjyYbfbkZ6vFZaEMm9ZdJn0aGDkgEqyEIoFVnLMYBg
+                  Ouc61jzQoXcn5E/dgNldy9ZR1ZulYV2M8qnMDq+tlFPAd9X0S/GRNCxyoHEBsXnW
+                  Ud0iQXvGb/9jciOVuw==
                   -----END CERTIFICATE REQUEST-----
           401:
             description: Authentication required but none provided.
@@ -563,7 +572,7 @@ types:
                 properties:
                   decrypted: base64
                 example:
-                  decrypted: "FCghYzk4cX5REui5PgF55lHrQpZOvawOwOoXWiPaHjo85OMo1zMiszOYvEn2rgiarhXekVhe8gW3yBENcJ+cy1OD7Fh32NhiZQNAD0eWMVL2UTFetnhEzYxx+PlYKhUSX+HiHyuzrZ8t5vAMYhiaQEcIyxfRA71IfL3mT5gxeH0="
+                  decrypted: "IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA=="
           401:
             description: Authentication required but none provided.
           403:
@@ -599,7 +608,7 @@ types:
                 properties:
                   signature: base64
                 example:
-                  signature: "XLD5UAIFidr8bRXMOfibH3wFDXCLfzYY5AoLbU+u5nn0Kt9Mvvn2V7LRyPRbB0oivAz7mwEVS+C0Rkv4LXJhk0FWNByBOe9vlPIhBuQ6hsawKxPDNsW3lYBv/vBM34ZjJuHq0b1UPmyMUjIepndAYXmdCB/FyVBn0CPRVpmuKfI="
+                  signature: "n4geMX1g8zcfipfcmn+XjM1ccWZULemAa0cuYoh1aXG9UhbE6f54NMp4NjboLf63SQyieJYjjV8q+/o1rFlkZCtKtHAheds+g90zdjOMmXFlXyBTKMhGOSHuleGz0c99x7Alg19KN9wB3Jj2niwweBOR/F4Qv0mdBUv+oO8uPl6vM1fS4tX/VJoCZkDnZzL8duKRNFT0SNQZ+ryLiqQMG53fEPhTplK/wK0Cco8JAYCMh9cxSzpBoCEO+9woxoBGehAjHuLxs6ed6q08W67leuibxZ8c6Q6upmwDlca/gSw0y4w1VIxxts2PORZdNsTWcr3lojcNgWXJcfAqF9/n4A=="
           401:
             description: Authentication required but none provided.
           403:
@@ -805,7 +814,7 @@ types:
         body:
           application/json:
             type: UserList
-            example: [ user: "admin" ]
+            example: [ user: "admin" , user: "operator" ]
       401:
         description: Authentication required but none provided.
       403:
