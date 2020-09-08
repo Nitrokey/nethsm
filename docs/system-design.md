@@ -321,13 +321,11 @@ NitroHSM consists of six Muen subjects, as shown in Figure 3: Muen Subjects. Bid
 
 The **S-Net-External** subject is a minimized Linux which bridges ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to **S-Keyfender**.  Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in **S-Net-External**, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
 
-The **S-Net-Internal** subject is a minimized Linux which bridges ethernet frames in the internal NitroHSM network, which connects **S-Keyfender**, **S-TRNG**, **S-Storage** and **S-Update**. Similarly to **S-Net-External**, this subject does not have any IP address.
-
 The **S-TRNG** subject is a minimized Linux which provides external entropy to **S-Keyfender**. It utilizes the TRNG of a SmartCard, connected via USB, to periodically send datagrams to **S-Keyfender** containing output of the TRNG. The physical USB controller is passed to this subject.
 
-The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Update**. If **Ext-Backup-Tar** is chosen, **S-Storage** has a service endpoint for backup and restore, providing and accepting `tar` archives that contain `git` repositories.
+The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**. If **Ext-Backup-Tar** is chosen, **S-Storage** has a service endpoint for backup and restore, providing and accepting `tar` archives that contain `git` repositories.
 
-The **S-Update** subject is a minimized Linux which manages _System Software_ updates of NitroHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to  this subject. The **S-Update** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
+The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NitroHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to  this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
 
@@ -361,7 +359,7 @@ In order to provide core system functionality, including but not limited to:
 
 Therefore, as a minimum, we will implement a REST endpoint to allow an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing the system to maintain "wall clock" time across reboots.
 
-The Muen developers have confirmed that they plan to implement support for _setting_ system-wide "wall clock" time (including persisting it to the RTC) in the first half of 2019; we will re-visit the implementation once this functionality is available. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Update** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
+The Muen developers have confirmed that they plan to implement support for _setting_ system-wide "wall clock" time (including persisting it to the RTC) in the first half of 2019; we will re-visit the implementation once this functionality is available. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
 
 **Ext-Time**: An alternative approach which does not require persisting current "wall clock" time in **S-Keyfender** or to the RTC (though having the latter is useful in either case) would be to implement a unicast SNTP client as described in [RFC 4330] and its associated configuration endpoint (IP address).
 
@@ -402,7 +400,7 @@ During system restore, the backup is decrypted by **S-Keyfender** using an ephem
 
 **Ext-ECC**: If support for ECC is implemented as part of the OCaml-TLS project effort to support TLS 1.3, we will extend **S-Keyfender** with support for ECC. (~5 days for integration and testing)
 
-**Ext-SmartCard**: As currently designed, the private key used by **S-Keyfender** for the TLS endpoint is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NitroHSM to provide a TLS endpoint. We could instead store this private key on the smartcard available to **S-TRNG**. This would make it impossible to extract the private key from a running NitroHSM remotely; however, an attacker with physical access could still steal the smartcard. This would require both a more complex, bi-directional, communication protocol between **S-Keyfender** and **S-TRNG** and much more of a software stack (at least all of `opensc`, `pcscd` and a [PKCS#11 proxy][caml-crush]) running inside **S-TRNG**. Therefore we recommend, and our estimate takes into account, that as part of this extension **S-TRNG** be further de-privileged by connecting it directly to **S-Keyfender** (bypassing **S-Net-Internal**). This ensures that an attacker who exploits **S-TRNG** cannot communicate directly with **S-Update** or **S-Storage**.
+**Ext-SmartCard**: As currently designed, the private key used by **S-Keyfender** for the TLS endpoint is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NitroHSM to provide a TLS endpoint. We could instead store this private key on the smartcard available to **S-TRNG**. This would make it impossible to extract the private key from a running NitroHSM remotely; however, an attacker with physical access could still steal the smartcard. This would require both a more complex, bi-directional, communication protocol between **S-Keyfender** and **S-TRNG** and much more of a software stack (at least all of `opensc`, `pcscd` and a [PKCS#11 proxy][caml-crush]) running inside **S-TRNG**.
 
 [caml-crush]: https://github.com/caml-pkcs11/caml-crush
 
@@ -429,18 +427,18 @@ The _System Software_ is a binary image, signed and distributed by Nitrokey. The
 
 Updates must be applied manually by the user; "OTA" updates are not in scope.
 
-The act of updating the _System Software_ is performed by **S-Update**; when **S-Keyfender** is processing an update file from the REST API, the following actions happen in parallel:
+The act of updating the _System Software_ is performed by **S-Platform**; when **S-Keyfender** is processing an update file from the REST API, the following actions happen in parallel:
 
-- **S-Keyfender** performs any decompression required and streams the binary image to **S-Update**, which writes it to an _inactive_ system partition.
+- **S-Keyfender** performs any decompression required and streams the binary image to **S-Platform**, which writes it to an _inactive_ system partition.
 - at the same time, **S-Keyfender** verifies the "outer signature" (protecting the integrity of the binary image, version number, release notes) and update eligibility.
 
-_If and only if_ verification of the _System Software_'s "outer signature" and update eligibility are successful, **S-Keyfender** enables the REST API endpoint allowing the user to "commit" the software update. Only after this endpoint is requested will **S-Keyfender** instruct **S-Update** to perform the actions necessary (e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new system partition _once_ on next boot.
+_If and only if_ verification of the _System Software_'s "outer signature" and update eligibility are successful, **S-Keyfender** enables the REST API endpoint allowing the user to "commit" the software update. Only after this endpoint is requested will **S-Keyfender** instruct **S-Platform** to perform the actions necessary (e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new system partition _once_ on next boot.
 
 During boot, the _System Software_'s "inner signature" is verified by the _Firmware_ as part of Trusted Boot. If the new _System Software_ does not boot successfully or the Trusted Boot verification fails, the system will automatically reboot into the old _System Software_ as a fallback.
 
 _If and only if_ both Trusted Boot verification succeeds and the new _System Software_ boots sucessfully, the new _System Software_ will perform the actions necessary to permanently configure the system to boot into the new _System Software_ (e.g. by modifying the GPT or interacting with the _Firmware_). The new _System Software_ may now start data migration, if required.
 
-The actual implementation details of **S-Update** will be based on the design used by both Chromium OS and CoreOS Container Linux, and are not described in more detail in this document; please refer to the Chromium OS [Disk Format][chromium-disk] and [File System/Autoupdate][chromium-autoupdate] design documents. Any deviations from this design will be documented during implementation.
+The actual implementation details of **S-Platform** will be based on the design used by both Chromium OS and CoreOS Container Linux, and are not described in more detail in this document; please refer to the Chromium OS [Disk Format][chromium-disk] and [File System/Autoupdate][chromium-autoupdate] design documents. Any deviations from this design will be documented during implementation.
 
 [chromium-disk]: http://www.chromium.org/chromium-os/chromiumos-design-docs/disk-format
 [chromium-autoupdate]: https://www.chromium.org/chromium-os/chromiumos-design-docs/filesystem-autoupdate
@@ -458,7 +456,7 @@ In order to implement the functionality and System Design as described thus far,
 6. If a "stock" BIOS is used, it **must** allow for provisioning of private keys used as the root of trust for Trusted Boot. Most BIOSes allow for this, but it is generally a manual operation that Nitrokey will have to perform in BIOS setup for each device separately.
 7. If Coreboot is used in combination with "ME Cleaner" or similar, care must be taken by the team selecting the board and/or _Firmware_ to ensure that the system is still stable in such a configuration and all the above requirements are provided for.
 
-**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, apart from the additional software (`flashrom`) required in, and attack surface (ability to write to the system flash) exposed to, **S-Update**, the following additional requirements apply to use of a "stock" BIOS: The vendor must provide _Firmware_ images which Nitrokey can integrate into a _System Software_ image _and_ redistribute. Further, said images must be provided to Nitrokey via a secure channel, such as the [Linux Vendor Firmware Service][lvfs].
+**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, apart from the additional software (`flashrom`) required in, and attack surface (ability to write to the system flash) exposed to, **S-Platform**, the following additional requirements apply to use of a "stock" BIOS: The vendor must provide _Firmware_ images which Nitrokey can integrate into a _System Software_ image _and_ redistribute. Further, said images must be provided to Nitrokey via a secure channel, such as the [Linux Vendor Firmware Service][lvfs].
 
 [lvfs]: https://fwupd.org/
 
