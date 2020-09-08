@@ -242,9 +242,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
            in *)
         let major_bytes = gc_stat.heap_words * 8 in
         (* Data.v [ int "gc_live_bytes" live ; int "gc_free_bytes" free ] *)
-        Data.v [ int "gc_major_bytes" major_bytes ;
-                 int "gc_major_collections" gc_stat.major_collections ;
-                 int "gc_minor_collections" gc_stat.minor_collections ;
+        Data.v [ int "gc major bytes" major_bytes ;
+                 int "gc major collections" gc_stat.major_collections ;
+                 int "gc minor collections" gc_stat.minor_collections ;
+                 int "gc compactions" gc_stat.compactions ;
                ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "gc"
