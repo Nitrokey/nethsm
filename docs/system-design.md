@@ -323,7 +323,7 @@ The **S-Net-External** subject is a minimized Linux which bridges ethernet frame
 
 The **S-TRNG** subject is a minimized Linux which provides external entropy to **S-Keyfender**. It utilizes the TRNG of a SmartCard, connected via USB, to periodically send datagrams to **S-Keyfender** containing output of the TRNG. The physical USB controller is passed to this subject.
 
-The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**. If **Ext-Backup-Tar** is chosen, **S-Storage** has a service endpoint for backup and restore, providing and accepting `tar` archives that contain `git` repositories.
+The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**.
 
 The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NitroHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to  this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
 
@@ -388,11 +388,7 @@ During system restore, the backup is decrypted by **S-Keyfender** using an ephem
 
 **Note**: For the avoidance of doubt, partial backup and restore are _not_ provided. This implies that restoring a backup may change the network and TLS endpoint configuration of the NitroHSM, and also the _Unlock Passphrase_, to those current at the time of the backup.
 
-**Note**: We will estimate the following two backup alternatives:
-
-**Ext-Backup-KV**: Backup by **S-Keyfender** serializing (but _not_ decrypting) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypting the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
-
-**Ext-Backup-Tar**: Backup by **S-Keyfender** archiving each data store (i.e. _User Data_) as `tar` archive(s) streamed directly from **S-Storage**, and encrypting the result with the _Backup Key_. During system restore, the reverse process is performed; the `tar` archive of each data store is streamed to **S-Storage**, thus re-creating the data store from its contents.
+Backup by **S-Keyfender** serializing (but _not_ decrypting) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypting the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
 
 #### Further Extensions
 
