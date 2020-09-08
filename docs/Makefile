@@ -1,4 +1,4 @@
-all: system-design.pdf nitrohsm-api.html
+all: system-design.pdf operator-manual.pdf nitrohsm-api.html
 
 apidoc: nitrohsm-api.html
 
@@ -9,7 +9,10 @@ nitrohsm-api.html: nitrohsm-api.raml
 system-design.pdf: system-design.md MuenSubjects.png EncryptionArchitecture.png DataModel.png
 	pandoc -N --toc -V colorlinks=1 $< -o $@
 
+operator-manual.pdf: operator-manual.md
+	pandoc -N --toc -V colorlinks=1 $< -o $@
+
 .PHONY: clean
 
 clean:
-	$(RM) system-design.pdf nitrohsm-api.html
+	$(RM) system-design.pdf operator-manual.pdf nitrohsm-api.html
