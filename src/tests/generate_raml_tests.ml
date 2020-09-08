@@ -9,7 +9,6 @@
   - non-allowed http methods (=> 405 method not allowed)
   - invalid state (=> 412 precondition failed)
   - wrong user (=> 403 forbidden)
-  - if we have request bodys, what happens when they are invalid
   - guessed keyid
   - guessed userid
 
@@ -200,6 +199,16 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
   let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
   let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd'' req in
+
+  (* if keyid was set, prepare a wrong one *)
+  if cmd <> cmd' then
+    begin
+      let wrong_key = Str.global_replace (Str.regexp_string "{KeyID}") "bogus" cmd in
+      let wrong_key_cmd = Printf.sprintf "%s %s  -D wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
+      write (outdir ^ "/wrong_key_cmd.sh") wrong_key_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_key_cmd.sh") in
+      ()
+    end;
 
   (* if request contains --data json, prepare a wrong example *)
   let args = Str.split (Str.regexp "--data") req in
