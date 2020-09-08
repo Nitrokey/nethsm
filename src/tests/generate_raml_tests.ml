@@ -9,8 +9,6 @@
   - non-allowed http methods (=> 405 method not allowed)
   - invalid state (=> 412 precondition failed)
   - wrong user (=> 403 forbidden)
-  - guessed keyid
-  - guessed userid
 
 - minimize skip_endpoints: add a reason, split by HTTP method
 
@@ -207,6 +205,16 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
       let wrong_key_cmd = Printf.sprintf "%s %s  -D wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
       write (outdir ^ "/wrong_key_cmd.sh") wrong_key_cmd;
       let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_key_cmd.sh") in
+      ()
+    end;
+
+  (* if userid was set, prepare a wrong one *)
+  if cmd' <> cmd'' then
+    begin
+      let wrong_user = Str.global_replace (Str.regexp_string "{UserID}") "bogus" cmd in
+      let wrong_user_cmd = Printf.sprintf "%s %s  -D wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
+      write (outdir ^ "/wrong_user_cmd.sh") wrong_user_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_user_cmd.sh") in
       ()
     end;
 
