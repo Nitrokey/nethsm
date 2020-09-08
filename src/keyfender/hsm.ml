@@ -208,7 +208,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let sample_interval = Duration.of_sec 1
 
-    let now () = Monotonic_clock.elapsed_ns ()
+    let started = Monotonic_clock.elapsed_ns ()
+
+    let now () = Int64.sub (Monotonic_clock.elapsed_ns ()) started
 
     let uptime_src =
       let open Metrics in
@@ -306,9 +308,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "http response time"
 
     let http_response_time measured =
-      (* exponentially weighted moving average / exponential smoothed / holt linear*)
-      response_time := 0.7 *. !response_time +. 0.3 *. measured;
-      Metrics.add http_response_time_src (fun t -> t) (fun m -> m ())
+      if measured > 0. then begin
+        (* exponentially weighted moving average / exponential smoothed / holt linear*)
+        response_time := 0.7 *. !response_time +. 0.3 *. measured;
+        Metrics.add http_response_time_src (fun t -> t) (fun m -> m ())
+      end
 
     let writes = ref 0
 
