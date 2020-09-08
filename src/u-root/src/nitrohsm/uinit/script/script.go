@@ -33,6 +33,11 @@ func New() *Script {
 	return &Script{}
 }
 
+// ClearErr clears the error associated with Script, if any.
+func (s *Script) ClearErr() {
+	s.err = nil
+}
+
 // Err returns the error associated with Script, if any.
 func (s *Script) Err() error {
 	return s.err

@@ -132,6 +132,7 @@ func nicActions() {
 
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
+		return
 	}
 }
 
@@ -224,7 +225,11 @@ func platformListener(result chan string, protocol string, port string) {
 	}
 }
 
-// Kill all processes except us (and init, since we are PID 2) with sig.
+// Kill all processes except self with sig.
+// Note that this relies on Linux-specific behaviour of kill(2), where sending
+// a signal to PID -1 will idempotently send it to all processes the caller has
+// permission to kill, except the caller itself and init (PID 1). For details
+// see the Linux manual page for the kill system call.
 func killAll(sig os.Signal) {
 	if err := syscall.Kill(-1, sig.(syscall.Signal)); err != nil {
 		log.Printf("Error sending kill(-1, %s): %v", sig, err)
@@ -259,6 +264,7 @@ func storageActions() {
 
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
+		return
 	}
 
 	// At this point we wait for a terminal request result from platformListener.
@@ -274,6 +280,7 @@ func storageActions() {
 
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
+		return
 	}
 
 	switch request {
@@ -293,6 +300,7 @@ func storageActions() {
 
 		if err := s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)
+			return
 		}
 
 		log.Printf("System will reboot now.")
@@ -306,6 +314,11 @@ func storageActions() {
 // mockActions are executed when testing (run with an argument of "mock").
 func mockActions() {
 	s.BackgroundExecf("sleep 5")
+	if err := s.Err(); err != nil {
+		log.Printf("Script failed: %v", err)
+		return
+	}
+
 	c := make(chan string)
 	go platformListener(c, "tcp", ":12345")
 	log.Printf("platformListener returned: %s", <-c)
@@ -333,6 +346,7 @@ func main() {
 
 	// Failsafe -- we have no console anyways on the Muen system, so we'll just
 	// sit here forever.
+	s.ClearErr()
 	s.Logf("Hit ENTER to shut down")
 	s.ReadLine()
 	s.Execf("/bbin/shutdown halt")
