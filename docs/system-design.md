@@ -317,7 +317,7 @@ For the avoidance of doubt: The act of [Enabling Unattended Boot] causes **S-Key
 
 ![Muen Subjects](MuenSubjects.png){width=75%}
 
-NitroHSM consists of six Muen subjects, as shown in Figure 3: Muen Subjects. Bidirectional communication channels are drawn as arrows.
+NitroHSM consists of five Muen subjects, as shown in Figure 3: Muen Subjects. Bidirectional communication channels are drawn as arrows.
 
 The **S-Net-External** subject is a minimized Linux which bridges ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to **S-Keyfender**.  Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in **S-Net-External**, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
 
@@ -328,6 +328,8 @@ The **S-Storage** subject is a minimized Linux which provides persistence to **S
 The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NitroHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to  this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
+
+**Note**: Currently **S-TRNG** is not implemented. Also, **S-Storage** and **S-Platform** are combined in a single subject **S-Kitchen-Sink**.
 
 ### Keyfender
 
