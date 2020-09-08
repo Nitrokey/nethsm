@@ -354,18 +354,12 @@ For the avoidance of doubt, the following functionality is specifically _not_ pr
 
 In order to provide core system functionality, including but not limited to:
 
-1. Correct responses in HTTP headers (e.g. `Last-Modified`, `Expires`).
+1. Correct responses in HTTP headers (e.g. `Last-Modified`, `Expires`, `Date`).
 2. Meaningful timestamps in log messages.
 
 **S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, as a minimum, we will implement a REST endpoint to allow an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing the system to maintain "wall clock" time across reboots.
-
-The Muen developers have confirmed that they plan to implement support for _setting_ system-wide "wall clock" time (including persisting it to the RTC) in the first half of 2019; we will re-visit the implementation once this functionality is available. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
-
-**Ext-Time**: An alternative approach which does not require persisting current "wall clock" time in **S-Keyfender** or to the RTC (though having the latter is useful in either case) would be to implement a unicast SNTP client as described in [RFC 4330] and its associated configuration endpoint (IP address).
-
-[RFC 4330]: https://tools.ietf.org/html/rfc4330
+Therefore, as a minimum, we will implement a REST endpoint to allow an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
 
 **Note**: There will be no support for timezones; any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client (e.g. "Web UI") to translate to local time, if this is desired.
 
@@ -406,6 +400,10 @@ Backup by **S-Keyfender** serializing (but _not_ decrypting) the contents of eac
 
 [RFC 5424]: https://tools.ietf.org/html/rfc5424
 [RFC 5425]: https://tools.ietf.org/html/rfc5425
+
+**Ext-Time**: An alternative approach which does not require persisting current "wall clock" time in **S-Keyfender** or to the RTC would be to implement a unicast SNTP client as described in [RFC 4330] and its associated configuration endpoint (IP address).
+
+[RFC 4330]: https://tools.ietf.org/html/rfc4330
 
 ### Linux-based Subjects
 
