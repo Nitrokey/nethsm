@@ -14,6 +14,18 @@ test_one () {
     if [ ! -f body.skip ]; then
       diff -w -u body.out body.expected
     fi
+
+    # if exists, run ./wrong_json_cmd.sh and see if we get a 400
+    if [ -e wrong_json_cmd.sh ]; then
+      "../../../keyfender/_build/default/test/test_server.exe" &
+      PID=$!
+      sleep 2
+      ./setup.sh || (kill $PID ; exit 3)
+      ./wrong_json_cmd.sh || (kill $PID ; exit 4)
+      ./shutdown.sh || (kill $PID ; exit 5)
+
+      diff -w -u <(grep "^HTTP" wrong_json_headers.out) <(echo "HTTP/1.1 400 Bad Request")
+    fi
 }
 
 for test_dir in $(ls generated/); do

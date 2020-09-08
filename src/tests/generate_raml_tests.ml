@@ -5,11 +5,19 @@
 
 (* TODO
 
+- Negative test cases we want to cover:
+  - non-allowed http methods (=> 405 method not allowed)
+  - invalid state (=> 412 precondition failed)
+  - wrong user (=> 403 forbidden)
+  - if we have request bodys, what happens when they are invalid
+  - guessed keyid
+  - guessed userid
+
+- minimize skip_endpoints: add a reason, split by HTTP method
+
 - raml / code: should alive and ready be 204?
-- case unprovisioned_provisioned -> im RAML sind admin + unlock passphrase anders ~> RAML an scripte anpassen
 
 - add set -e to setup.sh to pass on error from provision_..sh
-- minimize skip_endpoints: add a reason, split by HTTP method
 
 - comapre response header (create headers.expected)
   - content types -> different header
@@ -24,14 +32,6 @@ LATER:
 
 - gitlab pages code coverage
 - improve code coverage of unit tests
-
-- Negative test cases we want to cover:
-  - non-allowed http methods (=> 405 method not allowed)
-  - invalid state (=> 412 precondition failed)
-  - wrong user (=> 403 forbidden)
-  - if we have request bodys, what happens when they are invalid
-  - guessed keyid
-  - guessed userid
 
 *)
 
@@ -200,6 +200,20 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
   let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
   let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd'' req in
+
+  (* if request contains --data json, prepare a wrong example *)
+  let args = Str.split (Str.regexp "--data") req in
+  if List.length args == 2 then
+    begin
+      let headers = List.hd args in
+      let wrong_json = "{}}}" in
+      let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
+      let wrong_json_cmd = Printf.sprintf "%s %s  -D wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
+      write (outdir ^ "/wrong_json_cmd.sh") wrong_json_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_json_cmd.sh") in
+      ()
+    end;
+
   write test_file test_cmd;
   let _ = Sys.command("chmod u+x " ^ test_file) in
 
