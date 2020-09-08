@@ -468,6 +468,20 @@ Muen is implemented in Ada, a memory-safe programming language, and its isolatio
 
 NitroHSM uses an append-only store for all _User Data_ (git-based). This comes with an audit trail for each data modification, which adds accountability and rollback points for the data.
 
+#### Random numbers
+
+The **S-Keyfender** subject uses as cryptographically secure random number generator an [implementation of][fortuna-impl] [Fortuna] with 32 pools. **S-Keyfender** does not have direct access to real hardware, it is crucial to collect non-predictable entropy.
+
+The entropy sources used [during startup][startup-entropy] are the CPU instruction [RDRAND] (executed three times, returning 64 bit each), and once the [Whirlwind] bootstrap algorithm based on timing of instructions that take a variable number of cycles (with l=100 lmax=1024).
+
+During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc.
+
+[Fortuna]: https://www.schneier.com/academic/fortuna/
+[fortuna-impl]: https://github.com/mirage/mirage-crypto/tree/master/rng
+[startup-entropy]: https://github.com/mirage/mirage-crypto/blob/master/rng/mirage/mirage_crypto_rng_mirage.ml
+[RDRAND]: https://software.intel.com/content/www/us/en/develop/articles/intel-digital-random-number-generator-drng-software-implementation-guide.html
+[whirlwind]: http://www.ieee-security.org/TC/SP2014/papers/Not-So-RandomNumbersinVirtualizedLinuxandtheWhirlwindRNG.pdf
+
 ### Assets
 
 What do we want to protect?
