@@ -263,7 +263,8 @@ build: $(KEYFENDER)
 .PHONY: clean
 clean: clean-keyfender
 	-cd src/tests && $(DUNE) clean
-	$(RM) -r src/tests/generated/*
+	find src/tests/generated -mindepth 1 -type d | xargs -r rm -r
+	find . -type f -name \*.coverage | xargs -r rm
 
 else ifeq ($(XMODE),muen)
 # ------------------------------------------------------------------------------
