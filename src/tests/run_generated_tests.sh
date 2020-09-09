@@ -16,8 +16,6 @@ test_one () {
     fi
 }
 
-for x in $(find . -type d -maxdepth 1 | grep -v '^.$' | grep -v '^..$'); do
-  cd $x;
-  test_one;
-  cd ..
+for test_dir in $(ls generated/); do
+    (cd generated/${test_dir}; test_one) || exit 1
 done

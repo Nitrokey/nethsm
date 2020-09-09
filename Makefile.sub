@@ -150,20 +150,30 @@ $(S_KEYFENDER): $(KEYFENDER_INSTALL)
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
 
-.PHONY: test-keyfender-lib test-keyfender-api test-keyfender-e2e
+.PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib: $(KEYFENDER)
 	cd src/keyfender && $(DUNE) runtest
 ifeq ($(XMODE),test)
-	cd src/keyfender && bisect-ppx-report summary
+	bisect-ppx-report summary --coverage-path=src/keyfender
 endif
 
 test-keyfender-e2e: $(KEYFENDER)
 	pkill test_server.exe || true
-	src/keyfender/_build/default/test/test_server.exe &
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 2
-	NITROHSM_URL="http://localhost:8080/api" src/tests/provision_test.sh
-	NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 src/tests/load_test.sh
-	NITROHSM_URL="http://localhost:8080/api" src/tests/shutdown_test.sh
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./provision_test.sh
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./load_test.sh
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+ifeq ($(XMODE),test)
+	# Coverage files get saved in the working directory test_server.exe was
+	# run in, for this test we only want those in src/tests, not any in
+	# src/tests/generated.
+	bisect-ppx-report summary src/tests/*.coverage
+endif
 
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
@@ -242,8 +252,10 @@ else ifeq ($(XMODE),test)
 .PHONY: test-keyfender-api
 test-keyfender-api: $(KEYFENDER)
 	cd src/tests && $(DUNE) exec ./generate_raml_tests.exe
-	cd src/tests/generated && ./test.sh
-	cd src/tests/generated && bisect-ppx-report summary */*coverage
+	cd src/tests && ./run_generated_tests.sh
+	# For this test we want to consider ALL coverage files under
+	# src/tests/generated
+	bisect-ppx-report summary --coverage-path=src/tests/generated
 
 .PHONY: build
 build: $(KEYFENDER)
@@ -251,6 +263,7 @@ build: $(KEYFENDER)
 .PHONY: clean
 clean: clean-keyfender
 	-cd src/tests && $(DUNE) clean
+	$(RM) -r src/tests/generated/*
 
 else ifeq ($(XMODE),muen)
 # ------------------------------------------------------------------------------
