@@ -8,7 +8,6 @@
 - Negative test cases we want to cover:
   - non-allowed http methods (=> 405 method not allowed)
   - invalid state (=> 412 precondition failed)
-  - wrong user (=> 403 forbidden)
 
 - minimize skip_endpoints: add a reason, split by HTTP method
 
@@ -99,8 +98,8 @@ let auth_header (user, pass) =
 let passphrase = function
   | "Administrator" -> ("admin", "Administrator")
   | "Operator" -> ("operator", "OperatorOperator")
-  | "Metrics" -> ("metrics", "This is my metrics passphrase")
-  | "Backup" -> ("backup", "This is my backup passphrase")
+  | "Metrics" -> ("metrics", "MetricsMetrics")
+  | "Backup" -> ("backup", "BackupBackup")
   | _ -> assert false
 
 let prepare_setup _meth _path _cmd (state, role, _req) =
@@ -222,14 +221,32 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let args = Str.split (Str.regexp "--data") req in
   if List.length args == 2 then
     begin
+      (* prepare wrong json *)
       let headers = List.hd args in
       let wrong_json = "{}}}" in
       let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
       let wrong_json_cmd = Printf.sprintf "%s %s  -D wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
       write (outdir ^ "/wrong_json_cmd.sh") wrong_json_cmd;
       let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_json_cmd.sh") in
-      ()
+
+      (* prepare wrong auth header *)
+      let someone_else = match role with
+      | Some "Administrator" -> auth_header (passphrase "Backup")
+      | Some "Operator" -> auth_header (passphrase "Metrics")
+      | Some "Metrics" -> auth_header (passphrase "Backup")
+      | Some "Backup" -> auth_header (passphrase "Metrics")
+      | _ -> ""
+      in
+      let wrong_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) someone_else req in
+      if req <> wrong_auth then
+        begin
+          let wrong_auth_cmd = Printf.sprintf "%s %s  -D wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
+          write (outdir ^ "/wrong_auth_cmd.sh") wrong_auth_cmd;
+          let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_auth_cmd.sh") in
+          ()
+        end;
     end;
+
 
   write test_file test_cmd;
   let _ = Sys.command("chmod u+x " ^ test_file) in

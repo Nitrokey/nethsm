@@ -26,8 +26,26 @@ PUT_admin /v1/users/operator <<EOM
 }
 EOM
 
+# create backup
+PUT_admin /v1/users/backup <<EOM
+{
+  realName : "backup",
+  role: "Backup",
+  passphrase: "BackupBackup"
+}
+EOM
+
+# create metrics
+PUT_admin /v1/users/metrics <<EOM
+{
+  realName : "metrics",
+  role: "Metrics",
+  passphrase: "MetricsMetrics"
+}
+EOM
+
 USERS=$(GET_admin /v1/users)
-echo $USERS # should be admin and operator
+echo $USERS # should be admin, operator, backup, metrics
 echo
 
 # put a sign decrypt key
