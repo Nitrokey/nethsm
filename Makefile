@@ -1,4 +1,10 @@
+OS := $(shell uname -s)
+
+ifeq ($(OS),Darwin)
+MODE ?= test
+else
 MODE ?= dev
+endif
 
 .PHONY: all
 all:
