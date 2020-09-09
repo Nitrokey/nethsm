@@ -16,12 +16,12 @@ build_keyfender:
 test_keyfender_lib:
   stage: test
   script:
-    - make test-keyfender-lib
+    - make MODE=test test-keyfender-lib
 
 test_keyfender_api:
   stage: test
   script:
-    - make test-keyfender-api
+    - make MODE=test test-keyfender-api
 
 test_keyfender_e2e:
   stage: test
@@ -29,4 +29,4 @@ test_keyfender_e2e:
     - cd ~/opam-repository && git pull && opam update && cd -
     - sudo apt-get -y --no-install-recommends install parallel
   script:
-    - make test-keyfender-e2e
+    - make MODE=test test-keyfender-e2e

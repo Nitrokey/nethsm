@@ -56,28 +56,24 @@ XMODE := $(shell cat .stamp-mode 2>/dev/null)
 # NO_GIT.
 REQUIRED_SUBMODULES :=
 
-DEPS :=
+DUNE := dune
 
 ifeq ($(XMODE),)
 XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
-DEPS :=	solo5-bindings-$(TARGET) mirage-solo5
 KEYFENDER_CARGS ?=
 ifeq ($(NO_GIT),)
 REQUIRED_SUBMODULES += src/git
 endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
-DEPS :=	solo5-bindings-$(TARGET) mirage-solo5
 KEYFENDER_CARGS ?= --retry=true
 REQUIRED_SUBMODULES += src/git src/zlib src/e2fsprogs src/muen/muen \
     src/u-root/src/github.com/u-root/u-root
-else ifeq ($(XMODE),darwin-dev)
-TARGET := unix
-DEPS :=
-KEYFENDER_CARGS ?=
+else ifeq ($(XMODE),test)
+DUNE := BISECT_ENABLE=yes dune
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -97,9 +93,17 @@ endif
 endif
 	opam install -y depext
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
-	opam depext --yes --update keyfender mirage $(DEPS)
-	opam install -y mirage $(DEPS)
+	opam depext --yes --update keyfender conf-jq
+ifeq ($(XMODE),test)
+# Additional dependencies required for coverage testing and building
+# generate_raml_tests.exe; we only install these when building with MODE=test.
+	opam install -y bisect_ppx containers ezjsonm yaml
+	opam install -y --deps-only --with-test keyfender
+else
+	opam depext --yes --update mirage solo5-bindings-$(TARGET) mirage-solo5
+	opam install -y mirage solo5-bindings-$(TARGET) mirage-solo5
 	opam install -y --deps-only keyfender
+endif
 	touch $@
 
 .PHONY: prepare
@@ -122,7 +126,7 @@ S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
 GIT_DAEMON ?= src/git/git-daemon
 
 $(KEYFENDER): .stamp-prepare
-	cd src/keyfender && dune build
+	cd src/keyfender && $(DUNE) build
 
 # XXX We want to use --assume-built here, but that causes OPAM to go off into an
 # XXX infinite loop. So just use --inplace-build, and deal with 'dune build'
@@ -135,7 +139,7 @@ $(KEYFENDER_INSTALL): $(KEYFENDER)
 clean-keyfender:
 	-opam remove -y keyfender
 	$(RM) $(KEYFENDER_INSTALL)
-	-cd src/keyfender && dune clean
+	-cd src/keyfender && $(DUNE) clean
 	-cd src/s_keyfender && mirage clean
 
 $(S_KEYFENDER): $(KEYFENDER_INSTALL)
@@ -147,20 +151,11 @@ $(S_KEYFENDER): $(KEYFENDER_INSTALL)
 build-keyfender: $(S_KEYFENDER)
 
 .PHONY: test-keyfender-lib test-keyfender-api test-keyfender-e2e
-test-keyfender-lib: .stamp-prepare
-	cd src/keyfender && opam install --deps-only -t .
-	opam install bisect_ppx
-	cd src/keyfender && BISECT_ENABLE=yes dune runtest
+test-keyfender-lib: $(KEYFENDER)
+	cd src/keyfender && $(DUNE) runtest
+ifeq ($(XMODE),test)
 	cd src/keyfender && bisect-ppx-report summary
-
-test-keyfender-api: .stamp-prepare
-	opam depext --yes conf-jq
-	opam install bisect_ppx
-	cd src/keyfender && BISECT_ENABLE=yes dune build
-	`cd src/tests && dune external-lib-deps --missing ./generate_raml_tests.exe 2>&1 | grep "opam install"` || true
-	cd src/tests && dune exec ./generate_raml_tests.exe
-	cd src/tests/generated && ./test.sh
-	cd src/tests/generated && bisect-ppx-report summary */*coverage
+endif
 
 test-keyfender-e2e: $(KEYFENDER)
 	pkill test_server.exe || true
@@ -232,6 +227,30 @@ ifeq ($(NO_GIT),)
 	$(MAKE) -C src/git --silent --no-print-directory distclean
 endif
 	$(RM) -r $(RUN_DIR)
+
+else ifeq ($(XMODE),test)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running Keyfender library, test_server.exe and tests
+# only.
+#
+# Note that the generated API tests (test-keyfender-api) target is only
+# available in this mode.
+#
+# ------------------------------------------------------------------------------
+
+.PHONY: test-keyfender-api
+test-keyfender-api: $(KEYFENDER)
+	cd src/tests && $(DUNE) exec ./generate_raml_tests.exe
+	cd src/tests/generated && ./test.sh
+	cd src/tests/generated && bisect-ppx-report summary */*coverage
+
+.PHONY: build
+build: $(KEYFENDER)
+
+.PHONY: clean
+clean: clean-keyfender
+	-cd src/tests && $(DUNE) clean
 
 else ifeq ($(XMODE),muen)
 # ------------------------------------------------------------------------------

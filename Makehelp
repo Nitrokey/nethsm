@@ -4,8 +4,9 @@ prepare:            Initialise Git submodules required for MODE,
                     build and install keyfender OPAM dependencies
 build:              Build full system
 build-keyfender:    Build keyfender library and unikernel only
-test-keyfender-lib: Test keyfender library
-e2e-tests:          Test the API via curl.
+test-keyfender-lib: Run keyfender library tests
+test-keyfender-api: Run keyfender generated API tests [MODE=test only]
+test-keyfender-e2e: Run keyfender end-to-end tests
 run:                Run the system
 clean:              Clean up everything except 'prepare' step
 clean-keyfender:    Clean up keyfender library and unikernel only
@@ -15,6 +16,7 @@ Available MODEs:
 
 dev:  Local development using Solo5/hvt (default)
 muen: Local development using emulated Muen system
+test: Build keyfender library and tests, with bisect_ppx enabled for coverage testing
 
 MODE must be specified at 'make' invocation time, and cannot be changed without
 running 'make distclean' first.
