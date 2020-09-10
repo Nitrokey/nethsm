@@ -2,6 +2,23 @@
 
 set -ex
 
+expected_code () {
+    headers=$1
+    basename $headers | cut -d "_" -f 1
+}
+
+actual_code () {
+    headers=$1
+    grep "^HTTP" $headers | cut -d ' ' -f 2
+}
+
+headers () {
+    file=$1
+    suffix="_cmd.sh";
+    name=${file%$suffix}; #remove
+    echo $file"_headers.out"
+}
+
 test_one () {
     "../../../keyfender/_build/default/test/test_server.exe" &
     PID=$!
@@ -11,7 +28,7 @@ test_one () {
     # if exists, run ./wrong_json_cmd.sh and see if we get a 400
     if [ -e 400_wrong_json_cmd.sh ]; then
       ./400_wrong_json_cmd.sh || (kill $PID ; exit 4)
-      diff -w -u <(head -n 1 400_wrong_json_headers.out | cut -f 2 -d ' ') <(echo "400")
+      diff -w -u <(actual_code 400_wrong_json_headers.out) <(expected_code 400_wrong_json_headers.out)
     fi
 
     # if exists, run ./wrong_key_cmd.sh and see if we get a 404
