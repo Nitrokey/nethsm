@@ -440,6 +440,8 @@ All Linux-based Muen subjects that are integrated in the system will be built on
 
 ### System Software Update
 
+**Note** The software update, as described in this section, is not yet implemented.
+
 The _System Software_ is a binary image, signed and distributed by Nitrokey. The versioning schema is *major*.*minor*. In each *major* release series, upgrades and downgrades within the same *major* release are allowed ("eligible" below). The data layout will not change within a *major* release series, but may change between release *major*.x and *major*+1.y. Downgrades to an older *major* release are not allowed.
 
 Updates must be applied manually by the user; "OTA" updates are not in scope.
