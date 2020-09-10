@@ -202,9 +202,9 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   if cmd <> cmd' then
     begin
       let wrong_key = Str.global_replace (Str.regexp_string "{KeyID}") "bogus" cmd in
-      let wrong_key_cmd = Printf.sprintf "%s %s  -D wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
-      write (outdir ^ "/wrong_key_cmd.sh") wrong_key_cmd;
-      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_key_cmd.sh") in
+      let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
+      write (outdir ^ "/404_wrong_key_cmd.sh") wrong_key_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/404_wrong_key_cmd.sh") in
       ()
     end;
 
@@ -212,9 +212,9 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   if cmd' <> cmd'' then
     begin
       let wrong_user = Str.global_replace (Str.regexp_string "{UserID}") "bogus" cmd in
-      let wrong_user_cmd = Printf.sprintf "%s %s  -D wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
-      write (outdir ^ "/wrong_user_cmd.sh") wrong_user_cmd;
-      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_user_cmd.sh") in
+      let wrong_user_cmd = Printf.sprintf "%s %s  -D 404_wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
+      write (outdir ^ "/404_wrong_user_cmd.sh") wrong_user_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/404_wrong_user_cmd.sh") in
       ()
     end;
 
@@ -226,9 +226,9 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
       let headers = List.hd args in
       let wrong_json = "{}}}" in
       let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
-      let wrong_json_cmd = Printf.sprintf "%s %s  -D wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
-      write (outdir ^ "/wrong_json_cmd.sh") wrong_json_cmd;
-      let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_json_cmd.sh") in
+      let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
+      write (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd;
+      let _ = Sys.command("chmod u+x " ^ outdir ^ "/400_wrong_json_cmd.sh") in
 
       (* prepare wrong auth header *)
       let someone_else = match role with
@@ -241,9 +241,9 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
       let wrong_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) someone_else req in
       if req <> wrong_auth then
         begin
-          let wrong_auth_cmd = Printf.sprintf "%s %s  -D wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
-          write (outdir ^ "/wrong_auth_cmd.sh") wrong_auth_cmd;
-          let _ = Sys.command("chmod u+x " ^ outdir ^ "/wrong_auth_cmd.sh") in
+          let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
+          write (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
+          let _ = Sys.command("chmod u+x " ^ outdir ^ "/403_wrong_auth_cmd.sh") in
           ()
         end;
     end;

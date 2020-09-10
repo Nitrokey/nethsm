@@ -9,27 +9,27 @@ test_one () {
     ./setup.sh || (kill $PID ; exit 3)
 
     # if exists, run ./wrong_json_cmd.sh and see if we get a 400
-    if [ -e wrong_json_cmd.sh ]; then
-      ./wrong_json_cmd.sh || (kill $PID ; exit 4)
-      diff -w -u <(head -n 1 wrong_json_headers.out | cut -f 2 -d ' ') <(echo "400")
+    if [ -e 400_wrong_json_cmd.sh ]; then
+      ./400_wrong_json_cmd.sh || (kill $PID ; exit 4)
+      diff -w -u <(head -n 1 400_wrong_json_headers.out | cut -f 2 -d ' ') <(echo "400")
     fi
 
     # if exists, run ./wrong_key_cmd.sh and see if we get a 404
-    if [ -e wrong_key_cmd.sh ]; then
-      ./wrong_key_cmd.sh || (kill $PID ; exit 4)
-      diff -w -u <(head -n 1 wrong_key_headers.out | cut -f 2 -d ' ') <(echo "404")
+    if [ -e 404_wrong_key_cmd.sh ]; then
+      ./404_wrong_key_cmd.sh || (kill $PID ; exit 4)
+      diff -w -u <(head -n 1 404_wrong_key_headers.out | cut -f 2 -d ' ') <(echo "404")
     fi
 
     # if exists, run ./wrong_user_cmd.sh and see if we get a 404
-    if [ -e wrong_user_cmd.sh ]; then
-      ./wrong_user_cmd.sh || (kill $PID ; exit 4)
-      diff -w -u <(head -n 1 wrong_user_headers.out | cut -f 2 -d ' ') <(echo "404")
+    if [ -e 404_wrong_user_cmd.sh ]; then
+      ./404_wrong_user_cmd.sh || (kill $PID ; exit 4)
+      diff -w -u <(head -n 1 404_wrong_user_headers.out | cut -f 2 -d ' ') <(echo "404")
     fi
 
-    # if exists, run ./wrong_auth_cmd.sh and see if we get a 404
-    if [ -e wrong_auth_cmd.sh ]; then
-      ./wrong_auth_cmd.sh || (kill $PID ; exit 4)
-      diff -w -u <(head -n 1 wrong_auth_headers.out | cut -f 2 -d ' ') <(echo "403")
+    # if exists, run ./wrong_auth_cmd.sh and see if we get a 403
+    if [ -e 403_wrong_auth_cmd.sh ]; then
+      ./403_wrong_auth_cmd.sh || (kill $PID ; exit 4)
+      diff -w -u <(head -n 1 403_wrong_auth_headers.out | cut -f 2 -d ' ') <(echo "403")
     fi
 
     ./command.sh || (kill $PID ; exit 4)
