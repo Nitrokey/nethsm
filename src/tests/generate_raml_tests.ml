@@ -246,6 +246,15 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
         end;
     end;
 
+  let other_method = "PATCH" in
+  let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd'' in
+  let wrong_meth' = Str.global_replace (Str.regexp_string {|PUT|}) other_method wrong_meth in
+  let wrong_meth'' = Str.global_replace (Str.regexp_string {|POST|}) other_method wrong_meth' in
+  if cmd'' <> wrong_meth'' then
+    begin
+      let wrong_meth_cmd = Printf.sprintf "%s %s  -D 405_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
+      write_cmd (outdir ^ "/405_wrong_meth_cmd.sh") wrong_meth_cmd;
+    end;
 
   write_cmd test_file test_cmd;
 
