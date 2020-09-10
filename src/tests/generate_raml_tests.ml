@@ -95,6 +95,7 @@ let auth_header (user, pass) =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   " -H \"Authorization: Basic " ^ base64 ^ "\" "
 
+(* TODO Metrics and Backup passphrase are different in RAML *)
 let passphrase = function
   | "Administrator" -> ("admin", "Administrator")
   | "Operator" -> ("operator", "OperatorOperator")
