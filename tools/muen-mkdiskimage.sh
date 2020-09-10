@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Create a full disk image of a Muen-based NitroHSM system suitable for booting
-# using GRUB under QEMU/KVM.
+# under QEMU/KVM.
 #
 # Requirements:
 #     - cgpt (from Chromium OS)
@@ -9,8 +9,6 @@
 #
 # TODO:
 # Image size is currently hard-coded to 1GB, with a 512MB data partition.
-# Populate the data partition with a bare Git repository.
-# Support for updating an existing disk image with a new Muen system.
 
 TMPDIR=
 cleanup ()
@@ -28,8 +26,10 @@ usage ()
     cat <<EOM 1>&2
 Usage: $0 OUTPUT MUEN_IMAGE [POPULATE_DIR]
 
-Creates a full disk image of a Muen-based NitroHSM system.
-Disk image is output to OUTPUT. MUEN_IMAGE is the packed Muen system image
+Creates a full disk image of a Muen-based NitroHSM system suitable for booting
+under QEMU/KVM.
+
+Disk image is output to OUTPUT. MUEN_IMAGE is the Muen CPIO system image
 to use. If POPULATE_DIR is specified, the data partition will be pre-populated
 with its contents.
 EOM
@@ -73,19 +73,8 @@ p2_size=1048576
 (set -x; cgpt boot -p ${DISK}) \
     || die "While creating PMBR: cgpt failed"
 
-# Splice Muen image into system partition, wrapped as a CPIO image.
-TMPDIR=$(mktemp -d)
-# We need to provide a grub.cfg for the firmware to chain into.
-cat <<EOM >${TMPDIR}/grub.cfg
-multiboot /muen.img
-boot
-EOM
-cp ${MUEN} ${TMPDIR}/muen.img || die "While creating system: cp failed"
-(set -x; echo -e grub.cfg\\nmuen.img | \
-    cpio -R +0:+0 --reproducible -D "${TMPDIR}" -o >${DISK}.system.cpio) \
-    || die "While creating system: cpio failed"
-
-(set -x; dd if=${DISK}.system.cpio of=${DISK} \
+# Splice Muen CPIO image into system partition
+(set -x; dd if=${MUEN} of=${DISK} \
     obs=512 seek=${p1_start} conv=notrunc) \
     || die "While splicing system: dd failed"
 

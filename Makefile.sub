@@ -24,6 +24,10 @@ NET_INTERNAL ?= tap201
 # it changed?
 MUEN_TARGET ?= qemu-kvm
 
+# Private key directory used to sign Muen system image.
+# TODO: Document this more, provide a way to use a GPG-agent/Smart Card, etc.
+MUEN_KEY_DIR ?= keys/test-key
+
 # ------------------------------------------------------------------------------
 
 TOP_DIR := $(abspath .)
@@ -292,7 +296,6 @@ OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
 OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
 OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
 OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
-OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/disk.img
 
 $(OBJ_DIR):
 	mkdir -p $@
@@ -383,7 +386,7 @@ MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
 MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
 MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
 MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/component_unikernel.xml
-MUEN_PACK_IMG := $(MUEN_PACK_OBJ_DIR)/muen.img
+MUEN_PACK_IMG_CSL := $(MUEN_PACK_OBJ_DIR)/muen.img.cmds
 MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
 # XXX: Using --bootparams= here is not currently possible without using
 # XXX: mirageos/compose.py, so we persist parameters at unikernel configure
@@ -398,7 +401,7 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	    src/muen/muen/policy/xml/mirageos/cspec_src.xml \
 	    $(MUEN_POLICY_OBJ_DIR)
 
-$(MUEN_PACK_IMG): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
+$(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
 	    SYSTEM=$(TOP_DIR)/src/muen/policy/xml/nitrohsm_basic_system.xml \
@@ -416,7 +419,23 @@ $(OBJ_DATA_GIT_DIR)/keyfender-data.git:
 
 $(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
 
-$(OBJ_QEMU_DISK_IMG): $(MUEN_PACK_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.sh
+OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
+
+$(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
+	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
+
+ifneq ($(MUEN_TARGET),qemu-kvm)
+# When building for real hardware, stop here.
+
+.PHONY: build
+build: $(OBJ_SYSTEM_IMG)
+
+else
+# The remaining rules apply to building and running a QEMU/KVM emulated system.
+
+OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
+
+$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.sh
 	tools/muen-mkdiskimage.sh $@ $< $(OBJ_DATA_DIR)
 
 .PHONY: build
@@ -480,6 +499,8 @@ run: $(RUN_QEMU_DISK_IMG) $(QEMU_BIOS_IMG) $(RUN_DIR)/screenrc check-running
 	    fi; \
 	done; \
 	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/emulate.out && exit 1; fi
+
+endif # QEMU/KVM
 
 .PHONY: clean
 clean: clean-keyfender
