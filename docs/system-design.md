@@ -390,6 +390,23 @@ During system restore, the backup is decrypted by **S-Keyfender** using an ephem
 
 Backup by **S-Keyfender** serializing (but _not_ decrypting) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypting the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
 
+#### Communication with Platform
+
+The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the device ID. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
+
+The client, after establishing the TCP stream, sends the command (all uppercase) followed by a single newline character. The server replies with either "OK" or "ERROR", optionally followed by a whitespace character and printable ASCII characters, terminated with a newline character.
+
+Some sample sessions:
+
+| C->S: DEVICE-ID\n
+| S->C: OK abcdef\n
+
+| C->S: SHUTDOWN\n
+| S->C: OK\n
+
+| C->S: FOO\n
+| S->C: ERROR Unknown command\n
+
 #### Further Extensions
 
 **Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage**. Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
