@@ -350,6 +350,10 @@ For the avoidance of doubt, the following functionality is specifically _not_ pr
 
 [RFC 3164]: https://tools.ietf.org/html/rfc3164
 
+#### Rate limiting
+
+To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is enforced globally (at the moment at most 10 accesses per second). The rate limit for all endpoints requiring authentication is 10 per second per IP address.
+
 #### Timekeeping
 
 In order to provide core system functionality, including but not limited to:
