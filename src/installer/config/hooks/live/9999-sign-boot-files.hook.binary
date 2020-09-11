@@ -1,0 +1,18 @@
+#!/bin/sh
+# Sign files needed to boot when using Verified Boot.
+
+if [ -z "${LIVE_SIGN_DETACHED}" ]; then
+    echo "ERROR: LIVE_SIGN_DETACHED not set"
+    exit 1
+fi
+
+if [ -z "${LIVE_SIGN_KEY_DIR}" ]; then
+    echo "ERROR: LIVE_SIGN_KEY_DIR not set"
+fi
+
+# We need to sign grub.cfg and all kernel and initrd images.
+FILES_TO_SIGN="boot/grub/grub.cfg live/vmlinuz-* live/initrd.img-*"
+
+for file in ${FILES_TO_SIGN}; do
+    ${LIVE_SIGN_DETACHED} ${LIVE_SIGN_KEY_DIR} ${file} || exit 1
+done
