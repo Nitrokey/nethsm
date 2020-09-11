@@ -548,6 +548,7 @@ endif # QEMU/KVM
 clean: clean-keyfender
 	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory distclean
+	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
 	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
