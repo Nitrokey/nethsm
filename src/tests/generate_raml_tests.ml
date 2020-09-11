@@ -6,7 +6,6 @@
 (* TODO
 
 - Negative test cases we want to cover:
-  - non-allowed http methods (=> 405 method not allowed)
   - invalid state (=> 412 precondition failed)
 
 - minimize skip_endpoints: add a reason, split by HTTP method
@@ -252,8 +251,8 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   let wrong_meth'' = Str.global_replace (Str.regexp_string {|POST|}) other_method wrong_meth' in
   if cmd'' <> wrong_meth'' then
     begin
-      let wrong_meth_cmd = Printf.sprintf "%s %s  -D 405_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
-      write_cmd (outdir ^ "/405_wrong_meth_cmd.sh") wrong_meth_cmd;
+      let wrong_meth_cmd = Printf.sprintf "%s %s  -D 501_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
+      write_cmd (outdir ^ "/501_wrong_meth_cmd.sh") wrong_meth_cmd;
     end;
 
   write_cmd test_file test_cmd;
