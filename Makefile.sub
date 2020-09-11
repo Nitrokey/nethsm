@@ -93,9 +93,6 @@ ifneq ($(REQUIRED_SUBMODULES),)
 	git submodule update --init --depth 1 -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
 	git -C src/muen/muen submodule update --init --depth 1
-# Coreboot will normally update submodules itself, but we do it as part of our
-# 'prepare' step since that is where it logically belongs.
-	git -C src/coreboot/coreboot submodule update --init --depth 1
 # Build the Coreboot cross-toolchain. Note that this is only done the 1st time
 # a 'make prepare' is done in this tree, and is not removed by a 'make
 # (dist)clean'. This is intentional, as this takes a long time and relies on
@@ -461,6 +458,9 @@ COREBOOT_BLOBS := \
     $(COREBOOT_BLOB_DIR)/me.bin
 endif
 
+# Coreboot does it's own magic and checks out submodules depending on the
+# actual configuration at build time; unfortunately they do not provide a
+# separate Makefile target for this step, so it will be done here.
 $(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_BLOBS)
 	$(MAKE) -C $(COREBOOT_SRC)
 
