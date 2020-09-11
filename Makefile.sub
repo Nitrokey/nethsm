@@ -75,7 +75,7 @@ else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
 REQUIRED_SUBMODULES += src/git src/zlib src/e2fsprogs src/muen/muen \
-    src/u-root/src/github.com/u-root/u-root
+    src/u-root/src/github.com/u-root/u-root src/coreboot/coreboot
 else ifeq ($(XMODE),test)
 DUNE := BISECT_ENABLE=yes dune
 else
@@ -93,6 +93,14 @@ ifneq ($(REQUIRED_SUBMODULES),)
 	git submodule update --init --depth 1 -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
 	git -C src/muen/muen submodule update --init --depth 1
+# Coreboot will normally update submodules itself, but we do it as part of our
+# 'prepare' step since that is where it logically belongs.
+	git -C src/coreboot/coreboot submodule update --init --depth 1
+# Build the Coreboot cross-toolchain. Note that this is only done the 1st time
+# a 'make prepare' is done in this tree, and is not removed by a 'make
+# (dist)clean'. This is intentional, as this takes a long time and relies on
+# several downloads.
+	$(MAKE) -C src/coreboot/coreboot crossgcc-i386 CPUS=$(shell nproc)
 endif
 endif
 	opam install -y depext
@@ -273,7 +281,7 @@ clean: clean-keyfender
 else ifeq ($(XMODE),muen)
 # ------------------------------------------------------------------------------
 #
-# Rules for building and running an emulated Muen system.
+# Rules for building and running a Muen system.
 #
 # ------------------------------------------------------------------------------
 
@@ -282,10 +290,12 @@ ifeq ($(MUEN_TARGET),qemu-kvm)
 MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
 MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
 MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/muen/components/linux/config/linux64-4.18
+COREBOOT_CONFIG=configs/config.nitrohsm_qemu_q35
 else ifeq ($(MUEN_TARGET),supermicro-x11ssh-tf)
 MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
 MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
 MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/linux/config-4.18-$(MUEN_TARGET)
+COREBOOT_CONFIG=configs/config.nitrohsm_supermicro_x11_ssh_tf
 else
 $(error Invalid MUEN_TARGET)
 endif
@@ -424,11 +434,46 @@ OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
 $(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
 	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
 
+COREBOOT_SRC := src/coreboot/coreboot
+COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
+OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
+CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
+
+$(COREBOOT_SRC)/.config: .stamp-prepare
+	cd $(COREBOOT_SRC) && \
+	    make defconfig KBUILD_DEFCONFIG=$(COREBOOT_CONFIG)
+
+ifneq ($(MUEN_TARGET),qemu-kvm)
+# When building for the Supermicro hardware, we need to populate the Coreboot
+# build tree with the Intel ME blob from this repository.
+
+COREBOOT_BLOB_DIR := \
+    $(COREBOOT_SRC)/3rdparty/blobs/mainboard/supermicro/x11-lga1151-series
+
+$(COREBOOT_BLOB_DIR):
+	mkdir -p $@
+
+$(COREBOOT_BLOB_DIR)/%.bin: src/coreboot/blobs/%.bin | $(COREBOOT_BLOB_DIR)
+	cp $< $@
+
+COREBOOT_BLOBS := \
+    $(COREBOOT_BLOB_DIR)/descriptor.bin \
+    $(COREBOOT_BLOB_DIR)/me.bin
+endif
+
+$(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_BLOBS)
+	$(MAKE) -C $(COREBOOT_SRC)
+
+$(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL)
+	cp $< $@
+	$(CBFSTOOL) $@ add \
+	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
+
 ifneq ($(MUEN_TARGET),qemu-kvm)
 # When building for real hardware, stop here.
 
 .PHONY: build
-build: $(OBJ_SYSTEM_IMG)
+build: $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM)
 
 else
 # The remaining rules apply to building and running a QEMU/KVM emulated system.
@@ -439,7 +484,7 @@ $(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.s
 	tools/muen-mkdiskimage.sh $@ $< $(OBJ_DATA_DIR)
 
 .PHONY: build
-build: $(OBJ_QEMU_DISK_IMG)
+build: $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
 
 RUN_DIR := $(TOP_DIR)/run
 RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
@@ -453,11 +498,8 @@ $(RUN_DIR)/screenrc:
 
 QEMU ?= qemu-system-x86_64
 
-# Built manually, see coreboot/README.md
-QEMU_BIOS_IMG := $(TOP_DIR)/coreboot/qemu/coreboot.rom
-
 QEMU_OPTS := \
-    -bios $(QEMU_BIOS_IMG) \
+    -bios $(OBJ_COREBOOT_ROM) \
     -drive file=$(RUN_QEMU_DISK_IMG),format=raw \
     -serial file:run/serial.out \
     -machine q35,accel=kvm,kernel-irqchip=split \
@@ -483,7 +525,7 @@ check-running:
 	fi
 
 .PHONY: run
-run: $(RUN_QEMU_DISK_IMG) $(QEMU_BIOS_IMG) $(RUN_DIR)/screenrc check-running
+run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running
 	screen -c $(RUN_DIR)/screenrc -L -dmS kvm-muen \
 	    $(QEMU) $(QEMU_OPTS) -pidfile $(RUN_DIR)/qemu.pid
 	@echo -n "* QEMU/KVM started for '$(RUN_QEMU_DISK_IMG)', waiting for boot: "
