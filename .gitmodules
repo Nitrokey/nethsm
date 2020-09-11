@@ -20,3 +20,7 @@
 	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
 	branch = maint
 	shallow = true
+[submodule "src/coreboot/coreboot"]
+	path = src/coreboot/coreboot
+	url = ../nitrohsm-coreboot.git
+	branch = nitrohsm
