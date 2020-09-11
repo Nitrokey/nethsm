@@ -33,13 +33,15 @@ test_endpoint () {
       diff -w -u <(actual_code "$headers") <(expected_code "$headers")
     done;
 
-    ./command.sh || (kill $PID ; exit 4)
-    ./shutdown.sh || (kill $PID ; exit 5)
+    if [ -e ./cmd.sh ]; then # does not exist for wrong-state tests
+      ./cmd.sh || (kill $PID ; exit 4)
 
-    diff -w -u <(actual_code headers.out) <(actual_code headers.expected)
-    if [ ! -f body.skip ]; then
-      diff -w -u body.out body.expected
+      diff -w -u <(actual_code headers.out) <(actual_code headers.expected)
+      if [ ! -f body.skip ]; then
+        diff -w -u body.out body.expected
+      fi
     fi
+    ./shutdown.sh || (kill $PID ; exit 5)
 
 }
 

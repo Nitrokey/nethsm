@@ -18,7 +18,7 @@
   - content types -> different header
   - check location header
 
-- use common-functions.sh in generate_raml_tests.exe for command.sh
+- use common-functions.sh in generate_raml_tests.exe for cmd.sh
 
 - setup could use an argument "desired state", and execute the HTTP requests required to get into that state
 --> one script, not per-test
@@ -68,7 +68,7 @@ let escape s =
     let s' = Str.global_replace (Str.regexp_string "\"") "\\\"" s in
     "\"" ^ s' ^ "\""
 
-let get_endpoints meta = 
+let get_endpoints meta =
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> CCString.prefix ~pre:"/" key)
 
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
@@ -92,7 +92,7 @@ let path_to_filename state meth path =
   let path = Str.global_replace (Str.regexp_string "}") "" path in
   let path = String.sub path 1 (String.length path -1) in (* remove leading / *)
   let outdir = Printf.sprintf "generated/%s_%s_%s" state path meth in
-  let outfile = Printf.sprintf "%s/command.sh" outdir in
+  let outfile = "cmd.sh" in
   (outdir, outfile)
 
 let auth_header (user, pass) =
@@ -141,7 +141,7 @@ let req_states req =
 let req_roles req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["role"]
 
-let make_post_data req = 
+let make_post_data req =
   match Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] with
   | exception Not_found -> [""]
   | mediatypes ->
@@ -167,20 +167,23 @@ let make_req_data req meth =
   let states = req_states req in
   let states_and_data_for_mediatype = match meth with
   | "get" -> [(states, role, auth_header)]
-  | "post" 
+  | "post"
   | "put" -> List.map (fun d -> (states, role, auth_header ^ d)) (make_post_data req)
   | m -> Printf.printf "Error: Method %s not allowed" m; [(states, role, auth_header)]
   in
   (* TODO unroll roles? *)
   let unroll_states (states, role, data) =
-    List.map (fun s -> (s, role, data)) states
+    let other_states = List.filter (fun x -> not @@ List.mem x states) all_states in
+    List.append
+      (List.map (fun s -> (`Neg, s, role, data)) other_states)
+      (List.map (fun s -> (`Pos, s, role, data)) states)
   in
   List.concat_map unroll_states states_and_data_for_mediatype
 
 let make_resp_data raml =
   let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml ["responses"] in
   let get_example (code, meta) = match code with
-  | "200" -> 
+  | "200" ->
     begin
       match Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] with
       | exception Not_found -> [("200", None)]
@@ -189,73 +192,79 @@ let make_resp_data raml =
           let subtree = Ezjsonm.find example ["example"] in
           ("200", Some (typ, subtree))) mediatypes
     end
-  | somecode  -> [(somecode, None)]; 
+  | somecode  -> [(somecode, None)];
   in
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd (response_code, response_body) (state, role, req) =
+let tests_for_states meth path cmd (response_code, response_body) (_test_case, state, role, req) =
   let (outdir, test_file) = path_to_filename state meth path in
   let _ = Sys.command("mkdir -p " ^ outdir) in
 
   let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
   let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
-  let test_cmd = Printf.sprintf "%s %s  -D headers.out -o body.out \n\n" cmd'' req in
 
-  (* if keyid was set, prepare a wrong one *)
-  if cmd <> cmd' then
-    begin
-      let wrong_key = Str.global_replace (Str.regexp_string "{KeyID}") "bogus" cmd in
-      let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
-      write_cmd (outdir ^ "/404_wrong_key_cmd.sh") wrong_key_cmd
-    end;
+  (* for negative test cases (state tests), add an error code prefix *)
+  let resp_code = if _test_case = `Neg then "412_" else "" in
+  let test_cmd = Printf.sprintf "%s %s  -D %sheaders.out -o body.out \n\n" cmd'' req resp_code in
 
-  (* if userid was set, prepare a wrong one *)
-  if cmd' <> cmd'' then
-    begin
-      let wrong_user = Str.global_replace (Str.regexp_string "{UserID}") "bogus" cmd in
-      let wrong_user_cmd = Printf.sprintf "%s %s  -D 404_wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
-      write_cmd (outdir ^ "/404_wrong_user_cmd.sh") wrong_user_cmd
-    end;
+  if _test_case = `Pos then
+  begin
+    (* if keyid was set, prepare a wrong one *)
+    if cmd <> cmd' then
+      begin
+        let wrong_key = Str.global_replace (Str.regexp_string "{KeyID}") "bogus" cmd in
+        let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
+        write_cmd (outdir ^ "/404_wrong_key_cmd.sh") wrong_key_cmd
+      end;
 
-  (* if request contains --data json, prepare a wrong example *)
-  let args = Str.split (Str.regexp "--data") req in
-  if List.length args == 2 then
-    begin
-      (* prepare wrong json *)
-      let headers = List.hd args in
-      let wrong_json = "{}}}" in
-      let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
-      let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
-      write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd;
+    (* if userid was set, prepare a wrong one *)
+    if cmd' <> cmd'' then
+      begin
+        let wrong_user = Str.global_replace (Str.regexp_string "{UserID}") "bogus" cmd in
+        let wrong_user_cmd = Printf.sprintf "%s %s  -D 404_wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
+        write_cmd (outdir ^ "/404_wrong_user_cmd.sh") wrong_user_cmd
+      end;
 
-      (* prepare wrong auth header *)
-      let someone_else = match role with
-      | Some "Administrator" -> auth_header (passphrase "Backup")
-      | Some "Operator" -> auth_header (passphrase "Metrics")
-      | Some "Metrics" -> auth_header (passphrase "Backup")
-      | Some "Backup" -> auth_header (passphrase "Metrics")
-      | _ -> ""
-      in
-      let wrong_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) someone_else req in
-      if req <> wrong_auth then
-        begin
-          let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
-          write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
-        end;
-    end;
+    (* if request contains --data json, prepare a wrong example *)
+    let args = Str.split (Str.regexp "--data") req in
+    if List.length args == 2 then
+      begin
+        (* prepare wrong json *)
+        let headers = List.hd args in
+        let wrong_json = "{}}}" in
+        let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
+        let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
+        write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd;
 
-  let other_method = "PATCH" in
-  let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd'' in
-  let wrong_meth' = Str.global_replace (Str.regexp_string {|PUT|}) other_method wrong_meth in
-  let wrong_meth'' = Str.global_replace (Str.regexp_string {|POST|}) other_method wrong_meth' in
-  if cmd'' <> wrong_meth'' then
-    begin
-      let wrong_meth_cmd = Printf.sprintf "%s %s  -D 501_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
-      write_cmd (outdir ^ "/501_wrong_meth_cmd.sh") wrong_meth_cmd;
-    end;
+        (* prepare wrong auth header *)
+        let someone_else = match role with
+        | Some "Administrator" -> auth_header (passphrase "Backup")
+        | Some "Operator" -> auth_header (passphrase "Metrics")
+        | Some "Metrics" -> auth_header (passphrase "Backup")
+        | Some "Backup" -> auth_header (passphrase "Metrics")
+        | _ -> ""
+        in
+        let wrong_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) someone_else req in
+        if req <> wrong_auth then
+          begin
+            let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
+            write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
+          end;
+      end;
 
-  write_cmd test_file test_cmd;
+    let other_method = "PATCH" in
+    let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd'' in
+    let wrong_meth' = Str.global_replace (Str.regexp_string {|PUT|}) other_method wrong_meth in
+    let wrong_meth'' = Str.global_replace (Str.regexp_string {|POST|}) other_method wrong_meth' in
+    if cmd'' <> wrong_meth'' then
+      begin
+        let wrong_meth_cmd = Printf.sprintf "%s %s  -D 501_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
+        write_cmd (outdir ^ "/501_wrong_meth_cmd.sh") wrong_meth_cmd;
+      end;
+    end; (* end if _test_case = `Pos *)
+
+  write_cmd (outdir ^ "/" ^ resp_code ^ test_file) test_cmd;
 
   (* prepare required state and role *)
   let setup_file = outdir ^ "/setup.sh" in
@@ -271,30 +280,33 @@ let tests_for_states meth path cmd (response_code, response_body) (state, role, 
   write shutdown_file shutdown_cmd;
   let _ = Sys.command("chmod u+x " ^ shutdown_file) in
 
-  let expected_body =
-    match response_body with
-    | None -> ""
-    | Some (_typ, example) ->
-      let escaped = unquote @@ Ezjsonm.value_to_string example in
-      Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
-  in
-  write (outdir ^ "/body.expected") expected_body;
+  if _test_case = `Pos then
+  begin
+    let expected_body =
+      match response_body with
+      | None -> ""
+      | Some (_typ, example) ->
+        let escaped = unquote @@ Ezjsonm.value_to_string example in
+        Str.global_replace (Str.regexp_string {|\n|}) "\n" escaped
+    in
+    write (outdir ^ "/body.expected") expected_body;
 
-  let reply =
-   let status = Cohttp.Code.(reason_phrase_of_code (int_of_string response_code)) in
-   Printf.sprintf "HTTP/1.1 %s %s" response_code status
-  in
-  write (outdir ^ "/headers.expected") reply;
+    let reply =
+     let status = Cohttp.Code.(reason_phrase_of_code (int_of_string response_code)) in
+     Printf.sprintf "HTTP/1.1 %s %s" response_code status
+    in
+    write (outdir ^ "/headers.expected") reply;
 
-  if List.mem path skip_body_endpoints then
-    let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
-    ();
+    if List.mem path skip_body_endpoints then
+      let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
+      ();
+  end;
 
   ()
 
 let print_method path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *)
-  then begin 
+  then begin
     let reqs = make_req_data req meth in
     let responses = make_resp_data req in
     let success_response = List.find (fun (c, _) -> String.get c 0 = '2') responses in
@@ -312,7 +324,7 @@ let print_methods (path, methods) =
 
 let rec subpaths (path, meta) =
   let (endpoints, _) = get_endpoints meta in
-  if endpoints = [] 
+  if endpoints = []
   then [ (path, Ezjsonm.get_dict meta) ]
   else List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
 
@@ -321,7 +333,7 @@ let example = CCIO.with_in raml CCIO.read_all
   |> Stdlib.Result.get_ok
 
 (* all paths, start from empty root *)
-let () = 
+let () =
   let paths = subpaths ("", example) in
   (*let paths = [List.nth paths 1] in*)
   List.iter print_methods paths;
