@@ -10,16 +10,7 @@ This repository uses several large Git submodules, including recursive submodule
 
 In order to avoid this, the `prepare` target (part of `make build`) will clone only those submodules that are required for the `MODE` you are building the system for, and use shallow clones where appropriate.
 
-If you are building the Muen System, you **must** add the following to your `~/.gitconfig` for all Git submodules to work:
-
-```
-[url "https://git.codelabs.ch/git/muen/"]
-insteadOf = git@git.dotplex.com:nitrokey/muen/
-[url "https://git.codelabs.ch/git/libxhcidbg.git"]
-insteadOf = git@git.dotplex.com:nitrokey/libxhcidbg.git
-[url "https://git.codelabs.ch/git/sbs-tools"]
-    insteadOf = git@git.dotplex.com:nitrokey/sbs-tools
-```
+If you are building the Muen System, you **must** add the contents of the `gitconfig.ad` file in this repository your `~/.gitconfig` for all Git submodules to work correctly.
 
 If you need all Git submodules to be fully cloned (e.g. when updating submodule references), then run:
 
