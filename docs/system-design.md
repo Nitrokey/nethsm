@@ -398,14 +398,14 @@ The client, after establishing the TCP stream, sends the command (all uppercase)
 
 Some sample sessions:
 
-| C->S: DEVICE-ID\n
-| S->C: OK abcdef\n
+    | C->S: DEVICE-ID\n
+    | S->C: OK abcdef\n
 
-| C->S: SHUTDOWN\n
-| S->C: OK\n
+    | C->S: SHUTDOWN\n
+    | S->C: OK\n
 
-| C->S: FOO\n
-| S->C: ERROR Unknown command\n
+    | C->S: FOO\n
+    | S->C: ERROR Unknown command\n
 
 #### Further Extensions
 
