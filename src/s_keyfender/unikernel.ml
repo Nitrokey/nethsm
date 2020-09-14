@@ -54,10 +54,10 @@ struct
 
   module T = Internal_stack.TCPV4
   let write_platform stack cmd =
-    Logs.info (fun m -> m "sending %s to platform" cmd);
+    Log.debug (fun m -> m "sending %s to platform" cmd);
     Lwt.pick [
       (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
-       Logs.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
+       Log.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
        Error `Timeout) ;
       T.create_connection (Internal_stack.tcpv4 stack) (Key_gen.platform (), Key_gen.platform_port ()) >>= function
       | Error e ->
@@ -129,7 +129,7 @@ struct
       connect_git () >>= fun store ->
       (write_platform internal_stack "DEVICE-ID" >>= function
         | Error e ->
-          Logs.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
+          Log.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
           Lwt.fail_with "failed to retrieve device id from platform"
         | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
       Hsm.boot ~device_id store >>= fun (hsm_state, mvar) ->
