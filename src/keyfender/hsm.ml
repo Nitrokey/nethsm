@@ -1421,11 +1421,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Hash = Mirage_crypto.Hash.SHA256
     module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
-    let key = match X509.Public_key.decode_pem Crypto.software_update_key with
-      | Ok `RSA key -> key
-      | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
-      | Error `Msg m -> invalid_arg m
-
     let update t s =
       let open Lwt_result.Infix in
       (* stream contains:
@@ -1451,7 +1446,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         s''' (Ok hash'') >>= fun hash ->
       let final_hash = Hash.get hash in
       let signature = Cstruct.of_string signature in
-      if Pss_sha256.verify ~key ~signature (`Digest final_hash) then
+      if Pss_sha256.verify ~key:Crypto.software_update_key ~signature (`Digest final_hash) then
         let current = t.system_info.softwareVersion in
         if version_is_upgrade ~current ~update:version' then
         begin
