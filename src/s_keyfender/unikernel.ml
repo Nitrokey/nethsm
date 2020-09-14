@@ -127,14 +127,11 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
-      (* TODO revise error handling for production (no device-id is fatal) *)
-      (write_platform internal_stack "DEVICE-ID" >|= function
+      (write_platform internal_stack "DEVICE-ID" >>= function
         | Error e ->
           Logs.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
-          "device id"
-        | Ok device_id ->
-          Logs.info (fun m -> m "received device id %s" device_id);
-          device_id) >>= fun device_id ->
+          Lwt.fail_with "failed to retrieve device id from platform"
+        | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
       Hsm.boot ~device_id store >>= fun (hsm_state, mvar) ->
       let setup_stack ?gateway cidr =
         Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
