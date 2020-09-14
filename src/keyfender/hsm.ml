@@ -228,7 +228,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let warns = Logs.warn_count ()
         and errs = Logs.err_count ()
         in
-        Data.v [ int "warn msgs" warns ; int "err msgs" errs ]
+        Data.v [ int "log warnings" warns ; int "log errors" errs ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "log msg type"
 
@@ -237,11 +237,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let doc = "Garbage collection" in
       let data () =
         let gc_stat = Gc.quick_stat () in
-        (* let live = gc_stat.live_words * 8
-        and free = gc_stat.free_words * 8
-           in *)
         let major_bytes = gc_stat.heap_words * 8 in
-        (* Data.v [ int "gc_live_bytes" live ; int "gc_free_bytes" free ] *)
         Data.v [ int "gc major bytes" major_bytes ;
                  int "gc major collections" gc_stat.major_collections ;
                  int "gc minor collections" gc_stat.minor_collections ;
@@ -337,20 +333,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Metrics_lwt.init_periodic ~gc:`None ~logs:false sleeper
 
     let set_mem_reporter () =
-      let report ~tags:_ ~data ~over _src k =
-        (* TODO take tags into account (for mirage-net-solo5 sources) *)
+      let report ~tags ~data ~over _src k =
         let data_fields = Metrics.Data.fields data in
-        (* let name = Metrics.Src.name src in *)
+        let tag t =
+          Fmt.to_to_string Metrics.pp_value t
+        in
+        let tags = List.map tag tags in
         let field f =
-          Fmt.to_to_string Metrics.pp_key f, Fmt.to_to_string Metrics.pp_value f
+          String.concat "." (tags @ [ Fmt.to_to_string Metrics.pp_key f ]),
+          Fmt.to_to_string Metrics.pp_value f
         in
         let fields = List.map field in
-        (* let timestamp =
-          match Metrics.Data.timestamp data with
-          | Some ts -> ts
-          | None -> Int64.to_string (now ())
-           in *)
-        (* let d = name, fields tags, fields data_fields, timestamp in*)
         List.iter
           (fun (field_name, field_value) -> Hashtbl.replace db field_name field_value)
           (fields data_fields);
@@ -363,13 +356,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   end
 
   (* fatal is called on error conditions we do not expect (hardware failure,
-     KV inconsistency).
-
-     TODO this is temporary and may instead result in a HSM that:
-     (a) reports a more detailed error (if available) -- already done at call site using Logs
-     (b) can be reset to factory defaults (and then be provisioned)
-     (c) can be backed up? or sent in for recovery / hardware replacement
-  *)
+     KV inconsistency). The message will appear on the serial console of the
+     hardware.. *)
   let fatal prefix ~pp_error e =
     Log.err (fun m -> m "fatal in %s %a" prefix pp_error e);
     invalid_arg "fatal!"
