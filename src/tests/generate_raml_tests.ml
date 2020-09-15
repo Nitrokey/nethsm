@@ -3,33 +3,6 @@
     dune exec ./generate_raml_tests.exe
 *)
 
-(* TODO
-
-- Negative test cases we want to cover:
-  - invalid state (=> 412 precondition failed)
-
-- minimize skip_endpoints: add a reason, split by HTTP method
-
-- raml / code: should alive and ready be 204?
-
-- add set -e to setup.sh to pass on error from provision_..sh
-
-- comapre response header (create headers.expected)
-  - content types -> different header
-  - check location header
-
-- use common-functions.sh in generate_raml_tests.exe for cmd.sh
-
-- setup could use an argument "desired state", and execute the HTTP requests required to get into that state
---> one script, not per-test
-
-LATER:
-
-- gitlab pages code coverage
-- improve code coverage of unit tests
-
-*)
-
 let host = "localhost"
 let port = "8080"
 let prefix = "api/v1"
