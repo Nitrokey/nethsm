@@ -15,6 +15,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     | Key -> "key"
 
   let pp_slot ppf slot = Fmt.string ppf (slot_to_string slot)
+  [@@coverage off]
 
   type error =
     [ Mirage_kv.error | `Kv of KV.error | `Crypto of Crypto.decrypt_error ]
@@ -96,7 +97,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     | `Msg msg -> Fmt.string ppf msg
     | `Version_smaller (current, stored) ->
       Fmt.pf ppf "current version %a smaller than stored version %a"
-        Version.pp current Version.pp stored
+        Version.pp current Version.pp stored [@@coverage off]
 
   let unlock version store ~key kv =
     let open Lwt_result.Infix in

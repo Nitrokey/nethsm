@@ -400,7 +400,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     Fmt.string ppf (match s with
         | `Unprovisioned -> "unprovisioned"
         | `Operational -> "operational"
-        | `Locked -> "locked")
+        | `Locked -> "locked") [@@coverage off]
 
   type cb =
     | Log of Json.log
