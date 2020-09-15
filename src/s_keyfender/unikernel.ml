@@ -128,6 +128,19 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
+      (* check whether it is empty - irmin's batch operation requires a non-empty store! *)
+      (let ign = Mirage_kv.Key.v ".gitignore" in
+        Git_store.exists store ign >>= function
+        | Ok None ->
+          (Git_store.set store ign "" >>= function
+            | Ok () -> Lwt.return_unit
+            | Error e ->
+              Log.err (fun m -> m "couldn't write to store %a" Git_store.pp_write_error e);
+              Lwt.fail_with "store not writable")
+        | Ok (Some _) -> Lwt.return_unit
+        | Error e ->
+          Log.err (fun m -> m "couldn't read from store %a" Git_store.pp_error e);
+          Lwt.fail_with "store not readable") >>= fun () ->
       (write_platform internal_stack "DEVICE-ID" >>= function
         | Error e ->
           Log.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
