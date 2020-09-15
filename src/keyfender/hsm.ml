@@ -1522,6 +1522,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
       | Some _changes -> t.has_changes <- None; Ok ()
 
+    (* the backup format is at the moment:
+       - length of salt (encoded in 3 bytes); salt
+       - length of (AES-GCM encrypted version); AES-GCM encrypted version [adata = backup-version]
+       - indivial key, value entries of the store:
+         - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
+
     let backup_version = Version.V0
 
     let rec backup_directory kv push backup_key path =
@@ -1541,10 +1547,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                 KV.get kv key >|= function
                 | Ok data ->
                   let key_str = Mirage_kv.Key.to_string key in
-                  (* TODO is it ok to encrypt each entry individually? *)
-                  (* encrypt the stream instead *)
                   let data = prefix_len key_str ^ data in
-                  let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
+                  let adata = Cstruct.of_string "backup" in
                   let encrypted_data = Crypto.encrypt Rng.generate ~key:backup_key ~adata (Cstruct.of_string data) in
                   push (Some (prefix_len (Cstruct.to_string encrypted_data)))
                 | Error e ->

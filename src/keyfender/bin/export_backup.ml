@@ -104,7 +104,7 @@ let export passphrase backup_image_filename output =
         let rec next acc backup_data =
           if backup_data = "" then Ok acc else
           let item, rest = get_field backup_data in
-          let adata = Cstruct.of_string "backup" in (* TODO use backup2 *)
+          let adata = Cstruct.of_string "backup" in
           match Crypto.decrypt ~key ~adata (Cstruct.of_string item) with
           | Error `Insufficient_data ->
             Error "Could not decrypt stored key-value pair. Backup is corrupted?"
