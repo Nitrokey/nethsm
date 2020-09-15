@@ -184,6 +184,13 @@ ifeq ($(XMODE),test)
 	bisect-ppx-report summary src/tests/*.coverage
 endif
 
+.PHONY: coverage
+coverage: $(wildcard src/keyfender/*.coverage) $(wildcard src/tests/generated/**/*.coverage) # test-keyfender-lib test-keyfender-api
+ifeq ($(XMODE),test)
+	bisect-ppx-report html --coverage-path=src/tests/generated --coverage-path=src/keyfender --source-path=src/keyfender -o combined_coverage
+	echo "open combined_coverage/index.html"
+endif
+
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
 #
