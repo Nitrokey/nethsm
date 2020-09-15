@@ -11,7 +11,7 @@ This document describes the System Design and Technical Architecture of the Nitr
 * encryption architecture and local persistent storage,
 * integration with Muen Separation Kernel, including any customizations for board support and implementation of missing functionality required for the system,
 * development of a custom "Linux distribution" for Linux-based Subjects,
-* integration with platform _Firmware_ ("stock" BIOS or Coreboot),
+* integration with platform _Firmware_ (Coreboot),
 * secure software updates.
 
 A separate document describes the REST-based API for consumers, which will also be delivered by Robur. The actual user interface ("Web UI") is out of scope and will be developed by a separate team.
@@ -102,6 +102,10 @@ Unprovisioned
 User Data
 
 : Used collectively to refer to all user data persistently stored on the NitroHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model] for details.
+
+Verified Boot
+
+: The process used by the _Firmware_ to ensure that only _System Software_ cryptographically signed with a trusted key can be booted on the NitroHSM hardware. See [Verified Boot] for details.
 
 # User Stories
 
@@ -449,9 +453,9 @@ The act of updating the _System Software_ is performed by **S-Platform**; when *
 
 _If and only if_ verification of the _System Software_'s "outer signature" and update eligibility are successful, **S-Keyfender** enables the REST API endpoint allowing the user to "commit" the software update. Only after this endpoint is requested will **S-Keyfender** instruct **S-Platform** to perform the actions necessary (e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new system partition _once_ on next boot.
 
-During boot, the _System Software_'s "inner signature" is verified by the _Firmware_ as part of Trusted Boot. If the new _System Software_ does not boot successfully or the Trusted Boot verification fails, the system will automatically reboot into the old _System Software_ as a fallback.
+During boot, the _System Software_'s "inner signature" is verified by the _Firmware_ as part of _Verified Boot_. If the new _System Software_ does not boot successfully or the _Verified Boot_ verification fails, the system will automatically reboot into the old _System Software_ as a fallback.
 
-_If and only if_ both Trusted Boot verification succeeds and the new _System Software_ boots sucessfully, the new _System Software_ will perform the actions necessary to permanently configure the system to boot into the new _System Software_ (e.g. by modifying the GPT or interacting with the _Firmware_). The new _System Software_ may now start data migration, if required.
+_If and only if_ both _Verified Boot_ verification succeeds and the new _System Software_ boots sucessfully, the new _System Software_ will perform the actions necessary to permanently configure the system to boot into the new _System Software_ (e.g. by modifying the GPT or interacting with the _Firmware_). The new _System Software_ may now start data migration, if required.
 
 The actual implementation details of **S-Platform** will be based on the design used by both Chromium OS and CoreOS Container Linux, and are not described in more detail in this document; please refer to the Chromium OS [Disk Format][chromium-disk] and [File System/Autoupdate][chromium-autoupdate] design documents. Any deviations from this design will be documented during implementation.
 
@@ -459,21 +463,40 @@ The actual implementation details of **S-Platform** will be based on the design 
 [chromium-autoupdate]: https://www.chromium.org/chromium-os/chromiumos-design-docs/filesystem-autoupdate
 
 
-### Firmware Requirements
+### Platform Firmware
 
-In order to implement the functionality and System Design as described thus far, the following is required from the _Firmware_:
+Coreboot has been selected as the _Firmware_ to be used for the NitroHSM, with GRUB 2 to be used as the Coreboot payload (boot loader).  In order to implement the functionality and System Design as described thus far, the following is required from the _Firmware_ and payload:
 
-1. GPT support is required for [System Software Update]. In the case of a "stock" BIOS, this implies UEFI.
-2. Muen uses the multiboot protocol for booting. This implies the use of a bootloader such as GRUB 2. In the case of Coreboot, this must be a "payload" in the firmware and rules out the use of e.g. Linuxboot.
-3. If a hardware "reset button" is used (see [Physical Reset (Recovery)]), this implies use of Coreboot or extra customization of any "stock" BIOS by the vendor.
-4. Support for VT-d and correct bring-up of the IOMMU (especially in the Coreboot case), required for Muen.
-5. Support for flashing a unique _Device ID_. This _may_ require customization of a "stock" BIOS.
-6. If a "stock" BIOS is used, it **must** allow for provisioning of private keys used as the root of trust for Trusted Boot. Most BIOSes allow for this, but it is generally a manual operation that Nitrokey will have to perform in BIOS setup for each device separately.
-7. If Coreboot is used in combination with "ME Cleaner" or similar, care must be taken by the team selecting the board and/or _Firmware_ to ensure that the system is still stable in such a configuration and all the above requirements are provided for.
+1. GPT support is required for [System Software Update].
+2. Muen uses the [Signed Block Stream][sbs-spec] protocol for _Verified Boot_. GRUB 2 will need to be modified, integrating the SBS implementation from Codelabs.
+3. If a hardware "reset button" is used (see [Physical Reset (Recovery)]), this implies extra customizations to Coreboot.
+4. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
+5. Support for flashing a unique _Device ID_, this _may_ require customization of Coreboot and/or the payload.
+6. If Coreboot is used in combination with "ME Cleaner" or similar, care must be taken by the team selecting the board and/or _Firmware_ to ensure that the system is still stable in such a configuration and all the above requirements are provided for.
 
-**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, apart from the additional software (`flashrom`) required in, and attack surface (ability to write to the system flash) exposed to, **S-Platform**, the following additional requirements apply to use of a "stock" BIOS: The vendor must provide _Firmware_ images which Nitrokey can integrate into a _System Software_ image _and_ redistribute. Further, said images must be provided to Nitrokey via a secure channel, such as the [Linux Vendor Firmware Service][lvfs].
+[sbs-spec]: https://www.codelabs.ch/download/bsbsc-spec.pdf
 
-[lvfs]: https://fwupd.org/
+**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which would likely take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
+
+#### Verified Boot
+
+The process of ensuring that the NitroHSM hardware will only boot _System Software_ that has been cryptographically signed is denoted as _Verified Boot_.  This is implemented by a custom GRUB 2 payload for Coreboot, integrating support for [Signed Block Stream][sbs-spec] from Codelabs and modified to unconditionally enable signature verification of all loaded components.
+
+Build-time tooling will be provided to:
+
+1. Embed a trusted public key into CBFS in the _Firmware_ image to be flashed to NitroHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NitroHSM hardware.
+2. Sign the components of a _System Software_ image with the matching private key (referred to as an "inner signature" in [System Software Update]).
+3. Build a signed "Live USB" system intended for use as an "installer" to install stock NitroHSM hardware with an initial _System Software_ image.
+
+Internally, a _System Software_ image consists of the following components:
+
+1. The SBS image containing the Muen Separation kernel, all subjects and their associated userland. This image is internally signed with the _Firmware_-trusted public key.
+2. A GRUB configuration file.
+3. A detached signature for the GRUB configuration file, signed with the _Firmware_-trusted public key.
+
+These components are wrappen in a plain CPIO image, which is written to the system partition.
+
+During system boot, Coreboot will launch the GRUB 2 payload, which will initially execute the commands defined by a trusted GRUB configuration embedded in CBFS. This configuration will attempt to "chain" into a correctly signed GRUB configuration file found in any _System Software_ image present on either the internal SSD or a USB key (for use by a Live USB installer, updater, or other component). If signature verification of the configuration file succeeds, then the system will proceed to boot from that device.
 
 ## Security Design
 
