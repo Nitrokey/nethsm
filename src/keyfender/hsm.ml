@@ -777,7 +777,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let digest = Crypto.key_of_passphrase ~salt passphrase in
       { name ; salt = Cstruct.to_string salt ; digest = Cstruct.to_string digest ; role }
 
-    (* TODO: validate username/id *)
     let add ~id t ~role ~passphrase ~name =
       let open Lwt_result.Infix in
       let store = in_store t in
