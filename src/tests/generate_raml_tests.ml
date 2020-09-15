@@ -224,6 +224,12 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
             let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
             write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
           end;
+        let no_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) "" req in
+        if req <> no_auth then
+          begin
+            let no_auth_cmd = Printf.sprintf "%s %s  -D 401_no_auth_headers.out -o /dev/null \n\n" cmd'' no_auth in
+            write_cmd (outdir ^ "/401_no_auth_cmd.sh") no_auth_cmd;
+          end;
       end;
 
     let other_method = "PATCH" in
