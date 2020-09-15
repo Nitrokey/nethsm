@@ -1562,7 +1562,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
       | Ok None -> Lwt.return (Error (Precondition_failed, "Please configure backup key before doing a backup."))
       | Ok Some backup_key ->
-        (* iteratae over keys in KV store *)
+        (* iterate over keys in KV store *)
         let backup_key' = Crypto.GCM.of_secret backup_key in
         Config_store.get t.kv Backup_salt >>= function
         | Error e ->
@@ -1636,36 +1636,36 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error `Not_authenticated ->
         Lwt.return @@ Error (Bad_request, "Could not decrypt backup version, authentication failed. Is the passphrase correct?")
       | Ok version ->
-        (* TODO could be a batch *)
-        Lwt_mutex.with_lock write_lock (fun () ->
-            Metrics.write ();
-            match Version.of_string (Cstruct.to_string version) with
-            | Ok v when Version.compare backup_version v = `Equal ->
-              begin
-                let rec next stream =
-                  Lwt_stream.is_empty stream >>= function
-                  | true -> t.state <- Locked ; Lwt.return (Ok ())
-                  | false ->
-                    read_and_decrypt stream key >>== fun ((k, v), stream) ->
-                    internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
-                      (KV.set t.kv (Mirage_kv.Key.v k) v) >>== fun () ->
-                    next stream
-                in
-                next stream'' >>== fun () ->
-                let `Raw stop_ts = Clock.now_raw () in
-                let elapsed = Ptime.diff stop_ts start_ts in
-                match Ptime.add_span new_time elapsed with
-                | Some ts -> set_time_offset t.kv ts
-                | None ->
-                  t.state <- Unprovisioned;
-                  Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
-              end
-            | _ ->
-              let msg =
-                Printf.sprintf
-                  "Version mismatch on restore, provided backup version is %s, server expects %s"
-                  (Cstruct.to_string version) (Version.to_string backup_version)
-              in
-              Lwt.return @@ Error (Bad_request, msg))
+        match Version.of_string (Cstruct.to_string version) with
+        | Ok v when Version.compare backup_version v = `Equal ->
+          Lwt_mutex.with_lock write_lock (fun () ->
+              Metrics.write ();
+              KV.batch t.kv (fun b ->
+                  begin
+                    let rec next stream =
+                      Lwt_stream.is_empty stream >>= function
+                      | true -> t.state <- Locked ; Lwt.return (Ok ())
+                      | false ->
+                        read_and_decrypt stream key >>== fun ((k, v), stream) ->
+                        internal_server_error "restoring backup (writing to KV)" KV.pp_write_error
+                          (KV.set b (Mirage_kv.Key.v k) v) >>== fun () ->
+                        next stream
+                    in
+                    next stream'' >>== fun () ->
+                    let `Raw stop_ts = Clock.now_raw () in
+                    let elapsed = Ptime.diff stop_ts start_ts in
+                    match Ptime.add_span new_time elapsed with
+                    | Some ts -> set_time_offset b ts
+                    | None ->
+                      t.state <- Unprovisioned;
+                      Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+                  end))
+        | _ ->
+          let msg =
+            Printf.sprintf
+              "Version mismatch on restore, provided backup version is %s, server expects %s"
+              (Cstruct.to_string version) (Version.to_string backup_version)
+          in
+          Lwt.return @@ Error (Bad_request, msg)
   end
 end
