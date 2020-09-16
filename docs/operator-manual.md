@@ -39,4 +39,5 @@ Some features mentioned in the system design are not yet implemented:
 - Software update functionality is not yet implemented.
 - S-TRNG is not implemented.
 - A physical reset is not implemented.
+- The device ID is not taken from the hardware, but instead hardcoded in S-Platform.
 - If the S-Keyfender subject runs out of memory, it exits (logging on serial console), and needs to be cold bootet.
