@@ -121,7 +121,6 @@ prepare: .stamp-prepare
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) .stamp-prepare
-	$(RM) -rf $(TOP_DIR)/combined_coverage
 
 # ------------------------------------------------------------------------------
 #
@@ -185,11 +184,17 @@ ifeq ($(XMODE),test)
 	bisect-ppx-report summary src/tests/*.coverage
 endif
 
-.PHONY: coverage
-coverage: $(wildcard src/keyfender/*.coverage) $(wildcard src/tests/generated/**/*.coverage) # test-keyfender-lib test-keyfender-api
+
 ifeq ($(XMODE),test)
-	bisect-ppx-report html --coverage-path=src/tests/generated --coverage-path=src/keyfender --source-path=src/keyfender -o combined_coverage
-	echo "open combined_coverage/index.html"
+.PHONY: coverage
+coverage: # test-keyfender-lib test-keyfender-api
+	mkdir -p $(TOP_DIR)/obj
+	bisect-ppx-report html --coverage-path=src/tests/generated --coverage-path=src/keyfender --source-path=src/keyfender -o $(TOP_DIR)/obj/coverage
+	echo "Note: make sure to run test-keyfender-lib and test-keyfender-api for coverage info."
+	echo "open obj/coverage/index.html"
+
+clean:
+	$(RM) -rf $(TOP_DIR)/obj
 endif
 
 ifeq ($(XMODE),dev)
