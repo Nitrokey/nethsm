@@ -4,10 +4,8 @@ _build
 run/
 obj/
 serial.out
-.stamp-mode
-.stamp-prepare
+.stamp-*
 src/muen/policy/xml/component_unikernel.xml
 src/u-root/bin
 src/u-root/src/**/.bb/
-combined_coverage/
 *.coverage
