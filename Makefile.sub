@@ -121,6 +121,7 @@ prepare: .stamp-prepare
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) .stamp-prepare
+	$(RM) -rf $(TOP_DIR)/combined_coverage
 
 # ------------------------------------------------------------------------------
 #
