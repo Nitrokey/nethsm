@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -236,6 +237,26 @@ func killAll(sig os.Signal) {
 	}
 }
 
+// Extract the CPIO archiveFile in destDir, which must exist and be a directory.
+func extractCpioArchive(archiveFile string, destDir string) (err error) {
+	f, err := os.Open(archiveFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	cmd := exec.Command("/bbin/cpio", "i")
+	cmd.Stdin = f
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	cmd.Dir = destDir
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // storageActions are executed for "storage_linux".
 func storageActions() {
 	c := make(chan string)
@@ -259,6 +280,22 @@ func storageActions() {
 	s.Logf("Mounting /data")
 	s.Execf("/bbin/mkdir -p /data")
 	s.Execf("/bbin/mount -t ext4 /dev/sda2 /data")
+
+	if err := s.Err(); err != nil {
+		log.Printf("Script failed: %v", err)
+		return
+	}
+
+	// If /data/initialised-v1 does NOT exist, assume /data is empty and
+	// populate it from the template CPIO archive included in the initramfs.
+	if _, err := os.Stat("/data/initialised-v1"); os.IsNotExist(err) {
+		log.Printf("Populating /data")
+		if err := extractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
+			log.Printf("Error extracting /data template: %v", err)
+			return
+		}
+	}
+
 	s.Logf("Starting Git server")
 	s.BackgroundExecf("/bin/git daemon --base-path=/data/git --export-all --enable=receive-pack")
 
@@ -294,9 +331,7 @@ func storageActions() {
 		triggerMuenEvent("reboot")
 	case "RESET":
 		s.Logf("Formatting data partition.")
-		s.Execf("/bbin/mkdir -p /tmp/empty /tmp/data/git")
-		s.Execf("/bin/git init --bare --template=/tmp/empty /tmp/data/git/keyfender-data.git")
-		s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sda2")
+		s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data /dev/sda2")
 
 		if err := s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)

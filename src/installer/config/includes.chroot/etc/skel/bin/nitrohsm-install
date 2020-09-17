@@ -58,18 +58,11 @@ p2_size=$((${disk_size} - ${p2_start} - 33))
 (set -x; dd if=${MUEN} of=${DISK}1 bs=1M) \
     || die "While installing image: dd failed"
 
-# In a temporary directory, create the Git repository required for Keyfender
-# to run. This is easier than mounting the filesystem later.
-TMPDIR=$(mktemp -d)
-mkdir -p ${TMPDIR}/git/keyfender-data.git || die "mkdir failed"
-git init --bare ${TMPDIR}/git/keyfender-data.git || die "git init failed"
-
 # Create an empty ext4 filesystem in the data parition.
 (set -x; mkfs.ext4 -F -m0 -L data \
-    -d ${TMPDIR} ${DISK}2) \
+    ${DISK}2) \
     || die "While creating data filesystem: mkfs.ext4 failed"
 
 # Clean up.
-rm -rf ${TMPDIR}
 sync
 

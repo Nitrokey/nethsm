@@ -380,6 +380,36 @@ $(INSTALL_MKE2FS): $(MKE2FS)
 	cp $< $@
 	strip $@
 
+$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
+	mkdir -p $@
+	git init --template none --bare $@
+
+$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
+
+OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
+
+# Given an initialised Git repository in $(OBJ_GIT_DATA_DIR), produce the CPIO
+# archive containing the template used to populate an empty /data partition on
+# boot. This is a bit round-about; blame UNIX tools for not letting us specify
+# ownership information in archives speficially.
+#
+# Notably, this ensures that everything under /data/git is owned by the Git
+# user (1:1), with the "this data partition is now populated" stamp file being
+# owned by root (0:0).
+$(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
+	cd $(OBJ_DATA_DIR) && \
+	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
+	touch $(OBJ_DATA_DIR)/initialised-v1
+	cd $(OBJ_DATA_DIR) && \
+	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
+
+INSTALL_DATA_CPIO := $(OBJ_INITRAMFS_DIR)/tmpl/data.cpio
+
+# obj/data.cpio is "installed" into the initramfs as tmpl/data.cpio.
+$(INSTALL_DATA_CPIO): $(OBJ_DATA_CPIO)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/tmpl
+	cp $< $@
+
 OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
@@ -393,7 +423,7 @@ U_ROOT_PKGS := core $(U_ROOT_UINIT)
 $(U_ROOT_BIN):
 	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
 
-$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS)
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_DATA_CPIO)
 	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
 	    -files "$(OBJ_INITRAMFS_DIR):/" \
@@ -434,14 +464,6 @@ $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRA
 	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
-
-# XXX Files will be owned by the build user. Maybe run this from uinit once we
-# XXX have a real S-Storage, and also run git daemon as non-root.
-$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
-	mkdir -p $@
-	git init --bare $@
-
-$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
 
 OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
 
@@ -497,8 +519,8 @@ else
 
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
 
-$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) $(OBJ_DATA_DIR) tools/muen-mkdiskimage.sh
-	tools/muen-mkdiskimage.sh $@ $< $(OBJ_DATA_DIR)
+$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/muen-mkdiskimage.sh
+	tools/muen-mkdiskimage.sh $@ $<
 
 .PHONY: build
 build: $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
