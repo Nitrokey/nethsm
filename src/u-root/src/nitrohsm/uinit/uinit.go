@@ -20,6 +20,10 @@ import (
 // s represents our global Script context.
 var s = Script.New()
 
+// UID and GID that the Git server is run as. We use 1 (coventionally,
+// "daemon").
+var GIT_UIDGID = 1
+
 // Load muenfs kernel module and mount /muenfs.
 // Uses global Script context.
 func mountMuenFs() {
@@ -297,7 +301,7 @@ func storageActions() {
 	}
 
 	s.Logf("Starting Git server")
-	s.BackgroundExecf("/bin/git daemon --base-path=/data/git --export-all --enable=receive-pack")
+	s.BackgroundExecAsf(GIT_UIDGID, "/bin/git daemon --base-path=/data/git --export-all --enable=receive-pack")
 
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)

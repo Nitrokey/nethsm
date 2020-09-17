@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 type Script struct {
@@ -74,10 +75,11 @@ func (s *Script) Execf(format string, a ...interface{}) {
 	}
 }
 
-// BackgroundExecf executes a fmt-formatted command in the background. No provision is
+// BackgroundExecAsf executes a fmt-formatted command in the background. No provision is
 // made for retrieving it's exit status, however the child is reaped and a message is
-// logged on exit.
-func (s *Script) BackgroundExecf(format string, a ...interface{}) {
+// logged on exit. If uidgid is not -1, the command is executed with an UID
+// and GID equal to uidgid.
+func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
 	if s.err != nil {
 		return
 	}
@@ -93,6 +95,11 @@ func (s *Script) BackgroundExecf(format string, a ...interface{}) {
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	// Does go have an option type? Could use that instead of -1.
+	if uidgid != -1 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
+	}
 	if err := cmd.Start(); err != nil {
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
 	}
@@ -104,6 +111,10 @@ func (s *Script) BackgroundExecf(format string, a ...interface{}) {
 			log.Printf("Background process '%s' exited", cmdSplit[0])
 		}
 	}(cmd)
+}
+
+func (s *Script) BackgroundExecf(format string, a ...interface{}) {
+	s.BackgroundExecAsf(-1, format, a)
 }
 
 // ReadLine reads a line from standard input.
