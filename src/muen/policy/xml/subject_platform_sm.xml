@@ -1,4 +1,4 @@
-<subject name="storage_sm">
+<subject name="platform_sm">
  <events>
   <source>
    <group name="vmx_exit">
@@ -13,15 +13,15 @@
   </source>
  </events>
  <monitor>
-  <state subject="storage_linux" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
-  <loader logical="reload" subject="storage_sm" virtualAddress="16#0000#"/>
+  <state subject="platform" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+  <loader logical="reload" subject="platform_sm" virtualAddress="16#0000#"/>
  </monitor>
  <component ref="sm">
   <map logical="time_info" physical="time_info"/>
-  <map logical="debuglog" physical="debuglog_storage_linux"/>
+  <map logical="debuglog" physical="debuglog_platform"/>
   <if variable="pciconf_emulation_enabled" value="true">
-   <map logical="dm_pciconf_req" physical="storage_dm_request"/>
-   <map logical="dm_pciconf_res" physical="storage_dm_response"/>
+   <map logical="dm_pciconf_req" physical="platform_dm_request"/>
+   <map logical="dm_pciconf_res" physical="platform_dm_response"/>
   </if>
   <map logical="resume_subject" physical="resume_linux_2"/>
   <map logical="handle_subject_trap" physical="trap_to_sm_2"/>

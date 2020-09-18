@@ -111,8 +111,8 @@ func dumpNetworkStatus() {
 	s.Execf("/bbin/ip route")
 }
 
-// nicActions are executed for "nic_linux".
-func nicActions() {
+// sNetExternalActions are executed for S-Net-External.
+func sNetExternalActions() {
 	mountMuenFs()
 	s.Logf("Channels:")
 	s.Execf("/bbin/ls -l /muenfs")
@@ -261,8 +261,8 @@ func extractCpioArchive(archiveFile string, destDir string) (err error) {
 	return nil
 }
 
-// storageActions are executed for "storage_linux".
-func storageActions() {
+// sPlatformActions are executed for S-Platform.
+func sPlatformActions() {
 	c := make(chan string)
 	go platformListener(c, "tcp", ":1023")
 
@@ -372,10 +372,10 @@ func main() {
 	}
 
 	switch hostname {
-	case "nic_linux":
-		nicActions()
-	case "storage_linux":
-		storageActions()
+	case "net_external":
+		sNetExternalActions()
+	case "platform":
+		sPlatformActions()
 	case "mock":
 		mockActions()
 	default:

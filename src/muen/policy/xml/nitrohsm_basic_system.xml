@@ -1,6 +1,5 @@
 <!--
-  Muen system policy for a basic NitroHSM, i.e. one with nic_linux serving as
-  S-Net-External, and storage_linux serving as S-Kitchen-Sink.
+  Muen system policy for a basic NitroHSM system.
 
   TODO: Consider dropping dependency on or using a copy of upstream's
   mirageos/cspec_src.xml, in order to be 100% self-contained?
@@ -41,16 +40,16 @@
   <channels>
     <channel name="time_info" size="16#1000#"/>
 
-    <channel name="debuglog_nic_linux" size="$logchannel_size"/>
-    <channel name="debuglog_storage_linux" size="$logchannel_size"/>
+    <channel name="debuglog_net_external" size="$logchannel_size"/>
+    <channel name="debuglog_platform" size="$logchannel_size"/>
     <channel name="debuglog_time" size="$logchannel_size"/>
-    <channel name="debuglog_unikernel_sm" size="$logchannel_size"/>
-    <channel name="debuglog_unikernel" size="$logchannel_size"/>
+    <channel name="debuglog_keyfender_sm" size="$logchannel_size"/>
+    <channel name="debuglog_keyfender" size="$logchannel_size"/>
 
-    <channel name="unikernel_external_in" size="16#0010_0000#"/>
-    <channel name="unikernel_external_out" size="16#0010_0000#"/>
-    <channel name="unikernel_internal_in" size="16#0010_0000#"/>
-    <channel name="unikernel_internal_out" size="16#0010_0000#"/>
+    <channel name="keyfender_external_in" size="16#0010_0000#"/>
+    <channel name="keyfender_external_out" size="16#0010_0000#"/>
+    <channel name="keyfender_internal_in" size="16#0010_0000#"/>
+    <channel name="keyfender_internal_out" size="16#0010_0000#"/>
   </channels>
   <components>
     <!--
@@ -60,8 +59,8 @@
     <include href="component_unikernel.xml"/>
   </components>
   <subjects>
-    <include href="subject_nic_sm.xml"/>
-    <include href="subject_storage_sm.xml"/>
+    <include href="subject_net_external_sm.xml"/>
+    <include href="subject_platform_sm.xml"/>
     <include href="subject_time.xml"/>
     <subject name="dbgserver">
       <events>
@@ -74,16 +73,16 @@
         </source>
       </events>
       <component ref="dbgserver">
-        <map logical="log_channel1" physical="debuglog_nic_linux"/>
-        <map logical="log_channel2" physical="debuglog_storage_linux"/>
+        <map logical="log_channel1" physical="debuglog_net_external"/>
+        <map logical="log_channel2" physical="debuglog_platform"/>
         <map logical="log_channel3" physical="debuglog_time"/>
-        <map logical="log_channel4" physical="debuglog_unikernel_sm"/>
-        <map logical="log_channel5" physical="debuglog_unikernel"/>
+        <map logical="log_channel4" physical="debuglog_keyfender_sm"/>
+        <map logical="log_channel5" physical="debuglog_keyfender"/>
         <include href="subject_dbgserver_common.xml"/>
       </component>
     </subject>
-    <subject name="nic_linux">
-      <bootparams>console=ttyS0 pci=noearly uroot.uinitargs=nic_linux</bootparams>
+    <subject name="net_external">
+      <bootparams>console=ttyS0 pci=noearly uroot.uinitargs=net_external</bootparams>
       <memory>
         <memory logical="initramfs" physical="initramfs" virtualAddress="16#9000_0000#" writable="false" executable="false"/>
       </memory>
@@ -113,16 +112,16 @@
         </target>
       </events>
       <channels>
-        <writer logical="external|in" physical="unikernel_external_in" virtualAddress="16#000e_0300_0000#"/>
-        <reader logical="external|out" physical="unikernel_external_out" virtualAddress="16#000e_0310_0000#"/>
+        <writer logical="external|in" physical="keyfender_external_in" virtualAddress="16#000e_0300_0000#"/>
+        <reader logical="external|out" physical="keyfender_external_out" virtualAddress="16#000e_0310_0000#"/>
       </channels>
       <component ref="linux">
-        <map logical="lowmem" physical="nic_linux|lowmem"/>
-        <map logical="ram" physical="nic_linux|ram"/>
+        <map logical="lowmem" physical="net_external|lowmem"/>
+        <map logical="ram" physical="net_external|ram"/>
       </component>
     </subject>
-    <subject name="storage_linux">
-      <bootparams>console=ttyS0 pci=noearly uroot.uinitargs=storage_linux</bootparams>
+    <subject name="platform">
+      <bootparams>console=ttyS0 pci=noearly uroot.uinitargs=platform</bootparams>
       <memory>
         <memory logical="initramfs" physical="initramfs" virtualAddress="16#9000_0000#" writable="false" executable="false"/>
       </memory>
@@ -160,15 +159,15 @@
         </target>
       </events>
       <channels>
-        <writer logical="internal|in" physical="unikernel_internal_in" virtualAddress="16#000e_0320_0000#"/>
-        <reader logical="internal|out" physical="unikernel_internal_out" virtualAddress="16#000e_0330_0000#"/>
+        <writer logical="internal|in" physical="keyfender_internal_in" virtualAddress="16#000e_0320_0000#"/>
+        <reader logical="internal|out" physical="keyfender_internal_out" virtualAddress="16#000e_0330_0000#"/>
       </channels>
       <component ref="linux">
-        <map logical="lowmem" physical="storage_linux|lowmem"/>
-        <map logical="ram" physical="storage_linux|ram"/>
+        <map logical="lowmem" physical="platform|lowmem"/>
+        <map logical="ram" physical="platform|ram"/>
       </component>
     </subject>
-    <subject name="unikernel_sm">
+    <subject name="keyfender_sm">
       <events>
         <source>
           <group name="vmx_exit">
@@ -179,19 +178,19 @@
         </source>
       </events>
       <monitor>
-        <state subject="unikernel" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
-        <loader logical="reload" subject="unikernel_sm" virtualAddress="16#0000#"/>
+        <state subject="keyfender" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+        <loader logical="reload" subject="keyfender_sm" virtualAddress="16#0000#"/>
       </monitor>
       <component ref="sm">
         <map logical="time_info" physical="time_info"/>
-        <map logical="debuglog" physical="debuglog_unikernel_sm"/>
-	<map logical="resume_subject" physical="resume_unikernel_1"/>
-	<map logical="handle_subject_trap" physical="trap_to_sm_3"/>
-        <map logical="status" physical="status_unikernel_sm"/>
-        <map logical="control" physical="control_unikernel_sm"/>
+        <map logical="debuglog" physical="debuglog_keyfender_sm"/>
+        <map logical="resume_subject" physical="resume_unikernel_1"/>
+        <map logical="handle_subject_trap" physical="trap_to_sm_3"/>
+        <map logical="status" physical="status_keyfender_sm"/>
+        <map logical="control" physical="control_keyfender_sm"/>
       </component>
     </subject>
-    <subject name="unikernel">
+    <subject name="keyfender">
       <vcpu> <!-- <vcpu> must come first -->
         <vmx>
           <controls>
@@ -215,11 +214,11 @@
       </events>
       <component ref="unikernel">
         <map logical="time_info" physical="time_info"/>
-        <map logical="debuglog" physical="debuglog_unikernel"/>
-        <map logical="external|in" physical="unikernel_external_in"/>
-        <map logical="external|out" physical="unikernel_external_out"/>
-        <map logical="internal|in" physical="unikernel_internal_in"/>
-        <map logical="internal|out" physical="unikernel_internal_out"/>
+        <map logical="debuglog" physical="debuglog_keyfender"/>
+        <map logical="external|in" physical="keyfender_external_in"/>
+        <map logical="external|out" physical="keyfender_external_out"/>
+        <map logical="internal|in" physical="keyfender_internal_in"/>
+        <map logical="internal|out" physical="keyfender_internal_out"/>
       </component>
     </subject>
   </subjects>
@@ -231,37 +230,37 @@
     <majorFrame>
       <cpu id="0">
         <minorFrame subject="tau0" ticks="5"/>
-        <minorFrame subject="unikernel" ticks="40"/>
+        <minorFrame subject="keyfender" ticks="40"/>
         <minorFrame subject="dbgserver" ticks="5"/>
-        <minorFrame subject="unikernel" ticks="40"/>
+        <minorFrame subject="keyfender" ticks="40"/>
         <minorFrame subject="dbgserver" ticks="5"/>
       </cpu>
       <cpu id="1">
         <minorFrame subject="time" ticks="5"/>
-        <minorFrame subject="nic_linux" ticks="15"/>
-        <minorFrame subject="storage_linux" ticks="15"/>
-        <minorFrame subject="nic_linux" ticks="15"/>
-        <minorFrame subject="storage_linux" ticks="15"/>
-        <minorFrame subject="nic_linux" ticks="15"/>
-        <minorFrame subject="storage_linux" ticks="15"/>
+        <minorFrame subject="net_external" ticks="15"/>
+        <minorFrame subject="platform" ticks="15"/>
+        <minorFrame subject="net_external" ticks="15"/>
+        <minorFrame subject="platform" ticks="15"/>
+        <minorFrame subject="net_external" ticks="15"/>
+        <minorFrame subject="platform" ticks="15"/>
       </cpu>
     </majorFrame>
     <majorFrame>
       <cpu id="0">
          <minorFrame subject="tau0" ticks="5"/>
-         <minorFrame subject="unikernel" ticks="40"/>
+         <minorFrame subject="keyfender" ticks="40"/>
          <minorFrame subject="dbgserver" ticks="5"/>
-         <minorFrame subject="unikernel" ticks="40"/>
+         <minorFrame subject="keyfender" ticks="40"/>
          <minorFrame subject="dbgserver" ticks="5"/>
       </cpu>
       <cpu id="1">
-         <minorFrame subject="nic_linux" ticks="5"/>
-         <minorFrame subject="storage_linux" ticks="15"/>
-         <minorFrame subject="nic_linux" ticks="15"/>
-         <minorFrame subject="storage_linux" ticks="15"/>
-         <minorFrame subject="nic_linux" ticks="15"/>
-         <minorFrame subject="storage_linux" ticks="15"/>
-         <minorFrame subject="nic_linux" ticks="15"/>
+         <minorFrame subject="net_external" ticks="5"/>
+         <minorFrame subject="platform" ticks="15"/>
+         <minorFrame subject="net_external" ticks="15"/>
+         <minorFrame subject="platform" ticks="15"/>
+         <minorFrame subject="net_external" ticks="15"/>
+         <minorFrame subject="platform" ticks="15"/>
+         <minorFrame subject="net_external" ticks="15"/>
       </cpu>
     </majorFrame>
   </scheduling>
