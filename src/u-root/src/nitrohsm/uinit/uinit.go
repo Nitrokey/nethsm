@@ -283,7 +283,7 @@ func storageActions() {
 
 	s.Logf("Mounting /data")
 	s.Execf("/bbin/mkdir -p /data")
-	s.Execf("/bbin/mount -t ext4 /dev/sda2 /data")
+	s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid /dev/sda2 /data")
 
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
