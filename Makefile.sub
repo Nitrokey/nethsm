@@ -600,6 +600,8 @@ clean: clean-keyfender
 	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory distclean
 	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
+# The above does not clean up the checked-out GRUB 2 properly, so do it here
+	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2
 	$(MAKE) -C src/git --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
