@@ -399,7 +399,8 @@ OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
 $(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
 	cd $(OBJ_DATA_DIR) && \
 	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
-	touch $(OBJ_DATA_DIR)/initialised-v1
+# Workaround for https://github.com/u-root/u-root/issues/1838
+	echo dummy > $(OBJ_DATA_DIR)/initialised-v1
 	cd $(OBJ_DATA_DIR) && \
 	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
 
@@ -415,7 +416,17 @@ OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
 U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
 U_ROOT_UINIT := nitrohsm/uinit
-U_ROOT_PKGS := core $(U_ROOT_UINIT)
+# XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
+U_ROOT_PKGS := github.com/u-root/u-root/cmds/core/init \
+    github.com/u-root/u-root/cmds/core/cpio \
+    github.com/u-root/u-root/cmds/core/insmod \
+    github.com/u-root/u-root/cmds/core/ip \
+    github.com/u-root/u-root/cmds/core/ls \
+    github.com/u-root/u-root/cmds/core/mkdir \
+    github.com/u-root/u-root/cmds/core/mount \
+    github.com/u-root/u-root/cmds/core/shutdown \
+    github.com/u-root/u-root/cmds/core/umount \
+    $(U_ROOT_UINIT)
 
 # Rather than using "export GOPATH" and thus potentially polluting the
 # environment of *all* Makefiles called from this Makefile, ensure it is set
@@ -426,7 +437,8 @@ $(U_ROOT_BIN):
 $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_DATA_CPIO)
 	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
-	    -files "$(OBJ_INITRAMFS_DIR):/" \
+	    -defaultsh="" \
+	    -files "$(OBJ_INITRAMFS_DIR):." \
 	    $(U_ROOT_PKGS)
 	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
 

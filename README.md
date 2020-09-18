@@ -140,7 +140,7 @@ export PATH=/opt/gnat/bin:/opt/spark/bin:$PATH
 
 **U-Root and initramfs for Linux subjects**
 
-Install Go 1.12.x from the binary [packages](https://golang.org/dl), and ensure that `go` is in your `$PATH`. You do _not_ need to set `$GOPATH`, the build system will use its own internal value for this.
+Install Go 1.14.x from the binary [packages](https://golang.org/dl), and ensure that `go` is in your `$PATH`. You do _not_ need to set `$GOPATH`, the build system will use its own internal value for this.
 
 Install a Musl libc toolchain, from the [musl.cc](https://musl.cc/) website, specifically the x86\_64 to x86\_64 "cross" [toolchain](https://musl.cc/x86_64-linux-musl-cross.tgz). This is used to cross-compile a static `git` for the initramfs. Normally installed in `/usr/local`, ensure that the `bin` directory is in your `$PATH`.
 
