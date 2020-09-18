@@ -47,9 +47,6 @@
     <channel name="debuglog_unikernel_sm" size="$logchannel_size"/>
     <channel name="debuglog_unikernel" size="$logchannel_size"/>
 
-    <if variable="dbgserver_sink_shmem" value="true">
-      <channel name="debug_shm_sink_memory" size="16#0002_0000#"/>
-    </if>
     <channel name="unikernel_external_in" size="16#0010_0000#"/>
     <channel name="unikernel_external_out" size="16#0010_0000#"/>
     <channel name="unikernel_internal_in" size="16#0010_0000#"/>
@@ -130,7 +127,6 @@
         <memory logical="initramfs" physical="initramfs" virtualAddress="16#9000_0000#" writable="false" executable="false"/>
       </memory>
       <devices>
-        <device logical="xhci" physical="usb_controller_1"/>
         <device logical="storage_controller" physical="storage_controller">
           <pci bus="16#00#" device="16#1f#" function="0"/>
         </device>
