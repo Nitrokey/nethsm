@@ -24,11 +24,35 @@ var s = Script.New()
 // "daemon").
 var GIT_UIDGID = 1
 
+// Returns the current kernel release (a.k.a. "uname -r").
+func getKernelRelease() string {
+	toString := func(f [65]int8) string {
+		out := make([]byte, 0, 64)
+		for _, v := range f[:] {
+			if v == 0 {
+				break
+			}
+			out = append(out, uint8(v))
+		}
+		return string(out)
+	}
+
+	var u syscall.Utsname
+	if err := syscall.Uname(&u); err != nil {
+		log.Fatalf("Could not determine kernel release: %v", err)
+		return ""
+	}
+	return toString(u.Release)
+}
+
+// Current kernel release.
+var kernelRelease = getKernelRelease()
+
 // Load muenfs kernel module and mount /muenfs.
 // Uses global Script context.
 func mountMuenFs() {
 	s.Logf("Loading muenfs")
-	s.Execf("/bbin/insmod /lib/modules/4.18.5-muen/extra/muenfs.ko")
+	s.Execf("/bbin/insmod /lib/modules/" + kernelRelease + "/extra/muenfs.ko")
 	s.Execf("/bbin/mkdir -p /muenfs")
 	s.Execf("/bbin/mount -t muenfs none /muenfs")
 }
@@ -37,7 +61,7 @@ func mountMuenFs() {
 // Uses global Script context.
 func mountMuenEvents() {
 	s.Logf("Loading muenevents")
-	s.Execf("/bbin/insmod /lib/modules/4.18.5-muen/extra/muenevents.ko")
+	s.Execf("/bbin/insmod /lib/modules/" + kernelRelease + "/extra/muenevents.ko")
 	s.Execf("/bbin/mkdir -p /muenevents")
 	s.Execf("/bbin/mount -t muenevents none /muenevents")
 }
@@ -93,7 +117,7 @@ func loadUnikernelNets() {
 			flags = append(flags, "eth_dev")
 		}
 		join := func(a []string) string { return strings.Join(a, ",") }
-		s.Execf("/bbin/insmod /lib/modules/4.18.5-muen/extra/muennet.ko "+
+		s.Execf("/bbin/insmod /lib/modules/"+kernelRelease+"/extra/muennet.ko "+
 			"name=%s in=%s out=%s reader_protocol=%s writer_protocol=%s flags=%s",
 			join(names), join(inChannels), join(outChannels),
 			join(readerProtos), join(writerProtos), join(flags))
@@ -352,6 +376,7 @@ func sPlatformActions() {
 
 // mockActions are executed when testing (run with an argument of "mock").
 func mockActions() {
+	log.Printf("Kernel release is: %s", kernelRelease)
 	s.BackgroundExecf("sleep 5")
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)

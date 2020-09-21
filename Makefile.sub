@@ -300,15 +300,14 @@ else ifeq ($(XMODE),muen)
 # ------------------------------------------------------------------------------
 
 POLICY_DIR=$(TOP_DIR)/src/muen/policy
+MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/linux/config-5.4-$(MUEN_TARGET)
 ifeq ($(MUEN_TARGET),qemu-kvm)
 MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
 MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
-MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/muen/components/linux/config/linux64-4.18
 COREBOOT_CONFIG=configs/config.nitrohsm_qemu_q35
 else ifeq ($(MUEN_TARGET),supermicro-x11ssh-tf)
 MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
 MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
-MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/linux/config-4.18-$(MUEN_TARGET)
 COREBOOT_CONFIG=configs/config.nitrohsm_supermicro_x11_ssh_tf
 else
 $(error Invalid MUEN_TARGET)
@@ -599,6 +598,8 @@ endif # QEMU/KVM
 clean: clean-keyfender
 	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory distclean
+# Remove the Linux kernel configuration to ensure a reconfigure/rebuild if it changes
+	$(RM) src/muen/muen/components/linux/src/.config*
 	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
 # The above does not clean up the checked-out GRUB 2 properly, so do it here
 	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2

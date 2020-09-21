@@ -114,7 +114,7 @@ func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) 
 }
 
 func (s *Script) BackgroundExecf(format string, a ...interface{}) {
-	s.BackgroundExecAsf(-1, format, a)
+	s.BackgroundExecAsf(-1, format, a...)
 }
 
 // ReadLine reads a line from standard input.
