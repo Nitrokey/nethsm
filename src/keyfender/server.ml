@@ -107,7 +107,7 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
     let uri = Cohttp.Request.uri request in
     let new_uri = Uri.with_scheme uri (Some "https") in
     let new_uri = Uri.with_port new_uri (if port = 443 then None else Some port) in
-    Logs.info (fun f -> f "[%s] -> [%s]"
+    Access_log.debug (fun f -> f "[%s] -> [%s]"
                       (Uri.to_string uri) (Uri.to_string new_uri)
                   );
     let headers = Cohttp.Header.init_with "location" (Uri.to_string new_uri) in
@@ -115,15 +115,15 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
 
   let serve cb =
     let callback (_, cid) ip request body =
-      Logs.warn (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
+      Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
       let uri = Cohttp.Request.uri request in
       let cid = Cohttp.Connection.to_string cid in
-      Logs.info (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
+      Access_log.debug (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
       cb ip request body
     in
     let conn_closed (_,cid) =
       let cid = Cohttp.Connection.to_string cid in
-      Logs.info (fun f -> f "[%s] closing" cid);
+      Access_log.debug (fun f -> f "[%s] closing" cid);
     in
     Http.make ~conn_closed ~callback ()
 
