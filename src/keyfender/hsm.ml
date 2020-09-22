@@ -517,6 +517,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let write_lock = Lwt_mutex.create ()
 
+  let with_write_lock f =
+    let open Lwt.Infix in
+    Lwt_mutex.with_lock write_lock
+      (fun () ->
+         try f () >|= fun k -> Metrics.write (); k with
+         | Invalid_argument txt ->
+           Log.err (fun m -> m "Error while writing to key-value store: %s" txt);
+           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
+
   let set_time_offset kv timestamp =
     Clock.set timestamp;
     let span = Clock.get_offset () in
@@ -678,8 +687,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let write store id user =
       let user_str = Yojson.Safe.to_string (user_to_yojson user) in
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Write user" Encrypted_store.pp_write_error
             (Encrypted_store.set store (Mirage_kv.Key.v id) user_str))
 
@@ -757,12 +765,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Remove user" Encrypted_store.pp_write_error
             (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
-
 
     let set_passphrase t ~id ~passphrase =
       let open Lwt_result.Infix in
@@ -864,31 +870,33 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let dump_keys t =
       let open Lwt.Infix in
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           let store = key_store t in
           KV.batch t.kv (fun b ->
               Hashtbl.fold (fun id _ x ->
-                  x >>= fun () ->
-                  get_key t id >>= function
-                  | Error (_, msg) ->
-                    (* this should not happen *)
-                    Log.err (fun m -> m "error %s while retrieving key %s"
-                                msg id);
-                    Lwt.return_unit
-                  | Ok k ->
-                    let k_v_key, k_v_value =
-                      Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
-                        (Yojson.Safe.to_string (key_to_yojson k))
-                    in
-                    KV.set b k_v_key k_v_value >>= function
-                    | Ok () -> Lwt.return_unit
-                    | Error e ->
-                      Log.err (fun m -> m "error %a while writing key %s"
-                                  KV.pp_write_error e id);
-                      Lwt.return_unit)
-                cached_operations Lwt.return_unit)) >|= fun () ->
-      Hashtbl.clear cached_operations
+                  x >>= function
+                  | Error e -> Lwt.return (Error e)
+                  | Ok () ->
+                    get_key t id >>= function
+                    | Error (_, msg) ->
+                      (* this should not happen *)
+                      Log.err (fun m -> m "error %s while retrieving key %s"
+                                  msg id);
+                      Lwt.return (Ok ())
+                    | Ok k ->
+                      let k_v_key, k_v_value =
+                        Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
+                          (Yojson.Safe.to_string (key_to_yojson k))
+                      in
+                      KV.set b k_v_key k_v_value >>= function
+                      | Ok () -> Lwt.return (Ok ())
+                      | Error e ->
+                        Log.err (fun m -> m "error %a while writing key %s"
+                                    KV.pp_write_error e id);
+                        Lwt.return (Ok ()))
+                cached_operations (Lwt.return (Ok ())))) >|= function
+      | Ok () -> Hashtbl.clear cached_operations
+      | Error _ -> ()
 
     let encode_and_write t id key =
       let store = key_store t
@@ -896,8 +904,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       and kv_key = Mirage_kv.Key.v id
       in
       Hashtbl.remove cached_operations id;
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Write key" Encrypted_store.pp_write_error
             (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
@@ -963,8 +970,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       let store = key_store t in
       Hashtbl.remove cached_operations id;
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Remove key" Encrypted_store.pp_write_error
             (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
@@ -1152,8 +1158,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
-    Lwt_mutex.with_lock write_lock (fun () ->
-        Metrics.write ();
+    with_write_lock (fun () ->
         KV.batch t.kv (fun b ->
             internal_server_error
               "Initializing configuration store" KV.pp_write_error
@@ -1213,8 +1218,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational keys ->
         let open Lwt_result.Infix in
         let unlock_salt, unlock_key = salted passphrase in
-        Lwt_mutex.with_lock write_lock (fun () ->
-            Metrics.write ();
+        with_write_lock (fun () ->
             KV.batch t.kv (fun b ->
                 internal_server_error "Write unlock salt" KV.pp_write_error
                   (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
@@ -1235,8 +1239,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       (* (c) add or remove to domain_key store *)
       match t.state with
       | Operational keys ->
-        Lwt_mutex.with_lock write_lock (fun () ->
-            Metrics.write ();
+        with_write_lock (fun () ->
             internal_server_error "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
@@ -1298,8 +1301,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
           | Ok _ ->
             let open Lwt_result.Infix in
-            Lwt_mutex.with_lock write_lock (fun () ->
-                Metrics.write ();
+            with_write_lock (fun () ->
                 internal_server_error "Write certificate" KV.pp_write_error
                   (Config_store.set t.kv Certificate (cert, chain))) >>= fun r ->
             t.cert <- cert; t.chain <- chain;
@@ -1343,8 +1345,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         else
           Some network.gateway
       in
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Write network configuration" KV.pp_write_error
             Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route))) >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Network (prefix, route))) >|= fun () ->
@@ -1370,8 +1371,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let set_log t log =
       let open Lwt_result.Infix in
-      Lwt_mutex.with_lock write_lock (fun () ->
-          Metrics.write ();
+      with_write_lock (fun () ->
           internal_server_error "Write log config" KV.pp_write_error
             (Config_store.set t.kv Log_config (log.Json.ipAddress, log.port, log.logLevel))) >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () ->
@@ -1389,8 +1389,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational _keys ->
         let open Lwt_result.Infix in
         let backup_salt, backup_key = salted passphrase in
-        Lwt_mutex.with_lock write_lock (fun () ->
-            Metrics.write ();
+        with_write_lock (fun () ->
             KV.batch t.kv (fun b ->
                 internal_server_error "Write backup salt" KV.pp_write_error
                   (Config_store.set b Backup_salt backup_salt) >>= fun () ->
@@ -1401,7 +1400,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      Lwt_mutex.with_lock write_lock (fun () -> Metrics.write (); set_time_offset t.kv time)
+      with_write_lock (fun () -> set_time_offset t.kv time)
   end
 
   module System = struct
@@ -1634,8 +1633,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok version ->
         match Version.of_string (Cstruct.to_string version) with
         | Ok v when Version.compare backup_version v = `Equal ->
-          Lwt_mutex.with_lock write_lock (fun () ->
-              Metrics.write ();
+          with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   begin
                     let rec next stream =
