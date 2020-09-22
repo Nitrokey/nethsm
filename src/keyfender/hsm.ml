@@ -619,50 +619,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       end
     | None | Some false -> Lwt.return (Ok Locked)
 
-  let boot ~device_id kv =
-    Metrics.set_mem_reporter ();
-    let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
-    and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
-    and has_changes = None
-    and mbox = Lwt_mvar.create_empty ()
-    in
-    let open Lwt.Infix in
-    begin
-      let open Lwt_result.Infix in
-      lwt_error_to_msg ~pp_error:Config_store.pp_error
-        (Config_store.get_opt kv Version) >>= function
-      | None ->
-        (* uninitialized / unprovisioned device *)
-        let state = Unprovisioned
-        and cert, key = generate_cert ()
-        and chain = []
-        in
-        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id } in
-        Lwt.return (Ok t)
-      | Some version ->
-        match Version.(compare current version) with
-        | `Equal ->
-          boot_config_store kv device_id >>= fun state ->
-          certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id }
-        | `Smaller ->
-          let msg =
-            "store has higher version than software, please update software version"
-          in
-          Lwt.return (Error (`Msg msg))
-        | `Greater ->
-          (* here's the place to embed migration code, at least for the
-             configuration store *)
-          let msg =
-            "store has smaller version than software, data will be migrated!"
-          in
-          Lwt.return (Error (`Msg msg))
-    end >|= function
-    | Ok t -> t, t.mbox
-    | Error `Msg msg ->
-      Log.err (fun m -> m "error booting %s" msg);
-      invalid_arg "broken NitroHSM"
-
   let info t = t.info
 
   let own_cert t =
@@ -887,11 +843,59 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       operations : int ;
     } [@@deriving yojson]
 
+    (* boilerplate for dumping keys whose operations changed *)
+    let cached_operations = Hashtbl.create 7
+
+    let get_key t id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      let key = Mirage_kv.Key.v id in
+      internal_server_error "Read key" Encrypted_store.pp_error
+        (Encrypted_store.get store key) >>= fun key_raw ->
+      Lwt.return (match Json.decode key_of_yojson key_raw with
+          | Ok k ->
+            let operations =
+              match Hashtbl.find_opt cached_operations id with
+              | None -> k.operations
+              | Some v -> v
+            in
+            Ok { k with operations }
+          | Error e -> Error (Internal_server_error, e))
+
+    let dump_keys t =
+      let open Lwt.Infix in
+      Lwt_mutex.with_lock write_lock (fun () ->
+          Metrics.write ();
+          let store = key_store t in
+          KV.batch t.kv (fun b ->
+              Hashtbl.fold (fun id _ x ->
+                  x >>= fun () ->
+                  get_key t id >>= function
+                  | Error (_, msg) ->
+                    (* this should not happen *)
+                    Log.err (fun m -> m "error %s while retrieving key %s"
+                                msg id);
+                    Lwt.return_unit
+                  | Ok k ->
+                    let k_v_key, k_v_value =
+                      Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
+                        (Yojson.Safe.to_string (key_to_yojson k))
+                    in
+                    KV.set b k_v_key k_v_value >>= function
+                    | Ok () -> Lwt.return_unit
+                    | Error e ->
+                      Log.err (fun m -> m "error %a while writing key %s"
+                                  KV.pp_write_error e id);
+                      Lwt.return_unit)
+                cached_operations Lwt.return_unit)) >|= fun () ->
+      Hashtbl.clear cached_operations
+
     let encode_and_write t id key =
       let store = key_store t
       and value = key_to_yojson key
       and kv_key = Mirage_kv.Key.v id
       in
+      Hashtbl.remove cached_operations id;
       Lwt_mutex.with_lock write_lock (fun () ->
           Metrics.write ();
           internal_server_error "Write key" Encrypted_store.pp_write_error
@@ -958,21 +962,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
+      Hashtbl.remove cached_operations id;
       Lwt_mutex.with_lock write_lock (fun () ->
           Metrics.write ();
           internal_server_error "Remove key" Encrypted_store.pp_write_error
             (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
-
-    let get_key t id =
-      let open Lwt_result.Infix in
-      let store = key_store t in
-      let key = Mirage_kv.Key.v id in
-      internal_server_error "Read key" Encrypted_store.pp_error
-        (Encrypted_store.get store key) >>= fun key_raw ->
-      Lwt.return (match Json.decode key_of_yojson key_raw with
-          | Ok k -> Ok k
-          | Error e -> Error (Internal_server_error, e))
 
     let get_json t ~id =
       let open Lwt_result.Infix in
@@ -1073,11 +1068,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
             | Some cs ->
               Metrics.key_op `Decrypt;
-              (* ignore potential write error *)
-              let open Lwt.Infix in
-              let key_data' = { key_data with operations = succ key_data.operations } in
-              encode_and_write t id key_data' >|= fun _ ->
-              Ok (Base64.encode_string @@ Cstruct.to_string cs)
+              Hashtbl.replace cached_operations id (succ key_data.operations);
+              Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string cs))
           end
         | Decrypt, _ | SignAndDecrypt, _ ->
           Lwt.return (Error (Bad_request, "Not an RSA key."))
@@ -1113,13 +1105,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                  | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Message to_sign_cs))
                  | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Message to_sign_cs))
                  | ED25519 -> Error (Bad_request, "Invalid sign mode and key type combination."))
-              >>= fun signature ->
+              >|= fun signature ->
               Metrics.key_op `Sign;
-              (* ignore potential write error *)
-              let open Lwt.Infix in
-              let key_data' = { key_data with operations = succ key_data.operations } in
-              encode_and_write t id key_data' >|= fun _ ->
-              Ok (Base64.encode_string @@ Cstruct.to_string signature)
+              Hashtbl.replace cached_operations id (succ key_data.operations);
+              Base64.encode_string @@ Cstruct.to_string signature
             with Mirage_crypto_pk.Rsa.Insufficient_key ->
               Lwt.return (Error (Bad_request, "Signing failure."))
           end
@@ -1128,11 +1117,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             | ED25519 ->
               let signature = Hacl_ed25519.sign key to_sign_cs in
               Metrics.key_op `Sign;
-              (* ignore potential write error *)
-              let open Lwt.Infix in
-              let key_data' = { key_data with operations = succ key_data.operations } in
-              encode_and_write t id key_data' >|= fun _ ->
-              Ok (Base64.encode_string @@ Cstruct.to_string signature)
+              Hashtbl.replace cached_operations id (succ key_data.operations);
+              Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
             | _ ->
               Lwt.return (Error (Bad_request, "Invalid sign mode and key type combination."))
           end
@@ -1421,9 +1407,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   module System = struct
     let system_info t = t.system_info
 
-    let reboot t = Lwt_mvar.put t.mbox Reboot
+    let reboot t =
+      let open Lwt.Infix in
+      Key.dump_keys t >>= fun () ->
+      Lwt_mvar.put t.mbox Reboot
 
-    let shutdown t = Lwt_mvar.put t.mbox Shutdown
+    let shutdown t =
+      let open Lwt.Infix in
+      Key.dump_keys t >>= fun () ->
+      Lwt_mvar.put t.mbox Shutdown
 
     let reset t = Lwt_mvar.put t.mbox Reset
 
@@ -1672,4 +1664,57 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           in
           Lwt.return @@ Error (Bad_request, msg)
   end
+
+  let boot ~device_id kv =
+    Metrics.set_mem_reporter ();
+    let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
+    and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
+    and has_changes = None
+    and mbox = Lwt_mvar.create_empty ()
+    in
+    let open Lwt.Infix in
+    begin
+      let open Lwt_result.Infix in
+      lwt_error_to_msg ~pp_error:Config_store.pp_error
+        (Config_store.get_opt kv Version) >>= function
+      | None ->
+        (* uninitialized / unprovisioned device *)
+        let state = Unprovisioned
+        and cert, key = generate_cert ()
+        and chain = []
+        in
+        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id } in
+        Lwt.return (Ok t)
+      | Some version ->
+        match Version.(compare current version) with
+        | `Equal ->
+          boot_config_store kv device_id >>= fun state ->
+          certificate_chain kv >|= fun (cert, chain, key) ->
+          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id }
+        | `Smaller ->
+          let msg =
+            "store has higher version than software, please update software version"
+          in
+          Lwt.return (Error (`Msg msg))
+        | `Greater ->
+          (* here's the place to embed migration code, at least for the
+             configuration store *)
+          let msg =
+            "store has smaller version than software, data will be migrated!"
+          in
+          Lwt.return (Error (`Msg msg))
+    end >|= function
+    | Ok t ->
+      let dump_key_ops () =
+        let rec dump () =
+          Time.sleep_ns (Duration.of_hour 1) >>= fun () ->
+          Key.dump_keys t >>= dump
+        in
+        dump ()
+      in
+      Lwt.async dump_key_ops;
+      t, t.mbox
+    | Error `Msg msg ->
+      Log.err (fun m -> m "error booting %s" msg);
+      invalid_arg "broken NitroHSM"
 end
