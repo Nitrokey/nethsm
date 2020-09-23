@@ -9,6 +9,6 @@ echo "# 'uptime' 'gc major' 'malloc allocated' 'gc major collections' 'gc compac
 
 while true; do
     curl -s --insecure https://metrics:MetricsMetrics@192.168.1.1/api/v1/metrics |
-        jq --raw-output '[ .uptime, ."gc major bytes", ."total allocated space", ."gc major collections", ."gc compactions", ."http response total", ."kv write", ."http response time" ] | @csv' | sed -e 's/"//g' | sed -e 's/,/\t/g' >> $tmp;
+        jq --raw-output '[ .uptime, ."gc major bytes", ."total allocated space", ."gc major collections", ."gc compactions", ."http response total", ."kv write", ."http response time" ] | @csv' | tr -d '"' | tr ',' '\t' >> $tmp;
     sleep 1
 done
