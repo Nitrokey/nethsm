@@ -27,6 +27,7 @@ config/bootstrap
 config/chroot
 config/common
 config/source
+config/includes.chroot/etc/skel/bin/nitrohsm-install
 
 config/control
 

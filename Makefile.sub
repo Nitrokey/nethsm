@@ -530,8 +530,8 @@ else
 
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
 
-$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/muen-mkdiskimage.sh
-	tools/muen-mkdiskimage.sh $@ $<
+$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nitrohsm-install.sh
+	tools/nitrohsm-install.sh -f -E 1G $@ $<
 
 .PHONY: build
 build: $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
