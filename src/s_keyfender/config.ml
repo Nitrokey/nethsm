@@ -51,12 +51,11 @@ let external_arp = arp external_eth
 
 let main =
   let packages = [
-    package ~build:true ~min:"3.8.0" ~max:"3.8.1" "mirage" ;
     package "keyfender";
     package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
     package "conduit-mirage";
     package "cohttp-mirage";
-    package ~min:"3.8.0" "mirage-runtime";
+    package ~min:"3.8.1" "mirage-runtime";
     package ~min:"2.0.0" "irmin-mirage";
     package ~min:"2.0.0" "irmin-mirage-git";
     package ~sublibs:["mirage"] "logs-syslog";

@@ -49,7 +49,7 @@ depends: [
   "duration"
   "conduit-mirage" #{with-test}
   "cohttp-mirage" #{with-test}
-  "tcpip" #{with-test}
+  "tcpip" {>= "5.0.1"} #{with-test}
   "mirage-clock-unix" #{with-test}
   "io-page-unix" #{with-test}
   "mirage-kv-mem" #{with-test}
@@ -63,5 +63,4 @@ pin-depends: [
   ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
   ["webmachine.dev" "git+https://github.com/roburio/ocaml-webmachine.git#nitrokey"]
   ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc"]
-  ["tcpip.5.0.99~dev" "git+https://github.com/hannesm/mirage-tcpip.git#tcp-disconnect"]
 ]
