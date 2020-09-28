@@ -26,14 +26,34 @@ This is the default if a `MODE` is not specified to `make`.
 
 **Requirements:**
 
-Opam >= 2.0.0 and OCaml >= 4.08.0 and mirage >= 3.8.0 is required.
+Opam >= 2.0.0 and OCaml >= 4.10.0 and mirage >= 3.8.1 is required.
+
+To ensure you're on an up-to-date opam repository, execute:
+
+```
+opam update
+```
 
 ### Building
 
-To build the system for local development work, run:
+To build the system for local development work, run in a fresh opam switch and a fresh clone of this repository:
 
 ```
 make build
+```
+
+#### Build issues
+
+If you encounter build issues, this may be due to a dirty repository. To clean it, please execute:
+
+```
+make distclean
+```
+
+Check that you don't have any pinned opam packaages, the output of the following command should be empty:
+
+```
+opam pin
 ```
 
 ### Running
@@ -78,10 +98,9 @@ For OCaml there is a PPX (preprocessor) which can collect coverage information c
 To collect coverage information about the tests:
 
 1. install `bisect_ppx` (`opam install 'bisect_ppx>=2.1.0'`)
-2. `export BISECT_ENABLE=yes` in your shell
-3. `dune runtest`
-4. `mkdir -p coverage && bisect-ppx-report html --source-path _build/default/src/keyfender -o coverage`
-5. browse to coverage/index.html
+2. `export MODE=test` in your shell
+3. `make coverage`
+5. browse to obj/coverage/index.html
 
 ## Muen System
 
