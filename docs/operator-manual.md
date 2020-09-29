@@ -24,9 +24,9 @@ Debug output is written to the serial console (multiplexed from the different su
 
 # Cryptographic parameters
 
-The keyfender library includes some choices of cryptographic parameters, in keyfender/crypto.ml. These should be adjusted before deployment:
-- RSA key size (for the TLS endpoint): 1024 (should be at least 2048)
-- PBKDF iterations: 1000 (should be at least 100_000), salt length 16 byte.
+The keyfender library includes some choices of cryptographic parameters, in keyfender/crypto.ml.
+- RSA key size (for the TLS endpoint): 2048
+- PBKDF iterations: 100_000, salt length 16 byte.
 
 The data stored on disk is encrypted with AES256-GCM (32 byte key, nonce size is 12, based on [stackexchange] this should be fine).
 
