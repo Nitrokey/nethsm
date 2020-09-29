@@ -1,4 +1,4 @@
-image: "ocaml/opam2:debian-10-ocaml-4.10"
+image: "ocaml/opam2:debian-10-ocaml-4.11"
 
 default:
   before_script:

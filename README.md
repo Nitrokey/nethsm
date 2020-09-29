@@ -26,7 +26,7 @@ This is the default if a `MODE` is not specified to `make`.
 
 **Requirements:**
 
-Opam >= 2.0.0 and OCaml >= 4.10.0 and mirage >= 3.8.1 is required.
+Opam >= 2.0.0 and OCaml >= 4.10.1 and mirage >= 3.8.1 is required. Recommended is the latest OCaml release, at the moment 4.11.1.
 
 To ensure you're on an up-to-date opam repository, execute:
 
