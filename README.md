@@ -44,16 +44,15 @@ make build
 
 #### Build issues
 
-If you encounter build issues, this may be due to a dirty repository. To clean it, please execute:
+If you encounter build issues, this may be due to a dirty repository or an opam switch issue. To recover, especially when the CI successfully build keyfender, please execute:
 
 ```
 make distclean
-```
-
-Check that you don't have any pinned opam packaages, the output of the following command should be empty:
-
-```
-opam pin
+opam switch remove nitrohsm
+opam update
+opam switch create nitrohsm 4.11.1
+eval $(opam env)
+make prepare
 ```
 
 ### Running
