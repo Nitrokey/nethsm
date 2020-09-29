@@ -40,6 +40,13 @@ let retry =
   let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
   Key.(create "retry" Arg.(opt bool false doc))
 
+let no_platform =
+  let doc =
+    Key.Arg.info ~doc:"Skip platform communication (do not use in production)."
+      ["no-platform"]
+  in
+  Key.(create "no-platform" Arg.(opt bool false doc))
+
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
    cannot yet connect the ip stack, but have to manually do that in the
@@ -61,7 +68,14 @@ let main =
     package ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
   ] in
-  let keys = Key.[ abstract http_port; abstract https_port; abstract remote; abstract retry ; abstract platform ; abstract platform_port ] in
+  let keys =
+    Key.[
+      abstract http_port; abstract https_port;
+      abstract remote;
+      abstract retry ;
+      abstract no_platform ; abstract platform ; abstract platform_port
+    ]
+  in
   foreign
     ~packages ~keys
     "Unikernel.Main"

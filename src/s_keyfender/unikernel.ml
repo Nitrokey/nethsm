@@ -54,50 +54,55 @@ struct
 
   module T = Internal_stack.TCPV4
   let write_platform stack cmd =
-    Log.debug (fun m -> m "sending %s to platform" cmd);
-    Lwt.pick [
-      (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
-       Log.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
-       Error `Timeout) ;
-      T.create_connection (Internal_stack.tcpv4 stack) (Key_gen.platform (), Key_gen.platform_port ()) >>= function
-      | Error e ->
-        Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
-      | Ok flow ->
-        T.write flow (Cstruct.of_string (cmd ^ "\n")) >>= function
-        | Error we ->
-          T.close flow >|= fun () ->
-          Error (`Write (Fmt.to_to_string T.pp_write_error we))
-        | Ok () ->
-          let rec read data =
-            T.read flow >>= function
-            | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
-            | Ok `Data d ->
-              let data' = Cstruct.append data d in
-              let str = Cstruct.to_string data' in
-              let get_data off str =
-                let str = Astring.String.drop ~min:off ~max:off str in
-                if Astring.String.is_prefix ~affix:" " str then
-                  Astring.String.drop ~min:1 ~max:1 str
+    if Key_gen.no_platform () then begin
+      Log.warn (fun m -> m "Communication to the platform has been disabled with '--no-platform'. This is not meant for production. Skipping to send %s, replying with the empty string." cmd);
+      Lwt.return (Ok "")
+    end else begin
+      Log.debug (fun m -> m "sending %s to platform" cmd);
+      Lwt.pick [
+        (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
+         Log.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
+         Error `Timeout) ;
+        T.create_connection (Internal_stack.tcpv4 stack) (Key_gen.platform (), Key_gen.platform_port ()) >>= function
+        | Error e ->
+          Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
+        | Ok flow ->
+          T.write flow (Cstruct.of_string (cmd ^ "\n")) >>= function
+          | Error we ->
+            T.close flow >|= fun () ->
+            Error (`Write (Fmt.to_to_string T.pp_write_error we))
+          | Ok () ->
+            let rec read data =
+              T.read flow >>= function
+              | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
+              | Ok `Data d ->
+                let data' = Cstruct.append data d in
+                let str = Cstruct.to_string data' in
+                let get_data off str =
+                  let str = Astring.String.drop ~min:off ~max:off str in
+                  if Astring.String.is_prefix ~affix:" " str then
+                    Astring.String.drop ~min:1 ~max:1 str
+                  else
+                    str
+                in
+                if Astring.String.is_suffix ~affix:"\n" str then
+                  T.close flow >|= fun () ->
+                  let str = Astring.String.drop ~rev:true ~min:1 ~max:1 str in
+                  if Astring.String.is_prefix ~affix:"OK" str then
+                    Ok (get_data 2 str)
+                  else if Astring.String.is_prefix ~affix:"ERROR" str then
+                    Error (`Remote (get_data 5 str))
+                  else
+                    Error (`Parse str)
                 else
-                  str
-              in
-              if Astring.String.is_suffix ~affix:"\n" str then
+                  read data'
+              | Error e ->
                 T.close flow >|= fun () ->
-                let str = Astring.String.drop ~rev:true ~min:1 ~max:1 str in
-                if Astring.String.is_prefix ~affix:"OK" str then
-                  Ok (get_data 2 str)
-                else if Astring.String.is_prefix ~affix:"ERROR" str then
-                  Error (`Remote (get_data 5 str))
-                else
-                  Error (`Parse str)
-              else
-                read data'
-            | Error e ->
-              T.close flow >|= fun () ->
-              Error (`Read (Fmt.to_to_string T.pp_error e))
-          in
-          read Cstruct.empty
-    ]
+                Error (`Read (Fmt.to_to_string T.pp_error e))
+            in
+            read Cstruct.empty
+      ]
+    end
 
   let pp_platform_err ppf = function
     | `Write err -> Format.fprintf ppf "write error %s" err
@@ -143,7 +148,7 @@ struct
           Lwt.fail_with "store not readable") >>= fun () ->
       (write_platform internal_stack "DEVICE-ID" >>= function
         | Error e ->
-          Log.err (fun m -> m "BAD couldn't retrieve device id: %a, using hardcoded value" pp_platform_err e);
+          Log.err (fun m -> m "couldn't retrieve device id: %a" pp_platform_err e);
           Lwt.fail_with "failed to retrieve device id from platform"
         | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
       Hsm.boot ~device_id store >>= fun (hsm_state, mvar) ->

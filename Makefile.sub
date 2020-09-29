@@ -67,7 +67,7 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
-KEYFENDER_CARGS ?=
+KEYFENDER_CARGS ?= --no-platform=true
 ifeq ($(NO_GIT),)
 REQUIRED_SUBMODULES += src/git
 endif
