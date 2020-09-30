@@ -1436,6 +1436,18 @@ let reset_rate_limit_after_successful_login () =
     end
   end
 
+let auth_decode_invalid_base64 () =
+  let auth_header user pass =
+    let base64 = "wrong" ^ Base64.encode_string (user ^ ":" ^ pass) in
+    Header.init_with "authorization" ("Basic " ^ base64)
+  in
+  let admin_headers = auth_header "admin" "test1Passphrase" in
+  "a request for /system/info with wrong base64 in user authentication returns 401"
+   @? begin match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/system/info" with
+      | _hsm_state, Some (`Unauthorized, _, _, _) -> true
+      | _ -> false
+   end
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -1564,6 +1576,7 @@ let () =
     "/unlock" >:: rate_limit_for_unlock;
     "/system/info" >:: rate_limit_for_get;
     "rate limit reset after successful login" >:: reset_rate_limit_after_successful_login;
+    "access.ml: decode auth" >:: auth_decode_invalid_base64;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
