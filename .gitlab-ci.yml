@@ -1,32 +1,20 @@
 image: "ocaml/opam2:debian-10-ocaml-4.11"
 
-default:
-  before_script:
-    - cd ~/opam-repository && git pull && opam update && cd -
-
 stages:
   - build
   - test
 
 build_keyfender:
   stage: build
+  before_script:
+    - cd ~/opam-repository && git pull && opam update && cd -
   script:
     - make build-keyfender
 
-test_keyfender_lib:
-  stage: test
-  script:
-    - make MODE=test test-keyfender-lib
-
-test_keyfender_api:
-  stage: test
-  script:
-    - make MODE=test test-keyfender-api
-
-test_keyfender_e2e:
+test_keyfender:
   stage: test
   before_script:
     - cd ~/opam-repository && git pull && opam update && cd -
     - sudo apt-get -y --no-install-recommends install parallel
   script:
-    - make MODE=test test-keyfender-e2e
+    - make MODE=test coverage-summary
