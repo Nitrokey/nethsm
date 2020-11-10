@@ -28,10 +28,12 @@ This is the default if a `MODE` is not specified to `make`.
 
 Opam >= 2.0.0 and OCaml >= 4.10.1 and mirage >= 3.8.1 is required. Recommended is the latest OCaml release, at the moment 4.11.1.
 
-To ensure you're on an up-to-date opam repository, execute:
+To ensure you're on a good opam repository, execute:
 
 ```
-opam update
+opam repo add nitrohsm-default git+https://github.com/ocaml/opam-repository#f86b6d27e1 --dont-select
+opam sw create nitrohsm 4.11.1 --repos nitrohsm-default
+eval $(opam env)
 ```
 
 ### Building
@@ -49,9 +51,6 @@ If you encounter build issues, this may be due to a dirty repository or an opam 
 ```
 make distclean
 opam switch remove nitrohsm
-opam update
-opam switch create nitrohsm 4.11.1
-eval $(opam env)
 make prepare
 ```
 
