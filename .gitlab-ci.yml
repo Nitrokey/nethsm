@@ -1,4 +1,4 @@
-image: "ocaml/opam2:debian-10-ocaml-4.11"
+image: "ocaml/opam:debian-10-ocaml-4.11-flambda"
 
 stages:
   - build
