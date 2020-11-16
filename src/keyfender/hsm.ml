@@ -870,33 +870,36 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let dump_keys t =
       let open Lwt.Infix in
-      with_write_lock (fun () ->
-          let store = key_store t in
-          KV.batch t.kv (fun b ->
-              Hashtbl.fold (fun id _ x ->
-                  x >>= function
-                  | Error e -> Lwt.return (Error e)
-                  | Ok () ->
-                    get_key t id >>= function
-                    | Error (_, msg) ->
-                      (* this should not happen *)
-                      Log.err (fun m -> m "error %s while retrieving key %s"
-                                  msg id);
-                      Lwt.return (Ok ())
-                    | Ok k ->
-                      let k_v_key, k_v_value =
-                        Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
-                          (Yojson.Safe.to_string (key_to_yojson k))
-                      in
-                      KV.set b k_v_key k_v_value >>= function
-                      | Ok () -> Lwt.return (Ok ())
-                      | Error e ->
-                        Log.err (fun m -> m "error %a while writing key %s"
-                                    KV.pp_write_error e id);
-                        Lwt.return (Ok ()))
-                cached_operations (Lwt.return (Ok ())))) >|= function
-      | Ok () -> Hashtbl.clear cached_operations
-      | Error _ -> ()
+      match t.state with
+      | Unprovisioned | Locked -> Lwt.return_unit
+      | Operational _ ->
+        with_write_lock (fun () ->
+            let store = key_store t in
+            KV.batch t.kv (fun b ->
+                Hashtbl.fold (fun id _ x ->
+                    x >>= function
+                    | Error e -> Lwt.return (Error e)
+                    | Ok () ->
+                      get_key t id >>= function
+                      | Error (_, msg) ->
+                        (* this should not happen *)
+                        Log.err (fun m -> m "error %s while retrieving key %s"
+                                    msg id);
+                        Lwt.return (Ok ())
+                      | Ok k ->
+                        let k_v_key, k_v_value =
+                          Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
+                            (Yojson.Safe.to_string (key_to_yojson k))
+                        in
+                        KV.set b k_v_key k_v_value >>= function
+                        | Ok () -> Lwt.return (Ok ())
+                        | Error e ->
+                          Log.err (fun m -> m "error %a while writing key %s"
+                                      KV.pp_write_error e id);
+                          Lwt.return (Ok ()))
+                  cached_operations (Lwt.return (Ok ())))) >|= function
+        | Ok () -> Hashtbl.clear cached_operations
+        | Error _ -> ()
 
     let encode_and_write t id key =
       let store = key_store t
