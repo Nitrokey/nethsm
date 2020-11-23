@@ -13,6 +13,7 @@ stages:
   - build_dev
   - build_muen
   - test
+  - deploy
 
 build_keyfender:
   variables:
@@ -60,3 +61,31 @@ build_muen_updater_supermicro_x11ssh_tf:
   script:
     - make fetch-submodules
     - make -j$(nproc) build artifacts
+
+build_and_deploy_container_images:
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    # This will instruct Docker not to start over TLS.
+    DOCKER_TLS_CERTDIR: ""
+    IMAGE_NAME: "nitrokey/nethsm"
+    IMAGE_TAG: "testing"
+    REGISTRY: "docker.io"
+  services:
+    - docker:dind
+  stage: deploy
+  only:
+    - master
+  except:
+    - schedules
+  image: "docker"
+  artifacts: {}
+  before_script:
+    - cat $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USER --password-stdin $REGISTRY
+  script:
+    - cd src/container
+    - >
+      docker build --build-arg GIT_USER=gitlab-ci-token --build-arg
+      GIT_PASSWORD=$CI_JOB_TOKEN --build-arg GIT_COMMIT=$CI_COMMIT_SHORT_SHA
+      --tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -f alpine/Dockerfile .
+    - docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+    - docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA

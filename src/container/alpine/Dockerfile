@@ -1,7 +1,9 @@
 #FROM ocaml/opam2:latest
 FROM ocaml/opam:alpine-3.12-ocaml-4.11-flambda AS builder
 
-ARG TOKEN=1VJw4yyua61piTDCzPax
+ARG GIT_USER
+ARG GIT_PASSWORD
+ARG GIT_COMMIT=master
 ARG OPAM_REF=f86b6d27e1
 
 RUN cd /home/opam/opam-repository \
@@ -11,9 +13,15 @@ RUN cd /home/opam/opam-repository \
   && cd -
 
 RUN cd /home/opam \
-  && git clone https://oauth2:$TOKEN@git.dotplex.com/nitrokey/nethsm.git
+  && [ ! -d nethsm ] \
+  && git clone https://$GIT_USER:$GIT_PASSWORD@git.dotplex.com/nitrokey/nethsm/nethsm.git \
+  && cd nethsm \
+  && git reset --hard $GIT_COMMIT \
+  && cd ..
 
 WORKDIR /home/opam/nethsm
+
+RUN opam exec -- make fetch-submodules
 
 RUN opam exec -- make build-keyfender
 
