@@ -23,7 +23,7 @@ RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make build-keyfender
 
 FROM alpine:3.12
 
-RUN apk add --no-cache iptables git-daemon
+RUN apk add --no-cache iptables git-daemon curl
 
 VOLUME /data
 
