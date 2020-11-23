@@ -1,5 +1,5 @@
 #FROM ocaml/opam2:latest
-FROM ocaml/opam:alpine-3.12-ocaml-4.11 AS builder
+FROM ocaml/opam:alpine-3.12-ocaml-4.11-flambda AS builder
 
 ARG TOKEN=1VJw4yyua61piTDCzPax
 ARG OPAM_REF=f86b6d27e1
