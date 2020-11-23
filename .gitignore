@@ -10,3 +10,5 @@ src/u-root/bin
 src/u-root/src/**/.bb/
 *.coverage
 cache/
+*~
+_opam
