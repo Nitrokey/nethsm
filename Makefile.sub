@@ -28,6 +28,11 @@ MUEN_TARGET ?= qemu-kvm
 # TODO: Document this more, provide a way to use a GPG-agent/Smart Card, etc.
 MUEN_KEY_DIR ?= keys/test-key
 
+# Set USE_CCACHE=1 if you would like to use ccache to speed up the build.
+# Note that this automatically sets CCACHE_DIR to a sub-directory of the build
+# tree.
+USE_CCACHE ?=
+
 # ------------------------------------------------------------------------------
 
 TOP_DIR := $(abspath .)
@@ -83,6 +88,17 @@ else
 $(error Invalid MODE '$(XMODE)')
 endif
 
+ifeq ($(USE_CCACHE),)
+CCACHE :=
+else
+CCACHE := ccache
+CCACHE_DIR := $(TOP_DIR)/cache/ccache
+export CCACHE_DIR
+ifneq ($(shell $(CC) -xc -c - --ccache-skip </dev/null 2>&1),)
+$(error USE_CCACHE was requested but /usr/lib/ccache is not first on $$PATH)
+endif
+endif
+
 # ------------------------------------------------------------------------------
 #
 # Rules for 'prepare' step. Common to all MODEs.
@@ -90,6 +106,9 @@ endif
 # ------------------------------------------------------------------------------
 
 .stamp-prepare:
+ifeq ($(USE_CCACHE),1)
+	mkdir -p $(CCACHE_DIR)
+endif
 ifneq ($(REQUIRED_SUBMODULES),)
 	git submodule update --init --depth 1 -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
@@ -338,7 +357,9 @@ ZLIB_LIBZ := $(ZLIB_DIR)/libz.a
 # The symlinks below are so that we can pass $(ZLIB_DIR) directly to Git's
 # build system without a separate "install" step.
 $(ZLIB_DIR)/stamp-configure: $(ZLIB_DIR)/configure $(ZLIB_DIR)/Makefile.in
-	cd $(ZLIB_DIR) && CC=x86_64-linux-musl-gcc ./configure --static
+	cd $(ZLIB_DIR) && \
+	    CC="$(CCACHE) x86_64-linux-musl-gcc" \
+	    ./configure --static
 	cd $(ZLIB_DIR) && ln -s . include
 	cd $(ZLIB_DIR) && ln -s . lib
 	touch $@
@@ -348,7 +369,7 @@ $(ZLIB_LIBZ): $(ZLIB_DIR)/stamp-configure
 
 GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
     NO_GETTEXT=1 NO_PYTHON=1 NO_REGEX=NeedsStartEnd \
-    HOST_CPU=x86_64 CC=x86_64-linux-musl-gcc \
+    HOST_CPU=x86_64 CC="$(CCACHE) x86_64-linux-musl-gcc" \
     LDFLAGS=-static ZLIB_PATH=$(ZLIB_DIR) \
     INSTALL_SYMLINKS=1 \
     prefix=/ DESTDIR=$(OBJ_INITRAMFS_DIR)
@@ -375,11 +396,14 @@ INSTALL_MKE2FS := $(OBJ_INITRAMFS_DIR)/bin/mke2fs
 
 $(E2FSPROGS_DIR)/Makefile: src/e2fsprogs/configure
 	mkdir -p $(E2FSPROGS_DIR)
-	cd $(E2FSPROGS_DIR) && LDFLAGS=-static ../configure \
+	cd $(E2FSPROGS_DIR) && \
+	    ../configure \
 	    --host=x86_64-linux-musl \
 	    --enable-libuuid \
 	    --enable-libblkid \
-	    --disable-nls
+	    --disable-nls \
+	    CC="$(CCACHE) x86_64-linux-musl-gcc" \
+	    LDFLAGS=-static
 
 $(MKE2FS): $(E2FSPROGS_DIR)/Makefile
 	$(MAKE) -C $(E2FSPROGS_DIR) PROG_SUBDIRS=misc
@@ -498,6 +522,10 @@ CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
 $(COREBOOT_SRC)/.config: .stamp-prepare
 	cd $(COREBOOT_SRC) && \
 	    make defconfig KBUILD_DEFCONFIG=$(COREBOOT_CONFIG)
+ifeq ($(USE_CCACHE),1)
+	cd $(COREBOOT_SRC) && \
+	    util/scripts/config --enable CCACHE
+endif
 
 ifneq ($(MUEN_TARGET),qemu-kvm)
 # When building for the Supermicro hardware, we need to populate the Coreboot
