@@ -1,4 +1,4 @@
-image: "ocaml/opam:debian-10-ocaml-4.11-flambda"
+image: "mato/nethsm-builder@sha256:d21fdbce4449c9be8c74cd314b0b669d24737d2012bd276f0db54760d096dd2b"
 
 stages:
   - build
@@ -15,6 +15,5 @@ test_keyfender:
   stage: test
   before_script:
     - ./.gitlab-ci-setup.bash
-    - sudo apt-get -y --no-install-recommends install parallel
   script:
     - make MODE=test coverage-summary

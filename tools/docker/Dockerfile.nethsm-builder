@@ -1,0 +1,87 @@
+# Dockerfile for NetHSM build environment.
+#
+# Based on Muen tools/docker/Dockerfile.muen-dev-env, with additions required
+# to build a MODE=dev and MODE=muen NetHSM system.
+#
+# Building the Docker container locally:
+#
+#   docker build -t nethsm-builder -f Dockerfile.nethsm-builder .
+#
+# Using the Docker container to build the NetHSM software locally:
+#
+#   docker run --rm -ti \
+#     --mount type=bind,src=/path/to/nitrohsm,dst=/builds/nitrokey/nitrohsm \
+#     --mount type=tmpfs,dst=/tmp nitrokey-builder
+#
+# Then, inside the container:
+#
+#   cd /builds/nitrokey/nitrohsm
+#   ./.gitlab-ci-setup.bash
+#
+# And proceed with "make" as desired.
+#
+
+# Base image
+ARG ocaml_version=ocaml-4.11-flambda
+ARG distro_version=debian-10
+FROM ocaml/opam:${distro_version}-${ocaml_version}
+
+LABEL maintainer "Martin Lucina <martin@lucina.net>"
+LABEL description "This image provides the build environment for the NetHSM project"
+
+# (Not yet)
+# ENV CC ccache gcc
+# ENV CXX ccache g++
+
+# Muen: Required packages
+ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-dev \
+bison bzip2 ca-certificates ccache cpio curl file flex git-core gnupg gnuplot \
+inotify-tools kmod lcov libc6-dev libcurl4-gnutls-dev libelf-dev \
+libfreetype6-dev libiberty-dev libncurses-dev libseccomp-dev libssl-dev \
+libxml2-utils make mtools openssh-client patch picocom pkg-config python \
+python-lxml python-colorlog python-pip python-setuptools qemu-system-x86 rsync \
+screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev"
+
+# Mirage/Solo5/NetHSM: Required packages
+# Note: Some of these would be installed by "opam depext" automatically during
+# the build process, but we do this now to save time and downloads later.
+ARG nethsm_packages="cgpt e2fsprogs grub-common grub-pc-bin jq libgmp-dev \
+libseccomp-dev linux-libc-dev m4 parallel perl pkg-config"
+
+# Muen: Install dependencies
+RUN sudo apt-get update && \
+        DEBIAN_FRONTEND=noninteractive sudo apt-get install -qq -y \
+        --no-install-recommends \
+        $muen_packages $nethsm_packages \
+        && sudo apt-get clean \
+        && sudo rm -rf /var/lib/apt/lists/*
+
+# Muen: Install AdaCore toolchain
+# TODO: Verify hash of downloaded toolchain
+RUN git clone https://github.com/AdaCore/gnat_community_install_script.git /tmp/gnat_script \
+        && curl -sSL "https://www.codelabs.ch/download/ada/gnat-community-2019-20190517-x86_64-linux-bin" -o /tmp/gnat_installer.bin \
+        && sudo sh /tmp/gnat_script/install_package.sh /tmp/gnat_installer.bin /opt/gnat \
+        && rm -rf /tmp/gnat*
+
+# Muen: Python modules
+RUN sudo pip install wheel \
+        && sudo pip install 'lief==0.9.0'
+
+# NetHSM: Install Go toolchain
+# TODO: Verify hash of downloaded toolchain
+RUN curl -sSL "https://golang.org/dl/go1.14.12.linux-amd64.tar.gz" -o /tmp/go.tar.gz \
+        && sudo tar -C /opt -xzf /tmp/go.tar.gz \
+        && rm /tmp/go.tar.gz
+
+# NetHSM: Install musl-cross toolchain
+# TODO: Verify hash of downloaded toolchain
+RUN curl -sSL "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.tar.gz \
+        && sudo tar -C /opt -xzf /tmp/musl-cross.tar.gz \
+        && rm /tmp/musl-cross.tar.gz
+
+# Setup environment
+ENV LANG C.UTF-8
+ENV PATH /opt/x86_64-linux-musl-cross/bin:/opt/gnat/bin:/opt/go/bin:$PATH
+WORKDIR /builds/nitrokey/nitrohsm
+
+CMD [ "bash" ]
