@@ -7,19 +7,6 @@
 #
 #   docker build -t nethsm-builder -f Dockerfile.nethsm-builder .
 #
-# Using the Docker container to build the NetHSM software locally:
-#
-#   docker run --rm -ti \
-#     --mount type=bind,src=/path/to/nitrohsm,dst=/builds/nitrokey/nitrohsm \
-#     --mount type=tmpfs,dst=/tmp nitrokey-builder
-#
-# Then, inside the container:
-#
-#   cd /builds/nitrokey/nitrohsm
-#   ./.gitlab-ci-setup.bash
-#
-# And proceed with "make" as desired.
-#
 
 # Base image
 ARG ocaml_version=ocaml-4.11-flambda

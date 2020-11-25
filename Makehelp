@@ -1,5 +1,11 @@
 Available targets:
 
+local-container-enter:
+                    Run the local Docker container for building
+local-container-setup:
+                    When using a local Docker container, run this once before
+                    using any other targets
+
 prepare:            Initialise Git submodules required for MODE,
                     build and install keyfender OPAM dependencies
 build:              Build full system
