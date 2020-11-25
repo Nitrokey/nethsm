@@ -2,7 +2,6 @@
 	path = src/git
 	url = https://github.com/git/git.git
 	branch = maint
-	shallow = true
 [submodule "src/muen"]
 	path = src/muen/muen
 	url = ../muen.git
@@ -11,7 +10,6 @@
 	path = src/zlib
 	url = https://github.com/madler/zlib.git
 	ignore = dirty
-	shallow = true
 [submodule "src/u-root/src/github.com/u-root/u-root"]
 	path = src/u-root/src/github.com/u-root/u-root
 	url = https://github.com/u-root/u-root.git
@@ -19,7 +17,6 @@
 	path = src/e2fsprogs
 	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
 	branch = maint
-	shallow = true
 [submodule "src/coreboot/coreboot"]
 	path = src/coreboot/coreboot
 	url = ../nitrohsm-coreboot.git

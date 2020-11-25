@@ -60,11 +60,6 @@ all:
 # .stamp-mode OR 'dev' if this is a fresh/distclean'd tree.
 XMODE := $(shell cat .stamp-mode 2>/dev/null)
 
-# List of top-level submodules required to be initialised and cloned in
-# 'make prepare'. This is initially empty, and set below depending on MODE and
-# NO_GIT.
-REQUIRED_SUBMODULES :=
-
 DUNE := dune
 
 ifeq ($(XMODE),)
@@ -73,14 +68,9 @@ endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
 KEYFENDER_CARGS ?= --no-platform=true
-ifeq ($(NO_GIT),)
-REQUIRED_SUBMODULES += src/git
-endif
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
-REQUIRED_SUBMODULES += src/git src/zlib src/e2fsprogs src/muen/muen \
-    src/u-root/src/github.com/u-root/u-root src/coreboot/coreboot
 else ifeq ($(XMODE),test)
 TARGET := unix
 DUNE := BISECT_ENABLE=yes dune
@@ -106,19 +96,17 @@ endif
 # ------------------------------------------------------------------------------
 
 .stamp-prepare:
+# Initialise Git submodules.
+	MODE=$(XMODE) NO_GIT=$(NO_GIT) tools/init-git-submodules.sh
 ifeq ($(USE_CCACHE),1)
 	mkdir -p $(CCACHE_DIR)
 endif
-ifneq ($(REQUIRED_SUBMODULES),)
-	git submodule update --init --depth 1 -- $(REQUIRED_SUBMODULES)
 ifeq ($(XMODE),muen)
-	git -C src/muen/muen submodule update --init --depth 1
 # Build the Coreboot cross-toolchain. Note that this is only done the 1st time
 # a 'make prepare' is done in this tree, and is not removed by a 'make
 # (dist)clean'. This is intentional, as this takes a long time and relies on
 # several downloads.
 	$(MAKE) -C src/coreboot/coreboot crossgcc-i386 CPUS=$(shell nproc)
-endif
 endif
 	opam install -y depext
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD

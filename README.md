@@ -6,19 +6,9 @@ In either case, running `make` in this directory will produce a short help. The 
 
 ## Use of Git submodules in this repository
 
-This repository uses several large Git submodules, including recursive submodules for Muen. Cloning all submodules recursively is **NOT** recommended, unless you have a lot of patience, bandwidth and disk space (>3 GB).
+This repository uses several large Git submodules, including recursive submodules for Muen and Coreboot. These submodule also use relative URLs in their `.gitmodules` and cloning this repository recursively **WILL NOT WORK**.
 
-In order to avoid this, the `prepare` target (part of `make build`) will clone only those submodules that are required for the `MODE` you are building the system for, and use shallow clones where appropriate.
-
-If you are building the Muen System, you **must** add the contents of the `gitconfig.ad` file in this repository your `~/.gitconfig` for all Git submodules to work correctly.
-
-If you need all Git submodules to be fully cloned (e.g. when updating submodule references), then run:
-
-```
-git submodule update --init --no-recommend-shallow --recursive
-```
-
-in a **fresh** clone of this repository.
+`make prepare` will call out to `tools/init-git-submodules.sh` which will do the right thing and initialise all _required_ submodules depending on the `MODE` you have passed to `make`. See that script for the gory details.
 
 ## Local Development System
 
