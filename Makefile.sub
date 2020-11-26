@@ -84,7 +84,7 @@ else
 CCACHE := ccache
 CCACHE_DIR := $(TOP_DIR)/cache/ccache
 export CCACHE_DIR
-ifneq ($(shell $(CC) -xc -c - --ccache-skip </dev/null 2>&1),)
+ifneq ($(shell $(CC) -xc -c - -o /dev/null --ccache-skip </dev/null 2>&1),)
 $(error USE_CCACHE was requested but /usr/lib/ccache is not first on $$PATH)
 endif
 endif
