@@ -52,6 +52,30 @@ Notes:
 - `/dev/net/tun` and `/dev/kvm` (if present and the host user can access it) are passed through to the container.
 - Due to the above, `make local-container-enter` will work only on a Linux host (i.e. not Docker for Mac, for example).
 
+### Speeding up the build with caching
+
+Both `ccache` and the dune [cache](https://github.com/ocaml/dune/blob/master/doc/caching.rst) can be used to speed up the build. This is especially useful for the Muen system, where local build times from a clean tree without caching are on the order of 35 minutes. This is experimental, and currently requires some additional setup after the `make local-container-setup` step:
+
+To build with `ccache`, before invoking `make`, run:
+
+    export PATH=/usr/lib/ccache:$PATH
+    export CCACHE_DIR=$PWD/cache/ccache
+    export CCACHE_BASEDIR=$PWD
+
+When invoking `make`, add `USE_CCACHE=1` to the command line for correct operation.
+
+To enable the dune cache, before invoking `make`, run:
+
+    mkdir -p $PWD/cache/dune
+    mkdir -p $HOME/.config/dune
+    cat <<EOM >$HOME/.config/dune
+    (lang dune 2.7)
+    (cache enabled)
+    (cache-transport direct)
+    EOM
+
+This will eventually be integrated better into `make local-container-setup`.
+
 ### Running
 
 To run the local development system on your local machine, first ensure that you have set up the required network interfaces _on the host_ by running:
