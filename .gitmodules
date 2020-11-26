@@ -21,3 +21,7 @@
 	path = src/coreboot/coreboot
 	url = ../nitrohsm-coreboot.git
 	branch = nitrohsm
+[submodule "src/coreboot/grub2"]
+	path = src/coreboot/grub2
+	url = ../nitrohsm-grub.git
+	branch = nitrohsm
