@@ -26,6 +26,9 @@ if [ -d "$HOME/.local/bin" ] ; then
     PATH="$HOME/.local/bin:$PATH"
 fi
 
+# For Flashrom, etc.
+PATH=$PATH:/sbin:/usr/sbin:/usr/local/sbin
+
 # run all scripts in ~/.autorun if it exists
 if [ -d "$HOME/.autorun" ] ; then
     run-parts --exit-on-error --verbose $HOME/.autorun

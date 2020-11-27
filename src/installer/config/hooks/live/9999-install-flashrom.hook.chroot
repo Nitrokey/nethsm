@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+
+# Install the latest upstream release of flashrom.
+
+mkdir -p /home/src
+cd /home/src
+curl -sSL \
+    https://download.flashrom.org/releases/flashrom-v1.2.tar.bz2\
+    -o flashrom.tar.bz2
+tar -xjf flashrom.tar.bz2
+make -C flashrom-v1.2 -j$(nproc)
+make -C flashrom-v1.2 install
+rm -rf /home/src/flashrom*
