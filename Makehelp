@@ -10,6 +10,7 @@ fetch-submodules:   Initialise and check out Git submodules
 prepare:            build and install keyfender OPAM dependencies, Coreboot toolchain
 build:              Build full system
 build-keyfender:    Build keyfender library and unikernel only
+artifacts:          Produce uniquely indentifable obj/artifacts [MODE=muen only]
 test-keyfender-lib: Run keyfender library tests
 test-keyfender-api: Run keyfender generated API tests [MODE=test only]
 test-keyfender-e2e: Run keyfender end-to-end tests

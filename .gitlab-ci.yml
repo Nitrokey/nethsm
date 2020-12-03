@@ -22,20 +22,26 @@ test_keyfender:
     - make MODE=test fetch-submodules
     - make -j$(nproc) MODE=test coverage-summary
 
-build_muen_qemukvm:
+build_muen_qemu_kvm:
   stage: build_muen
   needs: [build_keyfender]
   script:
     - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
-
-build_muen_x11sshtf:
-  stage: build_muen
-  needs: [build_keyfender]
-  script:
-    - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build
+    - make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build artifacts
   artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
     paths:
-      - obj/coreboot.rom
-      - obj/system.img.cpio
+      - obj/artifacts/
+
+build_muen_supermicro_x11ssh_tf:
+  stage: build_muen
+  needs: [build_keyfender]
+  script:
+    - make MODE=muen fetch-submodules
+    - make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build artifacts
+  artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
+    paths:
+      - obj/artifacts/

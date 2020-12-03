@@ -549,8 +549,9 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL)
 ifneq ($(MUEN_HARDWARE),qemu-kvm)
 # When building for real hardware, stop here.
 
+ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM)
 .PHONY: build
-build: $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM)
+build: $(ARTIFACTS)
 
 else
 # The remaining rules apply to building and running a QEMU/KVM emulated system.
@@ -560,8 +561,9 @@ OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
 $(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nitrohsm-install.sh
 	tools/nitrohsm-install.sh -f -E 1G $@ $<
 
+ARTIFACTS := $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
 .PHONY: build
-build: $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
+build: $(ARTIFACTS)
 
 RUN_DIR := $(TOP_DIR)/run
 RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
@@ -620,6 +622,25 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running
 	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/emulate.out && exit 1; fi
 
 endif # QEMU/KVM
+
+ifneq ($(ARTIFACTS),)
+ARTIFACTS_ID := $(shell MODE=$(XMODE) MUEN_HARDWARE=$(MUEN_HARDWARE) \
+    tools/get-artifacts-dir.sh)
+ARTIFACTS_DIR := $(OBJ_DIR)/artifacts/$(ARTIFACTS_ID)
+
+$(ARTIFACTS_DIR)/SHA256SUM.txt: $(ARTIFACTS)
+	mkdir -p $(ARTIFACTS_DIR)
+	cp $(ARTIFACTS) $(ARTIFACTS_DIR)
+	cd $(ARTIFACTS_DIR) && sha256sum $(notdir $(ARTIFACTS)) >$@
+
+.PHONY: artifacts
+artifacts: $(ARTIFACTS_DIR)/SHA256SUM.txt
+	@echo ""
+	@echo "Built artifacts in $(OBJ_DIR)/artifacts for:"
+	@echo "$(ARTIFACTS_ID)"
+	@echo ""
+	@cat $<
+endif
 
 .PHONY: clean
 clean: clean-keyfender
