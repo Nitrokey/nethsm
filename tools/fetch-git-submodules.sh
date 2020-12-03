@@ -46,10 +46,6 @@
 #
 # TODO:
 #
-# - Have a non-shallow mode where all submodules are full clones. This is
-#   useful for when you actually need to update the submodules, otherwise there
-#   are various traps awaiting.
-#
 # - Since we know how to re-write submodule URLs, have an "alongside" mode
 #   where the infrequently changing submodules are cloned from
 #   "../somewhere/sub/module". This allows for quick builds after cloning a
@@ -66,7 +62,7 @@ dev_submodules()
 set -xe
 
 git submodule init src/git
-git submodule update --depth 50 src/git
+git submodule update ${DEPTH} src/git
 }
 
 # MODE=muen
@@ -76,7 +72,7 @@ set -xe
 
 # Top-level submodules
 git submodule init
-git submodule update --depth 50
+git submodule update ${DEPTH}
 
 # Muen submodules
 git -C src/muen/muen submodule init
@@ -98,11 +94,13 @@ git -C src/muen/muen config --local \
     submodule.components/linux/modules/muenevents.url https://git.codelabs.ch/muen/linux/muenevents.git
 git -C src/muen/muen config --local \
     submodule.tools/sbs.url https://git.codelabs.ch/sbs-tools.git
+# The following don't like shallow clones
 git -C src/muen/muen submodule update components/tau0-static
-git -C src/muen/muen submodule update --depth 50
+# Rest of Muen's submodules
+git -C src/muen/muen submodule update ${DEPTH}
 
 # Coreboot submodules
-git submodule update --depth 50 src/coreboot/coreboot
+git submodule update ${DEPTH} src/coreboot/coreboot
 git -C src/coreboot/coreboot submodule init
 git -C src/coreboot/coreboot config --local \
     submodule.3rdparty/blobs.url https://review.coreboot.org/blobs.git
@@ -128,14 +126,29 @@ git -C src/coreboot/coreboot config --local \
     submodule.3rdparty/ffs.url https://review.coreboot.org/ffs.git
 git -C src/coreboot/coreboot config --local \
     submodule.3rdparty/amd_blobs.url https://review.coreboot.org/amd_blobs
+# The following don't like shallow clones
 git -C src/coreboot/coreboot submodule update 3rdparty/chromeec
 git -C src/coreboot/coreboot submodule update 3rdparty/arm-trusted-firmware
 git -C src/coreboot/coreboot submodule update 3rdparty/opensbi
 git -C src/coreboot/coreboot submodule update 3rdparty/vboot
-git -C src/coreboot/coreboot submodule update --depth 50
+# Rest of Coreboot's submodules
+git -C src/coreboot/coreboot submodule update ${DEPTH}
 }
 
+case "${NO_SHALLOW}" in
+    1)
+        DEPTH=
+        ;;
+    *)
+        DEPTH="--depth 50"
+        ;;
+esac
+
 case "${MODE}" in
+    any)
+        # Just use Muen, which is the full set, and ignore NO_GIT.
+        muen_submodules
+        ;;
     dev)
         # Special case, no submodules required.
         [ -n "${NO_GIT}" ] && exit 0

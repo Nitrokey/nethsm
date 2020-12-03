@@ -6,9 +6,17 @@ In either case, running `make` in this directory will produce a short help. The 
 
 ## Use of Git submodules in this repository
 
-This repository uses several large Git submodules, including recursive submodules for Muen and Coreboot. These submodule also use relative URLs in their `.gitmodules` and cloning this repository recursively **WILL NOT WORK**.
+This repository uses several large Git submodules, including recursive submodules for Muen and Coreboot.
 
-`make prepare` will call out to `tools/init-git-submodules.sh` which will do the right thing and initialise all _required_ submodules depending on the `MODE` you have passed to `make`. See that script for the gory details.
+Cloning this repository with `--recursive` or manually initialising submodules in a fresh clone of this repository **WILL NOT WORK**.
+
+When working with a fresh clone of this repository, before running any other `make` commands, please run the following once:
+
+    make MODE=any fetch-submodules
+
+If you plan to use this tree for development only with a specific `MODE` (see below), you can use that in place of `MODE=any` above to check out only the required submodules.
+
+To disable any attempts at shallow clones, add `NO_SHALLOW=1`. If you get stuck, try `make deinit-submodules`.
 
 ## Local Development System
 
@@ -56,23 +64,28 @@ Notes:
 
 Both `ccache` and the dune [cache](https://github.com/ocaml/dune/blob/master/doc/caching.rst) can be used to speed up the build. This is especially useful for the Muen system, where local build times from a clean tree without caching are on the order of 35 minutes. This is experimental, and currently requires some additional setup after the `make local-container-setup` step:
 
-To build with `ccache`, before invoking `make`, run:
+To build with `ccache`, before invoking `make` in the container, run:
 
-    export PATH=/usr/lib/ccache:$PATH
-    export CCACHE_DIR=$PWD/cache/ccache
-    export CCACHE_BASEDIR=$PWD
+```
+export PATH=/usr/lib/ccache:$PATH
+export CCACHE_DIR=$PWD/cache/ccache
+export CCACHE_BASEDIR=$PWD
+```
 
 When invoking `make`, add `USE_CCACHE=1` to the command line for correct operation.
 
-To enable the dune cache, before invoking `make`, run:
+To enable the dune cache, before invoking `make` in the container, run:
 
-    mkdir -p $PWD/cache/dune
-    mkdir -p $HOME/.config/dune
-    cat <<EOM >$HOME/.config/dune
-    (lang dune 2.7)
-    (cache enabled)
-    (cache-transport direct)
-    EOM
+```
+mkdir -p $PWD/cache/dune
+export XDG_CACHE_HOME=$PWD/cache
+mkdir -p $HOME/.config/dune
+cat <<EOM >$HOME/.config/dune/config
+(lang dune 2.7)
+(cache enabled)
+(cache-transport direct)
+EOM
+```
 
 This will eventually be integrated better into `make local-container-setup`.
 

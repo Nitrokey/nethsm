@@ -96,8 +96,6 @@ endif
 # ------------------------------------------------------------------------------
 
 .stamp-prepare:
-# Initialise Git submodules.
-	MODE=$(XMODE) NO_GIT=$(NO_GIT) tools/init-git-submodules.sh
 ifeq ($(USE_CCACHE),1)
 	mkdir -p $(CCACHE_DIR)
 endif

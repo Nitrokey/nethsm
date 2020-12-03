@@ -1,3 +1,7 @@
+# This Makefile is a meta-Makefile that passes most targets through to
+# Makefile.sub. See there for the action, and for documented user-settable
+# parameters. Please ask before adding targets here.
+
 OS := $(shell uname -s)
 
 ifeq ($(OS),Darwin)
@@ -29,6 +33,36 @@ check-mode: .stamp-mode
 	else \
 	  true; \
 	fi
+
+.PHONY: check-submodules
+
+ifeq ($(MODE),test)
+check-submodules: ;
+else ifneq ($(NO_GIT)$(I_KNOW_WHAT_IM_DOING),)
+check-submodules: ;
+else
+check-submodules:
+	@if test -z "$$(git submodule --quiet foreach echo .)"; then \
+	  echo "Error: Git submodules not present." 1>&2; \
+	  echo "Error: Please run 'make fetch-submodules' in this tree." 1>&2; \
+	  if test -f "/.dockerenv"; then \
+	    echo "Error: Note that you are in a container, this should be run ON THE HOST." 1>&2; \
+	  fi; \
+	  false; \
+	else \
+	  true; \
+	fi
+endif
+
+.PHONY: fetch-submodules
+fetch-submodules:
+	MODE=$(MODE) NO_GIT=$(NO_GIT) NO_SHALLOW=$(NO_SHALLOW) \
+	     tools/fetch-git-submodules.sh
+
+.PHONY: deinit-submodules
+deinit-submodules:
+	git submodule deinit --all --force
+	@echo "Note: If it's still broken, try 'rm -rf .git/modules'."
 
 .PHONY: distclean
 distclean:
@@ -68,5 +102,6 @@ endif
 	    git reset --hard $$(cat $(abspath .)/.opam-repository-commit)
 	opam update
 
-%:: check-mode
+# This rule passes through any target not defined above to Makefile.sub.
+%:: check-mode check-submodules
 	$(MAKE) -f Makefile.sub $@

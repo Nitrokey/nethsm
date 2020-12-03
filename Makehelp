@@ -6,8 +6,8 @@ local-container-setup:
                     When using a local Docker container, run this once before
                     using any other targets
 
-prepare:            Initialise Git submodules required for MODE,
-                    build and install keyfender OPAM dependencies
+fetch-submodules:   Initialise and check out Git submodules
+prepare:            build and install keyfender OPAM dependencies, Coreboot toolchain
 build:              Build full system
 build-keyfender:    Build keyfender library and unikernel only
 test-keyfender-lib: Run keyfender library tests

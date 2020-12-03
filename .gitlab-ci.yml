@@ -12,24 +12,28 @@ stages:
 build_keyfender:
   stage: build_dev
   script:
+    - make fetch-submodules
     - make -j$(nproc) build-keyfender
 
 test_keyfender:
   stage: test
   needs: []
   script:
+    - make MODE=test fetch-submodules
     - make -j$(nproc) MODE=test coverage-summary
 
 build_muen_qemukvm:
   stage: build_muen
   needs: [build_keyfender]
   script:
+    - make MODE=muen fetch-submodules
     - make -j$(nproc) MODE=muen MUEN_TARGET=qemu-kvm build
 
 build_muen_x11sshtf:
   stage: build_muen
   needs: [build_keyfender]
   script:
+    - make MODE=muen fetch-submodules
     - make -j$(nproc) MODE=muen MUEN_TARGET=supermicro-x11ssh-tf build
   artifacts:
     paths:
