@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!-- ==========================================
      Generated with mugenhwcfg (commit v0.5-117-gd63a29e)
-     Linux kernel version: 4.19.0-8-amd64
+     Linux kernel version: 4.19.0-12-amd64
      Distribution: Debian GNU/Linux 10 (buster)
      Product information:
        Vendor: Supermicro
@@ -13,8 +13,8 @@
        Version: 1.0
      BIOS information:
        Vendor: coreboot
-       Version: 4.12-4-gfc1e4e9778
-       Date: 07/08/2020
+       Version: 4.12-6-gde66d04f8d
+       Date: 11/26/2020
      ========================================== -->
 
 
@@ -28,7 +28,7 @@
     <memoryBlock allocatable="false" name="System RAM" physicalAddress="16#1000#" size="16#0009_f000#"/>
     <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#7f19_c000#"/>
     <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#7f29_c000#" size="16#0056_4000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#8000_0000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#0001_8000_0000#"/>
   </memory>
   <devices pciConfigAddress="16#e000_0000#">
     <device name="system_board">
