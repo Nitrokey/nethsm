@@ -9,7 +9,10 @@ if [ -z "${CI}" ]; then
     BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 else
     ID="${CI_JOB_ID}"
-    BRANCH="${CI_COMMIT_REF_NAME}"
+    # Handle both "Pipelines for Merge Requests"
+    # (https://docs.gitlab.com/ee/ci/merge_request_pipelines/) and the current
+    # configuration i.e. fast-forward merges.
+    BRANCH="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
 fi
 
 [ -z "${ID}" ] && exit 1
