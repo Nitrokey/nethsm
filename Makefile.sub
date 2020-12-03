@@ -19,10 +19,12 @@ NET_INTERNAL ?= tap201
 # for the Keyfender unikernel. Default for MODE=muen is '--retry=true'.
 # (actual setting is performed later)
 
-# Set MUEN_TARGET to qemu-kvm or supermicro-x11ssh-tf.
+# Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
+# built for. Currently supported: qemu-kvm or supermicro-x11ssh-tf.
+#
 # TODO: This should be persisted similarly to MODE=, or otherwise detect that
 # it changed?
-MUEN_TARGET ?= qemu-kvm
+MUEN_HARDWARE ?= qemu-kvm
 
 # Private key directory used to sign Muen system image.
 # TODO: Document this more, provide a way to use a GPG-agent/Smart Card, etc.
@@ -313,18 +315,20 @@ else ifeq ($(XMODE),muen)
 #
 # ------------------------------------------------------------------------------
 
-POLICY_DIR=$(TOP_DIR)/src/muen/policy
-MUEN_LINUX_CONFIG=$(TOP_DIR)/src/muen/linux/config-5.4-$(MUEN_TARGET)
-ifeq ($(MUEN_TARGET),qemu-kvm)
-MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
-MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
-COREBOOT_CONFIG=configs/config.nitrohsm_qemu_q35
-else ifeq ($(MUEN_TARGET),supermicro-x11ssh-tf)
-MUEN_HARDWARE=$(POLICY_DIR)/hardware/nitrohsm-$(MUEN_TARGET).xml
-MUEN_PLATFORM=$(POLICY_DIR)/platform/nitrohsm-$(MUEN_TARGET).xml
-COREBOOT_CONFIG=configs/config.nitrohsm_supermicro_x11_ssh_tf
+MUEN_DIR := $(TOP_DIR)/src/muen
+MUEN_POLICY_DIR := $(TOP_DIR)/src/muen/policy
+MUEN_LINUX_CONFIG := $(MUEN_DIR)/linux/config-5.4-$(MUEN_HARDWARE)
+
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nitrohsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nitrohsm-$(MUEN_HARDWARE).xml
+COREBOOT_CONFIG := configs/config.nitrohsm_qemu_q35
+else ifeq ($(MUEN_HARDWARE),supermicro-x11ssh-tf)
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nitrohsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nitrohsm-$(MUEN_HARDWARE).xml
+COREBOOT_CONFIG := configs/config.nitrohsm_supermicro_x11_ssh_tf
 else
-$(error Invalid MUEN_TARGET)
+$(error Invalid MUEN_HARDWARE)
 endif
 
 OBJ_DIR := $(TOP_DIR)/obj
@@ -488,9 +492,9 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
-	    SYSTEM=$(TOP_DIR)/src/muen/policy/xml/nitrohsm_basic_system.xml \
-	    HARDWARE=$(MUEN_HARDWARE) \
-	    PLATFORM=$(MUEN_PLATFORM) \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_basic_system.xml \
+	    HARDWARE=$(MUEN_HARDWARE_XML) \
+	    PLATFORM=$(MUEN_PLATFORM_XML) \
 	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
 	    pack
@@ -513,7 +517,7 @@ ifeq ($(USE_CCACHE),1)
 	    util/scripts/config --enable CCACHE
 endif
 
-ifneq ($(MUEN_TARGET),qemu-kvm)
+ifneq ($(MUEN_HARDWARE),qemu-kvm)
 # When building for the Supermicro hardware, we need to populate the Coreboot
 # build tree with the Intel ME blob from this repository.
 
@@ -542,7 +546,7 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL)
 	$(CBFSTOOL) $@ add \
 	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
 
-ifneq ($(MUEN_TARGET),qemu-kvm)
+ifneq ($(MUEN_HARDWARE),qemu-kvm)
 # When building for real hardware, stop here.
 
 .PHONY: build

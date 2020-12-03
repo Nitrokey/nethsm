@@ -18,7 +18,7 @@ and then dump the resulting `live-image-amd64.hybrid.iso` to an USB stick.
 
 Rough notes, TBC:
 
-1. You need two USB sticks. One with this installer on it, another with `obj/system.img.cpio` built for `MUEN_TARGET=supermicro-x11ssh-tf` on it.
+1. You need two USB sticks. One with this installer on it, another with `obj/system.img.cpio` built for `MUEN_HARDWARE=supermicro-x11ssh-tf` on it.
 2. Power on the system with **only** the installer USB stick inserted and a serial console attached to COM1 (115200, N81).
 3. Log in as `user` with a password of `live`.
 4. Insert the USB stick with the Muen CPIO image on it and mount it on `/mnt`.

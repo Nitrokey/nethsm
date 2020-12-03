@@ -27,14 +27,14 @@ build_muen_qemukvm:
   needs: [build_keyfender]
   script:
     - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_TARGET=qemu-kvm build
+    - make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
 
 build_muen_x11sshtf:
   stage: build_muen
   needs: [build_keyfender]
   script:
     - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_TARGET=supermicro-x11ssh-tf build
+    - make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build
   artifacts:
     paths:
       - obj/coreboot.rom

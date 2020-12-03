@@ -150,9 +150,9 @@ Building the full Muen system, either for development under KVM, or for target h
 3. Build the system with:
 
        # For QEMU/KVM:
-       make -j$(nproc) MODE=muen MUEN_TARGET=qemu-kvm build
+       make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
        # For Supermicro X11SSH-TF:
-       make -j$(nproc) MODE=muen MUEN_TARGET=supermicro-x11ssh-tf build
+       make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build
 
 Notes:
 
