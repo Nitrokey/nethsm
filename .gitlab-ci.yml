@@ -3,6 +3,11 @@ image: "mato/nethsm-builder@sha256:d21fdbce4449c9be8c74cd314b0b669d24737d2012bd2
 default:
   before_script:
     - source .gitlab-ci-setup.bash
+  artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
+    paths:
+      - obj/artifacts/
 
 stages:
   - build_dev
@@ -10,38 +15,38 @@ stages:
   - test
 
 build_keyfender:
+  variables:
+    MODE: dev
   stage: build_dev
   script:
     - make fetch-submodules
-    - make -j$(nproc) build-keyfender
+    - make -j$(nproc) build
 
 test_keyfender:
+  variables:
+    MODE: test
   stage: test
   needs: []
   script:
-    - make MODE=test fetch-submodules
-    - make -j$(nproc) MODE=test coverage-summary
+    - make fetch-submodules
+    - make -j$(nproc) coverage-summary
 
 build_muen_qemu_kvm:
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: qemu-kvm
   stage: build_muen
   needs: [build_keyfender]
   script:
-    - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build artifacts
-  artifacts:
-    name: "$CI_JOB_NAME"
-    expire_in: 1 week
-    paths:
-      - obj/artifacts/
+    - make fetch-submodules
+    - make -j$(nproc) build artifacts
 
 build_muen_supermicro_x11ssh_tf:
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: supermicro-x11ssh-tf
   stage: build_muen
   needs: [build_keyfender]
   script:
-    - make MODE=muen fetch-submodules
-    - make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build artifacts
-  artifacts:
-    name: "$CI_JOB_NAME"
-    expire_in: 1 week
-    paths:
-      - obj/artifacts/
+    - make fetch-submodules
+    - make -j$(nproc) build artifacts
