@@ -479,9 +479,14 @@ MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
 # XXX: Using --bootparams= here is not currently possible without using
 # XXX: mirageos/compose.py, so we persist parameters at unikernel configure
 # XXX: time instead.
+# XXX: We should not be special-casing QEMU/KVM here.
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+MUEN_GEN_CSPEC_EXTRA :=
+else
 # XXX: We cannot currently allocate more than 3GB of memory to the unikernel
 # XXX: due to limitations (chanAddr) of solo5-muen-gencspec.py.
 MUEN_GEN_CSPEC_EXTRA := --ram 3072
+endif
 
 $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	$(MUEN_GEN_CSPEC) \
