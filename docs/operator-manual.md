@@ -1,28 +1,60 @@
-# Provision a key for signing software updates
+% NetHSM Operator Manual
 
-A software update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is named "update.pem", and located in src/keyfender of this repository. It must be a PEM encoded RSA public key.
+# Introduction {#sec-i}
+
+**TODO**: Complete this section, and/or re-structure this document better, at the moment it's a "grab-bag" of various things.
+
+# Initial Installation on Hardware {#sec-iih}
+
+**TODO**: The final structure of the nitrohsm-builds [repository][builds] has not yet been decided upon, and this process will also change once signing of images with production keys via an external USB Smartcard is implemented. Current builds are all automatically signed with test keys.
+
+To perform initial installation on a stock hardware unit, follow these steps:
+
+1. Download the build you would like to install from the nitrohsm-builds [repository][builds].
+2. Flash `coreboot.rom` from the build to the unit with an external programmer.
+3. Attach the SSD to your machine, e.g. using an USB to SATA adapter, and note down the block device `/dev/sdX` of the SSD.
+4. Ensure you have the following system packages installed:
+    - `cgpt`
+    - `e2fsprogs`
+5. As root, run the installer [script][installer] using `/dev/sdX` and the `system.img.cpio` from the build.
+6. Insert the SSD into the hardware unit, making sure that it is connected to the **first** SATA controller.
+
+See [System Console](#sec-sc) for details on how to access the console of the unit.
+
+[builds]: https://git.dotplex.com/nitrokey/nitrohsm-builds
+[installer]: https://git.dotplex.com/nitrokey/nitrohsm/-/raw/master/tools/nitrohsm-install.sh
+
+Alternatively, for development purposes, if you have a Debian 10 host system (**not a container**) available to build it with, you can also install the System Software by booting a signed "development" installer based on Debian Live from USB. See the [README.md][usbinstaller] for details.
+
+[usbinstaller]: https://git.dotplex.com/nitrokey/nitrohsm/-/blob/master/src/installer/README.md
+
+# System Software Update Signing {#sec-ssus}
+
+**TODO**: Conplete this section, once System Software Update is actually implemented.
+
+A _System Software_ update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is named "update.pem", and located in src/keyfender of this repository. It must be a PEM encoded RSA public key.
 
 To add the outer signature to a software update image the keyfender library provides "bin/sign-update.exe". Please read the output of "sign-update.exe --help" for instructions how to use it. The output file can be uploaded to a NitroHSM (/system/update endpoint).
 
-# First installion on hardware
-
-# Rate limiting
+# Rate Limiting {#sec-rl}
 
 To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is enforced globally (at the moment at most 10 accesses per second). The rate limit for all endpoints requiring authentication is 10 per second per IP address.
 
-# Reset to factory defaults (when unlock passphrase is lost)
+# Reset to Factory Defaults {#sec-rtfd}
+
+Until this feature is implemented, you can use the following method to reset a unit to factory defaults if the unlock passphrase is lost:
 
 Disassemble hardware, attach SSD to a computer. Wipe the data partition (assuming "sdb" is the disk):
 
     | mkdir -p /tmp/empty /tmp/data/git
     | git init --bare --template=/tmp/empty /tmp/data/git/keyfender-data.git
-    | mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sdb2
+    | mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sdb3
 
-# Reading output from serial console
+# System Console {#sec-sc}
 
-Debug output is written to the serial console (multiplexed from the different subjects by Muen). To gather debug information, hook up a serial cable (115200, 8N1).
+Debug output is written to the serial console (multiplexed from the different subjects by Muen). To gather debug information, hook up a serial cable (115200, 8N1) to COM1 on the unit.
 
-# Cryptographic parameters
+# Cryptographic Parameters {#sec-cp}
 
 The keyfender library includes some choices of cryptographic parameters, in keyfender/crypto.ml.
 - RSA key size (for the TLS endpoint): 2048
@@ -32,12 +64,8 @@ The data stored on disk is encrypted with AES256-GCM (32 byte key, nonce size is
 
 [stackexchange]: https://crypto.stackexchange.com/questions/5807/aes-gcm-and-its-iv-nonce-value
 
-# Current limitations
+# Known Issues {#sec-ki}
 
-Some features mentioned in the system design are not yet implemented:
-- Full disaggregation of the Muen subjects (currently, S-Platform and S-Update are combined in a single S-Kitchen-Sink).
-- Software update functionality is not yet implemented.
-- S-TRNG is not implemented.
-- A physical reset is not implemented.
-- The device ID is not taken from the hardware, but instead hardcoded in S-Platform.
-- If the S-Keyfender subject runs out of memory, it exits (logging on serial console), and needs to be cold bootet.
+Apart from the features mentioned as not yet implemented in the System Design document, the following known issues exist:
+
+- If the **S-Keyfender** subject runs out of memory, it exits (logging on serial console), and the unit needs to be cold booted (hard reset).

@@ -2,7 +2,7 @@
 % Hannes Mehnert; Martin Lucina; Stefanie Schirmer; Sven Anderson; Jan Suhr
 % Robur.io, Nitrokey GmbH, 20th November 2020
 
-# Introduction
+# Introduction {#sec-i}
 
 NetHSM is a networked hardware security module which can securely store a large number of cryptographic keys, have a high computing performance, and offers common key management functions via a modern REST-based API.
 
@@ -26,7 +26,19 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 [muen]: https://muen.sk/
 [mirage]: https://mirage.io/
 
-# Terminology and Conventions
+# Status of This Document {#sec-sotd}
+
+The following aspects of the system design, which have changed over the course of the development of NetHSM, are not yet reflected in this document:
+
+* [Reset to Factory Defaults](#sec-us-rtfd): NetHSM will not be equipped with a physical "Reset Button". Instead, the user will be required to initiate and _confirm_ a Reset to Factory Defaults by interacting with a local serial console connected to the unit. This feature is not implemented yet.
+* [Encryption Architecture](#sec-dd-ea): The _Device ID_ used as part of [Unattended Boot](#sec-us-ub) is currently hard-coded for development purposes. This will be replaced with a TPM-based solution, the exact details of which are yet to be defined.
+* [Technical Architecture](#sec-dd-ta): **S-TRNG** will be replaced by a TPM-based solution, the exact architecture of which is yet to be defined.
+* [System Firmware](#sec-dd-ta-sf):
+    * _Firmware_ integrity shall be protected by the use of Intel Boot Guard on the platform. This feature is not implemented yet.
+    * Offline but on-site _Firmware_ update will be provided via **Ext-FirmwareUpdate**. This feature is not implemented yet.
+* [System Software Update](#sec-dd-ta-ssu): This feature is not yet implemented, and will be implemented using a simplified "A/B updates" mechanism with manual fall-back available by interacting with a local serial console connected to the unit.
+
+# Terminology and Conventions {#sec-tac}
 
 Authentication Store
 
@@ -62,7 +74,7 @@ Extension
 
 Firmware
 
-: The platform firmware (a.k.a. "BIOS") used by the NetHSM hardware.
+: The platform firmware (a.k.a. "BIOS") used by the NetHSM hardware. Refer to [System Firmware](#sec-dd-ta-sf) for details.
 
 Key Store
 
@@ -70,11 +82,11 @@ Key Store
 
 Role
 
-: Each user account configured on the NetHSM has a single _Role_ assigned to it. Roles are referred to as **R-Name** throughout this document; see [Roles] for a detailed list.
+: Each user account configured on the NetHSM has a single _Role_ assigned to it. Roles are referred to as **R-Name** throughout this document; see [Roles](#sec-dd-r) for a detailed list.
 
 System Software
 
-: The NetHSM system software, i.e. Muen and all subjects without the *Firmware*.
+: The NetHSM system software, i.e. Muen and all subjects without the _Firmware_.
 
 Unlock Key
 
@@ -86,19 +98,19 @@ Unlock Passphrase
 
 User Data
 
-: Used collectively to refer to all user data persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model] for details.
+: Used collectively to refer to all user data persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model](#sec-dd-dm) for details.
 
 Verified Boot
 
-: The process used by the _Firmware_ to ensure that only _System Software_ cryptographically signed with a trusted key can be booted on the NetHSM hardware. See [Verified Boot] for details.
+: The process used by the _Firmware_ to ensure that only _System Software_ cryptographically signed with a trusted key can be booted on the NetHSM hardware. See [Verified Boot](#sec-dd-ta-sf-vb) for details.
 
-# States
+# States {#sec-s}
 
 ![Data Model](states.png){width=100%}
 
 Locked
 
-: A _Provisioned_ NetHSM initially boots up in a _Locked_ state, with no access to the encrypted _Authentication Store_ or _Key Store_. See [Encryption Architecture] for details of how a _Locked_ NetHSM can transition into an _Operational_ state.
+: A _Provisioned_ NetHSM initially boots up in a _Locked_ state, with no access to the encrypted _Authentication Store_ or _Key Store_. See [Encryption Architecture](#sec-dd-ea) for details of how a _Locked_ NetHSM can transition into an _Operational_ state.
 
 Operational
 
@@ -110,9 +122,9 @@ Provisioned
 
 Unprovisioned
 
-: An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for [Initial Provisioning] is available.
+: An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for [Initial Provisioning](#sec-us-ip) is available.
 
-# User Stories
+# User Stories {#sec-us}
 
 The user stories in this section are described from the point of view of a user interacting with a web-based user interface to the NetHSM.
 
@@ -120,7 +132,7 @@ Unless otherwise stated, an implicit pre-condition for all user stories is a Net
 
 Note that this list of user stories is not exhaustive.
 
-## Initial Provisioning
+## Initial Provisioning {#sec-us-ip}
 
 Pre-conditions: An _Unprovisioned_ NetHSM, with its Ethernet port _directly_ connected to the secure client computer to be used for Initial Provisioning.
 
@@ -128,7 +140,7 @@ Pre-conditions: An _Unprovisioned_ NetHSM, with its Ethernet port _directly_ con
 2. The NetHSM will boot up with a static IP address of `192.168.1.1` and will generate a new self-signed TLS certificate and private key.
 3. On the secure client computer, browse to `https://192.168.1.1/`.
 4. Add a security exception for the NetHSM's self-signed TLS certificate.
-5. The system will prompt you to set the "wall clock" time (see [Timekeeping]).
+5. The system will prompt you to set the "wall clock" time (see [Timekeeping](#sec-dd-ta-s-t)).
 6. The system will prompt you to either:
 
      a. Set an _Unlock Passphrase_.
@@ -138,15 +150,15 @@ Pre-conditions: An _Unprovisioned_ NetHSM, with its Ethernet port _directly_ con
 
      a. Restore from an existing backup. You will need to provide the _Backup Passphrase_.
      b. The NetHSM will restore all _User Data_ and reboot.
-     c. Depending on the restored configuration and hardware unit, the NetHSM now continues with either [Attended Boot] or [Unattended Boot]. Refer to [Encryption Architecture] and [Backup and Restore] for details.
+     c. Depending on the restored configuration and hardware unit, the NetHSM now continues with either [Attended Boot](#sec-us-ab) or [Unattended Boot](#sec-us-ub). Refer to [Encryption Architecture](#sec-dd-ea) and [Backup and Restore](#sec-dd-ta-s-bar) for details.
 
 **Notes:**
 
 After step 6c, the user is expected to continue with configuration of the NetHSM, primarily by configuring the TLS endpoint by generating a CSR on the NetHSM and submitting the result to a certification authority.
 
-In step 7a, the system will restore all _User Data_. This may result in the IP address and TLS certificate changing on next boot. Refer to [Backup and Restore] for details.
+In step 7a, the system will restore all _User Data_. This may result in the IP address and TLS certificate changing on next boot. Refer to [Backup and Restore](#sec-dd-ta-s-bar) for details.
 
-## Attended Boot
+## Attended Boot {#sec-us-ab}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network.
 
@@ -161,7 +173,7 @@ Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network
 
 No other operations are possible when the NetHSM is in the _Locked_ state.
 
-## Unattended Boot
+## Unattended Boot {#sec-us-ub}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network, with unattended boot enabled.
 
@@ -171,33 +183,33 @@ Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network
 
 **Notes:**
 
-Refer to [Encryption Architecture] for implementation details of unattended boot.
+Refer to [Encryption Architecture](#sec-dd-ea) for implementation details of unattended boot.
 
-## Enabling Unattended Boot
+## Enabling Unattended Boot {#sec-us-eub}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network.
 
 1. Browse to the NetHSM and log in as an **R-Administrator** account.
 2. Navigate to "configure unattended boot" and enable the option.
-3. On next boot, the NetHSM will behave as described in [Unattended Boot].
+3. On next boot, the NetHSM will behave as described in [Unattended Boot](#sec-us-ub).
 
 **Notes:**
 
-Refer to [Encryption Architecture] for implementation details of unattended boot.
+Refer to [Encryption Architecture](#sec-dd-ea) for implementation details of unattended boot.
 
-## Disabling Unattended Boot
+## Disabling Unattended Boot {#sec-us-dub}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network, with unattended boot enabled.
 
 1. Browse to the NetHSM and log in as an **R-Administrator** account.
 2. Navigate to "configure unattended boot" and disable the option.
-3. On next boot, the NetHSM will behave as described in [Attended Boot].
+3. On next boot, the NetHSM will behave as described in [Attended Boot](#sec-us-ab).
 
 **Notes:**
 
-Refer to [Encryption Architecture] for implementation details of unattended boot.
+Refer to [Encryption Architecture](#sec-dd-ea) for implementation details of unattended boot.
 
-## System Software Update
+## System Software Update {#sec-us-ssu}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network.
 
@@ -214,7 +226,7 @@ Any data migration is only performed _after_ the NetHSM has successfully booted 
 
 If the NetHSM is powered down before the "commit" operation, the user will have to re-apply the update.
 
-## System Backup
+## System Backup {#sec-us-sb}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network. The _Backup Passphrase_ is configured.
 
@@ -224,15 +236,15 @@ Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network
 
 **Notes:**
 
-The backup is encrypted with the _Backup Key_, derived from the _Backup Passphrase_ when configured. Refer to [Backup and Restore] for details.
+The backup is encrypted with the _Backup Key_, derived from the _Backup Passphrase_ when configured. Refer to [Backup and Restore](#sec-dd-ta-s-bar) for details.
 
-## System Restore
+## System Restore {#sec-us-sr}
 
-System restore is only possible in an _Unprovisioned_ state. Refer to [Reset to Factory Defaults] and [Initial Provisioning].
+System restore is only possible in an _Unprovisioned_ state. Refer to [Reset to Factory Defaults](#sec-us-rtfd) and [Initial Provisioning](#sec-us-ip).
 
-## Reset to Factory Defaults
+## Reset to Factory Defaults {#sec-us-rtfd}
 
-### Administrative Reset
+### Administrative Reset {#sec-us-rtfd-ar}
 
 Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network.
 
@@ -241,21 +253,21 @@ Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network
 3. Confirm the operation.
 4. The NetHSM securely erases all _User Data_.
 5. The NetHSM reboots.
-6. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning].
+6. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning](#sec-us-ip).
 
-### Physical Reset (Recovery)
+### Physical Reset (Recovery) {#sec-us-rtfd-pr}
 
 Pre-conditions: Physical access to a _Provisioned_ NetHSM.
 
 1. If the NetHSM is powered on, power it off,
-2. ~~While powering on the NetHSM, hold down the "Reset Button" for at least 10 seconds.~~ ToDo: Describe mechanism.
+2. While powering on the NetHSM, hold down the "Reset Button" for at least 10 seconds.
 3. The NetHSM securely erases all _User Data_.
 4. The NetHSM reboots.
-5. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning].
+5. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning](#sec-us-ip).
 
-# Detailed Description
+# Detailed Description {#sec-dd}
 
-## Data Model
+## Data Model {#sec-dd-dm}
 
 ![Data Model](DataModel.png){width=75%}
 
@@ -266,7 +278,7 @@ For each data store, the diagram shows, as a high-level overview, which types of
 * valid input and output data types for each HTTPS endpoint, which correspond to the "Values" stored in each data store,
 * constraints for each data type, e.g. "a KeyID needs to be a string of alphanumeric characters, which is between 1 and 128 characters long".
 
-## Roles
+## Roles {#sec-dd-r}
 
 Each user account configured on the NetHSM has _one_ of the following _Roles_ assigned to it. Following is a high-level description of the operations allowed by individual _Roles_, for endpoint-specific details please refer to the REST API documentation.
 
@@ -290,13 +302,15 @@ R-Backup
 
 : A user account with this _Role_ has access to the operations required to initiate a system backup only.
 
-## Encryption Architecture
+## Encryption Architecture {#sec-dd-ea}
 
 ![Encryption Architecture](EncryptionArchitecture.png){width=75%}
 
-The _Authentication Store_ and _Key Store_ are persisted to disk and their contents are encrypted and authenticated using the so-called _Domain Key_. Only the **S-Keyfender** subject has decrypted access to these stores. The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with ephemeral _Unlock Keys_.
+The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the **S-Keyfender** subject has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
-The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot]. Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
+The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with ephemeral _Unlock Keys_. 
+
+The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot](#sec-us-ub). Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
 |     _State_ = _Locked_
 |     _Unlock Key_ = KDF(_Device ID_)
@@ -316,13 +330,13 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |     UNLOCKED:
 |     _State_ = _Operational_
 
-During [Unattended Boot], (see Figure 2: Encryption Architecture, right hand side), a unique _Device ID_ is used to derive the _Unlock Key_, which is then used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails (for example, due to _User Data_ having been restored from a backup created on a different hardware unit), the NetHSM shall automatically fall back to [Attended Boot].
+During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), a unique _Device ID_ is used to derive the _Unlock Key_, which is then used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails (for example, due to _User Data_ having been restored from a backup created on a different hardware unit), the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
 
-During [Attended Boot], (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. This is used to derive the _Unlock Key_, which is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
+During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. This is used to derive the _Unlock Key_, which is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
 
-For the avoidance of doubt: The act of [Enabling Unattended Boot] causes **S-Keyfender** to compute an _Unlock Key_ derived from the _Device ID_ and populate "Slot 1" with a _Domain Key_ encrypted with this _Unlock Key_. Conversely, [Disabling Unattended Boot] causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
+For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to compute an _Unlock Key_ derived from the _Device ID_ and populate "Slot 1" with a _Domain Key_ encrypted with this _Unlock Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
-## Technical Architecture
+## Technical Architecture {#sec-dd-ta}
 
 ![Muen Subjects](MuenSubjects.png){width=75%}
 
@@ -340,7 +354,7 @@ The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpo
 
 **Note**: Currently **S-TRNG** is not implemented. Also, **S-Storage** and **S-Platform** are combined in a single subject **S-Kitchen-Sink**.
 
-### S-Keyfender
+### S-Keyfender {#sec-dd-ta-s}
 
 **S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers. We expect that there will initially be two consumers of the REST API:
 
@@ -359,7 +373,7 @@ For the avoidance of doubt, the following functionality is specifically _not_ pr
 
 [RFC 3164]: https://tools.ietf.org/html/rfc3164
 
-#### Timekeeping
+#### Timekeeping {#sec-dd-ta-s-t}
 
 In order to provide core system functionality, including but not limited to:
 
@@ -374,7 +388,7 @@ Therefore, as a minimum, we will implement a REST endpoint to allow an **R-Admin
 
 [RFC 3339]: https://tool.ietf.org/html/rfc3339
 
-#### Backup and Restore
+#### Backup and Restore {#sec-dd-ta-s-bar}
 
 Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using a key derivation function. When a _Backup Passphrase_ is configured or changed by an **R-Administrator**, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an **R-Administrator** and a _Backup Key_ exists.
 
@@ -389,13 +403,13 @@ The backup mechanism is designed this way to support automated backups: Once the
 
 When a backup is initiated, **S-Keyfender** prepares a backup, encrypts it with the stored _Backup Key_ and sends it to the requesting client.
 
-During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and [Unattended Boot] must have been enabled. For details refer to [Encryption Architecture].
+During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and [Unattended Boot](#sec-us-ub) must have been enabled. For details refer to [Encryption Architecture](#sec-dd-ea).
 
 **Note**: For the avoidance of doubt, partial backup and restore are _not_ provided. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM, and also the _Unlock Passphrase_, to those current at the time of the backup.
 
 When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
 
-#### Communication with S-Platform
+#### Communication with S-Platform {#sec-dd-ta-cws}
 
 The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the device ID. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
 
@@ -412,7 +426,7 @@ Some sample sessions:
     | C->S: FOO\n
     | S->C: ERROR Unknown command\n
 
-#### Future Extensions
+#### Future Extensions {#sec-dd-ta-fe}
 
 **Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage**. Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
 
@@ -429,19 +443,25 @@ Some sample sessions:
 
 [RFC 4330]: https://tools.ietf.org/html/rfc4330
 
-### Linux-based Subjects
+### Linux-based Subjects {#sec-dd-ta-ls}
 
 All Linux-based Muen subjects that are integrated in the system will be built on a common base. We use the term "minimized Linux" to refer to this base, which is a collection of:
 
-- An LTS release of the [Linux kernel][kernelorg], with Muen patches and a _minimal_, _hardened_, configuration applied.
-- A custom, _minimal_, componentized "userland" and associated tooling (build system). The Muen developers are currently using a [Buildroot][buildroot]-based setup for this; we will also consider [LinuxKit][linuxkit] as it allows for building a distribution with an even smaller "userland" and incorporates other modern features allowing for further hardening of the system.
+- An LTS release of the [Linux kernel][kernelorg], with Muen SK [patches][muenlinux] and a _minimal_, _hardened_, configuration applied.
+- A custom, _minimal_, componentized "userland", built with:
+    - [U-Root][uroot], which provides Go implementations for the bulk of the "userland" and tooling to easily build "run from initramfs" based Linux systems.
+    - A custom `uinit` for U-root, implemented in Go, which manages the Linux subject's lifecycle.
+- The following additional "userland" software components, all of which are cross-compiled as static binaries using a musl libc [toolchain][muslcross], and only the _required_ subset of each is installed into the initramfs:
+    - Git (specifically, `git-daemon`)
+    - e2fsprogs (specifically, `mke2fs`)
 
 [kernelorg]: https://kernel.org/
-[buildroot]: https://buildroot.org/
-[linuxkit]: https://github.com/linuxkit/linuxkit
+[muenlinux]: https://git.codelabs.ch/?p=muen/linux.git;a=summary
+[uroot]: https://github.com/u-root/u-root
+[muslcross]: https://musl.cc/
 
 
-### System Software Update
+### System Software Update {#sec-dd-ta-ssu}
 
 **Note** The software update, as described in this section, is not yet implemented.
 
@@ -466,13 +486,13 @@ The actual implementation details of **S-Platform** will be based on the design 
 [chromium-autoupdate]: https://www.chromium.org/chromium-os/chromiumos-design-docs/filesystem-autoupdate
 
 
-### Firmware
+### System Firmware {#sec-dd-ta-sf}
 
 Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot payload (boot loader). In order to implement the functionality and System Design as described thus far, the following is required from the _Firmware_ and payload:
 
-1. GPT support is required for [System Software Update].
+1. GPT support is required for [System Software Update](#sec-dd-ta-ssu).
 2. Muen uses the [Signed Block Stream][sbs-spec] (SBS) protocol for _Verified Boot_. The SBS implementation from Codelabs has been integrated to GRUB 2.
-3. If a hardware "reset button" is used (see [Physical Reset (Recovery)]), this implies extra customizations to Coreboot. ToDo
+3. If a hardware "reset button" is used (see [Physical Reset (Recovery)](#sec-us-rtfd-pr)), this implies extra customizations to Coreboot.
 4. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
 5. Support for flashing a unique _Device ID_, this _may_ require customization of Coreboot and/or the payload.
 6. If Coreboot is used in combination with "ME Cleaner" or similar, care must be taken by the team selecting the board and/or _Firmware_ to ensure that the system is still stable in such a configuration and all the above requirements are provided for.
@@ -481,7 +501,9 @@ Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot pa
 
 **Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which would likely take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
 
-#### Verified Boot
+#### Verified Boot {#sec-dd-ta-sf-vb}
+
+**TODO:** This diagram needs to be reviewed and the description to be simplified and clarified.
 
 ![](verified-boot.png)
 
@@ -490,7 +512,7 @@ The process of ensuring that the NetHSM hardware will only boot _System Software
 Build-time tooling provides:
 
 1. Embed a trusted public key into CBFS in the _Firmware_ image to be flashed to NetHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NetHSM hardware.
-2. Sign the components of a _System Software_ image with the matching private key (referred to as an "inner signature" in [System Software Update]).
+2. Sign the components of a _System Software_ image with the matching private key (referred to as an "inner signature" in [System Software Update](#sec-dd-ta-ssu)).
 3. Build a signed "Live USB" system intended for use as an "installer" to install stock NetHSM hardware with an initial _System Software_ image.
 
 Internally, a _System Software_ image consists of the following components:
@@ -503,7 +525,7 @@ These components are wrapped in a plain CPIO image, which is written to the syst
 
 During system boot, Coreboot will launch the GRUB 2 payload, which will initially execute the commands defined by a trusted GRUB configuration embedded in CBFS. This configuration will attempt to "chain" into a correctly signed GRUB configuration file found in any _System Software_ image present on either the internal SSD or a USB key (for use by a Live USB installer, updater, or other component). If signature verification of the configuration file succeeds, then the system will proceed to boot from that device.
 
-## Security Design
+## Security Design {#sec-dd-sd}
 
 NetHSM runs on commodity hardware using a minimal amount of high-assurance software to protect private keys stored in the *Key Store*.
 
@@ -517,7 +539,7 @@ Muen is implemented in Ada, a memory-safe programming language, and its isolatio
 
 NetHSM uses an append-only store for all _User Data_ (git-based). This comes with an audit trail for each data modification, which adds accountability and rollback points for the data.
 
-#### Random numbers
+### Random Numbers {#sec-dd-sd-rn}
 
 The **S-Keyfender** subject uses as cryptographically secure random number generator, an [implementation of][fortuna-impl] [Fortuna] with 32 pools. **S-Keyfender** does not have direct access to real hardware, it is crucial to collect non-predictable entropy.
 
