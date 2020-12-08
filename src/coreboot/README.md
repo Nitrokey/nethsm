@@ -9,7 +9,7 @@ For QEMU, the image in `qemu/` can be reproduced as follows:
 Clone Coreboot for NitroHSM:
 
 ```
-git clone -b nitrohsm git@git.dotplex.com:nitrokey/nitrohsm-coreboot.git
+git clone -b nitrohsm git@git.dotplex.com:nitrokey/nethsm/coreboot.git
 cd nitrohsm-coreboot
 ```
 

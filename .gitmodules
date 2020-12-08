@@ -19,9 +19,9 @@
 	branch = maint
 [submodule "src/coreboot/coreboot"]
 	path = src/coreboot/coreboot
-	url = ../nitrohsm-coreboot.git
+	url = ../coreboot.git
 	branch = nitrohsm
 [submodule "src/coreboot/grub2"]
 	path = src/coreboot/grub2
-	url = ../nitrohsm-grub.git
+	url = ../grub.git
 	branch = nitrohsm
