@@ -3,8 +3,10 @@ module GCM = Mirage_crypto.Cipher_block.AES.GCM
 
 let initial_key_rsa_bits = 2048
 
-(* parameters for PBKDF2 *)
-let count = 100_000
+(* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
+let scrypt_n = 16384
+let scrypt_r = 8
+let scrypt_p = 1
 let salt_len = 16
 
 (* key length for AES256 is 32 byte = 256 bit *)
@@ -16,12 +18,10 @@ let software_update_key =
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
   | Error `Msg m -> invalid_arg m
 
-module K = Pbkdf.Make(Mirage_crypto.Hash.SHA256)
-
 let key_of_passphrase ~salt password =
-  K.pbkdf2
+  Scrypt_kdf.scrypt_kdf
     ~password:(Cstruct.of_string password)
-    ~salt ~count ~dk_len:(Int32.of_int key_len)
+    ~salt ~n:scrypt_n ~r:scrypt_r ~p:scrypt_p ~dk_len:(Int32.of_int key_len)
 
 (* from https://crypto.stackexchange.com/questions/5807/aes-gcm-and-its-iv-nonce-value *)
 let iv_size = 12

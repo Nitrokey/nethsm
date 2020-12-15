@@ -12,7 +12,7 @@ val software_update_key : Mirage_crypto_pk.Rsa.pub
 module GCM : Mirage_crypto.Cipher_block.S.GCM
 
 val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t
-(** Derive a symmetric key from a passphrase, using PBKDF2. *)
+(** Derive a symmetric key from a passphrase, using SCRYPT. *)
 
 val encrypt : (int -> Cstruct.t) -> key:GCM.key -> adata:Cstruct.t ->
   Cstruct.t -> Cstruct.t

@@ -34,7 +34,7 @@ depends: [
   "ppx_deriving_yojson"
   "ppx_deriving"
   "ppx_blob"
-  "pbkdf" {>= "1.1.0"}
+  "scrypt-kdf" {>= "1.1.0"}
   "mirage-kv" {>= "3.0.0"}
   "tls" {>= "0.12.2"}
   "x509"
