@@ -233,7 +233,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok subject ->
         Hsm.Key.csr_pem hsm_state ~id subject >>= function
         | Error e -> Endpoint.respond_error e rd
-        | Ok csr_pem -> 
+        | Ok csr_pem ->
           let rd' = { rd with resp_body = `String csr_pem } in
           Wm.continue true rd'
 

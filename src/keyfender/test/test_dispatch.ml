@@ -815,6 +815,22 @@ let user_operator_get_not_found () =
   | _ -> false
   end
 
+let user_version_get_bad_request () =
+  "GET on /users/.version returns bad request"
+  @? begin
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/.version" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_version_delete_fails_invalid_id () =
+  "DELETE on /users/.version fails"
+  @? begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/.version" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let user_passphrase_post () =
   "POST on /users/admin/passphrase succeeds"
   @? begin
@@ -1259,6 +1275,51 @@ let keys_key_cert_delete () =
     | _ -> false
   end
 
+let keys_key_version_get_fails () =
+  "GET on /keys/.version fails"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/.version" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_version_delete_fails () =
+  "DELETE on /keys/.version fails"
+  @? begin
+  match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/.version" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_version_cert_get_fails () =
+  "GET on /keys/.version/cert fails"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data") in
+    match request ~headers:operator_headers ~hsm_state "/keys/.version/cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_version_cert_put_fails () =
+  "PUT on /keys/.version/cert fails"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match admin_put_request ~body:(`String "data") ~hsm_state "/keys/.version/cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_version_cert_delete_fails () =
+  "DELETE on /keys/.version/cert fails"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data") in
+    match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/.version/cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let unlock_rate_limit = 10
 
 let rate_limit_for_unlock () =
@@ -1410,6 +1471,8 @@ let () =
     "/users/operator" >:: user_op_delete_fails;
     "/users/operator" >:: user_operator_get;
     "/users/operator" >:: user_operator_get_not_found;
+    "/users/.version" >:: user_version_get_bad_request;
+    "/users/.version" >:: user_version_delete_fails_invalid_id;
     "/users/admin/passphrase" >:: user_passphrase_post;
     "/users/operator/passphrase" >:: user_passphrase_operator_post;
     "/users/admin/passphrase" >:: user_passphrase_administrator_post;
@@ -1441,6 +1504,11 @@ let () =
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_put;
     "/keys/keyID/cert" >:: keys_key_cert_delete;
+    "/keys/version" >:: keys_key_version_get_fails;
+    "/keys/version" >:: keys_key_version_delete_fails;
+    "/keys/version/cert" >:: keys_key_version_cert_get_fails;
+    "/keys/version/cert" >:: keys_key_version_cert_put_fails;
+    "/keys/version/cert" >:: keys_key_version_cert_delete_fails;
     "/unlock" >:: rate_limit_for_unlock;
     "/system/info" >:: rate_limit_for_get;
     "rate limit reset after successful login" >:: reset_rate_limit_after_successful_login;

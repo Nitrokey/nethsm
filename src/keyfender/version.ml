@@ -13,4 +13,6 @@ let of_string = function
 
 let current = V0
 
-let filename = Mirage_kv.Key.v ".version"
+let file = ".version"
+
+let filename = Mirage_kv.Key.v file

@@ -41,7 +41,11 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   let list t key =
     KV.list t.kv (prefix t key) >|= function
-    | Ok items -> Ok (List.filter (fun (data, _) -> not (String.equal ".version" data)) items)
+    | Ok items ->
+      let items_without_version =
+        List.filter (fun (data, _) -> not (String.equal Version.file data)) items
+      in
+      Ok items_without_version
     | Error e -> Error (`Kv e)
 
   let last_modified t key = KV.last_modified t.kv (prefix t key) >|= lift_kv_err

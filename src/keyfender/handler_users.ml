@@ -75,7 +75,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (user : Json.user_req) =
         Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
-        | Ok _id -> 
+        | Ok _id ->
           let cc hdr = Cohttp.Header.replace hdr "Location" (Uri.path rd.uri) in
           let rd' = Webmachine.Rd.with_resp_headers cc rd in
           Wm.continue true rd'

@@ -10,4 +10,6 @@ val pp : t Fmt.t
 
 val current : t
 
+val file : string
+
 val filename : Mirage_kv.Key.t
