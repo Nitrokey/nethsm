@@ -1053,37 +1053,47 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
-      match Base64.decode oneline with
-      | Error `Msg msg ->
-        Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
-      | Ok encrypted_data ->
-        let encrypted_cs = Cstruct.of_string encrypted_data in
-        match key_data.purpose, key_data.priv with
-        | Decrypt, `RSA key | SignAndDecrypt, `RSA key ->
-          let dec_cs_opt =
-            match decrypt_mode with
-            | Json.RAW ->
-              (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
-               with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
-            | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
-            | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
-            | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
-            | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
-            | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
-            | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
-            | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
-          in
-          begin match dec_cs_opt with
-            | None -> Lwt.return (Error (Bad_request, "Decryption failure."))
-            | Some cs ->
-              Metrics.key_op `Decrypt;
-              Hashtbl.replace cached_operations id (succ key_data.operations);
-              Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string cs))
-          end
-        | Decrypt, _ | SignAndDecrypt, _ ->
-          Lwt.return (Error (Bad_request, "Not an RSA key."))
-        | Sign, _ ->
-          Lwt.return (Error (Bad_request, "Key purpose is not decrypt."))
+      Lwt_result.lift
+        (match Base64.decode oneline with
+         | Error `Msg msg ->
+           Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
+         | Ok encrypted_data ->
+           let encrypted_cs = Cstruct.of_string encrypted_data in
+           match key_data.priv with
+           | `RSA key ->
+             let dec_ok = function
+               | None -> Error (Bad_request, "Decryption failure")
+               | Some cs ->
+                 Metrics.key_op `Decrypt;
+                 Hashtbl.replace cached_operations id (succ key_data.operations);
+                 Ok (Base64.encode_string (Cstruct.to_string cs))
+             in
+             begin match key_data.purpose, decrypt_mode with
+               | Decrypt, Json.RAW ->
+                 Error (Bad_request, "RAW only allowed for SignAndDecrypt keys")
+               | SignAndDecrypt, RAW ->
+                 dec_ok
+                   (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
+                    with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+               | (Decrypt | SignAndDecrypt), PKCS1 ->
+                 dec_ok (Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_MD5 ->
+                 dec_ok (Oaep_md5.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_SHA1 ->
+                 dec_ok (Oaep_sha1.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_SHA224 ->
+                 dec_ok (Oaep_sha224.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_SHA256 ->
+                 dec_ok (Oaep_sha256.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_SHA384 ->
+                 dec_ok (Oaep_sha384.decrypt ~key encrypted_cs)
+               | (Decrypt | SignAndDecrypt), OAEP_SHA512 ->
+                 dec_ok (Oaep_sha512.decrypt ~key encrypted_cs)
+               | _ ->
+                 Error (Bad_request, "Key purpose is not decrypt.")
+             end
+           | `ED25519 _  ->
+             Error (Bad_request, "Not an RSA key."))
 
     module Pss_md5 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.MD5)
     module Pss_sha1 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA1)
