@@ -706,7 +706,7 @@ types:
       put:
         role: [ Administrator ]
         state: [ Operational ]
-        description: Store a certificate. Maximum size 1MB. The content-type header provides the media type.
+        description: Store a certificate. Maximum size 1MB. The content-type header provides the media type. Only application/json, application/x-pem-file, application/x-x509-ca-cert, application/octet-stream, text/plain and application/pgp-keys is allowed.
         securedBy: basic # R-Administrator
         body:
           application/x-pem-file:

@@ -343,6 +343,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/json", self#sign) ] rd
   end
 
+  let allowed_content_types = [
+    "application/json" ; (* Arbitrary JSON data *)
+    "application/x-pem-file" ; (* Certificate in PEM format *)
+    "application/x-x509-ca-cert" ; (* Certificate in DER format *)
+    "application/octet-stream" ; (* arbitrary binary keys *)
+    "text/plain" ; (* base64 encoded keys, arbitrary "configuration data" *)
+    "application/pgp-keys" ; (* OpenPGP keys *)
+  ]
+
   class handler_cert hsm_state ip = object(self)
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
@@ -387,9 +396,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       match Cohttp.Header.get rd.req_headers "content-type" with
       | None -> Endpoint.respond_error (Bad_request, "Missing content-type header.") rd
       | Some content_type ->
-        Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
-        | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
-        | Error e -> Endpoint.respond_error e rd
+        if List.mem content_type allowed_content_types then
+          Hsm.Key.set_cert hsm_state ~id ~content_type content >>= function
+          | Ok () -> Wm.respond (Cohttp.Code.code_of_status `Created) rd
+          | Error e -> Endpoint.respond_error e rd
+        else
+          Endpoint.respond_error (Bad_request, "disallowed content-type") rd
 
     method! generate_etag rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in

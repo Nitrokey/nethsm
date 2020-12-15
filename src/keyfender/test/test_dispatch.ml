@@ -1265,11 +1265,20 @@ let keys_key_cert_put () =
     | _ -> false
   end
 
+let keys_key_cert_put_fails () =
+  "PUT on /keys/keyID/cert fails (wrong content type)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match admin_put_request ~content_type:"text/html" ~body:(`String "data") ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let keys_key_cert_delete () =
   "DELETE on /keys/keyID/cert succeeds"
   @? begin
     let hsm_state = hsm_with_key () in
-    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
+    let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"text/plain" "data") in
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID/cert" with
     | _, Some (`No_content, _, _, _) -> true
     | _ -> false
@@ -1503,6 +1512,7 @@ let () =
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_ed25519;
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_put;
+    "/keys/keyID/cert" >:: keys_key_cert_put_fails;
     "/keys/keyID/cert" >:: keys_key_cert_delete;
     "/keys/version" >:: keys_key_version_get_fails;
     "/keys/version" >:: keys_key_version_delete_fails;
