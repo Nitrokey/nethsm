@@ -374,6 +374,18 @@ func sPlatformActions() {
 	}
 }
 
+// sPlatformUpdaterActions are executed for S-Platform-Updater.
+func sPlatformUpdaterActions() {
+	// TODO: Complete this. For now we just drop into a shell.
+	s.Execf("/bbin/elvish")
+	//s.Execf("/bin/flashrom -p internal -r /tmp/dump")
+
+	if err := s.Err(); err != nil {
+		log.Printf("Script failed: %v", err)
+		return
+	}
+}
+
 // mockActions are executed when testing (run with an argument of "mock").
 func mockActions() {
 	log.Printf("Kernel release is: %s", kernelRelease)
@@ -401,6 +413,8 @@ func main() {
 		sNetExternalActions()
 	case "platform":
 		sPlatformActions()
+	case "platform_updater":
+		sPlatformUpdaterActions()
 	case "mock":
 		mockActions()
 	default:

@@ -12,6 +12,8 @@
    </alias>
    <alias name="nic_1" physical="ethernet_controller_1"/>
    <alias name="storage_controller" physical="sata_controller_1"/>
+   <alias name="lpc_controller" physical="isa_bridge_1"/>
+   <alias name="spi_controller" physical="non-vga_unclassified_device_1"/>
   </aliases>
   <classes>
    <class name="additional_nics">

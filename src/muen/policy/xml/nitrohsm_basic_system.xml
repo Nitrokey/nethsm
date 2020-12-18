@@ -127,7 +127,7 @@
       </memory>
       <devices>
         <device logical="storage_controller" physical="storage_controller">
-          <pci bus="16#00#" device="16#1f#" function="0"/>
+          <pci bus="16#00#" device="16#17#" function="0"/>
         </device>
       </devices>
       <events>

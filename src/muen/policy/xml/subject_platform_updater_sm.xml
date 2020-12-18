@@ -1,0 +1,30 @@
+<subject name="platform_sm">
+ <events>
+  <source>
+   <group name="vmx_exit">
+    <default physical="system_panic">
+     <system_panic/>
+    </default>
+   </group>
+   <group name="vmcall">
+    <event id="1" logical="reset_linux" physical="reset_linux_2"/>
+   </group>
+  </source>
+ </events>
+ <monitor>
+  <state subject="platform" logical="monitor_state" virtualAddress="16#001e_0000#" writable="true"/>
+  <loader logical="reload" subject="platform_sm" virtualAddress="16#0000#"/>
+ </monitor>
+ <component ref="sm">
+  <map logical="time_info" physical="time_info"/>
+  <map logical="debuglog" physical="debuglog_platform"/>
+  <if variable="pciconf_emulation_enabled" value="true">
+   <map logical="dm_pciconf_req" physical="platform_dm_request"/>
+   <map logical="dm_pciconf_res" physical="platform_dm_response"/>
+  </if>
+  <map logical="resume_subject" physical="resume_linux_2"/>
+  <map logical="handle_subject_trap" physical="trap_to_sm_2"/>
+  <map logical="status" physical="status_sm_2"/>
+  <map logical="control" physical="control_sm_2"/>
+ </component>
+</subject>

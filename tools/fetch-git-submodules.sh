@@ -156,7 +156,7 @@ case "${MODE}" in
 
         dev_submodules
         ;;
-    muen)
+    muen*)
         muen_submodules
         ;;
     test)

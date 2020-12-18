@@ -73,6 +73,10 @@ KEYFENDER_CARGS ?= --no-platform=true
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
+else ifeq ($(XMODE),muen-updater)
+XMODE := muen
+MUEN_BUILD_UPDATER := 1
+MUEN_HARDWARE := supermicro-x11ssh-tf
 else ifeq ($(XMODE),test)
 TARGET := unix
 DUNE := BISECT_ENABLE=yes dune
@@ -108,6 +112,7 @@ ifeq ($(XMODE),muen)
 # several downloads.
 	$(MAKE) -C src/coreboot/coreboot crossgcc-i386 CPUS=$(shell nproc)
 endif
+ifndef MUEN_BUILD_UPDATER
 	opam install -y depext
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 	opam depext --yes --update keyfender conf-jq
@@ -120,6 +125,7 @@ else
 	opam depext --yes --update mirage solo5-bindings-$(TARGET) mirage-solo5
 	opam install -y 'mirage>=3.8.1' solo5-bindings-$(TARGET) mirage-solo5
 	opam install -y --deps-only keyfender
+endif
 endif
 	touch $@
 
@@ -334,13 +340,11 @@ endif
 OBJ_DIR := $(TOP_DIR)/obj
 OBJ_DATA_DIR := $(OBJ_DIR)/data
 OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
-OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
-OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
-OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
 
 $(OBJ_DIR):
 	mkdir -p $@
 
+# ------------------------------------------------------------------------------
 ZLIB_DIR := $(TOP_DIR)/src/zlib
 ZLIB_LIBZ := $(ZLIB_DIR)/libz.a
 
@@ -356,6 +360,53 @@ $(ZLIB_DIR)/stamp-configure: $(ZLIB_DIR)/configure $(ZLIB_DIR)/Makefile.in
 
 $(ZLIB_LIBZ): $(ZLIB_DIR)/stamp-configure
 	$(MAKE) -C $(ZLIB_DIR)
+
+# ------------------------------------------------------------------------------
+PCIUTILS_DIR := $(TOP_DIR)/src/pciutils
+PCIUTILS_LIBPCI := $(PCIUTILS_DIR)/lib/libpci.a
+PCIUTILS_LSPCI := $(PCIUTILS_DIR)/lspci
+
+$(PCIUTILS_DIR)/stamp-configure: $(PCIUTILS_DIR)/Makefile
+	cd $(PCIUTILS_DIR)/lib && ln -s . pci
+	touch $@
+
+$(PCIUTILS_LIBPCI) $(PCIUTILS_LSPCI): $(ZLIB_LIBZ) $(PCIUTILS_DIR)/stamp-configure
+	$(MAKE) -C src/pciutils \
+	   CROSS_COMPILE=x86_64-linux-musl- \
+	   LDFLAGS="-L$(ZLIB_DIR) -static" \
+	   CPPFLAGS="-I$(ZLIB_DIR)/include" \
+	   ZLIB=yes DNS=no SHARED=no LIBKMOD=no HWDB=no
+
+INSTALL_PCIUTILS := $(OBJ_INITRAMFS_DIR)/bin/lspci
+
+$(INSTALL_PCIUTILS): $(PCIUTILS_LSPCI) | $(OBJ_DIR)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/bin
+	cp $< $@
+	strip $@
+
+# ------------------------------------------------------------------------------
+FLASHROM_DIR := $(TOP_DIR)/src/flashrom
+FLASHROM := $(FLASHROM_DIR)/flashrom
+
+$(FLASHROM): $(ZLIB_LIBZ) $(PCIUTILS_LIBPCI)
+	$(MAKE) -C src/flashrom \
+	    CC=x86_64-linux-musl-gcc \
+	    CONFIG_STATIC=yes \
+	    CPPFLAGS="-I$(PCIUTILS_DIR)/lib" \
+	    LDFLAGS="-L$(PCIUTILS_DIR)/lib -L$(ZLIB_DIR)" \
+	    CONFIG_ENABLE_LIBUSB1_PROGRAMMERS=no WARNERROR=no \
+	    DISABLE_CLOCK_GETTIME=yes
+
+INSTALL_FLASHROM := $(OBJ_INITRAMFS_DIR)/bin/flashrom
+
+$(INSTALL_FLASHROM): $(FLASHROM) | $(OBJ_DIR)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/bin
+	cp $< $@
+	strip $@
+
+# ------------------------------------------------------------------------------
+OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
+OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
 
 GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
     NO_GETTEXT=1 NO_PYTHON=1 NO_REGEX=NeedsStartEnd \
@@ -380,6 +431,7 @@ $(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
 	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
 
+# ------------------------------------------------------------------------------
 E2FSPROGS_DIR := src/e2fsprogs/build
 MKE2FS := $(E2FSPROGS_DIR)/misc/mke2fs
 INSTALL_MKE2FS := $(OBJ_INITRAMFS_DIR)/bin/mke2fs
@@ -402,115 +454,7 @@ $(INSTALL_MKE2FS): $(MKE2FS)
 	cp $< $@
 	strip $@
 
-$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
-	mkdir -p $@
-	git init --template none --bare $@
-
-$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
-
-OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
-
-# Given an initialised Git repository in $(OBJ_GIT_DATA_DIR), produce the CPIO
-# archive containing the template used to populate an empty /data partition on
-# boot. This is a bit round-about; blame UNIX tools for not letting us specify
-# ownership information in archives speficially.
-#
-# Notably, this ensures that everything under /data/git is owned by the Git
-# user (1:1), with the "this data partition is now populated" stamp file being
-# owned by root (0:0).
-$(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
-	cd $(OBJ_DATA_DIR) && \
-	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
-# Workaround for https://github.com/u-root/u-root/issues/1838
-	echo dummy > $(OBJ_DATA_DIR)/initialised-v1
-	cd $(OBJ_DATA_DIR) && \
-	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
-
-INSTALL_DATA_CPIO := $(OBJ_INITRAMFS_DIR)/tmpl/data.cpio
-
-# obj/data.cpio is "installed" into the initramfs as tmpl/data.cpio.
-$(INSTALL_DATA_CPIO): $(OBJ_DATA_CPIO)
-	mkdir -p $(OBJ_INITRAMFS_DIR)/tmpl
-	cp $< $@
-
-OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
-OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
-U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
-U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
-U_ROOT_UINIT := nitrohsm/uinit
-# XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
-U_ROOT_PKGS := github.com/u-root/u-root/cmds/core/init \
-    github.com/u-root/u-root/cmds/core/cpio \
-    github.com/u-root/u-root/cmds/core/insmod \
-    github.com/u-root/u-root/cmds/core/ip \
-    github.com/u-root/u-root/cmds/core/ls \
-    github.com/u-root/u-root/cmds/core/mkdir \
-    github.com/u-root/u-root/cmds/core/mount \
-    github.com/u-root/u-root/cmds/core/shutdown \
-    github.com/u-root/u-root/cmds/core/umount \
-    $(U_ROOT_UINIT)
-
-# Rather than using "export GOPATH" and thus potentially polluting the
-# environment of *all* Makefiles called from this Makefile, ensure it is set
-# explicitly and only for those recipes/commands that require it.
-$(U_ROOT_BIN):
-	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
-
-$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_DATA_CPIO)
-	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
-	    -o $(OBJ_INITRAMFS_CPIO) \
-	    -defaultsh="" \
-	    -files "$(OBJ_INITRAMFS_DIR):." \
-	    $(U_ROOT_PKGS)
-	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
-
-# Ensure u-root initramfs is rebuilt if nitrohsm uinit sources change.
-# There might be a better way of doing this, but this will have to do for now.
-$(OBJ_INITRAMFS): \
-    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
-    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
-
-MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
-MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
-MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
-MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/component_unikernel.xml
-MUEN_PACK_IMG_CSL := $(MUEN_PACK_OBJ_DIR)/muen.img.cmds
-MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
-# XXX: Using --bootparams= here is not currently possible without using
-# XXX: mirageos/compose.py, so we persist parameters at unikernel configure
-# XXX: time instead.
-# XXX: We should not be special-casing QEMU/KVM here.
-ifeq ($(MUEN_HARDWARE),qemu-kvm)
-MUEN_GEN_CSPEC_EXTRA :=
-else
-# XXX: We cannot currently allocate more than 3GB of memory to the unikernel
-# XXX: due to limitations (chanAddr) of solo5-muen-gencspec.py.
-MUEN_GEN_CSPEC_EXTRA := --ram 3072
-endif
-
-$(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
-	$(MUEN_GEN_CSPEC) \
-	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
-	    $(MUEN_GEN_CSPEC_EXTRA) \
-	    $< \
-	    src/muen/muen/policy/xml/mirageos/cspec_src.xml \
-	    $(MUEN_POLICY_OBJ_DIR)
-
-$(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
-	$(MAKE) -C src/muen/muen --silent --no-print-directory \
-	    NO_PROOF=1 \
-	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_basic_system.xml \
-	    HARDWARE=$(MUEN_HARDWARE_XML) \
-	    PLATFORM=$(MUEN_PLATFORM_XML) \
-	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
-	    INITRAMFS=$(OBJ_INITRAMFS) \
-	    pack
-
-OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
-
-$(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
-	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
-
+# ------------------------------------------------------------------------------
 COREBOOT_SRC := src/coreboot/coreboot
 COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
 OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
@@ -542,7 +486,7 @@ COREBOOT_BLOBS := \
     $(COREBOOT_BLOB_DIR)/me.bin
 endif
 
-# Coreboot does it's own magic and checks out submodules depending on the
+# Coreboot does its own magic and checks out submodules depending on the
 # actual configuration at build time; unfortunately they do not provide a
 # separate Makefile target for this step, so it will be done here.
 $(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_BLOBS)
@@ -553,6 +497,152 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL)
 	$(CBFSTOOL) $@ add \
 	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
 
+# When building a Muen system with S-Platform-Updater, install coreboot.rom into
+# /data on the initramfs.
+INSTALL_COREBOOT_ROM := $(OBJ_INITRAMFS_DIR)/data/coreboot.rom
+
+$(INSTALL_COREBOOT_ROM): $(OBJ_COREBOOT_ROM)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/data
+	cp $< $@
+
+# ------------------------------------------------------------------------------
+OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
+$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
+	mkdir -p $@
+	git init --template none --bare $@
+
+$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
+
+OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
+
+# Given an initialised Git repository in $(OBJ_GIT_DATA_DIR), produce the CPIO
+# archive containing the template used to populate an empty /data partition on
+# boot. This is a bit round-about; blame UNIX tools for not letting us specify
+# ownership information in archives speficially.
+#
+# Notably, this ensures that everything under /data/git is owned by the Git
+# user (1:1), with the "this data partition is now populated" stamp file being
+# owned by root (0:0).
+$(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
+	cd $(OBJ_DATA_DIR) && \
+	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
+# Workaround for https://github.com/u-root/u-root/issues/1838
+	echo dummy > $(OBJ_DATA_DIR)/initialised-v1
+	cd $(OBJ_DATA_DIR) && \
+	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
+
+INSTALL_DATA_CPIO := $(OBJ_INITRAMFS_DIR)/tmpl/data.cpio
+
+# obj/data.cpio is "installed" into the initramfs as tmpl/data.cpio.
+$(INSTALL_DATA_CPIO): $(OBJ_DATA_CPIO)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/tmpl
+	cp $< $@
+
+# ------------------------------------------------------------------------------
+OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
+OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
+U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
+U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
+U_ROOT_UINIT := nitrohsm/uinit
+ifdef MUEN_BUILD_UPDATER
+# TODO: Customize this once the updater is complete.
+U_ROOT_PKGS := core $(U_ROOT_UINIT)
+else
+# XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
+U_ROOT_PKGS := github.com/u-root/u-root/cmds/core/init \
+    github.com/u-root/u-root/cmds/core/cpio \
+    github.com/u-root/u-root/cmds/core/insmod \
+    github.com/u-root/u-root/cmds/core/ip \
+    github.com/u-root/u-root/cmds/core/ls \
+    github.com/u-root/u-root/cmds/core/mkdir \
+    github.com/u-root/u-root/cmds/core/mount \
+    github.com/u-root/u-root/cmds/core/shutdown \
+    github.com/u-root/u-root/cmds/core/umount \
+    $(U_ROOT_UINIT)
+endif
+
+# Rather than using "export GOPATH" and thus potentially polluting the
+# environment of *all* Makefiles called from this Makefile, ensure it is set
+# explicitly and only for those recipes/commands that require it.
+$(U_ROOT_BIN):
+	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
+
+ifdef MUEN_BUILD_UPDATER
+INITRAMFS_DEPS := $(INSTALL_PCIUTILS) $(INSTALL_FLASHROM) $(INSTALL_COREBOOT_ROM)
+else
+INITRAMFS_DEPS := $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_DATA_CPIO)
+endif
+
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS)
+	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
+	    -o $(OBJ_INITRAMFS_CPIO) \
+	    -defaultsh="" \
+	    -files "$(OBJ_INITRAMFS_DIR):." \
+	    $(U_ROOT_PKGS)
+	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
+
+# Ensure u-root initramfs is rebuilt if nitrohsm uinit sources change.
+# There might be a better way of doing this, but this will have to do for now.
+$(OBJ_INITRAMFS): \
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
+    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
+
+# ------------------------------------------------------------------------------
+MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
+MUEN_PACK_OBJ_DIR := src/muen/muen/pack/obj
+MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/component_unikernel.xml
+MUEN_PACK_IMG_CSL := $(MUEN_PACK_OBJ_DIR)/muen.img.cmds
+MUEN_GEN_CSPEC := src/muen/muen/tools/scripts/solo5-muen-gencspec.py
+# XXX: Using --bootparams= here is not currently possible without using
+# XXX: mirageos/compose.py, so we persist parameters at unikernel configure
+# XXX: time instead.
+# XXX: We should not be special-casing QEMU/KVM here.
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+MUEN_GEN_CSPEC_EXTRA :=
+else
+# XXX: We cannot currently allocate more than 3GB of memory to the unikernel
+# XXX: due to limitations (chanAddr) of solo5-muen-gencspec.py.
+MUEN_GEN_CSPEC_EXTRA := --ram 3072
+endif
+
+$(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
+	$(MUEN_GEN_CSPEC) \
+	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
+	    $(MUEN_GEN_CSPEC_EXTRA) \
+	    $< \
+	    src/muen/muen/policy/xml/mirageos/cspec_src.xml \
+	    $(MUEN_POLICY_OBJ_DIR)
+
+ifdef MUEN_BUILD_UPDATER
+$(MUEN_PACK_IMG_CSL): $(OBJ_INITRAMFS)
+	$(MAKE) -C src/muen/muen --silent --no-print-directory \
+	    NO_PROOF=1 \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_updater_system.xml \
+	    HARDWARE=$(MUEN_HARDWARE_XML) \
+	    PLATFORM=$(MUEN_PLATFORM_XML) \
+	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
+	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
+	    INITRAMFS=$(OBJ_INITRAMFS) \
+	    pack
+else
+$(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
+	$(MAKE) -C src/muen/muen --silent --no-print-directory \
+	    NO_PROOF=1 \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_basic_system.xml \
+	    HARDWARE=$(MUEN_HARDWARE_XML) \
+	    PLATFORM=$(MUEN_PLATFORM_XML) \
+	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
+	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
+	    INITRAMFS=$(OBJ_INITRAMFS) \
+	    pack
+endif
+
+OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
+
+$(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
+	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
+
 ifneq ($(MUEN_HARDWARE),qemu-kvm)
 # When building for real hardware, stop here.
 
@@ -561,6 +651,7 @@ ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM)
 build: $(ARTIFACTS)
 
 else
+# ------------------------------------------------------------------------------
 # The remaining rules apply to building and running a QEMU/KVM emulated system.
 
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
@@ -630,6 +721,7 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running
 
 endif # QEMU/KVM
 
+# ------------------------------------------------------------------------------
 ifneq ($(ARTIFACTS),)
 ARTIFACTS_ID := $(shell MODE=$(XMODE) MUEN_HARDWARE=$(MUEN_HARDWARE) \
     tools/get-artifacts-dir.sh)
@@ -659,6 +751,8 @@ clean: clean-keyfender
 # The above does not clean up the checked-out GRUB 2 properly, so do it here
 	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2
 	$(MAKE) -C src/git --silent --no-print-directory distclean
+	$(MAKE) -C src/flashrom --silent --no-print-directory distclean
+	$(MAKE) -C src/pciutils --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
 	$(RM) -r $(E2FSPROGS_DIR)
