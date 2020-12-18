@@ -25,3 +25,11 @@
 	path = src/coreboot/grub2
 	url = ../grub.git
 	branch = nitrohsm
+[submodule "src/flashrom"]
+	path = src/flashrom
+	url = ../flashrom.git
+	branch = nethsm
+[submodule "src/pciutils"]
+	path = src/pciutils
+	url = https://github.com/pciutils/pciutils
+	ignore = dirty
