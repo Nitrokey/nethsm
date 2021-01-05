@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# This is the installer script for NitroHSM.
+# This is the installer script for NetHSM.
 #
 # Requirements: cgpt, mke2fs, standard Linux utilities.
 #
 # This script serves three purposes:
 #
 # 1. As an "offline" installer, intended to be run on a system with a disk
-#    attached to which the NitroHSM System Software should be installed.
+#    attached to which the NetHSM System Software should be installed.
 # 2. As an "online" installer, included on the live USB installer system.
 # 3. For creating a disk image when building the Muen system for QEMU/KVM.
 #
@@ -17,9 +17,9 @@ usage ()
     cat <<EOM 1>&2
 Usage: $0 [ -f ] [ -E SIZE ] DISK SYSTEM_IMAGE
 
-NitroHSM installer script.
+NetHSM installer script.
 
-Formats the block device at DISK and installs the NitroHSM image at
+Formats the block device at DISK and installs the NetHSM image at
 SYSTEM_IMAGE to it. SYSTEM_IMAGE should be the binary contents of
 the 'system' partition, normally obj/disk.image.cpio from the build
 process.
@@ -122,7 +122,7 @@ MUENINFO=$(ls -l "${MUEN}")
 if is_interactive; then
     cat <<EOM
 
-You are about to install NitroHSM from:
+You are about to install NetHSM from:
 
 ${MUENINFO}
 

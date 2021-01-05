@@ -50,7 +50,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   let is_authorized hsm_state ip rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
-    | None -> Wm.continue (`Basic "NitroHSM") rd
+    | None -> Wm.continue (`Basic "NetHSM") rd
     | Some auth ->
       match decode_auth auth with
       | Ok (username, passphrase) ->

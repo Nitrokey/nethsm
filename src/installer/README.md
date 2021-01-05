@@ -1,6 +1,6 @@
-# NitroHSM Installer
+# NetHSM Installer
 
-This is an initial "installer" which can be used to install a NitroHSM image on actual hardware.
+This is an initial "installer" which can be used to install a NetHSM image on actual hardware.
 
 ## Building
 
@@ -14,7 +14,7 @@ make
 
 and then dump the resulting `live-image-amd64.hybrid.iso` to an USB stick.
 
-## (Re-)Installing NitroHSM on the Supermicro
+## (Re-)Installing NetHSM on the Supermicro
 
 Rough notes, TBC:
 
@@ -23,5 +23,5 @@ Rough notes, TBC:
 3. Log in as `user` with a password of `live`.
 4. Insert the USB stick with the Muen CPIO image on it and mount it on `/mnt`.
 5. Run `sudo ~/bin/nitrohsm-install /dev/sda /mnt/system.img.cpio`.
-6. Unmount `/mnt`, remove both USB sticks and run `sudo systemctl reboot` to boot into the NitroHSM.
+6. Unmount `/mnt`, remove both USB sticks and run `sudo systemctl reboot` to boot into the NetHSM.
 

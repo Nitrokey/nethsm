@@ -1,5 +1,5 @@
 <!--
-  Muen system policy for a basic NitroHSM system.
+  Muen system policy for a basic NetHSM system.
 
   TODO: Consider dropping dependency on or using a copy of upstream's
   mirageos/cspec_src.xml, in order to be 100% self-contained?

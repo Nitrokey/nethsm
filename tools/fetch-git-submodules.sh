@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Initialize the Git submodules used by NitroHSM, and their submodules.
+# Initialize the Git submodules used by NetHSM, and their submodules.
 #
 # This is complicated for several reasons:
 #
@@ -49,7 +49,7 @@
 # - Since we know how to re-write submodule URLs, have an "alongside" mode
 #   where the infrequently changing submodules are cloned from
 #   "../somewhere/sub/module". This allows for quick builds after cloning a
-#   NitroHSM tree from scratch.
+#   NetHSM tree from scratch.
 #
 # - Could we introspect the submodules somehow, so that the list doesn't need
 #   to be updated here? Unfortunately "git submodule foreach" only works once a

@@ -1695,7 +1695,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let boot ~device_id kv =
     Metrics.set_mem_reporter ();
-    let info = { Json.vendor = "Nitrokey UG" ; product = "NitroHSM" ; version = "v1" }
+    let info = { Json.vendor = "Nitrokey GmbH" ; product = "NetHSM" ; version = "v1" }
     and system_info = { Json.firmwareVersion = "1" ; softwareVersion = (1, 7) ; hardwareVersion = "2.2.2" }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
@@ -1744,5 +1744,5 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       t, t.mbox
     | Error `Msg msg ->
       Log.err (fun m -> m "error booting %s" msg);
-      invalid_arg "broken NitroHSM"
+      invalid_arg "broken NetHSM"
 end

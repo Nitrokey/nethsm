@@ -1,12 +1,12 @@
 ## Coreboot images for Muen system
 
-The Coreboot images for NitroHSM are now built automatically when using MODE=muen. The following instructions are just for reference, and will eventually be removed / incorporated elsewhere.
+The Coreboot images for NetHSM are now built automatically when using MODE=muen. The following instructions are just for reference, and will eventually be removed / incorporated elsewhere.
 
 ### QEMU/KVM Q35
 
 For QEMU, the image in `qemu/` can be reproduced as follows:
 
-Clone Coreboot for NitroHSM:
+Clone Coreboot for NetHSM:
 
 ```
 git clone -b nitrohsm git@git.dotplex.com:nitrokey/nethsm/coreboot.git

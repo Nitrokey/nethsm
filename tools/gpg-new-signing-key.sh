@@ -46,7 +46,7 @@ if [ -n "$(ls ${KEYDIR})" ]; then
     die "${KEYDIR}: must exist and be an empty directory"
 fi
 
-KEYCOMMENT="NitroHSM signing key ($(basename "${KEYDIR}"))"
+KEYCOMMENT="NetHSM signing key ($(basename "${KEYDIR}"))"
 GPGDIR="${KEYDIR}/private"
 mkdir -p "${GPGDIR}" || die "Could not create ${GPGDIR}"
 

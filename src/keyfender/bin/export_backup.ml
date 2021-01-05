@@ -154,7 +154,7 @@ let output =
   Arg.(value & opt (some string) None & info [ "output" ] ~doc)
 
 let command =
-  let doc = "Export a NitroHSM backup image to json" in
+  let doc = "Export a NetHSM backup image to json" in
   let man = [ `S "BUGS"; `P "Submit bugs";] in
   Term.(term_result (const export $ key $ backup_image $ output)),
   Term.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man

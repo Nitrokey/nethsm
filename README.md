@@ -1,6 +1,6 @@
-# NitroHSM
+# NetHSM
 
-The NitroHSM software can be built either as components that run on your local machine (the "Local Development System") or as a full emulated Muen system (the "Muen System").
+The NetHSM software can be built either as components that run on your local machine (the "Local Development System") or as a full emulated Muen system (the "Muen System").
 
 In either case, running `make` in this directory will produce a short help. The following sections detail how to build and run the software.
 
@@ -27,7 +27,7 @@ The local development system builds only the subset of the codebase required to 
 This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`MODE=test` only).
 
 1. Ensure you have installed OPAM >= 2.0.0 and OCaml >= 4.10.1. We recommend that you use the latest OCaml release, at the moment 4.11.1.
-2. Create a new OPAM switch for NitroHSM development, using a known-good commit of `ocaml/opam-repository`:
+2. Create a new OPAM switch for NetHSM development, using a known-good commit of `ocaml/opam-repository`:
     
        opam repo add nitrohsm-default git+https://github.com/ocaml/opam-repository#$(cat .opam-repository-commit) --dont-select
        opam switch create nitrohsm 4.11.1 --repos nitrohsm-default
@@ -55,8 +55,8 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
 
 Notes:
 
-- The Docker container will bind mount your checked out NitroHSM repository as `/builds/nitrokey/nitrohsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
-- The Docker container is run with `--net=host`. This is intentional, so that you can talk to a running NitroHSM from the host.
+- The Docker container will bind mount your checked out NetHSM repository as `/builds/nitrokey/nitrohsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
+- The Docker container is run with `--net=host`. This is intentional, so that you can talk to a running NetHSM from the host.
 - `/dev/net/tun` and `/dev/kvm` (if present and the host user can access it) are passed through to the container.
 - Due to the above, `make local-container-enter` will work only on a Linux host (i.e. not Docker for Mac, for example).
 
@@ -99,7 +99,7 @@ sudo tools/setup-net-dev.sh
 
 This script will set up the following TAP interfaces on your local system:
 
-- _tap200_: configured as `192.168.1.100/24`, used to communicate with the "external" interface of the NitroHSM.
+- _tap200_: configured as `192.168.1.100/24`, used to communicate with the "external" interface of the NetHSM.
 - _tap201_: configured as `169.254.169.2/24`, used to provide Git storage to S-Keyfender.
 
 Then run, either in the Docker container or on the host:

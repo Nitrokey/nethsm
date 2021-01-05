@@ -1,7 +1,7 @@
 open Lwt.Infix
 
 (* Logging *)
-let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NitroHSM)"
+let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
 module Main

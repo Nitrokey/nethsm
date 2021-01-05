@@ -705,13 +705,13 @@ let set_backup_passphrase_empty () =
   end
 
 let invalid_config_version () =
-  assert_raises (Invalid_argument "broken NitroHSM")
+  assert_raises (Invalid_argument "broken NetHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
          Hsm.boot ~device_id:"test dispatch" data)) ;
-  assert_raises (Invalid_argument "broken NitroHSM")
+  assert_raises (Invalid_argument "broken NetHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->

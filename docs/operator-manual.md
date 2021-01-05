@@ -34,7 +34,7 @@ Alternatively, for development purposes, if you have a Debian 10 host system (**
 
 A _System Software_ update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is named "update.pem", and located in src/keyfender of this repository. It must be a PEM encoded RSA public key.
 
-To add the outer signature to a software update image the keyfender library provides "bin/sign-update.exe". Please read the output of "sign-update.exe --help" for instructions how to use it. The output file can be uploaded to a NitroHSM (/system/update endpoint).
+To add the outer signature to a software update image the keyfender library provides "bin/sign-update.exe". Please read the output of "sign-update.exe --help" for instructions how to use it. The output file can be uploaded to a NetHSM (/system/update endpoint).
 
 # Rate Limiting {#sec-rl}
 

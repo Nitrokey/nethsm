@@ -108,7 +108,7 @@ let output =
   Arg.(value & opt (some string) None & info [ "output" ] ~doc)
 
 let command =
-  let doc = "Sign a NitroHSM software image" in
+  let doc = "Sign a NetHSM software image" in
   let man = [ `S "BUGS"; `P "Submit bugs";] in
   Term.(term_result (const sign $ key $ changelog $ version $ image $ output)),
   Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
