@@ -87,7 +87,7 @@ local-container-enter:
 	    --device=/dev/net/tun:/dev/net/tun \
 	    $(HAVE_KVM) $(HAVE_KVM_GROUP) \
 	    --user=$(HOST_UID) \
-	    --mount type=bind,src=$(abspath .),dst=/builds/nitrokey/nitrohsm \
+	    --mount type=bind,src=$(abspath .),dst=/builds/nitrokey/nethsm \
 	    --mount type=tmpfs,dst=/tmp \
 	    $(DOCKER_IMAGE_NAME)
 

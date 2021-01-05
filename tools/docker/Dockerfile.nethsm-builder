@@ -69,6 +69,6 @@ RUN curl -sSL "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.ta
 # Setup environment
 ENV LANG C.UTF-8
 ENV PATH /opt/x86_64-linux-musl-cross/bin:/opt/gnat/bin:/opt/go/bin:$PATH
-WORKDIR /builds/nitrokey/nitrohsm
+WORKDIR /builds/nitrokey/nethsm
 
 CMD [ "bash" ]

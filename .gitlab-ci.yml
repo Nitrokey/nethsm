@@ -1,4 +1,4 @@
-image: "mato/nethsm-builder@sha256:d21fdbce4449c9be8c74cd314b0b669d24737d2012bd276f0db54760d096dd2b"
+image: "mato/nethsm-builder@sha256:5315102997e3e163cb679317f332f3914adc2f30784360d8937edce1aae1e5d5"
 
 default:
   before_script:

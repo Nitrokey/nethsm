@@ -55,7 +55,7 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
 
 Notes:
 
-- The Docker container will bind mount your checked out NetHSM repository as `/builds/nitrokey/nitrohsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
+- The Docker container will bind mount your checked out NetHSM repository as `/builds/nitrokey/nethsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
 - The Docker container is run with `--net=host`. This is intentional, so that you can talk to a running NetHSM from the host.
 - `/dev/net/tun` and `/dev/kvm` (if present and the host user can access it) are passed through to the container.
 - Due to the above, `make local-container-enter` will work only on a Linux host (i.e. not Docker for Mac, for example).
