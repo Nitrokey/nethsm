@@ -8,10 +8,10 @@ KEY_DIR ?= $(TOP_DIR)/../../keys/test-key
 
 .PHONY: all build
 
-INSTALL_SCRIPT := config/includes.chroot/etc/skel/bin/nitrohsm-install
+INSTALL_SCRIPT := config/includes.chroot/etc/skel/bin/nethsm-install
 
 # Source this from ../../tools so that it can live in one place
-$(INSTALL_SCRIPT): ../../tools/nitrohsm-install.sh
+$(INSTALL_SCRIPT): ../../tools/nethsm-install.sh
 	cp $< $@
 	chmod 755 $@
 

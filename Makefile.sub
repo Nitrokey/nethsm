@@ -326,12 +326,12 @@ MUEN_POLICY_DIR := $(TOP_DIR)/src/muen/policy
 MUEN_LINUX_CONFIG := $(MUEN_DIR)/linux/config-5.4-$(MUEN_HARDWARE)
 
 ifeq ($(MUEN_HARDWARE),qemu-kvm)
-MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nitrohsm-$(MUEN_HARDWARE).xml
-MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nitrohsm-$(MUEN_HARDWARE).xml
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 COREBOOT_CONFIG := configs/config.nitrohsm_qemu_q35
 else ifeq ($(MUEN_HARDWARE),supermicro-x11ssh-tf)
-MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nitrohsm-$(MUEN_HARDWARE).xml
-MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nitrohsm-$(MUEN_HARDWARE).xml
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 COREBOOT_CONFIG := configs/config.nitrohsm_supermicro_x11_ssh_tf
 else
 $(error Invalid MUEN_HARDWARE)
@@ -543,7 +543,7 @@ OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
 U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
-U_ROOT_UINIT := nitrohsm/uinit
+U_ROOT_UINIT := nethsm/uinit
 ifdef MUEN_BUILD_UPDATER
 # TODO: Customize this once the updater is complete.
 U_ROOT_PKGS := core $(U_ROOT_UINIT)
@@ -581,11 +581,11 @@ $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS)
 	    $(U_ROOT_PKGS)
 	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
 
-# Ensure u-root initramfs is rebuilt if nitrohsm uinit sources change.
+# Ensure u-root initramfs is rebuilt if nethsm uinit sources change.
 # There might be a better way of doing this, but this will have to do for now.
 $(OBJ_INITRAMFS): \
-    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/uinit.go \
-    $(U_ROOT_GOPATH)/src/nitrohsm/uinit/script/script.go
+    $(U_ROOT_GOPATH)/src/nethsm/uinit/uinit.go \
+    $(U_ROOT_GOPATH)/src/nethsm/uinit/script/script.go
 
 # ------------------------------------------------------------------------------
 MUEN_POLICY_OBJ_DIR := src/muen/muen/policy/obj
@@ -618,7 +618,7 @@ ifdef MUEN_BUILD_UPDATER
 $(MUEN_PACK_IMG_CSL): $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
-	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_updater_system.xml \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nethsm_updater_system.xml \
 	    HARDWARE=$(MUEN_HARDWARE_XML) \
 	    PLATFORM=$(MUEN_PLATFORM_XML) \
 	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
@@ -629,7 +629,7 @@ else
 $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
 	$(MAKE) -C src/muen/muen --silent --no-print-directory \
 	    NO_PROOF=1 \
-	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nitrohsm_basic_system.xml \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nethsm_basic_system.xml \
 	    HARDWARE=$(MUEN_HARDWARE_XML) \
 	    PLATFORM=$(MUEN_PLATFORM_XML) \
 	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
@@ -656,8 +656,8 @@ else
 
 OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
 
-$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nitrohsm-install.sh
-	tools/nitrohsm-install.sh -f -E 1G $@ $<
+$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nethsm-install.sh
+	tools/nethsm-install.sh -f -E 1G $@ $<
 
 ARTIFACTS := $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
 .PHONY: build

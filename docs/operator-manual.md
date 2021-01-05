@@ -6,11 +6,11 @@
 
 # Initial Installation on Hardware {#sec-iih}
 
-**TODO**: The final structure of the nitrohsm-builds [repository][builds] has not yet been decided upon, and this process will also change once signing of images with production keys via an external USB Smartcard is implemented. Current builds are all automatically signed with test keys.
+**TODO**: The final structure of the NetHSM builds [repository][builds] has not yet been decided upon, and this process will also change once signing of images with production keys via an external USB Smartcard is implemented. Current builds are all automatically signed with test keys.
 
 To perform initial installation on a stock hardware unit, follow these steps:
 
-1. Download the build you would like to install from the nitrohsm-builds [repository][builds].
+1. Download the build you would like to install from the NetHSM builds [repository][builds].
 2. Flash `coreboot.rom` from the build to the unit with an external programmer.
 3. Attach the SSD to your machine, e.g. using an USB to SATA adapter, and note down the block device `/dev/sdX` of the SSD.
 4. Ensure you have the following system packages installed:
@@ -22,7 +22,7 @@ To perform initial installation on a stock hardware unit, follow these steps:
 See [System Console](#sec-sc) for details on how to access the console of the unit.
 
 [builds]: https://git.dotplex.com/nitrokey/nethsm/ci-builds
-[installer]: https://git.dotplex.com/nitrokey/nethsm/nethsm/-/raw/master/tools/nitrohsm-install.sh
+[installer]: https://git.dotplex.com/nitrokey/nethsm/nethsm/-/raw/master/tools/nethsm-install.sh
 
 Alternatively, for development purposes, if you have a Debian 10 host system (**not a container**) available to build it with, you can also install the System Software by booting a signed "development" installer based on Debian Live from USB. See the [README.md][usbinstaller] for details.
 

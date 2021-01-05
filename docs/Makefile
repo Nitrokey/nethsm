@@ -1,8 +1,8 @@
-all: system-design.pdf operator-manual.pdf nitrohsm-api.html
+all: system-design.pdf operator-manual.pdf nethsm-api.html
 
-apidoc: nitrohsm-api.html
+apidoc: nethsm-api.html
 
-nitrohsm-api.html: nitrohsm-api.raml
+nethsm-api.html: nethsm-api.raml
 	raml2html $< -o $@ || \
 	docker run --rm -v $(PWD):/raml mattjtodd/raml2html -i /raml/$< -o /raml/$@
 
@@ -15,4 +15,4 @@ operator-manual.pdf: operator-manual.md
 .PHONY: clean
 
 clean:
-	$(RM) system-design.pdf operator-manual.pdf nitrohsm-api.html
+	$(RM) system-design.pdf operator-manual.pdf nethsm-api.html

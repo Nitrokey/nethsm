@@ -344,7 +344,7 @@ types:
           -----END RSA PRIVATE KEY-----
     responses:
       200:
-        description: Successful import of a private key. The response contains a Location header, e.g. "https://nitrohsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+        description: Successful import of a private key. The response contains a Location header, e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
         body:
           properties:
             key: ID
@@ -514,7 +514,7 @@ types:
               localityName : "Berlin"
               organizationName : "Nitrokey"
               organizationalUnitName : ""
-              commonName : "nitrohsm.local"
+              commonName : "nethsm.local"
               emailAddress : "info@nitrokey.com"
         responses:
           200:
@@ -523,21 +523,21 @@ types:
               application/x-pem-file:
                 example: |
                   -----BEGIN CERTIFICATE REQUEST-----
-                  MIICqTCCAZECAQAwZDFiMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
-                  DAhOaXRyb2tleTAVBgNVBAMMDm5pdHJvaHNtLmxvY2FsMB4GCSqGSIb3DQEJAQwR
-                  aW5mb0BuaXRyb2tleS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
-                  AQDHuCF+uj5UR6libLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wCvh9Yj2kb
-                  uJFfN7NrsMyOtCm3Mqx9LLp0EWZIRl6v6EnG452EEb8VfqmPBGtmls5DHKv5pOUT
-                  eObZc/XYKrHTCxgYigmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48TJXJwkfl
-                  8wEH2H7YHFzgHFo8oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K5JsGbzc6
-                  CpGF2TU/qv++o5UqvFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8lO8a2o4S
-                  6CCK3fa1XXolcJmOdh48C+03AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEAT7y5
-                  5HI8HYlfjwoZnRBgrGdaCnfnJ48Z4wSk/kHSgD/hc98gXJOLp7jTO7Q+M5QkLBqr
-                  Hgy58B/axJv1wBLbxZF9c4AhpobH6XV2aiXSNWqBAmvFv8UkzNnTe1gOJQ1nOnes
-                  qaUzF3py58xj3oHGAcp9NvGRINXnFMI+A2Ol5WsDcdm619Y3+ew0xeKx0jAmawMo
-                  EZnI6sIt46WYumGBHAkjuDVjyYbfbkZ6vFZaEMm9ZdJn0aGDkgEqyEIoFVnLMYBg
-                  Ouc61jzQoXcn5E/dgNldy9ZR1ZulYV2M8qnMDq+tlFPAd9X0S/GRNCxyoHEBsXnW
-                  Ud0iQXvGb/9jciOVuw==
+                  MIICpzCCAY8CAQAwYjFgMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
+                  DAhOaXRyb2tleTATBgNVBAMMDG5ldGhzbS5sb2NhbDAeBgkqhkiG9w0BCQEMEWlu
+                  Zm9Abml0cm9rZXkuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+                  x7ghfro+VEepYmy2V7HPn5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iR
+                  Xzeza7DMjrQptzKsfSy6dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm
+                  2XP12Cqx0wsYGIoJlWHbGb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMB
+                  B9h+2Bxc4BxaPKMm15JR1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqR
+                  hdk1P6r/vqOVKrxVupDqKkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEugg
+                  it32tV16JXCZjnYePAvtNwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAGTXJciq
+                  FMdQeobMDjGgnzR30HC77rJ/Bdu9rqpAtjUcL05K2ufma/gXvPCl1WYEr8JJ3aiA
+                  r2ebitcvm+qwXLsBe68o5bSXxMe6PigyuB0lSijB6MeItMxsVFPbKvDk7Hj4ad2P
+                  M6aaAixRcJi9eIA93yKmpPXyUcycW0wjQU6CeV/aMN9kLLbxzEgf0it5QXY7nexu
+                  2no32GHFbLiI8GoMvuPEgeks3qBtrxKwTOdKWAFDAgEiXZ8m4zN0V66J3zurMzzr
+                  tJ6G/JEFGy1sITUatqSxqR4A5eGsV9ktFWZbtwRihuCNIVIQ8d9Up5CWFLWExwNS
+                  ZxGNJ4YEMwKYf6s=
                   -----END CERTIFICATE REQUEST-----
           401:
             description: Authentication required but none provided.
@@ -832,7 +832,7 @@ types:
         example: { realName : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
     responses:
       201:
-        description: Successful creation of user. The response contains a Location header, e.g. "https://nitrohsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+        description: Successful creation of user. The response contains a Location header, e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
       400:
         description: Bad request (specified properties are invalid, e.g. weak passphrase).
       401:
@@ -1140,7 +1140,7 @@ types:
               localityName : "Berlin"
               organizationName : "Nitrokey"
               organizationalUnitName : ""
-              commonName : "nitrohsm.local"
+              commonName : "nethsm.local"
               emailAddress : "info@nitrokey.com"
         responses:
           200:

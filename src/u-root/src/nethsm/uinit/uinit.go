@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"nitrohsm/uinit/script"
+	"nethsm/uinit/script"
 )
 
 // s represents our global Script context.

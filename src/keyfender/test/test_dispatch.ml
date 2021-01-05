@@ -566,7 +566,7 @@ let subject = {|{
     "localityName": "Berlin",
     "organizationName": "Nitrokey",
     "organizationalUnitName": "",
-    "commonName": "nitrohsm.local",
+    "commonName": "nethsm.local",
     "emailAddress": "info@nitrokey.com"
   }|}
 

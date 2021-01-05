@@ -9,7 +9,7 @@ let prefix = "api/v1"
 let keyid = "myKey1"
 let userid = "operator"
 let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
-let raml = "../../docs/nitrohsm-api.raml"
+let raml = "../../docs/nethsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let allowed_request_types = [
   "application/json" ;
