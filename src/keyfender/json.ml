@@ -230,6 +230,8 @@ type generate_key_req = {
 let is_alphanum s = Astring.String.for_all (function 'a'..'z'|'A'..'Z'|'0'..'9' -> true | _ -> false) s
 
 let valid_id id =
+  guard (String.length id >= 1)
+    "ID cannot be shorter than 1 character." >>= fun () ->
   guard (String.length id <= 128)
     "ID cannot be longer than 128 characters." >>= fun () ->
   guard (is_alphanum id) "ID may only contain alphanumeric characters."
@@ -244,7 +246,10 @@ let decode_generate_key_req s =
      guard (r.purpose = Sign) "Purpose must be sign for ED25519 key."
    else
      Error "Only RSA and ED25519 algorithms supported.") >>= fun () ->
-  valid_id r.id >>| fun () ->
+  let empty_or_valid id =
+    if String.length id = 0 then Ok () else valid_id id
+  in
+  empty_or_valid r.id >>| fun () ->
   r
 
 type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]
