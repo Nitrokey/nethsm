@@ -35,7 +35,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/health/state", fun () -> new Health.state hsm_state) ;
         ("/metrics", fun () -> new Metrics.metrics hsm_state ip) ;
         ("/provision", fun () -> new Provision.provision hsm_state) ;
-        ("/unlock", fun () -> new Unlock.unlock hsm_state) ;
+        ("/unlock", fun () -> new Unlock.unlock hsm_state ip) ;
         ("/lock", fun () -> new Unlock.lock hsm_state ip) ;
         ("/random", fun () -> new Random.random hsm_state ip) ;
         ("/config/unlock-passphrase", fun () -> new Config.unlock_passphrase hsm_state ip) ;

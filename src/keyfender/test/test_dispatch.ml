@@ -2449,7 +2449,7 @@ let keys_key_version_cert_delete_fails =
     | _ -> false
   end
 
-let unlock_rate_limit = 10
+let rate_limit = 10
 
 let rate_limit_for_unlock =
   let path = "/unlock" in
@@ -2457,7 +2457,7 @@ let rate_limit_for_unlock =
   @? fun () ->
     begin
     let hsm_state = locked_mock () in
-    for _ = 1 to unlock_rate_limit do
+    for _ = 1 to rate_limit do
       ignore (request ~hsm_state path)
     done;
     match request ~hsm_state path with
@@ -2492,7 +2492,7 @@ let reset_rate_limit_after_successful_login =
   @? fun () ->
     begin
     let hsm_state = operational_mock () in
-    let headers = auth_header "not a valid user" "no valid password" in
+    let headers = auth_header "admin" "no valid password" in
     for _ = 1 to rate_limit - 1 do
       ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
     done;
@@ -2504,7 +2504,7 @@ let reset_rate_limit_after_successful_login =
         begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
           | _, Some (`Unauthorized, _, _, _) ->
             begin
-              for _ = 1 to rate_limit - 1 do
+              for _ = 1 to rate_limit - 2 do
                 ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
               done;
               match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with

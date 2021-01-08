@@ -27,41 +27,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       end
     | _ -> Error (`Msg ("invalid auth header " ^ auth))
 
-  let requests : (Ipaddr.V4.t, Ptime.t list) Hashtbl.t = Hashtbl.create 7
-
-  let max_requests_per_second = 10
-
-  let within_rate_limit ip =
-    match Hashtbl.find_opt requests ip with
-    | None -> Hashtbl.add requests ip [ Hsm.now () ] ; true
-    | Some last_requests ->
-      let one_second_ago =
-        let one_second = Ptime.Span.of_int_s 1 in
-        match Ptime.sub_span (Hsm.now ()) one_second with
-        | Some ts -> ts
-        | None -> Ptime.epoch (* clamped to 0 *)
-      in
-      let requests' = List.filter (Ptime.is_later ~than:one_second_ago) last_requests in
-      let result = List.length requests' <= max_requests_per_second in
-      Hashtbl.replace requests ip (Hsm.now () :: requests');
-      result
-
-  let reset_rate_limit ip = Hashtbl.remove requests ip
-
   let is_authorized hsm_state ip rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
     | None -> Wm.continue (`Basic "NetHSM") rd
     | Some auth ->
       match decode_auth auth with
       | Ok (username, passphrase) ->
-        if not (within_rate_limit ip) then
+        if not (Rate_limit.within (Hsm.now ()) ip username) then
           let cc hdr = Cohttp.Header.replace hdr "content-type" "application/json" in
           let rd' = Webmachine.Rd.with_resp_headers cc rd in
           Wm.respond ~body:(`String (Json.error "Too many requests")) 429 rd'
         else
           Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->
           if auth then begin
-            reset_rate_limit ip;
+            Rate_limit.reset ip username;
             let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
             Wm.continue `Authorized rd'
           end else
