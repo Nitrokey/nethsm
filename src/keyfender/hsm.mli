@@ -154,13 +154,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.purpose -> string -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> string -> Json.key ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> Json.purpose -> string ->
+    val add_pem : id:string -> t -> Json.MS.t -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> string -> Json.purpose -> length:int ->
+    val generate : id:string -> t -> string -> Json.MS.t -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t

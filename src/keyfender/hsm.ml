@@ -154,13 +154,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.purpose -> string -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> string -> Json.key ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> Json.purpose -> string ->
+    val add_pem : id:string -> t -> Json.MS.t -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> string -> Json.purpose -> length:int ->
+    val generate : id:string -> t -> string -> Json.MS.t -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -859,7 +859,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | Some _ -> true)
 
     type key = {
-      purpose : Json.purpose ;
+      mechanisms : Json.MS.t ;
       priv : priv ;
       cert : (string * string) option ;
       operations : int ;
@@ -928,7 +928,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           internal_server_error "Write key" Encrypted_store.pp_write_error
             (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
-    let add ~id t purpose priv =
+    let add ~id t mechanisms priv =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
@@ -938,9 +938,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-        encode_and_write t id { purpose ; priv ; cert = None ; operations = 0 }
+        encode_and_write t id { mechanisms ; priv ; cert = None ; operations = 0 }
 
-    let add_json ~id t purpose algorithm key =
+    let add_json ~id t mechanisms algorithm key =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s"
@@ -968,24 +968,24 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         else Error (`Msg "Unsupported key algorithm.")
       with
       | Error `Msg e -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ~id t purpose priv
+      | Ok priv -> add ~id t mechanisms priv
 
-    let add_pem ~id t purpose data =
+    let add_pem ~id t mechanisms data =
       match X509.Private_key.decode_pem (Cstruct.of_string data) with
       | Error `Msg m -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ~id t purpose priv
+      | Ok priv -> add ~id t mechanisms priv
 
-    let generate ~id t typ purpose ~length =
+    let generate ~id t typ mechanisms ~length =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
       if typ = "RSA" && 1024 <= length && length <= 8192 then begin
         let priv = Mirage_crypto_pk.Rsa.generate ~bits:length () in
         Metrics.key_op `Generate;
-        add ~id t purpose (`RSA priv)
+        add ~id t mechanisms (`RSA priv)
       end else if typ = "ED25519" then begin
         let priv = Hacl_ed25519.priv (Mirage_crypto_rng.generate 32) in
         Metrics.key_op `Generate;
-        add ~id t purpose (`ED25519 priv)
+        add ~id t mechanisms (`ED25519 priv)
       end
       else Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
 
@@ -1008,7 +1008,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match key.priv with
       | `RSA k ->
         Json.rsaPublicKey_to_yojson
-          { Json.purpose = key.purpose ;
+          { Json.mechanisms = key.mechanisms ;
             algorithm = "RSA" ;
             modulus = z_to_b64 k.Mirage_crypto_pk.Rsa.n ;
             publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e ;
@@ -1016,7 +1016,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           }
       | `ED25519 k ->
         Json.ed25519PublicKey_to_yojson
-          { Json.purpose = key.purpose ;
+          { Json.mechanisms = key.mechanisms ;
             algorithm = "ED25519" ;
             data = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.priv_to_public k));
             operations = key.operations ;
@@ -1079,42 +1079,35 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          | Error `Msg msg ->
            Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
          | Ok encrypted_data ->
-           let encrypted_cs = Cstruct.of_string encrypted_data in
-           match key_data.priv with
-           | `RSA key ->
-             let dec_ok = function
-               | None -> Error (Bad_request, "Decryption failure")
-               | Some cs ->
-                 Metrics.key_op `Decrypt;
-                 Hashtbl.replace cached_operations id (succ key_data.operations);
-                 Ok (Base64.encode_string (Cstruct.to_string cs))
-             in
-             begin match key_data.purpose, decrypt_mode with
-               | Decrypt, Json.RAW ->
-                 Error (Bad_request, "RAW only allowed for SignAndDecrypt keys")
-               | SignAndDecrypt, RAW ->
-                 dec_ok
-                   (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
-                    with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
-               | (Decrypt | SignAndDecrypt), PKCS1 ->
-                 dec_ok (Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_MD5 ->
-                 dec_ok (Oaep_md5.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_SHA1 ->
-                 dec_ok (Oaep_sha1.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_SHA224 ->
-                 dec_ok (Oaep_sha224.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_SHA256 ->
-                 dec_ok (Oaep_sha256.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_SHA384 ->
-                 dec_ok (Oaep_sha384.decrypt ~key encrypted_cs)
-               | (Decrypt | SignAndDecrypt), OAEP_SHA512 ->
-                 dec_ok (Oaep_sha512.decrypt ~key encrypted_cs)
-               | _ ->
-                 Error (Bad_request, "Key purpose is not decrypt.")
-             end
-           | `ED25519 _  ->
-             Error (Bad_request, "Not an RSA key."))
+           if Json.MS.mem (Json.mechanism_of_decrypt_mode decrypt_mode) key_data.mechanisms then
+             match key_data.priv with
+             | `RSA key ->
+               begin
+                 let dec_cs =
+                   let encrypted_cs = Cstruct.of_string encrypted_data in
+                   match decrypt_mode with
+                   | Json.RAW ->
+                     (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
+                      with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+                   | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
+                   | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
+                   | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
+                   | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
+                   | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
+                   | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
+                   | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
+                 in
+                 match dec_cs with
+                 | None -> Error (Bad_request, "Decryption failure")
+                 | Some cs ->
+                   Metrics.key_op `Decrypt;
+                   Hashtbl.replace cached_operations id (succ key_data.operations);
+                   Ok (Base64.encode_string (Cstruct.to_string cs))
+               end
+             | _ ->
+               Error (Bad_request, "Decryption only supported for RSA keys.")
+           else
+             Error (Bad_request, "Key mechanisms do not allow requested decryption."))
 
     module Pss_md5 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.MD5)
     module Pss_sha1 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA1)
@@ -1131,41 +1124,40 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error `Msg msg ->
         Lwt.return (Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ "."))
       | Ok to_sign ->
-        let to_sign_cs = Cstruct.of_string to_sign in
-        match key_data.purpose, key_data.priv with
-        | Sign, `RSA key | SignAndDecrypt, `RSA key ->
-          begin try
-              Lwt_result.lift
-                (match sign_mode with
-                 | Json.PKCS1 -> Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
-                 | PSS_MD5 -> Ok (Pss_md5.sign ~key (`Message to_sign_cs))
-                 | PSS_SHA1 -> Ok (Pss_sha1.sign ~key (`Message to_sign_cs))
-                 | PSS_SHA224 -> Ok (Pss_sha224.sign ~key (`Message to_sign_cs))
-                 | PSS_SHA256 -> Ok (Pss_sha256.sign ~key (`Message to_sign_cs))
-                 | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Message to_sign_cs))
-                 | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Message to_sign_cs))
-                 | ED25519 -> Error (Bad_request, "Invalid sign mode and key type combination."))
-              >|= fun signature ->
-              Metrics.key_op `Sign;
-              Hashtbl.replace cached_operations id (succ key_data.operations);
-              Base64.encode_string @@ Cstruct.to_string signature
-            with Mirage_crypto_pk.Rsa.Insufficient_key ->
-              Lwt.return (Error (Bad_request, "Signing failure."))
-          end
-        | Sign, `ED25519 key ->
-          begin match sign_mode with
-            | ED25519 ->
-              let signature = Hacl_ed25519.sign key to_sign_cs in
-              Metrics.key_op `Sign;
-              Hashtbl.replace cached_operations id (succ key_data.operations);
-              Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-            | _ ->
-              Lwt.return (Error (Bad_request, "Invalid sign mode and key type combination."))
-          end
-        | SignAndDecrypt, `ED25519 _ ->
-          Lwt.return (Error (Bad_request, "Invalid key purpose."))
-        | Decrypt, _ ->
-          Lwt.return (Error (Bad_request, "Key purpose is not sign."))
+        if Json.MS.mem (Json.mechanism_of_sign_mode sign_mode) key_data.mechanisms then
+          let to_sign_cs = Cstruct.of_string to_sign in
+          match key_data.priv with
+          | `RSA key ->
+            begin try
+                Lwt_result.lift
+                  (match sign_mode with
+                   | Json.PKCS1 -> Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
+                   | PSS_MD5 -> Ok (Pss_md5.sign ~key (`Message to_sign_cs))
+                   | PSS_SHA1 -> Ok (Pss_sha1.sign ~key (`Message to_sign_cs))
+                   | PSS_SHA224 -> Ok (Pss_sha224.sign ~key (`Message to_sign_cs))
+                   | PSS_SHA256 -> Ok (Pss_sha256.sign ~key (`Message to_sign_cs))
+                   | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Message to_sign_cs))
+                   | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Message to_sign_cs))
+                   | _ -> Error (Bad_request, "Invalid sign mode for key type."))
+                >|= fun signature ->
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                Base64.encode_string @@ Cstruct.to_string signature
+              with Mirage_crypto_pk.Rsa.Insufficient_key ->
+                Lwt.return (Error (Bad_request, "Signing failure."))
+            end
+          | `ED25519 key ->
+            begin match sign_mode with
+              | Json.ED25519 ->
+                let signature = Hacl_ed25519.sign key to_sign_cs in
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
+              | _ ->
+                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
+            end
+        else
+          Lwt.return (Error (Bad_request, "Key mechanisms do not allow requested signing."))
 
     let list_digest t =
       let open Lwt.Infix in

@@ -152,21 +152,71 @@ type key = {
   data : (string [@default ""]) ;
 } [@@deriving yojson]
 
-type purpose = Sign | Decrypt | SignAndDecrypt [@@deriving yojson]
+type mechanism =
+  | RSA_Decryption_RAW
+  | RSA_Decryption_PKCS1
+  | RSA_Decryption_OAEP_MD5
+  | RSA_Decryption_OAEP_SHA1
+  | RSA_Decryption_OAEP_SHA224
+  | RSA_Decryption_OAEP_SHA256
+  | RSA_Decryption_OAEP_SHA384
+  | RSA_Decryption_OAEP_SHA512
+  | RSA_Signature_PKCS1
+  | RSA_Signature_PSS_MD5
+  | RSA_Signature_PSS_SHA1
+  | RSA_Signature_PSS_SHA224
+  | RSA_Signature_PSS_SHA256
+  | RSA_Signature_PSS_SHA384
+  | RSA_Signature_PSS_SHA512
+  | ED25519_Signature
+[@@deriving yojson, ord]
 
-let purpose_of_yojson = function
-  | `String _ as s -> purpose_of_yojson (`List [s])
-  | _ -> Error "Expected JSON string for purpose"
+let mechanism_of_yojson = function
+  | `String _ as s -> mechanism_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for mechanism"
 
 let head = function
   | `List [l] -> l
   | _ -> assert false (* deriving yojson for polymorphic variants without
                          arguments always returns a singleton *)
 
-let purpose_to_yojson purpose = head @@ purpose_to_yojson purpose
+let mechanism_to_yojson mechanism = head @@ mechanism_to_yojson mechanism
+
+module MS = struct
+  include Set.Make(struct
+      type t = mechanism
+      let compare (a : mechanism) (b : mechanism) = compare a b
+    end)
+
+  let to_yojson ms = `List (List.map mechanism_to_yojson (elements ms))
+
+  let of_yojson = function
+    | `List ms ->
+      List.fold_left (fun acc m ->
+          acc >>= fun acc ->
+          mechanism_of_yojson m >>| fun m ->
+          m :: acc)
+        (Ok []) ms >>| fun ms ->
+      of_list ms
+    | _ -> Error "Expected JSON list for mechanisms"
+end
+
+let mechanisms_of_string m =
+  List.fold_left (fun acc r ->
+      acc >>= fun acc ->
+      mechanism_of_yojson (`String r) >>| fun m ->
+      m :: acc)
+    (Ok []) (Astring.String.cuts ~sep:"," m) >>| fun ms ->
+  MS.of_list ms
+
+let algorithm_matches_mechanism alg m =
+  match alg with
+  | "RSA" -> m <> ED25519_Signature
+  | "ED25519" -> m = ED25519_Signature
+  | _ -> false
 
 type rsaPublicKey = {
-  purpose : purpose ;
+  mechanisms : MS.t;
   algorithm : string ;
   modulus : string ;
   publicExponent : string ;
@@ -174,14 +224,14 @@ type rsaPublicKey = {
 } [@@deriving yojson]
 
 type ed25519PublicKey = {
-  purpose : purpose ;
+  mechanisms : MS.t ;
   algorithm : string ;
   data : string ;
   operations : int
 } [@@deriving yojson]
 
 type private_key_req = {
-  purpose: purpose ;
+  mechanisms : MS.t ;
   algorithm: string ;
   key : key
 }[@@deriving yojson]
@@ -196,6 +246,16 @@ type decrypt_mode =
   | OAEP_SHA384
   | OAEP_SHA512
 [@@deriving yojson]
+
+let mechanism_of_decrypt_mode = function
+  | RAW -> RSA_Decryption_RAW
+  | PKCS1 -> RSA_Decryption_PKCS1
+  | OAEP_MD5 -> RSA_Decryption_OAEP_MD5
+  | OAEP_SHA1 -> RSA_Decryption_OAEP_SHA1
+  | OAEP_SHA224 -> RSA_Decryption_OAEP_SHA224
+  | OAEP_SHA256 -> RSA_Decryption_OAEP_SHA256
+  | OAEP_SHA384 -> RSA_Decryption_OAEP_SHA384
+  | OAEP_SHA512 -> RSA_Decryption_OAEP_SHA512
 
 let decrypt_mode_of_yojson = function
   | `String _ as s -> decrypt_mode_of_yojson (`List [s])
@@ -214,6 +274,16 @@ type sign_mode =
   | ED25519
 [@@deriving yojson]
 
+let mechanism_of_sign_mode = function
+  | PKCS1 -> RSA_Signature_PKCS1
+  | PSS_MD5 -> RSA_Signature_PSS_MD5
+  | PSS_SHA1 -> RSA_Signature_PSS_SHA1
+  | PSS_SHA224 -> RSA_Signature_PSS_SHA224
+  | PSS_SHA256 -> RSA_Signature_PSS_SHA256
+  | PSS_SHA384 -> RSA_Signature_PSS_SHA384
+  | PSS_SHA512 -> RSA_Signature_PSS_SHA512
+  | ED25519 -> ED25519_Signature
+
 let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [s])
   | _ -> Error "Expected JSON string for sign mode"
@@ -221,7 +291,7 @@ let sign_mode_of_yojson = function
 type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
 
 type generate_key_req = {
-  purpose: purpose ;
+  mechanisms : MS.t ;
   algorithm : string ;
   length : (int [@default 0]) ;
   id : (string [@default ""])
@@ -238,14 +308,16 @@ let valid_id id =
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
-  (* purpose already checked by json parser *)
   (if "RSA" = r.algorithm then
      guard (1024 <= r.length && r.length <= 8192)
        "RSA key length must be between 1024 and 8192."
    else if "ED25519" = r.algorithm then
-     guard (r.purpose = Sign) "Purpose must be sign for ED25519 key."
+     Ok ()
    else
      Error "Only RSA and ED25519 algorithms supported.") >>= fun () ->
+  guard (MS.for_all (algorithm_matches_mechanism r.algorithm) r.mechanisms)
+    "Mechanism does not match key algorithm" >>= fun () ->
+  guard (MS.cardinal r.mechanisms > 0) "Empty set of mechanisms" >>= fun () ->
   let empty_or_valid id =
     if String.length id = 0 then Ok () else valid_id id
   in

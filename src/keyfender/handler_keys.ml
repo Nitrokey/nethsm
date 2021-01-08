@@ -23,7 +23,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
       let ok (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.purpose key.algorithm key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.algorithm key.key >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -33,23 +33,22 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method private set_pem rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      let purpose = match Uri.get_query_param rd.Webmachine.Rd.uri "purpose" with
-      | Some "sign" -> Ok Json.Sign
-      | Some "decrypt" -> Ok Json.Decrypt
-      | Some "signanddecrypt" -> Ok Json.SignAndDecrypt
-      | _ -> Error "Request is missing valid purpose."
+      let mechanisms =
+        match Uri.get_query_param rd.Webmachine.Rd.uri "mechanisms" with
+        | Some ms -> Json.mechanisms_of_string ms
+        | None -> Error "Request is missing mechanisms."
       in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
         | None -> assert false (* this can't happen since we set it ourselves,
                                   and webmachine ensures that it already happened. *)
         | Some path -> path
       in
-      let ok purpose =
-        Hsm.Key.add_pem hsm_state ~id purpose content >>= function
+      let ok mechanisms =
+        Hsm.Key.add_pem hsm_state ~id mechanisms content >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Endpoint.err_to_bad_request ok rd purpose
+      Endpoint.err_to_bad_request ok rd mechanisms
 
     method! post_is_create rd =
       Wm.continue true rd
@@ -91,7 +90,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | "", None -> assert false (* can never happen, see above *)
         | id, _ -> id
         in
-        Hsm.Key.generate hsm_state ~id key.algorithm key.purpose ~length:key.length >>= function
+        Hsm.Key.generate hsm_state ~id key.algorithm key.mechanisms ~length:key.length >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -144,7 +143,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       let ok (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.purpose key.algorithm key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.algorithm key.key >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in

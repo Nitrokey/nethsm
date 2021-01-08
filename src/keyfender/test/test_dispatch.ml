@@ -878,7 +878,7 @@ let keys_get () =
   | _ -> false
   end
 
-let key_json = {| { purpose: "Sign", algorithm: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
+let key_json = {| { mechanisms: [ "RSA_Signature_PKCS1" ], algorithm: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
 
 let keys_post_json () =
   "POST on /keys succeeds"
@@ -906,7 +906,7 @@ Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
 -----END PRIVATE KEY-----|}
 
 let keys_post_pem () =
-  let query = [ ("purpose", [ "sign" ]) ] in
+  let query = [ ("mechanisms", [ "RSA_Signature_PKCS1" ]) ] in
   "POST on /keys succeeds"
   @? begin
   match admin_post_request ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys" with
@@ -914,7 +914,7 @@ let keys_post_pem () =
   | _ -> false
   end
 
-let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048 }|}
+let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048 }|}
 
 let keys_generate () =
   "POST on /keys/generate succeeds"
@@ -929,7 +929,7 @@ let keys_generate () =
   end
 
 let keys_generate_invalid_id () =
-  let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
+  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -940,7 +940,7 @@ let keys_generate_invalid_id () =
   end
 
 let keys_generate_invalid_id_length () =
-  let generate_json = {|{ purpose: "Decrypt", algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
+  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -948,7 +948,25 @@ let keys_generate_invalid_id_length () =
   | _ -> false
   end
 
-let generate_ed25519 = {|{ purpose: "Sign", algorithm: "ED25519" }|}
+let keys_generate_invalid_mech () =
+  let generate_json = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "RSA", length: 2048, id: "1234" }|} in
+  "POST on /keys/generate with invalid mechanism fails"
+  @? begin
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_generate_no_mech () =
+  let generate_json = {|{ mechanisms: [ ], algorithm: "RSA", length: 2048, id: "1234" }|} in
+  "POST on /keys/generate with no mechanism fails"
+  @? begin
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519" }|}
 
 let keys_generate_ed25519 () =
   "POST on /keys/generate with ED25519 succeeds"
@@ -964,8 +982,8 @@ let keys_generate_ed25519 () =
   end
 
 let keys_generate_ed25519_fail () =
-  let generate_ed25519 = {|{ purpose: "Decrypt", algorithm: "ED25519" }|} in
-  "POST on /keys/generate with ED25519 fails (wrong purpose)"
+  let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "ED25519" }|} in
+  "POST on /keys/generate with ED25519 fails (wrong mechanism)"
   @? begin
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -995,9 +1013,9 @@ let test_key =
   | Ok `RSA key -> key
   | _ -> assert false
 
-let hsm_with_key ?(mode = Keyfender.Json.Decrypt) () =
+let hsm_with_key ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem state mode ~id:"keyID" test_key_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem >|= function
   | Ok () -> state
   | Error _ -> assert false)
 
@@ -1087,7 +1105,16 @@ let operator_keys_key_decrypt () =
 let operator_keys_key_decrypt_fails () =
   "POST on /keys/keyID/decrypt fails"
   @? begin
-  let hsm_state = hsm_with_key ~mode:Keyfender.Json.Sign () in
+  let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_decrypt_fails_wrong_mech () =
+  "POST on /keys/keyID/decrypt fails (wrong mechanism)"
+  @? begin
+  let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Decryption_RAW) () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
@@ -1100,7 +1127,7 @@ let sign_request =
 let operator_keys_key_sign () =
   "POST on /keys/keyID/sign succeeds"
   @? begin
-    let hsm_state = hsm_with_key ~mode:Keyfender.Json.Sign () in
+    let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with
@@ -1121,8 +1148,18 @@ let operator_keys_key_sign () =
 let operator_keys_key_sign_fails () =
   "POST on /keys/keyID/sign fails"
   @? begin
-    let hsm_state = hsm_with_key ~mode:Keyfender.Json.Decrypt () in
+    let hsm_state = hsm_with_key () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_sign_fails_wrong_mech () =
+  "POST on /keys/keyID/sign fails (wrong mechanism)"
+  @? begin
+    let mechanisms = Keyfender.Json.(MS.singleton RSA_Signature_PSS_MD5) in
+    let hsm_state = hsm_with_key ~mechanisms () in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
     | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
@@ -1130,7 +1167,8 @@ let operator_keys_key_sign_fails () =
 let operator_keys_key_sign_and_decrypt () =
   "POST on /keys/keyID/decrypt succeeds with sign and decrypt key"
   @? begin
-  let hsm_state = hsm_with_key ~mode:Keyfender.Json.SignAndDecrypt () in
+  let mechanisms = Keyfender.Json.(MS.add RSA_Decryption_PKCS1 (MS.singleton RSA_Signature_PKCS1)) in
+  let hsm_state = hsm_with_key ~mechanisms () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
     | _, Some (`OK, _, `String data, _) ->
       begin match Yojson.Safe.from_string data with
@@ -1168,7 +1206,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
 let hsm_with_ed25519_key () =
   let hsm_state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.Sign ~id:"keyID" ed25519_priv_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton ED25519_Signature) ~id:"keyID" ed25519_priv_pem >|= function
     | Ok () -> hsm_state
     | Error _ -> assert false)
 
@@ -1224,7 +1262,7 @@ let keys_key_get_ed25519 () =
 
 let ed25519_json =
   let b64 = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.encode_priv ed25519_priv)) in
-  Printf.sprintf {| { purpose: "Sign", algorithm: "ED25519", key: { data: "%s" } } |} b64
+  Printf.sprintf {| { mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519", key: { data: "%s" } } |} b64
 
 let keys_key_put_ed25519 () =
   "PUT on /keys/keyID succeeds with ED25519 key"
@@ -1491,6 +1529,8 @@ let () =
     "/keys/generate" >:: keys_generate;
     "/keys/generate" >:: keys_generate_invalid_id;
     "/keys/generate" >:: keys_generate_invalid_id_length;
+    "/keys/generate" >:: keys_generate_invalid_mech;
+    "/keys/generate" >:: keys_generate_no_mech;
     "/keys/generate" >:: keys_generate_ed25519;
     "/keys/generate" >:: keys_generate_ed25519_fail;
     "/keys/keyID" >:: keys_key_get;
@@ -1502,8 +1542,10 @@ let () =
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails;
+    "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_wrong_mech;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
+    "/keys/keyID/sign" >:: operator_keys_key_sign_fails_wrong_mech;
     "/keys/keyID/decrypt and /sign" >:: operator_keys_key_sign_and_decrypt;
     "/keys/keyID/sign" >:: operator_sign_ed25519_succeeds;
     "/keys/keyID/sign" >:: operator_sign_ed25519_fails;
