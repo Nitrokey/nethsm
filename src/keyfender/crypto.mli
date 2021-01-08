@@ -14,6 +14,12 @@ module GCM : Mirage_crypto.Cipher_block.S.GCM
 val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t
 (** Derive a symmetric key from a passphrase, using SCRYPT. *)
 
+val passphrase_salt_len : int
+(** The length of the salt used for storing the passphrase. *)
+
+val stored_passphrase : salt:Cstruct.t -> Cstruct.t -> Cstruct.t
+(** Computes the stored passphrase from a salt and plain passphrase. *)
+
 val encrypt : (int -> Cstruct.t) -> key:GCM.key -> adata:Cstruct.t ->
   Cstruct.t -> Cstruct.t
 (** [encrypt rng ~key ~adata data] encrypts [data] using AES-GCM with the

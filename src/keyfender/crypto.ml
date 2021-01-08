@@ -23,6 +23,11 @@ let key_of_passphrase ~salt password =
     ~password:(Cstruct.of_string password)
     ~salt ~n:scrypt_n ~r:scrypt_r ~p:scrypt_p ~dk_len:(Int32.of_int key_len)
 
+let passphrase_salt_len = 16
+
+let stored_passphrase ~salt plain =
+  Mirage_crypto.Hash.SHA256.hmac ~key:salt plain
+
 (* from https://crypto.stackexchange.com/questions/5807/aes-gcm-and-its-iv-nonce-value *)
 let iv_size = 12
 

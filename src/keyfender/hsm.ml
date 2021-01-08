@@ -718,7 +718,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Access.warn (fun m -> m "%s unauthenticated: %a" username pp_find_error e);
         false
       | Ok user ->
-        let pass = Crypto.key_of_passphrase ~salt:(Cstruct.of_string user.salt) passphrase in
+        let pass =
+          Crypto.stored_passphrase
+            ~salt:(Cstruct.of_string user.salt)
+            (Cstruct.of_string passphrase)
+        in
         Cstruct.equal pass (Cstruct.of_string user.digest)
 
     let is_authorized t username role =
@@ -747,8 +751,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          user.name, user.role)
 
     let prepare_user ~name ~passphrase ~role =
-      let salt = Rng.generate Crypto.salt_len in
-      let digest = Crypto.key_of_passphrase ~salt passphrase in
+      let salt = Rng.generate Crypto.passphrase_salt_len in
+      let digest = Crypto.stored_passphrase ~salt (Cstruct.of_string passphrase) in
       { name ; salt = Cstruct.to_string salt ; digest = Cstruct.to_string digest ; role }
 
     let add ~id t ~role ~passphrase ~name =
@@ -786,8 +790,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let store = in_store t in
       internal_server_error "Read user" pp_find_error
         (read_decode store id) >>= fun user ->
-      let salt' = Rng.generate Crypto.salt_len in
-      let digest' = Crypto.key_of_passphrase ~salt:salt' passphrase in
+      let salt' = Rng.generate Crypto.passphrase_salt_len in
+      let digest' = Crypto.stored_passphrase ~salt:salt' (Cstruct.of_string passphrase) in
       let user' =
         { user with salt = Cstruct.to_string salt' ;
                     digest = Cstruct.to_string digest' }
