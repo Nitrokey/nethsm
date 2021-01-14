@@ -109,14 +109,13 @@ types:
     properties:
       vendor: string
       product: string
-      version: string
 
 /info:
   description: "Public"
   get:
     state: [ Locked, Operational, Unprovisioned ]
     role: [ Public ]
-    description: Information about the vendor, product, version.
+    description: Information about the vendor and product.
     #securedBy: null
     responses:
       200:
@@ -126,7 +125,6 @@ types:
             example:
               vendor: Nitrokey GmbH
               product: NetHSM
-              version: v1 # API version
 
 /health:
   description: "Public"

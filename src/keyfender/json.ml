@@ -351,7 +351,6 @@ type user_res = {
 type info = {
   vendor : string ;
   product : string ;
-  version : string ;
 }[@@deriving yojson]
 
 type state = [

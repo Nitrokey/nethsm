@@ -27,8 +27,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
   module System = Handler_system.Make(Wm)(Hsm)
 
   let routes hsm_state ip =
-    let latest_version = (Hsm.info hsm_state).Json.version in
-    List.map (fun (p, h) -> "/api/" ^ latest_version ^ p, h)
+    List.map (fun (p, h) -> "/api/v1" ^ p, h)
       [
         ("/info", fun () -> new Info.info hsm_state) ;
         ("/health/alive", fun () -> new Health.alive hsm_state) ;
