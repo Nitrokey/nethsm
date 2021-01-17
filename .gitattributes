@@ -3,4 +3,6 @@
 /src/coreboot/blobs/me.bin filter=lfs diff=lfs merge=lfs -text
 /container/static/Index.js filter=lfs diff=lfs merge=lfs -text
 /container/static/Index.js.map filter=lfs diff=lfs merge=lfs -text
+/src/container/static/Index.js filter=lfs diff=lfs merge=lfs -text
+/src/container/static/Index.js.map filter=lfs diff=lfs merge=lfs -text
 **/modules/**/*.ko filter=lfs diff=lfs merge=lfs -text
