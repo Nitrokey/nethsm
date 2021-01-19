@@ -372,4 +372,5 @@ type system_info = {
   firmwareVersion : string ;
   softwareVersion : version ;
   hardwareVersion : string ;
+  buildTag : string ;
 }[@@deriving yojson]

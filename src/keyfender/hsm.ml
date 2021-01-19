@@ -1692,7 +1692,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   let boot ~device_id kv =
     Metrics.set_mem_reporter ();
     let info = { Json.vendor = "Nitrokey GmbH" ; product = "NetHSM" }
-    and system_info = { Json.firmwareVersion = "N/A" ; softwareVersion = (1, 7) ; hardwareVersion = "N/A" }
+    and system_info = {
+      Json.firmwareVersion = "N/A" ;
+      softwareVersion = (1, 7) ;
+      hardwareVersion = "N/A";
+      buildTag = [%blob "buildTag"]
+    }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
     in

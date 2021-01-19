@@ -5,6 +5,7 @@ run/
 obj/
 serial.out
 .stamp-*
+src/keyfender/buildTag
 src/muen/policy/xml/component_unikernel.xml
 src/u-root/bin
 src/u-root/src/**/.bb/

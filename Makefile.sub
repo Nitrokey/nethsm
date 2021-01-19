@@ -101,7 +101,10 @@ endif
 #
 # ------------------------------------------------------------------------------
 
-.stamp-prepare:
+src/keyfender/buildTag:
+	git -C . describe --dirty --tags --always > src/keyfender/buildTag
+
+.stamp-prepare: src/keyfender/buildTag
 ifeq ($(USE_CCACHE),1)
 	mkdir -p $(CCACHE_DIR)
 endif
@@ -134,6 +137,7 @@ prepare: .stamp-prepare
 
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
+	$(RM) src/keyfender/buildTag
 	$(RM) .stamp-prepare
 
 # ------------------------------------------------------------------------------
