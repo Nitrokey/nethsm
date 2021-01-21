@@ -11,9 +11,9 @@ RUN cd /home/opam/opam-repository \
   && cd -
 
 RUN cd /home/opam \
-  && git clone https://oauth2:$TOKEN@git.dotplex.com/nitrokey/nitrohsm.git
+  && git clone https://oauth2:$TOKEN@git.dotplex.com/nitrokey/nethsm.git
 
-WORKDIR /home/opam/nitrohsm
+WORKDIR /home/opam/nethsm
 
 RUN opam exec -- make build-keyfender
 
@@ -35,5 +35,5 @@ ENTRYPOINT /start.sh
 
 COPY --from=builder \
   /home/opam/.opam/4.11/bin/solo5-hvt \
-  /home/opam/nitrohsm/src/s_keyfender/keyfender.hvt \
+  /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
   /
