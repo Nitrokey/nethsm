@@ -1,18 +1,19 @@
 #%RAML 1.0
 title: NetHSM
 version: v1
-# description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All <a href="https://tools.ietf.org/html/rfc4648#section-4">base64url</a> encoded values are Big Endian.
+description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All base64 encoded values are Big Endian.
 baseUri: https://{host}/api/{version}
 baseUriParameters:
   host:
+    default: nethsmdemo.nitrokey.com
     description: NetHSM hostname or IP address. For TLS certificate validation to succeed this should be the same as the <i>commonName</i> set in <a href="#config_tls_csr_pem_post">/config/tls/csr.pem</a>. In an <i>Unprovisioned</i> state, this is always 192.168.1.1.
-protocols: [ HTTPS ]
+protocols: [ https ]
 mediaType: application/json
-#basic:
-#  description: |
-#    NetHSM supports Basic Authentication.
-#  type: Basic Authentication
-
+securitySchemes:
+  basic:
+    description: |
+      NetHSM supports Basic Authentication.
+    type: Basic Authentication
 types:
   Passphrase:
     type: string
@@ -22,12 +23,18 @@ types:
     pattern: ^[a-zA-Z0-9]+$
     minLength: 1
     maxLength: 128
+  Base64:
+    type: string
+    pattern: ^[a-zA-Z0-9+/]+={0,3}$
+  Base64Url:
+    type: string
+    pattern: ^[a-zA-Z0-9_-]+={0,3}$
   UserRole:
     enum: ["Administrator", "Operator", "Metrics", "Backup"]
   User:
     type: object
     properties:
-      realname : string
+      realName : string
       role: UserRole
       passphrase: Passphrase
   KeyList:
@@ -109,12 +116,22 @@ types:
     properties:
       vendor: string
       product: string
+annotationTypes:
+  state:
+    type: array
+    items:
+      enum: [ Locked, Operational, Unprovisioned ]
+  role:
+    type: array
+    items:
+      enum: [ Administrator, Operator, Metrics, Backup, Public ]
+
 
 /info:
   description: "Public"
   get:
-    state: [ Locked, Operational, Unprovisioned ]
-    role: [ Public ]
+    (state): [ Locked, Operational, Unprovisioned ]
+    (role): [ Public ]
     description: Information about the vendor and product.
     #securedBy: null
     responses:
@@ -130,8 +147,8 @@ types:
   description: "Public"
   /alive:
     get:
-      role: [ Public ]
-      state: [ Locked , Unprovisioned ]
+      (role): [ Public ]
+      (state): [ Locked , Unprovisioned ]
       description: Retrieve wether NetHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.
       responses:
         200:
@@ -140,8 +157,8 @@ types:
           description: Not locked or unprovisioned (in operational state).
   /ready:
     get:
-      role: [ Public ]
-      state: [ Operational ]
+      (role): [ Public ]
+      (state): [ Operational ]
       description: Retrieve wether NetHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.
       responses:
         200:
@@ -150,8 +167,8 @@ types:
           description: Not alive and ready (not in operational state).
   /state:
     get:
-      role: [ Public ]
-      state: [ Locked, Operational, Unprovisioned ]
+      (role): [ Public ]
+      (state): [ Locked, Operational, Unprovisioned ]
       description: Retrieve the state of NetHSM.
       responses:
         200:
@@ -166,10 +183,10 @@ types:
 /metrics:
   description: "Role: <b>R-Metrics</b>"
   get:
-    role: [ Metrics ]
-    state: [ Operational ]
+    (role): [ Metrics ]
+    (state): [ Operational ]
     description: "Get metrics. Precondition: NetHSM is <i>Operational</i> and a <b>R-Metrics</b> can be authenticated."
-    securedBy: basic # R-Metrics
+    securedBy: [ basic ] # R-Metrics
     responses:
       200:
         body:
@@ -187,15 +204,15 @@ types:
 /provision:
   description: "Public"
   post:
-    role: [ Public ]
-    state: [ Unprovisioned ]
+    (role): [ Public ]
+    (state): [ Unprovisioned ]
     description: Initial provisioning, only available in <i>Unprovisioned</i> state.
     body:
       application/json:
         properties:
           unlockPassphrase: Passphrase
           adminPassphrase: Passphrase
-          systemTime: RFC3339 (UTC only)
+          systemTime: datetime #(UTC only)
         example:
           unlockPassphrase: "UnlockPassphrase"
           adminPassphrase: "Administrator"
@@ -211,8 +228,8 @@ types:
 /unlock:
   description: "Public"
   post:
-    role: [ Public ]
-    state: [ Locked ]
+    (role): [ Public ]
+    (state): [ Locked ]
     description: Brings a <i>Locked</i> NetHSM into <i>Operational</i> state.
     body:
       application/json:
@@ -231,10 +248,10 @@ types:
 /lock:
   description: "Administrator"
   post:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Brings an <i>Operational</i> NetHSM into <i>Locked</i> state.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     responses:
       204:
         description: Lock was successful, NetHSM is <i>Locked</i> now.
@@ -246,10 +263,10 @@ types:
 /random:
   description: "Role: <b>R-Operator</b>"
   post:
-    role: [ Operator ]
-    state: [ Operational ]
+    (role): [ Operator ]
+    (state): [ Operational ]
     description: "Retrieve cryptographically strong random bytes from NetHSM. Precondition: NetHSM is <i>Operational</i> and a <b>R-Operator</b> can be authenticated."
-    securedBy: basic # R-Operator
+    securedBy: [ basic ] # R-Operator
     body:
       application/json:
         properties:
@@ -266,7 +283,7 @@ types:
           application/json:
             type: object
             properties:
-              random: base64
+              random: Base64
             example:
               random: "VGhlIHE="
       401:
@@ -280,10 +297,10 @@ types:
 /keys:
   description: "Role: <b>R-Operator</b> can GET keys. <b>R-Administrator</b> can GET and POST keys, and also POST /generate."
   get:
-    role: [ Administrator, Operator ]
-    state: [ Operational ]
+    (role): [ Administrator, Operator ]
+    (state): [ Operational ]
     description: Get a list of the identifiers of all keys that are currently stored in NetHSM. Separate requests need to be made to request the individual key data.
-    securedBy: basic # R-Operator or R-Administrator
+    securedBy: [ basic ] # R-Operator or R-Administrator
     responses:
       200:
         description: Successful request for the list of keys.
@@ -299,12 +316,13 @@ types:
         description: Precondition failed (NetHSM was not <i>Operational</i>).
 
   post:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Import a private key into NetHSM and let NetHSM generate a KeyID. The public key will be automatically derived.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     queryParameters:
-      mechanisms: KeyMechanisms
+      mechanisms:
+        type: KeyMechanisms
     body:
       application/json:
         type: PrivateKey
@@ -364,10 +382,10 @@ types:
   /generate:
     description: "Role: <b>R-Administrator</b>"
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Generate a pair of public and private key and store it in NetHSM. KeyID is optional as a parameter and will be generated by NetHSM if not present.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
@@ -376,8 +394,8 @@ types:
             algorithm: KeyAlgorithm
             length:
               # required for RSA keys
-              type: int
-              mimimum: 1024
+              type: integer
+              minimum: 1024
               maximum: 8192
               required: false
             id:
@@ -403,10 +421,10 @@ types:
 /keys/{KeyID}:
     description: "Role: <b>R-Operator</b> can GET, <b>R-Administrator</b> can GET, PUT and DELETE. Also, <b>R-Operator</b> can POST /sign and /decrypt."
     get:
-      role: [ Administrator, Operator ]
-      state: [ Operational ]
+      (role): [ Administrator, Operator ]
+      (state): [ Operational ]
       description: Retrieve the public key.
-      securedBy: basic # R-Operator or R-Administrator
+      securedBy: [ basic ] # R-Operator or R-Administrator
       responses:
         200:
           body:
@@ -428,10 +446,10 @@ types:
         404:
           description: Key for KeyID not found.
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Import a private key into NetHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           type: PrivateKey
@@ -456,10 +474,10 @@ types:
         409:
           description: Conflict, key already exists for this keyID.
     delete:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Delete a pair of public and private key.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         204:
           description: Key was successfully deleted.
@@ -474,10 +492,10 @@ types:
 
     /public.pem:
       get:
-        role: [ Administrator, Operator ]
-        state: [ Operational ]
+        (role): [ Administrator, Operator ]
+        (state): [ Operational ]
         description: Retrieve public key in PEM format.
-        securedBy: basic # R-Administrator or R-Operator
+        securedBy: [ basic ] # R-Administrator or R-Operator
         responses:
           200:
             body:
@@ -503,13 +521,13 @@ types:
 
     /csr.pem:
       post:
-        role: [ Administrator, Operator ]
-        state: [ Operational ]
+        (role): [ Administrator, Operator ]
+        (state): [ Operational ]
         description: Retrieve a certificate signing request in PEM format.
-        securedBy: basic # R-Administrator or R-Operator
+        securedBy: [ basic ] # R-Administrator or R-Operator
         body:
           application/json:
-            properties: DistinguishedName
+            type: DistinguishedName
             example:
               countryName : "DE"
               stateOrProvinceName : ""
@@ -552,17 +570,17 @@ types:
 
     /decrypt:
       post:
-        role: [ Operator ]
-        state: [ Operational ]
+        (role): [ Operator ]
+        (state): [ Operational ]
         description: Decrypt an encrypted message with the secret key.
-        securedBy: basic # R-Operator
+        securedBy: [ basic ] # R-Operator
         body:
           application/json:
             type: object
             properties:
               mode:
                 enum: ["RAW", "PKCS1", "OAEP_MD5", "OAEP_SHA1", "OAEP_SHA224", "OAEP_SHA256", "OAEP_SHA384", "OAEP_SHA512"]
-              encrypted: base64
+              encrypted: Base64
             example:
               mode: "RAW"
               encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
@@ -572,7 +590,7 @@ types:
               application/json:
                 type: object
                 properties:
-                  decrypted: base64
+                  decrypted: Base64
                 example:
                   decrypted: "IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA=="
           401:
@@ -588,17 +606,17 @@ types:
 
     /sign:
       post:
-        role: [ Operator ]
-        state: [ Operational ]
+        (role): [ Operator ]
+        (state): [ Operational ]
         description: Sign a message with the secret key.
-        securedBy: basic # R-Operator
+        securedBy: [ basic ] # R-Operator
         body:
           application/json:
             type: object
             properties:
               mode:
                 enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512", "ED25519"]
-              message: base64
+              message: Base64
             example:
               mode: "PKCS1"
               message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
@@ -608,7 +626,7 @@ types:
               application/json:
                 type: object
                 properties:
-                  signature: base64
+                  signature: Base64
                 example:
                   signature: "n4geMX1g8zcfipfcmn+XjM1ccWZULemAa0cuYoh1aXG9UhbE6f54NMp4NjboLf63SQyieJYjjV8q+/o1rFlkZCtKtHAheds+g90zdjOMmXFlXyBTKMhGOSHuleGz0c99x7Alg19KN9wB3Jj2niwweBOR/F4Qv0mdBUv+oO8uPl6vM1fS4tX/VJoCZkDnZzL8duKRNFT0SNQZ+ryLiqQMG53fEPhTplK/wK0Cco8JAYCMh9cxSzpBoCEO+9woxoBGehAjHuLxs6ed6q08W67leuibxZ8c6Q6upmwDlca/gSw0y4w1VIxxts2PORZdNsTWcr3lojcNgWXJcfAqF9/n4A=="
           401:
@@ -625,10 +643,10 @@ types:
     /cert:
       description: "Role: <b>R-Operator</b> can GET, <b>R-Administrator</b> can GET, PUT and DELETE."
       get:
-        role: [ Administrator, Operator ]
-        state: [ Operational ]
+        (role): [ Administrator, Operator ]
+        (state): [ Operational ]
         description: Retrieve stored certificate. The content-type header will display the media type of the stored data.
-        securedBy: basic # R-Administrator or R-Operator
+        securedBy: [ basic ] # R-Administrator or R-Operator
         responses:
           200:
             body:
@@ -706,10 +724,10 @@ types:
           404:
             description: Certificate for KeyID not found.
       put:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Store a certificate. Maximum size 1MB. The content-type header provides the media type. Only application/json, application/x-pem-file, application/x-x509-ca-cert, application/octet-stream, text/plain and application/pgp-keys is allowed.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         body:
           application/x-pem-file:
             example: |
@@ -788,10 +806,10 @@ types:
           409:
             description: Conflict, certificate already exists for this KeyID.
       delete:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Delete the certificate.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         responses:
           204:
             description: Successful deletion of a certificate.
@@ -807,10 +825,10 @@ types:
 /users:
   description: "Role: <b>R-Administrator</b> can GET, POST"
   get:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Get a list of all user ids that have accounts on NetHSM.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     responses:
       200:
         body:
@@ -824,10 +842,10 @@ types:
       412:
         description: Precondition failed (NetHSM was not <i>Operational</i>).
   post:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Create a new user on NetHSM. The user-ID is generated by NetHSM.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     body:
       application/json:
         type: User
@@ -847,10 +865,10 @@ types:
 /users/{UserID}:
   description: "Role: <b>R-Operator</b> can GET users, and POST their own passphrase, <b>R-Administrator</b> can GET, PUT and DELETE, and POST the passphrase for everyone."
   get:
-    role: [ Administrator, Operator ]
-    state: [ Operational ]
+    (role): [ Administrator, Operator ]
+    (state): [ Operational ]
     description: "Get user info: name and role."
-    securedBy: basic # R-Operator or R-Administrator
+    securedBy: [ basic ] # R-Operator or R-Administrator
     responses:
       200:
         body:
@@ -869,10 +887,10 @@ types:
       404:
         description: User for UserID not found.
   put:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Create a user on keyfender.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     body:
       application/json:
         type: User
@@ -891,10 +909,10 @@ types:
       409:
         description: Conflict - user already exists for this user-ID.
   delete:
-    role: [ Administrator ]
-    state: [ Operational ]
+    (role): [ Administrator ]
+    (state): [ Operational ]
     description: Delete a user from keyfender.
-    securedBy: basic # R-Administrator
+    securedBy: [ basic ] # R-Administrator
     responses:
       204:
         description: Successful deletion of user.
@@ -910,10 +928,10 @@ types:
   # current passphrase not needed for update
   /passphrase:
     post:
-      role: [ Administrator, Operator ] ## TODO Operator can only post for themselves - how to generate test here?
-      state: [ Operational ]
+      (role): [ Administrator, Operator ] ## TODO Operator can only post for themselves - how to generate test here?
+      (state): [ Operational ]
       description: Update the passphrase.
-      securedBy: basic # R-Administrator or R-Operator for themselves
+      securedBy: [ basic ] # R-Administrator or R-Operator for themselves
       body:
         application/json:
           type: object
@@ -938,10 +956,10 @@ types:
   description: "Role: <b>R-Administrator</b>"
   /unlock-passphrase:
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Update the unlock passphrase.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
@@ -961,10 +979,10 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /unattended-boot:
     get:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: "Read unattended boot configuration: is it on or off?"
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         200:
           description: Successful read of unattended boot configuration.
@@ -983,10 +1001,10 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
 
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: "Configure unattended boot: switch it on or off (flip the switch)."
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
@@ -1009,10 +1027,10 @@ types:
   /tls:
     /public.pem:
       get:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Get public key for NetHSMs https API.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         responses:
           200:
             body:
@@ -1036,10 +1054,10 @@ types:
             description: Precondition failed (NetHSM was not <i>Operational</i>).
     /cert.pem:
       get:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Get certificate for NetHSMs https API.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         responses:
           200:
             body:
@@ -1082,10 +1100,10 @@ types:
             description: Precondition failed (NetHSM was not <i>Operational</i>).
 
       put:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         body:
           application/x-pem-file:
             example: |
@@ -1129,13 +1147,13 @@ types:
 
     /csr.pem:
       put:
-        role: [ Administrator ]
-        state: [ Operational ]
+        (role): [ Administrator ]
+        (state): [ Operational ]
         description: Get NetHSM certificate signing request e.g. to replace self-signed intital certificate.
-        securedBy: basic # R-Administrator
+        securedBy: [ basic ] # R-Administrator
         body:
           application/json:
-            properties: DistinguishedName
+            type: DistinguishedName
             example:
               countryName : "DE"
               stateOrProvinceName : ""
@@ -1173,10 +1191,10 @@ types:
             description: Precondition failed (NetHSM was not <i>Operational</i>).
   /network:
     get:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Get network configuration. IP address, netmask, router.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         200:
           body:
@@ -1197,10 +1215,10 @@ types:
         412:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Configure network.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
@@ -1225,10 +1243,10 @@ types:
 
   /logging:
     get:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Get logging configuration. Protocol is always syslog over UDP. Configurable are IP adress and port, log level.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         200:
           description: Successful retrieval of logging configuration.
@@ -1236,7 +1254,7 @@ types:
             application/json:
               properties:
                 ipAddress: string
-                port: int
+                port: integer
                 logLevel:
                   enum: [ "debug", "info", "warn", "error" ]
               example:
@@ -1250,15 +1268,15 @@ types:
         412:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Configure log level and destination.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
             ipAddress: string
-            port: int
+            port: integer
             logLevel:
               enum: [ "debug", "info", "warn", "error" ]
           example:
@@ -1278,10 +1296,10 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /backup-passphrase:
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Update the backup passphrase.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
@@ -1301,17 +1319,17 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /time:
     get:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Get system time.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         200:
           description: Successful retrieval of system time.
           body:
             application/json:
               properties:
-                time: RFC3339 (UTC only)
+                time: datetime #(UTC only)
               example:
                 time: "2018-10-30T11:20:50Z"
         401:
@@ -1321,14 +1339,14 @@ types:
         412:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
     put:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Configure system time.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       body:
         application/json:
           properties:
-            time: RFC3339 (UTC only)
+            time: datetime #(UTC only)
           example:
             time: "2018-10-30T11:20:50Z"
       responses:
@@ -1348,10 +1366,10 @@ types:
   description: "Role: <b>R-Administrator</b>"
   /info:
     get:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Get detailed system information, including firmware version, system software version, hardware version.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         200:
           description: Successful retrieval of system information.
@@ -1376,10 +1394,10 @@ types:
 
   /reboot:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Reboot NetHSM.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         204:
           description: About to reboot NetHSM.
@@ -1391,10 +1409,10 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /shutdown:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Shut down NetHSM.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         204:
           description: About to shut down NetHSM.
@@ -1406,10 +1424,10 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /reset:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
+      (role): [ Administrator ]
+      (state): [ Operational ]
       description: Reset NetHSM to factory settings.
-      securedBy: basic # R-Administrator
+      securedBy: [ basic ] # R-Administrator
       responses:
         204:
           description: About to reset NetHSM.
@@ -1421,9 +1439,9 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
   /update:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
-      securedBy: basic # R-Administrator
+      (role): [ Administrator ]
+      (state): [ Operational ]
+      securedBy: [ basic ] # R-Administrator
       description: Update NetHSM software.
       body:
         application/octet-stream:
@@ -1449,9 +1467,9 @@ types:
           description: Conflict - Major version downgrade is not allowed.
   /commit-update:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
-      securedBy: basic # R-Administrator
+      (role): [ Administrator ]
+      (state): [ Operational ]
+      securedBy: [ basic ] # R-Administrator
       description: Commit update of NetHSM software.
       responses:
         204:
@@ -1464,9 +1482,9 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i> or update image is not present - call /update first).
   /cancel-update:
     post:
-      role: [ Administrator ]
-      state: [ Operational ]
-      securedBy: basic # R-Administrator
+      (role): [ Administrator ]
+      (state): [ Operational ]
+      securedBy: [ basic ] # R-Administrator
       description: Cancel update of NetHSM software.
       responses:
         204:
@@ -1481,9 +1499,9 @@ types:
 
   /backup:
     post:
-      role: [ Backup ]
-      state: [ Operational ]
-      securedBy: basic # R-Backup
+      (role): [ Backup ]
+      (state): [ Operational ]
+      securedBy: [ basic ] # R-Backup
       description: Back up the key store to a backup file.
       responses:
         200:
@@ -1499,12 +1517,12 @@ types:
           description: Precondition failed (NetHSM was not <i>Operational</i> or <i>Backup Passphrase</i> was not set).
   /restore: # no auth, only in unprovisioned state
     post:
-      role: [ Public ]
-      state: [ Unprovisioned ]
+      (role): [ Public ]
+      (state): [ Unprovisioned ]
       description: Restore the key store from a backup file. Only available in <i>Unprovisioned</i> state.
       queryParameters:
         backupPassphrase: Passphrase
-        systemTime: RFC3339 (UTC only)
+        systemTime: datetime #(UTC only)
       body:
         application/octet-stream:
           example: "encrypted backup"
