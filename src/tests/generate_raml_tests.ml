@@ -109,10 +109,10 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
   prepare_state ^ "\n" ^ prepare_role
 
 let req_states req =
-  Ezjsonm.get_strings @@ Ezjsonm.find req ["state"]
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["(state)"]
 
 let req_roles req =
-  Ezjsonm.get_strings @@ Ezjsonm.find req ["role"]
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["(role)"]
 
 let make_post_data req =
   match Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] with
