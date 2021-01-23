@@ -16,6 +16,9 @@ stages:
   - deploy
 
 build_keyfender:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: dev
   stage: build_dev
@@ -24,6 +27,9 @@ build_keyfender:
     - make -j$(nproc) build
 
 test_keyfender:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: test
   stage: test
@@ -33,6 +39,9 @@ test_keyfender:
     - make -j$(nproc) coverage-summary
 
 build_muen_qemu_kvm:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
@@ -43,6 +52,9 @@ build_muen_qemu_kvm:
     - make -j$(nproc) build artifacts
 
 build_muen_supermicro_x11ssh_tf:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: muen
     MUEN_HARDWARE: supermicro-x11ssh-tf
@@ -53,6 +65,9 @@ build_muen_supermicro_x11ssh_tf:
     - make -j$(nproc) build artifacts
 
 build_muen_updater_supermicro_x11ssh_tf:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: muen-updater
     MUEN_HARDWARE: supermicro-x11ssh-tf
