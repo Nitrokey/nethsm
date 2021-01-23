@@ -63,6 +63,10 @@ build_muen_updater_supermicro_x11ssh_tf:
     - make -j$(nproc) build artifacts
 
 build_and_deploy_container_images:
+  only:
+    - master
+  except:
+    - schedules
   variables:
     DOCKER_HOST: tcp://docker:2375
     # This will instruct Docker not to start over TLS.
@@ -73,10 +77,6 @@ build_and_deploy_container_images:
   services:
     - docker:dind
   stage: deploy
-  only:
-    - master
-  except:
-    - schedules
   image: "docker"
   artifacts: {}
   before_script:
@@ -87,5 +87,5 @@ build_and_deploy_container_images:
       docker build --build-arg GIT_USER=gitlab-ci-token --build-arg
       GIT_PASSWORD=$CI_JOB_TOKEN --build-arg GIT_COMMIT=$CI_COMMIT_SHORT_SHA
       --tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -f alpine/Dockerfile .
-    - docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-    - docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push -a $REGISTRY/$IMAGE_NAME
