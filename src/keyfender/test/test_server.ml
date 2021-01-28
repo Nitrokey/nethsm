@@ -8,7 +8,7 @@ module Time = struct
   let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
 end
 
-module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket)
+module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket.V4)
 module Http = Cohttp_mirage.Server_with_conduit
 
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
@@ -26,10 +26,10 @@ let () =
   begin
     Store.connect () >>= fun store ->
     Hsm.boot ~device_id:"test server" store >>= fun (hsm_state, mvar) ->
-    Hsm.network_configuration hsm_state >>= fun (ip, _network, _gateway) ->
-    Tcpv4_socket.connect (Some ip) >>= fun tcp ->
-    Udpv4_socket.connect (Some ip) >>= fun udp ->
-    Tcpip_stack_socket.connect [ip] udp tcp >>= fun stack ->
+    let any = Ipaddr.V4.Prefix.global in
+    Tcpv4_socket.connect any >>= fun tcp ->
+    Udpv4_socket.connect any >>= fun udp ->
+    Tcpip_stack_socket.V4.connect udp tcp >>= fun stack ->
     Conduit.connect stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
     Http.connect conduit >>= fun http ->
     let certificates = Hsm.own_cert hsm_state in

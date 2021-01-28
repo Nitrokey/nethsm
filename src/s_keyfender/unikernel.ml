@@ -8,7 +8,7 @@ module Main
     (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Static_assets: Mirage_kv.RO)
-    (Internal_stack: Mirage_stack.V4) (Internal_resolver: Resolver_lwt.S) (Internal_conduit: Conduit_mirage.S)
+    (Internal_stack: Mirage_stack.V4) (_ : sig end)
     (External_net: Mirage_net.S) (External_eth: Mirage_protocols.ETHERNET) (External_arp: Mirage_protocols.ARP)
 =
 struct
@@ -113,7 +113,7 @@ struct
     | `Parse err -> Format.fprintf ppf "couldn't decode message %s" err
     | `Timeout -> Format.fprintf ppf "timeout"
 
-  let start console _entropy () () assets internal_stack internal_resolver internal_conduit ext_net ext_eth ext_arp =
+  let start console _entropy () () assets internal_stack ctx ext_net ext_eth ext_arp =
     Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]);
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
@@ -122,7 +122,7 @@ struct
         let author _ = "keyfender"
         and msg _ = "a keyfender change"
         in
-        Git_store.connect git ~conduit:internal_conduit ~resolver:internal_resolver ~author ~msg (Key_gen.remote ())
+        Git_store.connect git ~depth:1 ~ctx ~author ~msg (Key_gen.remote ())
       in
       let sleep e =
         Log.warn(fun m -> m "Could not connect to remote %s" (Printexc.to_string e));
@@ -133,6 +133,7 @@ struct
           (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
       in
       connect_git () >>= fun store ->
+      Logs.app (fun m -> m "connected to store");
       (* check whether it is empty - irmin's batch operation requires a non-empty store! *)
       (let ign = Mirage_kv.Key.v ".gitignore" in
         Git_store.exists store ign >>= function

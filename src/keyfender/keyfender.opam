@@ -48,7 +48,7 @@ depends: [
   "duration"
   "conduit-mirage" #{with-test}
   "cohttp-mirage" #{with-test}
-  "tcpip" {>= "5.0.1"} #{with-test}
+  "tcpip" {>= "6.0.0"} #{with-test}
   "mirage-clock-unix" #{with-test}
   "io-page-unix" #{with-test}
   "mirage-kv-mem" #{with-test}
@@ -56,10 +56,11 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.2.2.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip2"]
-  ["cohttp.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
-  ["cohttp-lwt.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
-  ["cohttp-mirage.dev" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip2"]
+  ["conduit-mirage.2.2.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
+  ["cohttp.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
+  ["cohttp-lwt.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
+  ["cohttp-mirage.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc"]
-  ["git.2.1.3" "git+https://github.com/hannesm/ocaml-git.git#memory"]
+  ["git.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
+  ["git-mirage.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
 ]

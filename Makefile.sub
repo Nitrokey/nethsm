@@ -126,7 +126,7 @@ ifeq ($(XMODE),test)
 	opam install -y --deps-only --with-test keyfender
 else
 	opam depext --yes --update mirage solo5-bindings-$(TARGET) mirage-solo5
-	opam install -y 'mirage>=3.8.1' solo5-bindings-$(TARGET) mirage-solo5
+	opam install -y 'mirage>=3.10.1' solo5-bindings-$(TARGET) mirage-solo5
 	opam install -y --deps-only keyfender
 endif
 endif
