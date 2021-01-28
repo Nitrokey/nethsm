@@ -1,6 +1,5 @@
-image: "mato/nethsm-builder@sha256:5315102997e3e163cb679317f332f3914adc2f30784360d8937edce1aae1e5d5"
-
 default:
+  image: "mato/nethsm-builder@sha256:5315102997e3e163cb679317f332f3914adc2f30784360d8937edce1aae1e5d5"
   before_script:
     - source .gitlab-ci-setup.bash
   artifacts:
@@ -8,6 +7,7 @@ default:
     expire_in: 1 week
     paths:
       - obj/artifacts/
+  interruptible: true
 
 stages:
   - build_dev
