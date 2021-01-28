@@ -1,16 +1,8 @@
-#FROM ocaml/opam2:latest
 FROM ocaml/opam:alpine-3.12-ocaml-4.11-flambda AS builder
 
 ARG GIT_USER
 ARG GIT_PASSWORD
 ARG GIT_COMMIT=master
-ARG OPAM_REF=f86b6d27e1
-
-RUN cd /home/opam/opam-repository \
-  && git fetch origin master \
-  && git reset --hard $OPAM_REF \
-  && opam update \
-  && cd -
 
 RUN cd /home/opam \
   && [ ! -d nethsm ] \
@@ -18,6 +10,12 @@ RUN cd /home/opam \
   && cd nethsm \
   && git reset --hard $GIT_COMMIT \
   && cd ..
+
+RUN cd /home/opam/opam-repository \
+  && git fetch origin master \
+  && git reset --hard $(cat /home/opam/nethsm/.opam-repository-commit) \
+  && opam update \
+  && cd -
 
 WORKDIR /home/opam/nethsm
 

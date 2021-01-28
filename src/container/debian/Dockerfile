@@ -1,19 +1,25 @@
-#FROM ocaml/opam2:latest
-FROM ocaml/opam:debian-10-ocaml-4.11 AS builder
+FROM ocaml/opam:debian-10-ocaml-4.11-flambda AS builder
 
-ARG TOKEN=1VJw4yyua61piTDCzPax
-ARG OPAM_REF=f86b6d27e1
+ARG GIT_USER
+ARG GIT_PASSWORD
+ARG GIT_COMMIT=master
+
+RUN cd /home/opam \
+  && [ ! -d nethsm ] \
+  && git clone https://$GIT_USER:$GIT_PASSWORD@git.dotplex.com/nitrokey/nethsm/nethsm.git \
+  && cd nethsm \
+  && git reset --hard $GIT_COMMIT \
+  && cd ..
 
 RUN cd /home/opam/opam-repository \
   && git fetch origin master \
-  && git reset --hard $OPAM_REF \
+  && git reset --hard $(cat /home/opam/nethsm/.opam-repository-commit) \
   && opam update \
   && cd -
 
-RUN cd /home/opam \
-  && git clone https://oauth2:$TOKEN@git.dotplex.com/nitrokey/nethsm.git
-
 WORKDIR /home/opam/nethsm
+
+RUN opam exec -- make fetch-submodules
 
 RUN opam exec -- make -j$(nproc) build-keyfender
 
