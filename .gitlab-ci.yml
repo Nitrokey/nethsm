@@ -78,8 +78,6 @@ build_muen_updater_supermicro_x11ssh_tf:
     - make -j$(nproc) build artifacts
 
 build_and_deploy_container_images:
-  only:
-    - master
   except:
     - schedules
   variables:
@@ -101,6 +99,9 @@ build_and_deploy_container_images:
     - >
       docker build --build-arg GIT_USER=gitlab-ci-token --build-arg
       GIT_PASSWORD=$CI_JOB_TOKEN --build-arg GIT_COMMIT=$CI_COMMIT_SHORT_SHA
-      --tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -f alpine/Dockerfile .
-    - docker tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
-    - docker push -a $REGISTRY/$IMAGE_NAME
+      --tag $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA -f alpine/Dockerfile .
+    - |
+      if [ $CI_COMMIT_BRANCH == "master" ] ; then
+        docker tag $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        docker push -a $REGISTRY/$IMAGE_NAME
+      fi
