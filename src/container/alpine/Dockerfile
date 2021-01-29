@@ -23,11 +23,11 @@ WORKDIR /home/opam/nethsm
 
 RUN opam exec -- make fetch-submodules
 
-RUN opam exec -- make build-keyfender
+RUN opam exec -- make -j$(nproc) build-keyfender
 
 COPY static src/s_keyfender/htdocs
 
-RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make build-keyfender
+RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make -j$(nproc) build-keyfender
 
 FROM alpine:3.12
 
