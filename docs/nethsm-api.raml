@@ -1,7 +1,7 @@
 #%RAML 1.0
 title: NetHSM
 version: v1
-description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All base64 encoded values are Big Endian.
+description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All <a href="https://tools.ietf.org/html/rfc4648#section-4">base64</a> encoded values are Big Endian.
 baseUri: https://{host}/api/{version}
 baseUriParameters:
   host:
@@ -26,35 +26,30 @@ types:
   Base64:
     type: string
     pattern: ^[a-zA-Z0-9+/]+={0,3}$
-  Base64Url:
-    type: string
-    pattern: ^[a-zA-Z0-9_-]+={0,3}$
+  SystemState:
+    enum: ["Unprovisioned", "Locked", "Operational"]
   UserRole:
     enum: ["Administrator", "Operator", "Metrics", "Backup"]
-  User:
-    type: object
-    properties:
-      realName : string
-      role: UserRole
-      passphrase: Passphrase
   KeyList:
     type: array
-    items:
-      type: object
-      properties:
-        key: ID
+    items: KeyItem
+  KeyItem:
+    type: object
+    properties:
+      key: ID
   UserList:
     type: array
-    items:
-      type: object
-      properties:
-        user: ID
+    items: UserItem
+    example: [ user: "admin" , user: "backup" , user: "metrics", user: "operator" ]
+  UserItem:
+    type: object
+    properties:
+      user: ID
   KeyMechanism:
     enum: ["RSA_Decryption_RAW", "RSA_Decryption_PKCS1", "RSA_Decryption_OAEP_MD5", "RSA_Decryption_OAEP_SHA1", "RSA_Decryption_OAEP_SHA224", "RSA_Decryption_OAEP_SHA256", "RSA_Decryption_OAEP_SHA384", "RSA_Decryption_OAEP_SHA512", "RSA_Signature_PKCS1", "RSA_Signature_PSS_MD5", "RSA_Signature_PSS_SHA1", "RSA_Signature_PSS_SHA224", "RSA_Signature_PSS_SHA256", "RSA_Signature_PSS_SHA384", "RSA_Signature_PSS_SHA512", "ED25519_Signature"]
   KeyMechanisms:
     type: array
-    items:
-      type: KeyMechanism
+    items: KeyMechanism
   KeyAlgorithm:
     enum: ["RSA", "ED25519"]
   PrivateKey:
@@ -63,44 +58,62 @@ types:
       mechanisms: KeyMechanisms
       # mechanisms are constrained by algorithm, only RSA keys can decrypt
       algorithm: KeyAlgorithm
+      key: KeyPrivateData
+    example:
+      mechanisms: [ "RSA_Signature_PSS_SHA256" ]
+      algorithm: "RSA"
       key:
-        # this should express:
-        #   keyAlgorithm = RSA, primeP, primeQ, publicExponent are required
-        #   keyAlgorithm = ED25519, data is required
-        properties:
-          primeP:
-            type: string
-            required: false
-          primeQ:
-            type: string
-            required: false
-          publicExponent:
-            type: string
-            required: false
-          data:
-            type: string
-            required: false
+        primeP: "frtz7u89gft89uz"
+        primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+        publicExponent: "w367rg90jhj0asdf98gz"
+  KeyPrivateData:
+    type: object
+    # this should express:
+    #   keyAlgorithm = RSA, primeP, primeQ, publicExponent are required
+    #   keyAlgorithm = ED25519, data is required
+    properties:
+      primeP:
+        type: string
+        required: false
+      primeQ:
+        type: string
+        required: false
+      publicExponent:
+        type: string
+        required: false
+      data:
+        type: string
+        required: false
   PublicKey:
     type: object
     properties:
       mechanisms: KeyMechanisms
       # keyMechanisms are constrained by algorithm, only RSA keys can decrypt
       algorithm: KeyAlgorithm
-      key:
-        # this should express:
-        #   keyAlgorithm = RSA, modulus and publicExponent are required
-        #   keyAlgorithm = ED25519, data is required
-        properties:
-          modulus:
-            type: string
-            required: false
-          publicExponent:
-            type: string
-            required: false
-          data:
-            type: string
-            required: false
+      key: KeyPublicData
       operations: integer
+    example:
+      mechanisms: [ "RSA_Signature_PSS_SHA256" ]
+      algorithm: "RSA"
+      key:
+        modulus: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+        publicExponent: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
+      operations: 242
+  KeyPublicData:
+    type: object
+    # this should express:
+    #   keyAlgorithm = RSA, modulus and publicExponent are required
+    #   keyAlgorithm = ED25519, data is required
+    properties:
+      modulus:
+        type: string
+        required: false
+      publicExponent:
+        type: string
+        required: false
+      data:
+        type: string
+        required: false
   DistinguishedName:
     type: object
     properties:
@@ -111,16 +124,322 @@ types:
       organizationalUnitName : string # section
       commonName : string # fully qualified host name
       emailAddress : string
-  SystemInformation:
+    example:
+      countryName : "DE"
+      stateOrProvinceName : ""
+      localityName : "Berlin"
+      organizationName : "Nitrokey"
+      organizationalUnitName : ""
+      commonName : "nethsm.local"
+      emailAddress : "info@nitrokey.com"
+  InfoData:
     type: object
     properties:
       vendor: string
       product: string
+    example:
+      vendor: Nitrokey GmbH
+      product: NetHSM
+  HealthStateData:
+    type: object
+    properties:
+      state: SystemState
+    example:
+      state: "Unprovisioned"
+  MetricsData:
+    type: object
+    example:
+      keyOperations: 1132412
+      someOtherMetric: 2222
+  ProvisionRequestData:
+    type: object
+    properties:
+      unlockPassphrase: Passphrase
+      adminPassphrase: Passphrase
+      systemTime: datetime #(UTC only)
+    example:
+      unlockPassphrase: "UnlockPassphrase"
+      adminPassphrase: "Administrator"
+      systemTime: "2018-10-30T11:20:50Z"
+  UnlockRequestData:
+    type: object
+    properties:
+      passphrase: Passphrase
+    example:
+      passphrase: "UnlockPassphrase"
+  RandomRequestData:
+    type: object
+    properties:
+      length:
+        type: integer
+        minimum: 1
+        maximum: 1024
+    example:
+      length: 5
+  RandomData:
+    type: object
+    properties:
+      random: Base64
+    example:
+      random: "VGhlIHE="
+  KeyGenerateRequestData:
+    type: object
+    properties:
+      mechanisms: KeyMechanisms
+      # mechanisms are constrained by algorithm, only RSA allows decrypt
+      algorithm: KeyAlgorithm
+      length:
+        # required for RSA keys
+        type: integer
+        minimum: 1024
+        maximum: 8192
+        required: false
+      id:
+        type: ID
+        required: false
+    example:
+      mechanisms: [ "RSA_Signature_PSS_SHA256" ]
+      algorithm: "RSA"
+      length: 2048 # Not required for EC keys
+      id: "myKey2" # KeyID is optional, will be created if not present
+  DecryptRequestData:
+    type: object
+    properties:
+      mode:
+        enum: ["RAW", "PKCS1", "OAEP_MD5", "OAEP_SHA1", "OAEP_SHA224", "OAEP_SHA256", "OAEP_SHA384", "OAEP_SHA512"]
+      encrypted: Base64
+    example:
+      mode: "RAW"
+      encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
+  DecryptData:
+    type: object
+    properties:
+      decrypted: Base64
+    example:
+      decrypted: "IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA=="
+  SignRequestData:
+    type: object
+    properties:
+      mode:
+        enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512", "ED25519"]
+      message: Base64
+    example:
+      mode: "PKCS1"
+      message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
+  SignData:
+    type: object
+    properties:
+      signature: Base64
+    example:
+      signature: "n4geMX1g8zcfipfcmn+XjM1ccWZULemAa0cuYoh1aXG9UhbE6f54NMp4NjboLf63SQyieJYjjV8q+/o1rFlkZCtKtHAheds+g90zdjOMmXFlXyBTKMhGOSHuleGz0c99x7Alg19KN9wB3Jj2niwweBOR/F4Qv0mdBUv+oO8uPl6vM1fS4tX/VJoCZkDnZzL8duKRNFT0SNQZ+ryLiqQMG53fEPhTplK/wK0Cco8JAYCMh9cxSzpBoCEO+9woxoBGehAjHuLxs6ed6q08W67leuibxZ8c6Q6upmwDlca/gSw0y4w1VIxxts2PORZdNsTWcr3lojcNgWXJcfAqF9/n4A=="
+  UserPostData:
+    type: object
+    properties:
+      realName : string
+      role: UserRole
+      passphrase: Passphrase
+    example: { realName : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
+  UserData:
+    type: object
+    properties:
+      realName: string
+      role: UserRole
+    example: { realName: "Jane User", role: "Administrator" }
+  UserPassphrasePostData:
+    type: object
+    properties:
+      passphrase: Passphrase
+    example: { "passphrase": "Some cool new passphrase" }
+  UnlockPassphraseConfig:
+    type: object
+    properties:
+      passphrase: Passphrase
+    example:
+      passphrase: "This is my unlock passphrase"
+  UnattendedBootConfig:
+    type: object
+    properties:
+      status:
+        enum: ["on", "off"]
+    example:
+      status: "off"
+  NetworkConfig:
+    type: object
+    properties:
+      ipAddress: string
+      netmask: string
+      gateway: string
+    example:
+      ipAddress: 192.168.1.1
+      netmask: 255.255.255.0
+      gateway: 0.0.0.0
+  LoggingConfig:
+    type: object
+    properties:
+      ipAddress: string
+      port: integer
+      logLevel:
+        enum: [ "debug", "info", "warn", "error" ]
+    example:
+      ipAddress: 0.0.0.0
+      port: 514
+      logLevel: info
+  BackupPassphraseConfig:
+    type: object
+    properties:
+      passphrase: Passphrase
+    example:
+      passphrase: "This is my backup passphrase"
+  TimeConfig:
+    type: object
+    properties:
+      time: datetime #(UTC only)
+    example:
+      time: "2018-10-30T11:20:50Z"
+  SystemInfo:
+    type: object
+    properties:
+      firmwareVersion: string
+      softwareVersion: string
+      hardwareVersion: string
+      buildTag: string
+    example:
+      firmwareVersion: "N/A"
+      softwareVersion: "1.7"
+      hardwareVersion: "N/A"
+      buildTag: "TAG-NN-g1234567-dirty"
+  SystemUpdateData:
+    type: object
+    properties:
+      releaseNotes: string
+    example:
+      releaseNotes: "Some new feature is available."
+  PemPrivateKey:
+    example: |
+      -----BEGIN RSA PRIVATE KEY-----
+      MIIEpAIBAAKCAQEAseU3o1Ix2euXUi50ht/mpDYnE2J4maJrIOLmDrmz+jv20hsR
+      vPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3Aq71Ls1wqOnW9++bZAvqvEVUtlHh0
+      5Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZLuDYiVy1/gzARjpf2hCmTyQSAvtcA
+      07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2lXrwXehVaw9KZzg7KuRO0Qnk+IfR6
+      LZjiKiEB9malzqSx3N20vibI672bMR+fqID2oC+ovNOEdRhPlCnztaY1HsnDhJt8
+      MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3TwIDAQABAoIBAQClSL5QDX9p5R28
+      apMz+XYW3oWh2h0JScHVVVvBFMNm3S3vet0ZRAV3Wcl2mxUjSN6Vazte2JKTyBWo
+      yXvQFUGdj4x1Qk2t8VWqZYr93KKqLQTjbKPXd/8WUHzf2sbhfcqn4bxrRY4mCB6c
+      aglIocm6hvmTHB/caN33KbQOiX7ZBbwoZG3AKgoJU3SMXnVUfQzl/xnVrWLKESqm
+      5kL0OTGLP091jZyMhcceh54RIuaJjPU4opL0bm46DLeQE4z20GfGCcRK/CUt4bNc
+      c0wvuOyyzGI5p7QB/HCUJqR33m9ydwDkqC4vrORDxpMaSRNerpoGA+cNHREULh2P
+      gaPydXq5AoGBAN3xIhci5LpIVvscNjPyxD6WQq5EZx251IzTnwQ/5E/+qxfYHvwe
+      qAuLJ2+QvNQBuNKk85jwZsfUgPR6kku9dOt3n61lnrBRgGcqWnR0j8/NbpVe1qOe
+      WArLeijpKKnCZ6uwpE6NND398dCmm3WLZZH64+1eLT8PbX/AIzId5zyzAoGBAM0x
+      vWEsKi4pjNMBdaawJMbHEoDmMuib4t+FkbHDkqqSe/OIkHZ9tDQuHWpzDHmb30Na
+      KNwQSNLwu3QK64z1NcjZUJFmu0+3NxSyI/EvNA9tiGCT5iSonsz04oa51AYt+IK5
+      7JjMjo128INrQwtRFSYHx3hoVVW06tZNE037NiD1AoGABqeNOx5bt04l9X+CDIqx
+      4aKFu03nvZdtzQ8nTGxR/ygGnz9mpm6Q4U+5zfmL/9tRXFd/yk0i98jiWPI34rd6
+      gvjiO8O5P1YiQHWforBAA54IO8hNLTi5MRGqxwE+q+BdVWOFeal4MIelsXjdXmfg
+      ksDwBpT1TFe9E8CCDaWh4ksCgYAhHCiR2H2J61x04+RnHD8i8BZ1RC/sxtKp/LSQ
+      uZ0d9vsXRe8Bn7EHRnWqqpvVt6gkBxVWxS3rE7s7s1Nk8GBYY3CTtb790vOJXGFe
+      Vp6Q6ry50MOvIKJXMiCnWq7yvFJATd32nfNWsl2G5zTvS4sdEt5F+Jfkd4f5QoCd
+      8a4/TQKBgQDEdY3XTibkDt80zUFIP6RRAyfM6p2grk+o08De0BBZD/1GX9V9ARNT
+      bC3+2qXXDYGxbMWgsoqsQTREJD78+sdD3q+IfIc1m7XvuIgyLMAalm+Kd1HlUF/J
+      7VCKjgchT0OKwmi0d52TEOiz6U35Jv4GWBstsh1KVpHYiTnwnhAwKg==
+      -----END RSA PRIVATE KEY-----
+  PemPublicKey:
+    example: |
+      -----BEGIN PUBLIC KEY-----
+      MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
+      n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
+      dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
+      Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
+      1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
+      Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
+      NwIDAQAB
+      -----END PUBLIC KEY-----
+  PemCSR:
+    example: |
+      -----BEGIN CERTIFICATE REQUEST-----
+      MIICpzCCAY8CAQAwYjFgMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
+      DAhOaXRyb2tleTATBgNVBAMMDG5ldGhzbS5sb2NhbDAeBgkqhkiG9w0BCQEMEWlu
+      Zm9Abml0cm9rZXkuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+      x7ghfro+VEepYmy2V7HPn5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iR
+      Xzeza7DMjrQptzKsfSy6dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm
+      2XP12Cqx0wsYGIoJlWHbGb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMB
+      B9h+2Bxc4BxaPKMm15JR1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqR
+      hdk1P6r/vqOVKrxVupDqKkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEugg
+      it32tV16JXCZjnYePAvtNwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAGTXJciq
+      FMdQeobMDjGgnzR30HC77rJ/Bdu9rqpAtjUcL05K2ufma/gXvPCl1WYEr8JJ3aiA
+      r2ebitcvm+qwXLsBe68o5bSXxMe6PigyuB0lSijB6MeItMxsVFPbKvDk7Hj4ad2P
+      M6aaAixRcJi9eIA93yKmpPXyUcycW0wjQU6CeV/aMN9kLLbxzEgf0it5QXY7nexu
+      2no32GHFbLiI8GoMvuPEgeks3qBtrxKwTOdKWAFDAgEiXZ8m4zN0V66J3zurMzzr
+      tJ6G/JEFGy1sITUatqSxqR4A5eGsV9ktFWZbtwRihuCNIVIQ8d9Up5CWFLWExwNS
+      ZxGNJ4YEMwKYf6s=
+      -----END CERTIFICATE REQUEST-----
+  PemCert:
+    example: |
+      -----BEGIN CERTIFICATE-----
+      MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+      ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+      MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+      SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+      6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+      MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+      P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+      u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+      nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+      fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+      aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+      TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+      /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+      mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+      GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+      e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+      ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+      nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+      M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+      NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+      FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+      AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+      QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+      Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+      3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+      35mqzHn+FjWq0eAtpzhO5Q==
+      -----END CERTIFICATE-----
+  PGPPrivateKey:
+    example: |
+      -----BEGIN PGP PRIVATE KEY BLOCK-----
+      Version: GnuPG v2
+
+      MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
+      ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
+      MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
+      SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
+      6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
+      MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
+      P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
+      u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
+      nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
+      fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
+      aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
+      TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
+      /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
+      mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
+      GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
+      e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
+      ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
+      nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
+      M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
+      NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
+      FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
+      AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
+      QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
+      Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
+      3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
+      35mqzHn+FjWq0eAtpzhO5Q==
+      -----END PGP PRIVATE KEY BLOCK-----
+
 annotationTypes:
   state:
     type: array
-    items:
-      enum: [ Locked, Operational, Unprovisioned ]
+    items: SystemState
   role:
     type: array
     items:
@@ -137,11 +456,7 @@ annotationTypes:
     responses:
       200:
         body:
-          application/json:
-            type: SystemInformation
-            example:
-              vendor: Nitrokey GmbH
-              product: NetHSM
+          application/json: InfoData
 
 /health:
   description: "Public"
@@ -173,12 +488,7 @@ annotationTypes:
       responses:
         200:
           body:
-            application/json:
-              properties:
-                state:
-                  enum: ["Unprovisioned", "Locked", "Operational"]
-              example:
-                state: "Unprovisioned"
+            application/json: HealthStateData
 
 /metrics:
   description: "Role: <b>R-Metrics</b>"
@@ -190,10 +500,7 @@ annotationTypes:
     responses:
       200:
         body:
-          application/json:
-            example:
-              keyOperations: 1132412
-              someOtherMetric: 2222
+          application/json: MetricsData
       401: # unauthorized
         description: Authentication required but none provided.
       403: # forbidden
@@ -208,15 +515,7 @@ annotationTypes:
     (state): [ Unprovisioned ]
     description: Initial provisioning, only available in <i>Unprovisioned</i> state.
     body:
-      application/json:
-        properties:
-          unlockPassphrase: Passphrase
-          adminPassphrase: Passphrase
-          systemTime: datetime #(UTC only)
-        example:
-          unlockPassphrase: "UnlockPassphrase"
-          adminPassphrase: "Administrator"
-          systemTime: "2018-10-30T11:20:50Z"
+      application/json: ProvisionRequestData
     responses:
       204:
         description: Provisioning was successful, NetHSM is <i>Operational</i> now.
@@ -232,11 +531,7 @@ annotationTypes:
     (state): [ Locked ]
     description: Brings a <i>Locked</i> NetHSM into <i>Operational</i> state.
     body:
-      application/json:
-        properties:
-          passphrase: Passphrase
-        example:
-          passphrase: "UnlockPassphrase"
+      application/json: UnlockRequestData
     responses:
       204:
         description: Unlock was successful, NetHSM is <i>Operational</i> now.
@@ -268,24 +563,12 @@ annotationTypes:
     description: "Retrieve cryptographically strong random bytes from NetHSM. Precondition: NetHSM is <i>Operational</i> and a <b>R-Operator</b> can be authenticated."
     securedBy: [ basic ] # R-Operator
     body:
-      application/json:
-        properties:
-          length:
-            type: integer
-            minimum: 1
-            maximum: 1024
-        example:
-          length: 5
+      application/json: RandomRequestData
     responses:
       200:
         description: Successful request for <i>length</i> random bytes.
         body:
-          application/json:
-            type: object
-            properties:
-              random: Base64
-            example:
-              random: "VGhlIHE="
+          application/json: RandomData
       401:
         description: Authentication required but none provided.
       403:
@@ -305,9 +588,7 @@ annotationTypes:
       200:
         description: Successful request for the list of keys.
         body:
-          application/json:
-            type: KeyList
-            example: [key: "key1", key: "key2", key: "gz78ijhbhuij"]
+          application/json: KeyList
       401:
         description: Authentication required but none provided.
       403:
@@ -322,54 +603,17 @@ annotationTypes:
     securedBy: [ basic ] # R-Administrator
     queryParameters:
       mechanisms:
-        type: KeyMechanisms
+        required: false
+        type: array
+        items: KeyMechanism
     body:
-      application/json:
-        type: PrivateKey
-        example:
-          mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-          algorithm: "RSA"
-          key:
-            primeP: "frtz7u89gft89uz"
-            primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
-            publicExponent: "w367rg90jhj0asdf98gz"
-      application/x-pem-file:
-        example: |
-          -----BEGIN RSA PRIVATE KEY-----
-          MIIEpAIBAAKCAQEAseU3o1Ix2euXUi50ht/mpDYnE2J4maJrIOLmDrmz+jv20hsR
-          vPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3Aq71Ls1wqOnW9++bZAvqvEVUtlHh0
-          5Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZLuDYiVy1/gzARjpf2hCmTyQSAvtcA
-          07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2lXrwXehVaw9KZzg7KuRO0Qnk+IfR6
-          LZjiKiEB9malzqSx3N20vibI672bMR+fqID2oC+ovNOEdRhPlCnztaY1HsnDhJt8
-          MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3TwIDAQABAoIBAQClSL5QDX9p5R28
-          apMz+XYW3oWh2h0JScHVVVvBFMNm3S3vet0ZRAV3Wcl2mxUjSN6Vazte2JKTyBWo
-          yXvQFUGdj4x1Qk2t8VWqZYr93KKqLQTjbKPXd/8WUHzf2sbhfcqn4bxrRY4mCB6c
-          aglIocm6hvmTHB/caN33KbQOiX7ZBbwoZG3AKgoJU3SMXnVUfQzl/xnVrWLKESqm
-          5kL0OTGLP091jZyMhcceh54RIuaJjPU4opL0bm46DLeQE4z20GfGCcRK/CUt4bNc
-          c0wvuOyyzGI5p7QB/HCUJqR33m9ydwDkqC4vrORDxpMaSRNerpoGA+cNHREULh2P
-          gaPydXq5AoGBAN3xIhci5LpIVvscNjPyxD6WQq5EZx251IzTnwQ/5E/+qxfYHvwe
-          qAuLJ2+QvNQBuNKk85jwZsfUgPR6kku9dOt3n61lnrBRgGcqWnR0j8/NbpVe1qOe
-          WArLeijpKKnCZ6uwpE6NND398dCmm3WLZZH64+1eLT8PbX/AIzId5zyzAoGBAM0x
-          vWEsKi4pjNMBdaawJMbHEoDmMuib4t+FkbHDkqqSe/OIkHZ9tDQuHWpzDHmb30Na
-          KNwQSNLwu3QK64z1NcjZUJFmu0+3NxSyI/EvNA9tiGCT5iSonsz04oa51AYt+IK5
-          7JjMjo128INrQwtRFSYHx3hoVVW06tZNE037NiD1AoGABqeNOx5bt04l9X+CDIqx
-          4aKFu03nvZdtzQ8nTGxR/ygGnz9mpm6Q4U+5zfmL/9tRXFd/yk0i98jiWPI34rd6
-          gvjiO8O5P1YiQHWforBAA54IO8hNLTi5MRGqxwE+q+BdVWOFeal4MIelsXjdXmfg
-          ksDwBpT1TFe9E8CCDaWh4ksCgYAhHCiR2H2J61x04+RnHD8i8BZ1RC/sxtKp/LSQ
-          uZ0d9vsXRe8Bn7EHRnWqqpvVt6gkBxVWxS3rE7s7s1Nk8GBYY3CTtb790vOJXGFe
-          Vp6Q6ry50MOvIKJXMiCnWq7yvFJATd32nfNWsl2G5zTvS4sdEt5F+Jfkd4f5QoCd
-          8a4/TQKBgQDEdY3XTibkDt80zUFIP6RRAyfM6p2grk+o08De0BBZD/1GX9V9ARNT
-          bC3+2qXXDYGxbMWgsoqsQTREJD78+sdD3q+IfIc1m7XvuIgyLMAalm+Kd1HlUF/J
-          7VCKjgchT0OKwmi0d52TEOiz6U35Jv4GWBstsh1KVpHYiTnwnhAwKg==
-          -----END RSA PRIVATE KEY-----
+      application/json: PrivateKey
+      application/x-pem-file: PemPrivateKey
     responses:
       200:
         description: Successful import of a private key. The response contains a Location header, e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
         body:
-          properties:
-            key: ID
-          example:
-            key: "I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K"
+          application/json: KeyItem
       400:
         description: Bad request (specified properties are invalid).
       401:
@@ -387,25 +631,7 @@ annotationTypes:
       description: Generate a pair of public and private key and store it in NetHSM. KeyID is optional as a parameter and will be generated by NetHSM if not present.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            mechanisms: KeyMechanisms
-            # mechanisms are constrained by algorithm, only RSA allows decrypt
-            algorithm: KeyAlgorithm
-            length:
-              # required for RSA keys
-              type: integer
-              minimum: 1024
-              maximum: 8192
-              required: false
-            id:
-              type: ID
-              required: false
-          example:
-            mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-            algorithm: "RSA"
-            length: 2048 # Not required for EC keys
-            id: "myKey2" # KeyID is optional, will be created if not present
+        application/json: KeyGenerateRequestData
       responses:
         201:
           description: Successful creation of new public and private key pair. Set Location header to the new KeyID.
@@ -428,15 +654,7 @@ annotationTypes:
       responses:
         200:
           body:
-            application/json:
-              type: PublicKey
-              example:
-                mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-                algorithm: "RSA"
-                key:
-                  modulus: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
-                  publicExponent: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
-                operations: 242
+            application/json: PublicKey
         401:
           description: Authentication required but none provided.
         403:
@@ -451,15 +669,7 @@ annotationTypes:
       description: Import a private key into NetHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          type: PrivateKey
-          example:
-            mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-            algorithm: "RSA"
-            key:
-              primeP: "frtz7u89gft89uz"
-              primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
-              publicExponent: "w367rg90jhj0asdf98gz"
+        application/json: PrivateKey
       responses:
         204:
           description: Successful import of a private key.
@@ -499,17 +709,7 @@ annotationTypes:
         responses:
           200:
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN PUBLIC KEY-----
-                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx7ghfro+VEepYmy2V7HP
-                  n5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iRXzeza7DMjrQptzKsfSy6
-                  dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm2XP12Cqx0wsYGIoJlWHb
-                  Gb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMBB9h+2Bxc4BxaPKMm15JR
-                  1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqRhdk1P6r/vqOVKrxVupDq
-                  Kkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEuggit32tV16JXCZjnYePAvt
-                  NwIDAQAB
-                  -----END PUBLIC KEY-----
+              application/x-pem-file: PemPublicKey
           401:
             description: Authentication required but none provided.
           403:
@@ -526,39 +726,12 @@ annotationTypes:
         description: Retrieve a certificate signing request in PEM format.
         securedBy: [ basic ] # R-Administrator or R-Operator
         body:
-          application/json:
-            type: DistinguishedName
-            example:
-              countryName : "DE"
-              stateOrProvinceName : ""
-              localityName : "Berlin"
-              organizationName : "Nitrokey"
-              organizationalUnitName : ""
-              commonName : "nethsm.local"
-              emailAddress : "info@nitrokey.com"
+          application/json: DistinguishedName
         responses:
           200:
             description: Successful generation of certificate signing request.
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN CERTIFICATE REQUEST-----
-                  MIICpzCCAY8CAQAwYjFgMAkGA1UEBgwCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
-                  DAhOaXRyb2tleTATBgNVBAMMDG5ldGhzbS5sb2NhbDAeBgkqhkiG9w0BCQEMEWlu
-                  Zm9Abml0cm9rZXkuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
-                  x7ghfro+VEepYmy2V7HPn5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iR
-                  Xzeza7DMjrQptzKsfSy6dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm
-                  2XP12Cqx0wsYGIoJlWHbGb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMB
-                  B9h+2Bxc4BxaPKMm15JR1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqR
-                  hdk1P6r/vqOVKrxVupDqKkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEugg
-                  it32tV16JXCZjnYePAvtNwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAGTXJciq
-                  FMdQeobMDjGgnzR30HC77rJ/Bdu9rqpAtjUcL05K2ufma/gXvPCl1WYEr8JJ3aiA
-                  r2ebitcvm+qwXLsBe68o5bSXxMe6PigyuB0lSijB6MeItMxsVFPbKvDk7Hj4ad2P
-                  M6aaAixRcJi9eIA93yKmpPXyUcycW0wjQU6CeV/aMN9kLLbxzEgf0it5QXY7nexu
-                  2no32GHFbLiI8GoMvuPEgeks3qBtrxKwTOdKWAFDAgEiXZ8m4zN0V66J3zurMzzr
-                  tJ6G/JEFGy1sITUatqSxqR4A5eGsV9ktFWZbtwRihuCNIVIQ8d9Up5CWFLWExwNS
-                  ZxGNJ4YEMwKYf6s=
-                  -----END CERTIFICATE REQUEST-----
+              application/x-pem-file: PemCSR
           401:
             description: Authentication required but none provided.
           403:
@@ -575,24 +748,11 @@ annotationTypes:
         description: Decrypt an encrypted message with the secret key.
         securedBy: [ basic ] # R-Operator
         body:
-          application/json:
-            type: object
-            properties:
-              mode:
-                enum: ["RAW", "PKCS1", "OAEP_MD5", "OAEP_SHA1", "OAEP_SHA224", "OAEP_SHA256", "OAEP_SHA384", "OAEP_SHA512"]
-              encrypted: Base64
-            example:
-              mode: "RAW"
-              encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
+          application/json: DecryptRequestData
         responses:
           200:
             body:
-              application/json:
-                type: object
-                properties:
-                  decrypted: Base64
-                example:
-                  decrypted: "IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA=="
+              application/json: DecryptData
           401:
             description: Authentication required but none provided.
           403:
@@ -611,24 +771,11 @@ annotationTypes:
         description: Sign a message with the secret key.
         securedBy: [ basic ] # R-Operator
         body:
-          application/json:
-            type: object
-            properties:
-              mode:
-                enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512", "ED25519"]
-              message: Base64
-            example:
-              mode: "PKCS1"
-              message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
+          application/json: SignRequestData
         responses:
           200:
             body:
-              application/json:
-                type: object
-                properties:
-                  signature: Base64
-                example:
-                  signature: "n4geMX1g8zcfipfcmn+XjM1ccWZULemAa0cuYoh1aXG9UhbE6f54NMp4NjboLf63SQyieJYjjV8q+/o1rFlkZCtKtHAheds+g90zdjOMmXFlXyBTKMhGOSHuleGz0c99x7Alg19KN9wB3Jj2niwweBOR/F4Qv0mdBUv+oO8uPl6vM1fS4tX/VJoCZkDnZzL8duKRNFT0SNQZ+ryLiqQMG53fEPhTplK/wK0Cco8JAYCMh9cxSzpBoCEO+9woxoBGehAjHuLxs6ed6q08W67leuibxZ8c6Q6upmwDlca/gSw0y4w1VIxxts2PORZdNsTWcr3lojcNgWXJcfAqF9/n4A=="
+              application/json: SignData
           401:
             description: Authentication required but none provided.
           403:
@@ -650,71 +797,9 @@ annotationTypes:
         responses:
           200:
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN CERTIFICATE-----
-                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-                  35mqzHn+FjWq0eAtpzhO5Q==
-                  -----END CERTIFICATE-----
+              application/x-pem-file: PemCert
               application/x-x509-ca-cert:
-                example: |
-                  some binary data here
-              application/pgp-keys:
-                example: |
-                  -----BEGIN PGP PRIVATE KEY BLOCK-----
-                  Version: GnuPG v2
-
-                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-                  35mqzHn+FjWq0eAtpzhO5Q==
-                  -----END PGP PRIVATE KEY BLOCK-----
+              application/pgp-keys: PGPPrivateKey
           401:
             description: Authentication required but none provided.
           403:
@@ -729,71 +814,9 @@ annotationTypes:
         description: Store a certificate. Maximum size 1MB. The content-type header provides the media type. Only application/json, application/x-pem-file, application/x-x509-ca-cert, application/octet-stream, text/plain and application/pgp-keys is allowed.
         securedBy: [ basic ] # R-Administrator
         body:
-          application/x-pem-file:
-            example: |
-              -----BEGIN CERTIFICATE-----
-              MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-              ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-              MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-              SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-              6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-              MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-              P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-              u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-              nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-              fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-              aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-              TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-              /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-              mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-              GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-              e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-              ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-              nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-              M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-              NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-              FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-              AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-              QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-              Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-              3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-              35mqzHn+FjWq0eAtpzhO5Q==
-              -----END CERTIFICATE-----
+          application/x-pem-file: PemCert
           application/x-x509-ca-cert:
-            example: |
-              some binary data here
-          application/pgp-keys:
-            example: |
-              -----BEGIN PGP PRIVATE KEY BLOCK-----
-              Version: GnuPG v2
-
-              MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-              ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-              MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-              SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-              6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-              MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-              P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-              u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-              nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-              fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-              aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-              TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-              /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-              mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-              GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-              e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-              ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-              nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-              M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-              NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-              FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-              AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-              QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-              Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-              3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-              35mqzHn+FjWq0eAtpzhO5Q==
-              -----END PGP PRIVATE KEY BLOCK-----
+          application/pgp-keys: PGPPrivateKey
         responses:
           201:
             description: Successful import of a certificate.
@@ -832,9 +855,7 @@ annotationTypes:
     responses:
       200:
         body:
-          application/json:
-            type: UserList
-            example: [ user: "admin" , user: "backup" , user: "metrics", user: "operator" ]
+          application/json: UserList
       401:
         description: Authentication required but none provided.
       403:
@@ -847,9 +868,7 @@ annotationTypes:
     description: Create a new user on NetHSM. The user-ID is generated by NetHSM.
     securedBy: [ basic ] # R-Administrator
     body:
-      application/json:
-        type: User
-        example: { realName : "Jane User", role: "Administrator", passphrase: "My cool passphrase" }
+      application/json: UserPostData
     responses:
       201:
         description: Successful creation of user. The response contains a Location header, e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
@@ -872,12 +891,7 @@ annotationTypes:
     responses:
       200:
         body:
-          application/json:
-            type: object
-            properties:
-              realName: string
-              role: UserRole
-            example: { realName: "Jane User", role: "Administrator" }
+          application/json: UserData
       401:
         description: Authentication required but none provided.
       403:
@@ -892,9 +906,7 @@ annotationTypes:
     description: Create a user on keyfender.
     securedBy: [ basic ] # R-Administrator
     body:
-      application/json:
-        type: User
-        example: { realName: "Jane User", role: "Administrator", passphrase: "Very secret" }
+      application/json: UserPostData
     responses:
       201:
         description: Successful creation of user.
@@ -933,11 +945,7 @@ annotationTypes:
       description: Update the passphrase.
       securedBy: [ basic ] # R-Administrator or R-Operator for themselves
       body:
-        application/json:
-          type: object
-          properties:
-            passphrase: Passphrase
-          example: { "passphrase": "Some cool new passphrase" }
+        application/json: UserPassphrasePostData
       responses:
         204:
           description: Successful change of passphrase.
@@ -961,11 +969,7 @@ annotationTypes:
       description: Update the unlock passphrase.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            passphrase: Passphrase
-          example:
-            passphrase: "This is my unlock passphrase"
+        application/json: UnlockPassphraseConfig
       responses:
         204:
           description: Successful change of passphrase.
@@ -987,12 +991,7 @@ annotationTypes:
         200:
           description: Successful read of unattended boot configuration.
           body:
-            application/json:
-              properties:
-                status:
-                  enum: ["on", "off"]
-              example:
-                status: "off"
+            application/json: UnattendedBootConfig
         401:
           description: Authentication required but none provided.
         403:
@@ -1006,12 +1005,7 @@ annotationTypes:
       description: "Configure unattended boot: switch it on or off (flip the switch)."
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            status:
-              enum: ["on", "off"]
-          example:
-            status: "on"
+        application/json: UnattendedBootConfig
       responses:
         204:
           description: Successful change of unattended boot mode.
@@ -1034,17 +1028,7 @@ annotationTypes:
         responses:
           200:
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN PUBLIC KEY-----
-                  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAseU3o1Ix2euXUi50ht/m
-                  pDYnE2J4maJrIOLmDrmz+jv20hsRvPsWnKevYZqEYmvQFNO2Mv9DB5MZfnJ3jL3A
-                  q71Ls1wqOnW9++bZAvqvEVUtlHh05Rz9k1Ga32/OaHHEZj+lG9PlKI8y63K+sKZL
-                  uDYiVy1/gzARjpf2hCmTyQSAvtcA07WXAqorNI8mhcbIhnrGCeKfB8HYJ1T3uk2l
-                  XrwXehVaw9KZzg7KuRO0Qnk+IfR6LZjiKiEB9malzqSx3N20vibI672bMR+fqID2
-                  oC+ovNOEdRhPlCnztaY1HsnDhJt8MDTjlVGveCElvesuSVnNVHmVugDjEYTU1KV3
-                  TwIDAQAB
-                  -----END PUBLIC KEY-----
+              application/x-pem-file: PemPublicKey
             description: Successful retrieval of public key.
           401:
             description: Authentication required but none provided.
@@ -1061,36 +1045,7 @@ annotationTypes:
         responses:
           200:
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN CERTIFICATE-----
-                  MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-                  ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-                  MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-                  SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-                  6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-                  MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-                  P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-                  u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-                  nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-                  fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-                  aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-                  TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-                  /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-                  mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-                  GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-                  e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-                  ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-                  nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-                  M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-                  NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-                  FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-                  AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-                  QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-                  Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-                  3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-                  35mqzHn+FjWq0eAtpzhO5Q==
-                  -----END CERTIFICATE-----
+              application/x-pem-file: PemCert
             description: Successful retrieval of certificate.
           401:
             description: Authentication required but none provided.
@@ -1105,36 +1060,7 @@ annotationTypes:
         description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
         securedBy: [ basic ] # R-Administrator
         body:
-          application/x-pem-file:
-            example: |
-              -----BEGIN CERTIFICATE-----
-              MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-              ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-              MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-              SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-              6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-              MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-              P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-              u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-              nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-              fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-              aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-              TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-              /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-              mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-              GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-              e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-              ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-              nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-              M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-              NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-              FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-              AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-              QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-              Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-              3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-              35mqzHn+FjWq0eAtpzhO5Q==
-              -----END CERTIFICATE-----
+          application/x-pem-file: PemCert
         responses:
           201:
             description: Successfully set certificate.
@@ -1152,37 +1078,12 @@ annotationTypes:
         description: Get NetHSM certificate signing request e.g. to replace self-signed intital certificate.
         securedBy: [ basic ] # R-Administrator
         body:
-          application/json:
-            type: DistinguishedName
-            example:
-              countryName : "DE"
-              stateOrProvinceName : ""
-              localityName : "Berlin"
-              organizationName : "Nitrokey"
-              organizationalUnitName : ""
-              commonName : "nethsm.local"
-              emailAddress : "info@nitrokey.com"
+          application/json: DistinguishedName
         responses:
           200:
             description: Successful generation of certificate signing request.
             body:
-              application/x-pem-file:
-                example: |
-                  -----BEGIN CERTIFICATE REQUEST-----
-                  MIICUjCCAToCAQAwDTELMAkGA1UEBhMCZGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB
-                  DwAwggEKAoIBAQCx5TejUjHZ65dSLnSG3+akNicTYniZomsg4uYOubP6O/bSGxG8
-                  +xacp69hmoRia9AU07Yy/0MHkxl+cneMvcCrvUuzXCo6db375tkC+q8RVS2UeHTl
-                  HP2TUZrfb85occRmP6Ub0+UojzLrcr6wpku4NiJXLX+DMBGOl/aEKZPJBIC+1wDT
-                  tZcCqis0jyaFxsiGesYJ4p8HwdgnVPe6TaVevBd6FVrD0pnODsq5E7RCeT4h9Hot
-                  mOIqIQH2ZqXOpLHc3bS+JsjrvZsxH5+ogPagL6i804R1GE+UKfO1pjUeycOEm3ww
-                  NOOVUa94ISW96y5JWc1UeZW6AOMRhNTUpXdPAgMBAAGgADANBgkqhkiG9w0BAQsF
-                  AAOCAQEAqA+22efrmbc1l+rnBtqeHJJWPZybRFDhqxkUoMAOMLIgd92TM6mnzlYu
-                  RmKZr2ExlbODOnaJJVcnbq2XYuHPiWYjhNFLTJ4bHJzo2yq+UUB0d409jQ0zkgVw
-                  CqfSauVZq7gqLLJ67KqqDDzJtsWEjeuJxIRh+cKPre1vtQp4uCncwRXOymxzaoTg
-                  KdJ6vwLLEkLVKwk1NEuvMe4IAa2+CtWf2z/jjoEKBeg/rxoFUwAmIxp/vWsZaDmY
-                  K0X2haYIM4Ihz+tTbAPlO/hMAs/spxYvmWu46BpBpX4naxhOKJzpwO2NeZtZkjL6
-                  7wSAdo8xe7eWf/eaMebITfIRfgyczA==
-                  -----END CERTIFICATE REQUEST-----
+              application/x-pem-file: PemCSR
           401:
             description: Authentication required but none provided.
           403:
@@ -1198,16 +1099,8 @@ annotationTypes:
       responses:
         200:
           body:
-            application/json:
-              description: Successful retrieval of network configuration.
-              properties:
-                ipAddress: string
-                netmask: string
-                gateway: string
-              example:
-                ipAddress: 192.168.1.1
-                netmask: 255.255.255.0
-                gateway: 0.0.0.0
+            application/json: NetworkConfig
+          description: Successful retrieval of network configuration.
         401:
           description: Authentication required but none provided.
         403:
@@ -1220,15 +1113,7 @@ annotationTypes:
       description: Configure network.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            ipAddress: string
-            netmask: string
-            gateway: string
-          example:
-            ipAddress: 10.0.0.23
-            netmask: 255.255.255.0
-            gateway: 10.0.0.1
+        application/json: NetworkConfig
       responses:
         204:
           description: Succesful update of network configuration.
@@ -1251,16 +1136,7 @@ annotationTypes:
         200:
           description: Successful retrieval of logging configuration.
           body:
-            application/json:
-              properties:
-                ipAddress: string
-                port: integer
-                logLevel:
-                  enum: [ "debug", "info", "warn", "error" ]
-              example:
-                ipAddress: 0.0.0.0
-                port: 514
-                logLevel: info
+            application/json: LoggingConfig
         401:
           description: Authentication required but none provided.
         403:
@@ -1273,16 +1149,7 @@ annotationTypes:
       description: Configure log level and destination.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            ipAddress: string
-            port: integer
-            logLevel:
-              enum: [ "debug", "info", "warn", "error" ]
-          example:
-            ipAddress: 10.0.0.42
-            port: 514
-            logLevel: info
+        application/json: LoggingConfig
       responses:
         204:
           description: Succesful update of logging configuration.
@@ -1301,11 +1168,7 @@ annotationTypes:
       description: Update the backup passphrase.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            passphrase: Passphrase
-          example:
-            passphrase: "This is my backup passphrase"
+        application/json: BackupPassphraseConfig
       responses:
         204:
           description: Successful change of passphrase.
@@ -1327,11 +1190,7 @@ annotationTypes:
         200:
           description: Successful retrieval of system time.
           body:
-            application/json:
-              properties:
-                time: datetime #(UTC only)
-              example:
-                time: "2018-10-30T11:20:50Z"
+            application/json: TimeConfig
         401:
           description: Authentication required but none provided.
         403:
@@ -1344,11 +1203,7 @@ annotationTypes:
       description: Configure system time.
       securedBy: [ basic ] # R-Administrator
       body:
-        application/json:
-          properties:
-            time: datetime #(UTC only)
-          example:
-            time: "2018-10-30T11:20:50Z"
+        application/json: TimeConfig
       responses:
         204:
           description: Succesful update of system time.
@@ -1374,17 +1229,7 @@ annotationTypes:
         200:
           description: Successful retrieval of system information.
           body:
-            application/json:
-              properties:
-                firmwareVersion: string
-                softwareVersion: string
-                hardwareVersion: string
-                buildTag: string
-              example:
-                firmwareVersion: "N/A"
-                softwareVersion: "1.7"
-                hardwareVersion: "N/A"
-                buildTag: "TAG-NN-g1234567-dirty"
+            application/json: SystemInfo
         401:
           description: Authentication required but none provided.
         403:
@@ -1444,19 +1289,13 @@ annotationTypes:
       securedBy: [ basic ] # R-Administrator
       description: Update NetHSM software.
       body:
-        application/octet-stream:
-          example:
-            "encrypted backup"
+        application/octet-stream: # encrypted backup
       # Add extra internal state for being in Update? nice to have
       responses:
         200:
           description: Successfully verified update image (authenticity, integrity, and version number).
           body:
-            application/json:
-              properties:
-                releaseNotes: string
-              example:
-                releaseNotes: "Some new feature is available."
+            application/json: SystemUpdateData
         401:
           description: Authentication required but none provided.
         403:
@@ -1507,8 +1346,7 @@ annotationTypes:
         200:
           description: Successful retrieval of backup data.
           body:
-            application/octet-stream:
-              example: "encrypted backup"
+            application/octet-stream: # encrypted backup
         401:
           description: Authentication required but none provided.
         403:
@@ -1521,11 +1359,12 @@ annotationTypes:
       (state): [ Unprovisioned ]
       description: Restore the key store from a backup file. Only available in <i>Unprovisioned</i> state.
       queryParameters:
-        backupPassphrase: Passphrase
-        systemTime: datetime #(UTC only)
+        backupPassphrase:
+          type: Passphrase
+        systemTime:
+          type: datetime #(UTC only)
       body:
-        application/octet-stream:
-          example: "encrypted backup"
+        application/octet-stream: # encrypted backup
       responses:
         204:
           description: Successful restore from backup data.
