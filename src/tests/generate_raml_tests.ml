@@ -9,7 +9,7 @@ let prefix = "api/v1"
 let keyid = "myKey1"
 let userid = "operator"
 let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
-let raml = "../../docs/nethsm-api.raml"
+let raml_file = "../../docs/nethsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let allowed_request_types = [
   "application/json" ;
@@ -46,6 +46,15 @@ let get_endpoints meta =
 
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
+
+let raml = CCIO.with_in raml_file CCIO.read_all
+  |> Yaml.of_string
+  |> Stdlib.Result.get_ok
+
+let example_of_type yml =
+  match Ezjsonm.decode_string yml with
+  | Some t -> Ezjsonm.find raml ["types"; t; "example"]
+  | None -> failwith "Inline type definitions not allowed"
 
 let write file content =
   let oc = open_out file in
@@ -118,11 +127,12 @@ let make_post_data req =
   match Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] with
   | exception Not_found -> [""]
   | mediatypes ->
-    let f (mediatype, req') =
+    let f (mediatype, yml) =
       if not @@ List.mem mediatype allowed_request_types
       then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
       let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-      header ^ "--data " ^ escape @@ Ezjsonm.(value_to_string @@ find req' ["example"])
+      let example = example_of_type yml in
+      header ^ "--data " ^ escape @@ Ezjsonm.value_to_string example
     in
     List.map f mediatypes
 
@@ -153,17 +163,17 @@ let make_req_data req meth =
   in
   List.concat_map unroll_states states_and_data_for_mediatype
 
-let make_resp_data raml =
-  let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml ["responses"] in
+let make_resp_data raml_meth =
+  let response_codes = Ezjsonm.get_dict @@ Ezjsonm.find raml_meth ["responses"] in
   let get_example (code, meta) = match code with
   | "200" ->
     begin
       match Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] with
       | exception Not_found -> [("200", None)]
       | mediatypes ->
-        List.map (fun (typ, example) ->
-          let subtree = Ezjsonm.find example ["example"] in
-          ("200", Some (typ, subtree))) mediatypes
+        List.map (fun (typ, yml) ->
+          let example = example_of_type yml in
+          ("200", Some (typ, example))) mediatypes
     end
   | somecode  -> [(somecode, None)];
   in
@@ -307,12 +317,8 @@ let rec subpaths (path, meta) =
   then [ (path, Ezjsonm.get_dict meta) ]
   else List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
 
-let example = CCIO.with_in raml CCIO.read_all
-  |> Yaml.of_string
-  |> Stdlib.Result.get_ok
-
 (* all paths, start from empty root *)
 let () =
-  let paths = subpaths ("", example) in
+  let paths = subpaths ("", raml) in
   (*let paths = [List.nth paths 1] in*)
   List.iter print_methods paths;

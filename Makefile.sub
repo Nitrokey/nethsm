@@ -79,7 +79,7 @@ MUEN_BUILD_UPDATER := 1
 MUEN_HARDWARE := supermicro-x11ssh-tf
 else ifeq ($(XMODE),test)
 TARGET := unix
-DUNE := BISECT_ENABLE=yes dune
+DUNE := BISECT_ENABLE=yes OCAMLRUNPARAM=b dune
 else
 $(error Invalid MODE '$(XMODE)')
 endif
