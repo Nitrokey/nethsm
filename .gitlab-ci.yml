@@ -101,7 +101,10 @@ build_container_image:
       --build-arg GIT_COMMIT=$CI_COMMIT_SHORT_SHA
       --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
       -f alpine/Dockerfile .
-    - docker push -a $CI_REGISTRY_IMAGE
+    - |
+      if [ $CI_PIPELINE_SOURCE != "schedule" ] ; then
+        docker push -a $CI_REGISTRY_IMAGE
+      fi
 
 deploy_container_image:
   only:
