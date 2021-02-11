@@ -677,6 +677,16 @@ $(RUN_QEMU_DISK_IMG): $(OBJ_QEMU_DISK_IMG)
 $(RUN_DIR)/screenrc:
 	echo "logfile $(RUN_DIR)/emulate.out" >$@
 
+$(RUN_DIR)/swtpm.pid:
+	mkdir -p $(RUN_DIR)/swtpm-state
+	swtpm socket \
+	  --daemon \
+	  --tpmstate dir=$(RUN_DIR)/swtpm-state \
+	  --pid file=$(RUN_DIR)/swtpm.pid \
+	  --ctrl type=unixio,path=$(RUN_DIR)/swtpm-sock \
+	  --log file=$(RUN_DIR)/swtpm.log,level=20 \
+	  --tpm2
+
 QEMU ?= qemu-system-x86_64
 
 QEMU_OPTS := \
@@ -693,6 +703,9 @@ QEMU_OPTS := \
     -device qemu-xhci,id=xhci,bus=pcie.0,addr=3.0 \
     -device usb-tablet,bus=xhci.0 \
     -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
+    -chardev socket,id=chrtpm,path=$(RUN_DIR)/swtpm-sock \
+    -tpmdev emulator,id=tpm0,chardev=chrtpm \
+    -device tpm-tis,tpmdev=tpm0 \
     -curses
 QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
 
@@ -706,7 +719,7 @@ check-running:
 	fi
 
 .PHONY: run
-run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running
+run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running $(RUN_DIR)/swtpm.pid
 	screen -c $(RUN_DIR)/screenrc -L -dmS kvm-muen \
 	    $(QEMU) $(QEMU_OPTS) -pidfile $(RUN_DIR)/qemu.pid
 	@echo -n "* QEMU/KVM started for '$(RUN_QEMU_DISK_IMG)', waiting for boot: "
