@@ -15,7 +15,7 @@
 	url = https://github.com/u-root/u-root.git
 [submodule "src/e2fsprogs"]
 	path = src/e2fsprogs
-	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
+	url = https://github.com/tytso/e2fsprogs.git
 	branch = maint
 [submodule "src/coreboot/coreboot"]
 	path = src/coreboot/coreboot
