@@ -33,3 +33,11 @@
 	path = src/pciutils
 	url = https://github.com/pciutils/pciutils
 	ignore = dirty
+[submodule "src/u-root/src/github.com/google/go-tpm"]
+	path = src/u-root/src/github.com/google/go-tpm
+	url = https://github.com/google/go-tpm
+	branch = master
+[submodule "src/u-root/src/golang.org/x/sys"]
+	path = src/u-root/src/golang.org/x/sys
+	url = https://github.com/golang/sys
+	branch = master
