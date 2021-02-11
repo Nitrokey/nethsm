@@ -35,11 +35,16 @@ screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev"
 ARG nethsm_packages="cgpt e2fsprogs grub-common grub-pc-bin jq libgmp-dev \
 libseccomp-dev linux-libc-dev m4 parallel perl pkg-config"
 
+# swtpm + libtpms: Required packages, in addition to those not pulled in above.
+# For the full list, see the corresponding debian/control files in the sources.
+ARG swtpm_packages="libtool libtasn1-dev expect socat gawk python3 \
+python3-cryptography python3-setuptools python3-twisted"
+
 # Muen: Install dependencies
 RUN sudo apt-get update && \
         DEBIAN_FRONTEND=noninteractive sudo apt-get install -qq -y \
         --no-install-recommends \
-        $muen_packages $nethsm_packages \
+        $muen_packages $nethsm_packages $swtpm_packages \
         && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
@@ -65,6 +70,25 @@ RUN curl -sSL "https://golang.org/dl/go1.14.12.linux-amd64.tar.gz" -o /tmp/go.ta
 RUN curl -sSL "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.tar.gz \
         && sudo tar -C /opt -xzf /tmp/musl-cross.tar.gz \
         && rm /tmp/musl-cross.tar.gz
+
+# swtpm + libtpms: Build from source, not available in Debian buster.
+# TODO: Verify hash of downloaded sources
+RUN curl -sSL "https://github.com/stefanberger/libtpms/archive/v0.7.4.tar.gz" -o /tmp/libtpms.tar.gz \
+        && mkdir -p /tmp/libtpms \
+        && tar -C /tmp/libtpms --strip-components=1 -xzf /tmp/libtpms.tar.gz \
+        && (cd /tmp/libtpms && NOCONFIGURE=1 ./autogen.sh && ./configure --with-openssl --with-tpm2) \
+        && make -j$(nproc) -C /tmp/libtpms \
+        && sudo make -C /tmp/libtpms install \
+        && sudo ldconfig \
+        && rm -rf /tmp/libtpms /tmp/libtpms.tar.gz
+
+RUN curl -sSL "https://github.com/stefanberger/swtpm/archive/v0.5.2.tar.gz" -o /tmp/swtpm.tar.gz \
+        && mkdir -p /tmp/swtpm \
+        && tar -C /tmp/swtpm --strip-components=1 -xzf /tmp/swtpm.tar.gz \
+        && (cd /tmp/swtpm && NOCONFIGURE=1 ./autogen.sh && ./configure --with-openssl) \
+        && make -j$(nproc) -C /tmp/swtpm \
+        && sudo make -C /tmp/swtpm install \
+        && sudo rm -rf /tmp/swtpm /tmp/swtpm.tar.gz
 
 # Setup environment
 ENV LANG C.UTF-8
