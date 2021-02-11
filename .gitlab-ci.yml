@@ -1,5 +1,5 @@
 default:
-  image: "mato/nethsm-builder@sha256:5315102997e3e163cb679317f332f3914adc2f30784360d8937edce1aae1e5d5"
+  image: "mato/nethsm-builder@sha256:67f01806a00f1b62fc2d1b61ef52d86f22b9d4411b968e2afe7216e0992e775f"
   before_script:
     - source .gitlab-ci-setup.bash
   artifacts:
