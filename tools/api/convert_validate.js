@@ -3,14 +3,17 @@ const raml = webapi.raml10
 const oas = webapi.oas20
 const fs = require('fs')
 const in_path = '/dev/stdin'
-const out_path = 'gen_nethsm_api_oas20.yaml'
-const out_path_resolved = 'gen_nethsm_api_oas20_resolved.yaml'
+const out_path = 'gen_nethsm_api_oas20.json'
+const out_path_resolved = 'gen_nethsm_api_oas20_resolved.json'
 
 async function main () {
   let failed = false
   try {
+    // read RAML
+    ramlFile = fs.readFileSync(in_path, 'utf8')
+
     // parse RAML
-    model = await raml.parse('file://' + in_path)
+    model = await raml.parse(ramlFile)
 
     // validate RAML parser model
     report = await raml.validate(model)
@@ -20,24 +23,24 @@ async function main () {
     }
 
     // parse RAML again
-    model = await raml.parse('file://' + in_path)
+    model = await raml.parse(ramlFile)
 
     // convert to OAS
-    oasyaml = await oas.generateYamlString(model)
+    oasjson = await oas.generateString(model)
 
     // patch some issues
-    oasyaml = oasyaml.replace(/{host}/g, "nethsmdemo.nitrokey.com",)
-    oasyaml = oasyaml.replace(/{version}/g, "v1")
-    oasyaml = oasyaml.replace(/name: generated/g, "name: body")
+    oasjson = oasjson.replace(/{host}/g, "nethsmdemo.nitrokey.com",)
+    oasjson = oasjson.replace(/{version}/g, "v1")
+    oasjson = oasjson.replace(/"name": "generated"/g, '"name": "body"')
 
     // parse generated OAS
-    model = await oas.parseYaml(oasyaml)
+    model = await oas.parse(oasjson)
 
     // await model.getDeclarationByName('Base64').withFormat("byte")
     // oasyaml = await oas.generateYamlString(model)
     // model = await oas.parseYaml(oasyaml)
 
-    fs.writeFileSync(out_path, oasyaml)
+    fs.writeFileSync(out_path, oasjson)
 
     // validate OAS parser model
     report = await oas.validate(model)
@@ -48,15 +51,15 @@ async function main () {
     }
 
     // parse generated OAS
-    model = await oas.parseYaml(oasyaml)
+    model = await oas.parse(oasjson)
 
     // resolve model
     resolved = await oas.resolve(model)
-    oasyaml = await oas.generateYamlString(resolved)
-    fs.writeFileSync(out_path_resolved, oasyaml)
+    oasjson = await oas.generateString(resolved)
+    fs.writeFileSync(out_path_resolved, oasjson)
 
     // parse generated resolved OAS
-    model = await oas.parseYaml(oasyaml)
+    model = await oas.parse(oasjson)
 
     // validate OAS parser model
     report = await oas.validate(model)

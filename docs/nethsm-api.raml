@@ -26,10 +26,69 @@ types:
   Base64:
     type: string
     pattern: ^[a-zA-Z0-9+/]+={0,3}$
+  Switch:
+    enum:
+      - "on"
+      - "off"
   SystemState:
-    enum: ["Unprovisioned", "Locked", "Operational"]
+    enum:
+      - Unprovisioned
+      - Locked
+      - Operational
   UserRole:
-    enum: ["Administrator", "Operator", "Metrics", "Backup"]
+    enum:
+      - Administrator
+      - Operator
+      - Metrics
+      - Backup
+  LogLevel:
+    enum:
+      - debug
+      - info
+      - warn
+      - error
+  KeyAlgorithm:
+    enum:
+      - RSA
+      - ED25519
+  KeyMechanism:
+    enum:
+      - RSA_Decryption_RAW
+      - RSA_Decryption_PKCS1
+      - RSA_Decryption_OAEP_MD5
+      - RSA_Decryption_OAEP_SHA1
+      - RSA_Decryption_OAEP_SHA224
+      - RSA_Decryption_OAEP_SHA256
+      - RSA_Decryption_OAEP_SHA384
+      - RSA_Decryption_OAEP_SHA512
+      - RSA_Signature_PKCS1
+      - RSA_Signature_PSS_MD5
+      - RSA_Signature_PSS_SHA1
+      - RSA_Signature_PSS_SHA224
+      - RSA_Signature_PSS_SHA256
+      - RSA_Signature_PSS_SHA384
+      - RSA_Signature_PSS_SHA512
+      - ED25519_Signature
+  DecryptMode:
+    enum:
+      - RAW
+      - PKCS1
+      - OAEP_MD5
+      - OAEP_SHA1
+      - OAEP_SHA224
+      - OAEP_SHA256
+      - OAEP_SHA384
+      - OAEP_SHA512
+  SignMode:
+    enum: 
+      - PKCS1
+      - PSS_MD5
+      - PSS_SHA1
+      - PSS_SHA224
+      - PSS_SHA256
+      - PSS_SHA384
+      - PSS_SHA512
+      - ED25519
   KeyList:
     type: array
     items: KeyItem
@@ -45,13 +104,9 @@ types:
     type: object
     properties:
       user: ID
-  KeyMechanism:
-    enum: ["RSA_Decryption_RAW", "RSA_Decryption_PKCS1", "RSA_Decryption_OAEP_MD5", "RSA_Decryption_OAEP_SHA1", "RSA_Decryption_OAEP_SHA224", "RSA_Decryption_OAEP_SHA256", "RSA_Decryption_OAEP_SHA384", "RSA_Decryption_OAEP_SHA512", "RSA_Signature_PKCS1", "RSA_Signature_PSS_MD5", "RSA_Signature_PSS_SHA1", "RSA_Signature_PSS_SHA224", "RSA_Signature_PSS_SHA256", "RSA_Signature_PSS_SHA384", "RSA_Signature_PSS_SHA512", "ED25519_Signature"]
   KeyMechanisms:
     type: array
     items: KeyMechanism
-  KeyAlgorithm:
-    enum: ["RSA", "ED25519"]
   PrivateKey:
     type: object
     properties:
@@ -205,8 +260,7 @@ types:
   DecryptRequestData:
     type: object
     properties:
-      mode:
-        enum: ["RAW", "PKCS1", "OAEP_MD5", "OAEP_SHA1", "OAEP_SHA224", "OAEP_SHA256", "OAEP_SHA384", "OAEP_SHA512"]
+      mode: DecryptMode
       encrypted: Base64
     example:
       mode: "RAW"
@@ -220,8 +274,7 @@ types:
   SignRequestData:
     type: object
     properties:
-      mode:
-        enum: ["PKCS1", "PSS_MD5", "PSS_SHA1", "PSS_SHA224", "PSS_SHA256", "PSS_SHA384", "PSS_SHA512", "ED25519"]
+      mode: SignMode
       message: Base64
     example:
       mode: "PKCS1"
@@ -259,8 +312,7 @@ types:
   UnattendedBootConfig:
     type: object
     properties:
-      status:
-        enum: ["on", "off"]
+      status: Switch
     example:
       status: "off"
   NetworkConfig:
@@ -278,8 +330,7 @@ types:
     properties:
       ipAddress: string
       port: integer
-      logLevel:
-        enum: [ "debug", "info", "warn", "error" ]
+      logLevel: LogLevel
     example:
       ipAddress: 0.0.0.0
       port: 514
