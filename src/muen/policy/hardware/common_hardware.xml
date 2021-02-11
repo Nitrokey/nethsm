@@ -23,5 +23,8 @@
       <ioPort name="Port_cfa_16" start="16#0cfa#" end="16#0cfb#"/>
       <ioPort name="Port_cfc_32" start="16#0cfc#" end="16#0cff#"/>
     </device>
+    <device name="tpm">
+      <memory name="iomem" physicalAddress="16#fed4_0000#" size="16#0000_5000#" caching="UC"/>
+    </device>
   </devices>
 </hardware>

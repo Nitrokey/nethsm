@@ -129,6 +129,8 @@
         <device logical="storage_controller" physical="storage_controller">
           <pci bus="16#00#" device="16#17#" function="0"/>
         </device>
+        <device logical="tpm" physical="tpm">
+        </device>
       </devices>
       <events>
         <source>
