@@ -51,6 +51,10 @@ types:
     enum:
       - RSA
       - ED25519
+      - ECDSA_P224
+      - ECDSA_P256
+      - ECDSA_P384
+      - ECDSA_P521
   KeyMechanism:
     enum:
       - RSA_Decryption_RAW
@@ -69,6 +73,10 @@ types:
       - RSA_Signature_PSS_SHA384
       - RSA_Signature_PSS_SHA512
       - ED25519_Signature
+      - ECDSA_P224_Signature
+      - ECDSA_P256_Signature
+      - ECDSA_P384_Signature
+      - ECDSA_P521_Signature
   DecryptMode:
     enum:
       - RAW
@@ -80,7 +88,7 @@ types:
       - OAEP_SHA384
       - OAEP_SHA512
   SignMode:
-    enum: 
+    enum:
       - PKCS1
       - PSS_MD5
       - PSS_SHA1
@@ -89,6 +97,10 @@ types:
       - PSS_SHA384
       - PSS_SHA512
       - ED25519
+      - ECDSA_P224
+      - ECDSA_P256
+      - ECDSA_P384
+      - ECDSA_P521
   KeyList:
     type: array
     items: KeyItem
@@ -125,7 +137,7 @@ types:
     type: object
     # this should express:
     #   keyAlgorithm = RSA, primeP, primeQ, publicExponent are required
-    #   keyAlgorithm = ED25519, data is required
+    #   keyAlgorithm = ED25519 or ECDSA_*, data is required
     properties:
       primeP:
         type: string
@@ -158,7 +170,7 @@ types:
     type: object
     # this should express:
     #   keyAlgorithm = RSA, modulus and publicExponent are required
-    #   keyAlgorithm = ED25519, data is required
+    #   keyAlgorithm = ED25519 or ECDSA_*, data is required
     properties:
       modulus:
         type: string

@@ -154,13 +154,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.MS.t -> string -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> Json.algorithm -> Json.key ->
       (unit, error) result Lwt.t
 
     val add_pem : id:string -> t -> Json.MS.t -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> string -> Json.MS.t -> length:int ->
+    val generate : id:string -> t -> Json.algorithm -> Json.MS.t -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -951,21 +951,43 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | Ok num -> Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be (Cstruct.of_string num))
         | Error `Msg msg -> b64err msg ctx data
       in
+      let b64_data data = match Base64.decode data with
+        | Ok k -> Ok k
+        | Error `Msg m -> b64err m "data" data
+      in
+      let open Rresult.R.Infix in
       match
-        if algorithm = "RSA" then
-          let open Rresult.R.Infix in
+        match algorithm with
+        | Json.RSA ->
           to_z "primeP" key.Json.primeP >>= fun p ->
           to_z "primeQ" key.primeQ >>= fun q ->
           to_z "publicExponent" key.publicExponent >>= fun e ->
           Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q >>| fun key ->
           `RSA key
-        else if algorithm = "ED25519" then
-          match Base64.decode key.data with
-          | Ok k ->
-            (try Ok (`ED25519 (Hacl_ed25519.priv (Cstruct.of_string k))) with
-               Invalid_argument e -> Error (`Msg ("invalid ED25519 key: " ^ e)))
-          | Error `Msg m -> b64err m "data" key.data
-        else Error (`Msg "Unsupported key algorithm.")
+        | Json.ED25519 ->
+          b64_data key.data >>= fun k ->
+          (try Ok (`ED25519 (Hacl_ed25519.priv (Cstruct.of_string k))) with
+             Invalid_argument e -> Error (`Msg ("invalid ED25519 key: " ^ e)))
+        | Json.ECDSA_P224 ->
+          b64_data key.data >>= fun k ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P224.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
+          `P224 p
+        | Json.ECDSA_P256 ->
+          b64_data key.data >>= fun k ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P256.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
+          `P256 p
+        | Json.ECDSA_P384 ->
+          b64_data key.data >>= fun k ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P384.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
+          `P384 p
+        | Json.ECDSA_P521 ->
+          b64_data key.data >>= fun k ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P521.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
+          `P521 p
       with
       | Error `Msg e -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~id t mechanisms priv
@@ -978,16 +1000,34 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let generate ~id t typ mechanisms ~length =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
-      if typ = "RSA" && 1024 <= length && length <= 8192 then begin
-        let priv = Mirage_crypto_pk.Rsa.generate ~bits:length () in
-        Metrics.key_op `Generate;
-        add ~id t mechanisms (`RSA priv)
-      end else if typ = "ED25519" then begin
+      match typ with
+      | Json.RSA ->
+        if 1024 <= length && length <= 8192 then begin
+          let priv = Mirage_crypto_pk.Rsa.generate ~bits:length () in
+          Metrics.key_op `Generate;
+          add ~id t mechanisms (`RSA priv)
+        end else
+          Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
+      | Json.ED25519 ->
         let priv = Hacl_ed25519.priv (Mirage_crypto_rng.generate 32) in
         Metrics.key_op `Generate;
         add ~id t mechanisms (`ED25519 priv)
-      end
-      else Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
+      | Json.ECDSA_P224 ->
+        let priv, _ = Mirage_crypto_ec.P224.Dsa.generate ~rng:Mirage_crypto_rng.generate in
+        Metrics.key_op `Generate;
+        add ~id t mechanisms (`P224 priv)
+      | Json.ECDSA_P256 ->
+        let priv, _ = Mirage_crypto_ec.P256.Dsa.generate ~rng:Mirage_crypto_rng.generate in
+        Metrics.key_op `Generate;
+        add ~id t mechanisms (`P256 priv)
+      | Json.ECDSA_P384 ->
+        let priv, _ = Mirage_crypto_ec.P384.Dsa.generate ~rng:Mirage_crypto_rng.generate in
+        Metrics.key_op `Generate;
+        add ~id t mechanisms (`P384 priv)
+      | Json.ECDSA_P521 ->
+        let priv, _ = Mirage_crypto_ec.P521.Dsa.generate ~rng:Mirage_crypto_rng.generate in
+        Metrics.key_op `Generate;
+        add ~id t mechanisms (`P521 priv)
 
     let remove t ~id =
       let open Lwt_result.Infix in
@@ -1009,16 +1049,68 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | `RSA k ->
         Json.rsaPublicKey_to_yojson
           { Json.mechanisms = key.mechanisms ;
-            algorithm = "RSA" ;
+            algorithm = Json.RSA ;
             modulus = z_to_b64 k.Mirage_crypto_pk.Rsa.n ;
             publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e ;
             operations = key.operations ;
           }
       | `ED25519 k ->
-        Json.ed25519PublicKey_to_yojson
+        Json.ecPublicKey_to_yojson
           { Json.mechanisms = key.mechanisms ;
-            algorithm = "ED25519" ;
+            algorithm = Json.ED25519 ;
             data = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.priv_to_public k));
+            operations = key.operations ;
+          }
+      | `P224 k ->
+        let data =
+          let pub = Mirage_crypto_ec.P224.Dsa.pub_of_priv k in
+          let cs = Mirage_crypto_ec.P224.Dsa.pub_to_cstruct pub in
+          let s = Cstruct.to_string cs in
+          Base64.encode_string s
+        in
+        Json.ecPublicKey_to_yojson
+          { Json.mechanisms = key.mechanisms ;
+            algorithm = Json.ECDSA_P224 ;
+            data ;
+            operations = key.operations ;
+          }
+      | `P256 k ->
+        let data =
+          let pub = Mirage_crypto_ec.P256.Dsa.pub_of_priv k in
+          let cs = Mirage_crypto_ec.P256.Dsa.pub_to_cstruct pub in
+          let s = Cstruct.to_string cs in
+          Base64.encode_string s
+        in
+        Json.ecPublicKey_to_yojson
+          { Json.mechanisms = key.mechanisms ;
+            algorithm = Json.ECDSA_P256 ;
+            data ;
+            operations = key.operations ;
+          }
+      | `P384 k ->
+        let data =
+          let pub = Mirage_crypto_ec.P384.Dsa.pub_of_priv k in
+          let cs = Mirage_crypto_ec.P384.Dsa.pub_to_cstruct pub in
+          let s = Cstruct.to_string cs in
+          Base64.encode_string s
+        in
+        Json.ecPublicKey_to_yojson
+          { Json.mechanisms = key.mechanisms ;
+            algorithm = Json.ECDSA_P384 ;
+            data ;
+            operations = key.operations ;
+          }
+      | `P521 k ->
+        let data =
+          let pub = Mirage_crypto_ec.P521.Dsa.pub_of_priv k in
+          let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct pub in
+          let s = Cstruct.to_string cs in
+          Base64.encode_string s
+        in
+        Json.ecPublicKey_to_yojson
+          { Json.mechanisms = key.mechanisms ;
+            algorithm = Json.ECDSA_P521 ;
+            data ;
             operations = key.operations ;
           }
 
@@ -1037,7 +1129,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let csr = X509.Signing_request.create subject' (`RSA priv) in
         let data = Cstruct.to_string @@ X509.Signing_request.encode_pem csr in
         Lwt.return (Ok data)
-      | `ED25519 _ ->
+      | _ ->
         Lwt.return (Error (Bad_request, "CSR only supported for RSA keys"))
 
     let get_cert t ~id =
@@ -1152,6 +1244,50 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                 let signature = Hacl_ed25519.sign key to_sign_cs in
                 Metrics.key_op `Sign;
                 Hashtbl.replace cached_operations id (succ key_data.operations);
+                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
+              | _ ->
+                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
+            end
+          | `P224 key ->
+            begin match sign_mode with
+              | Json.ECDSA_P224 ->
+                let r, s = Mirage_crypto_ec.P224.Dsa.sign ~key to_sign_cs in
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                let signature = Cstruct.append r s in
+                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
+              | _ ->
+                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
+            end
+          | `P256 key ->
+            begin match sign_mode with
+              | Json.ECDSA_P256 ->
+                let r, s = Mirage_crypto_ec.P256.Dsa.sign ~key to_sign_cs in
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                let signature = Cstruct.append r s in
+                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
+              | _ ->
+                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
+            end
+          | `P384 key ->
+            begin match sign_mode with
+              | Json.ECDSA_P384 ->
+                let r, s = Mirage_crypto_ec.P384.Dsa.sign ~key to_sign_cs in
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                let signature = Cstruct.append r s in
+                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
+              | _ ->
+                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
+            end
+          | `P521 key ->
+            begin match sign_mode with
+              | Json.ECDSA_P521 ->
+                let r, s = Mirage_crypto_ec.P521.Dsa.sign ~key to_sign_cs in
+                Metrics.key_op `Sign;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                let signature = Cstruct.append r s in
                 Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
               | _ ->
                 Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))

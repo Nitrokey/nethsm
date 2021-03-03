@@ -38,6 +38,7 @@ depends: [
   "mirage-kv" {>= "3.0.0"}
   "tls" {>= "0.12.2"}
   "x509"
+  "mirage-crypto-ec"
   "base64" {>= "3.0.0"}
   "hex"
   "gmap" {>= "0.3.0"}
@@ -60,7 +61,8 @@ pin-depends: [
   ["cohttp.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-lwt.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
   ["cohttp-mirage.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc"]
+  ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc2"]
+  ["mirage-crypto-ec.0.8.10" "git+https://github.com/hannesm/mirage-crypto.git#ecc2"]
   ["git.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
   ["git-mirage.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
 ]

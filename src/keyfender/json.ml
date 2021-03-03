@@ -169,6 +169,10 @@ type mechanism =
   | RSA_Signature_PSS_SHA384
   | RSA_Signature_PSS_SHA512
   | ED25519_Signature
+  | ECDSA_P224_Signature
+  | ECDSA_P256_Signature
+  | ECDSA_P384_Signature
+  | ECDSA_P521_Signature
 [@@deriving yojson, ord]
 
 let mechanism_of_yojson = function
@@ -209,30 +213,56 @@ let mechanisms_of_string m =
     (Ok []) (Astring.String.cuts ~sep:"," m) >>| fun ms ->
   MS.of_list ms
 
+type algorithm =
+  | RSA
+  | ED25519
+  | ECDSA_P224
+  | ECDSA_P256
+  | ECDSA_P384
+  | ECDSA_P521
+[@@deriving yojson]
+
+let algorithm_of_yojson = function
+  | `String _ as s -> algorithm_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for algorithm"
+
+let algorithm_to_yojson alg = head @@ algorithm_to_yojson alg
+
 let algorithm_matches_mechanism alg m =
   match alg with
-  | "RSA" -> m <> ED25519_Signature
-  | "ED25519" -> m = ED25519_Signature
-  | _ -> false
+  | RSA ->
+    List.mem m [ RSA_Decryption_RAW ; RSA_Decryption_PKCS1 ;
+                 RSA_Decryption_OAEP_MD5 ; RSA_Decryption_OAEP_SHA1 ;
+                 RSA_Decryption_OAEP_SHA224 ; RSA_Decryption_OAEP_SHA256 ;
+                 RSA_Decryption_OAEP_SHA384 ; RSA_Decryption_OAEP_SHA512 ;
+                 RSA_Signature_PKCS1 ; RSA_Signature_PSS_MD5 ;
+                 RSA_Signature_PSS_SHA1 ; RSA_Signature_PSS_SHA224 ;
+                 RSA_Signature_PSS_SHA256 ; RSA_Signature_PSS_SHA384 ;
+                 RSA_Signature_PSS_SHA512 ]
+  | ED25519 -> m = ED25519_Signature
+  | ECDSA_P224 -> m = ECDSA_P224_Signature
+  | ECDSA_P256 -> m = ECDSA_P256_Signature
+  | ECDSA_P384 -> m = ECDSA_P384_Signature
+  | ECDSA_P521 -> m = ECDSA_P521_Signature
 
 type rsaPublicKey = {
   mechanisms : MS.t;
-  algorithm : string ;
+  algorithm : algorithm ;
   modulus : string ;
   publicExponent : string ;
   operations : int
 } [@@deriving yojson]
 
-type ed25519PublicKey = {
+type ecPublicKey = {
   mechanisms : MS.t ;
-  algorithm : string ;
+  algorithm : algorithm ;
   data : string ;
   operations : int
 } [@@deriving yojson]
 
 type private_key_req = {
   mechanisms : MS.t ;
-  algorithm: string ;
+  algorithm: algorithm ;
   key : key
 }[@@deriving yojson]
 
@@ -272,6 +302,10 @@ type sign_mode =
   | PSS_SHA384
   | PSS_SHA512
   | ED25519
+  | ECDSA_P224
+  | ECDSA_P256
+  | ECDSA_P384
+  | ECDSA_P521
 [@@deriving yojson]
 
 let mechanism_of_sign_mode = function
@@ -283,6 +317,10 @@ let mechanism_of_sign_mode = function
   | PSS_SHA384 -> RSA_Signature_PSS_SHA384
   | PSS_SHA512 -> RSA_Signature_PSS_SHA512
   | ED25519 -> ED25519_Signature
+  | ECDSA_P224 -> ECDSA_P224_Signature
+  | ECDSA_P256 -> ECDSA_P256_Signature
+  | ECDSA_P384 -> ECDSA_P384_Signature
+  | ECDSA_P521 -> ECDSA_P521_Signature
 
 let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [s])
@@ -292,7 +330,7 @@ type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
 
 type generate_key_req = {
   mechanisms : MS.t ;
-  algorithm : string ;
+  algorithm : algorithm ;
   length : (int [@default 0]) ;
   id : (string [@default ""])
 } [@@deriving yojson]
@@ -308,13 +346,11 @@ let valid_id id =
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
-  (if "RSA" = r.algorithm then
+  (match r.algorithm with
+   | RSA ->
      guard (1024 <= r.length && r.length <= 8192)
        "RSA key length must be between 1024 and 8192."
-   else if "ED25519" = r.algorithm then
-     Ok ()
-   else
-     Error "Only RSA and ED25519 algorithms supported.") >>= fun () ->
+   | _ -> Ok ()) >>= fun () ->
   guard (MS.for_all (algorithm_matches_mechanism r.algorithm) r.mechanisms)
     "Mechanism does not match key algorithm" >>= fun () ->
   guard (MS.cardinal r.mechanisms > 0) "Empty set of mechanisms" >>= fun () ->
