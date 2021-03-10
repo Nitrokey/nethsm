@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/go-tpm/tpm2"
 	"nethsm/uinit/script"
+	"nethsm/uinit/tpm"
 )
 
 // s represents our global Script context.
@@ -223,8 +223,13 @@ func platformListener(result chan string, protocol string, port string) {
 		switch command {
 		case "DEVICE-ID":
 			log.Printf("[%s] Requested DEVICE-ID.", remoteAddr)
-			// TODO: Not implemented yet.
-			response = []byte("OK BAADC0DEBBADC0DEBCADC0DEBDADC0DE\n")
+			deviceId, err := TPM.GetDeviceId("/dev/tpm0")
+			if err != nil {
+				log.Printf("[%s] TPM: GetDeviceId() failed: %v", remoteAddr, err)
+				response = []byte("ERROR " + fmt.Sprintf("%v", err) + "\n")
+			} else {
+				response = []byte("OK " + hex.EncodeToString(deviceId) + "\n")
+			}
 		case "SHUTDOWN":
 			log.Printf("[%s] Requested SHUTDOWN.", remoteAddr)
 			response = []byte("OK\n")
@@ -287,57 +292,20 @@ func extractCpioArchive(archiveFile string, destDir string) (err error) {
 	return nil
 }
 
-// This is a basic test that verifies a 2.0 TPM is present and we can talk to
-// it. Nothing more, yet.
-func testTpm() {
+// sPlatformActions are executed for S-Platform.
+func sPlatformActions() {
+	// Load TPM kernel modules first, as platformListener needs TPM for
+	// GetDeviceId().
 	s.Logf("Loading TPM driver")
 	s.Execf("/bbin/insmod /lib/modules/" + kernelRelease +
 		"/kernel/drivers/char/tpm/tpm_tis_core.ko")
 	s.Execf("/bbin/insmod /lib/modules/" + kernelRelease +
 		"/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0")
+	// Refuse to continue if the above failed.
 	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
-		// Don't treat this as fatal for now, i.e. let any following Script
-		// commands execute even if we failed above.
-		s.ClearErr()
 		return
 	}
-
-	tpm, err := tpm2.OpenTPM("/dev/tpm0")
-	if err != nil {
-		log.Printf("OpenTPM() failed: %v", err)
-		return
-	}
-	defer tpm.Close()
-
-	// Try and get some random bytes from the TPM.
-	data, err := tpm2.GetRandom(tpm, 16)
-	if err != nil {
-		log.Printf("GetRandom() failed: %v", err)
-		return
-	}
-	log.Printf("testTpm(): Random bytes: %s", hex.EncodeToString(data))
-
-	// When measured boot is enabled, Coreboot extends its measurements into
-	// PCR-2 with SHA256, so we dump the value here.
-	index := 2
-	data, err = tpm2.ReadPCR(tpm, index, tpm2.AlgSHA256)
-	if err != nil {
-		log.Printf("ReadPCR(%d, SHA256) failed: %v", index, err)
-		return
-	}
-	log.Printf("testTpm(): PCR(%d, SHA256) value: %s", index, hex.EncodeToString(data))
-
-	// TODO: Check that the value is non-zero? Dump other PCRs if they have any
-	// "odd" values, i.e. not all 0s or all 1s?
-	log.Printf("testTpm(): SUCCESS")
-}
-
-// sPlatformActions are executed for S-Platform.
-func sPlatformActions() {
-	//
-	testTpm()
-	//
 	c := make(chan string)
 	go platformListener(c, "tcp", ":1023")
 
@@ -417,6 +385,16 @@ func sPlatformActions() {
 			return
 		}
 
+		// TODO: This is currently done here for testing. We should decide what
+		// (if anything) is to be done about "Device ID" at RESET time in any
+		// final design.
+		log.Printf("Deleting Device ID from TPM.")
+		err := TPM.DeleteDeviceId("/dev/tpm0")
+		if err != nil {
+			// Deliberately non-fatal.
+			log.Printf("TPM: DeleteDeviceId() failed: %v", err)
+		}
+
 		log.Printf("System will reboot now.")
 		time.Sleep(2 * time.Second)
 		triggerMuenEvent("reboot")
@@ -448,7 +426,16 @@ func mockActions() {
 
 	c := make(chan string)
 	go platformListener(c, "tcp", ":12345")
-	log.Printf("platformListener returned: %s", <-c)
+	request := <-c
+	log.Printf("platformListener returned: %s", request)
+	if request == "RESET" {
+		log.Printf("Deleting Device ID from TPM.")
+		err := TPM.DeleteDeviceId("/dev/tpm0")
+		if err != nil {
+			// Deliberately non-fatal.
+			log.Printf("TPM: DeleteDeviceId() failed: %v", err)
+		}
+	}
 }
 
 func main() {
