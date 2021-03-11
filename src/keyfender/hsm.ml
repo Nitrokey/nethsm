@@ -1832,7 +1832,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Json.firmwareVersion = "N/A" ;
       softwareVersion = (1, 7) ;
       hardwareVersion = "N/A";
-      buildTag = [%blob "buildTag"]
+      buildTag = String.trim [%blob "buildTag"]
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
