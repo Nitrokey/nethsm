@@ -20,7 +20,7 @@ module Handlers = Keyfender.Server.Make_handlers(Mirage_random_test)(Hsm)
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
-    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >|= fst)
+    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >|= fun (y, _, _) -> y)
     | Some x -> x
   in
   let path = "/api/v1" ^ endpoint in
@@ -29,9 +29,12 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
   let resp = Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' ip) ~body ~request in
   hsm_state', resp
 
-let operational_mock () =
+let good_platform mbox = Lwt_mvar.put mbox (Ok ())
+
+let operational_mock ?(mbox = good_platform)  () =
   Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _) ->
+    Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _, m) ->
+    mbox m >>= fun () ->
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
     Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
@@ -41,12 +44,12 @@ let locked_mock () =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
-    Hsm.boot ~device_id:"test dispatch" kv >>= fun (state, _) ->
+    Hsm.boot ~device_id:"test dispatch" kv >>= fun (state, _, _) ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
     Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
-    Hsm.boot ~device_id:"test dispatch" kv >|= fst)
+    Hsm.boot ~device_id:"test dispatch" kv >|= fun (y, _, _) -> y)
 
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
@@ -239,6 +242,10 @@ z7vvltQ9fOTqe29fERS2ASgq
 
 module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
 
+let prefix_and_pad s =
+  let pad = String.make (512 - String.length s) '\000' in
+  String.concat "" [ "\000\000\000\001" ; s ; pad ]
+
 let sign_update u =
   let signature = Pss_sha256.sign ~key:update_key (`Message (Cstruct.of_string u)) in
   let length = Cstruct.len signature in
@@ -249,7 +256,8 @@ let sign_update u =
 
 let system_update_ok () =
   let body =
-    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
     `String (sign_update update ^ update)
   in
   "a request for /system/update with authenticated user returns 200"
@@ -262,11 +270,41 @@ let system_update_ok () =
 
 let system_update_signature_mismatch () =
   let body =
-    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
-    let signature = sign_update update in
-    `String (signature ^ update ^ "BOGUS CONTENT")
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let signature = sign_update (update ^ "\000") in
+    `String (signature ^ update)
   in
-  "a request for /system/update with authenticated user returns 200"
+  "a request for /system/update with authenticated user and bad signature returns 400"
+   @? begin match admin_post_request ~body "/system/update" with
+     | _, Some (`Bad_request, _, _, _) -> true
+     | _ -> false
+   end
+
+let system_update_too_much_data () =
+  let body =
+    let data = (prefix_and_pad "binary data is here") ^ "\000" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
+  "a request for /system/update with authenticated user and too much data returns 400"
+   @? begin match admin_post_request ~body "/system/update" with
+     | _, Some (`Bad_request, _, _, _) -> true
+     | _ -> false
+   end
+
+let system_update_too_few_data () =
+  let body =
+    let data =
+      let d = prefix_and_pad "binary data is here" in
+      String.sub d 0 (pred (String.length d))
+    in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
+  "a request for /system/update with authenticated user and too few data returns 400"
    @? begin match admin_post_request ~body "/system/update" with
      | _, Some (`Bad_request, _, _, _) -> true
      | _ -> false
@@ -282,9 +320,23 @@ let system_update_invalid_data () =
       | _ -> false
    end
 
+let system_update_platform_bad () =
+  let body =
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    `String (sign_update update ^ update)
+  in
+  let hsm_state = operational_mock ~mbox:(fun mbox -> Lwt_mvar.put mbox (Error "platform bad")) () in
+  "a request for /system/update with bad platform."
+   @? begin match admin_post_request ~hsm_state ~body "/system/update" with
+      | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Operational
+      | _ -> false
+   end
+
 let system_update_version_downgrade () =
   let body =
-    let update = "\000\000\018A new system image\000\000\0030.5binary data is here" in
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0030.5" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
@@ -296,14 +348,26 @@ let system_update_version_downgrade () =
       | _ -> false
    end
 
+let operational_mock_with_mbox () =
+  Lwt_main.run (
+    Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, o, m) ->
+    Lwt.async (fun () -> let rec go () = Lwt_mvar.take o >>= fun _ -> go () in go ());
+    Lwt.async (fun () -> let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in go ());
+    Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
+    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
+    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
+    state)
+
 let system_update_commit_ok () =
   let body =
-    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in 
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
+  and hsm_state = operational_mock_with_mbox ()
   in
   "a request for /system/commit-update with authenticated user returns 200"
-   @? begin match admin_post_request ~body "/system/update" with
+   @? begin match admin_post_request ~hsm_state ~body "/system/update" with
       | hsm_state, Some (`OK, _, _, _) ->
         begin match admin_post_request ~hsm_state "/system/commit-update" with
         | _ , Some (`No_content, _, _, _) -> true
@@ -321,7 +385,8 @@ let system_update_commit_fail () =
 
 let system_update_cancel_ok () =
   let body =
-    let update = "\000\000\018A new system image\000\000\0032.0binary data is here" in
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
@@ -378,7 +443,7 @@ let readfile filename =
   read 0;
   Unix.close fd;
   `String (Bytes.to_string buf)
- 
+
 let system_update_from_file_ok () =
   let body = readfile "update.bin" in
   "a request for /system/update with authenticated user and update read from disk returns 200"
@@ -495,13 +560,13 @@ let unattended_boot_succeeds () =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Operational)
+      Lwt_main.run (Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational)
     | _ -> false
   end
 
@@ -511,13 +576,13 @@ let unattended_boot_failed_wrong_device_id () =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (Hsm.boot ~device_id:"test other dispatch" store >|= fun (hsm_state, _) -> Hsm.state hsm_state = `Locked)
+      Lwt_main.run (Hsm.boot ~device_id:"test other dispatch" store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked)
     | _ -> false
   end
 
@@ -527,7 +592,7 @@ let unattended_boot_failed () =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
@@ -535,7 +600,7 @@ let unattended_boot_failed () =
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (
         Kv_mem.remove store (Mirage_kv.Key.v "/config/device-id-salt") >>= fun _ ->
-        Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _) ->
+        Hsm.boot ~device_id:"test dispatch" store >|= fun (hsm_state, _, _) ->
         Hsm.state hsm_state = `Locked)
     | _ -> false
   end
@@ -1793,7 +1858,10 @@ let () =
     "/system/reset" >:: system_reset_ok;
     "/system/update" >:: system_update_ok;
     "/system/update" >:: system_update_signature_mismatch;
+    "/system/update" >:: system_update_too_much_data;
+    "/system/update" >:: system_update_too_few_data;
     "/system/update" >:: system_update_invalid_data;
+    "/system/update" >:: system_update_platform_bad;
     "/system/update" >:: system_update_version_downgrade;
     "/system/commit-update" >:: system_update_commit_ok;
     "/system/commit-update" >:: system_update_commit_fail;

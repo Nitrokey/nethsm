@@ -30,6 +30,8 @@ module type S = sig
     | Shutdown
     | Reboot
     | Reset
+    | Update of int * string Lwt_stream.t
+    | Commit_update
 
   val cb_to_string : cb -> string
 
@@ -114,7 +116,7 @@ module type S = sig
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
-    val commit_update : t -> (unit, error) result
+    val commit_update : t -> (unit, error) result Lwt.t
 
     val cancel_update : t -> (unit, error) result
 
@@ -412,6 +414,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Shutdown
     | Reboot
     | Reset
+    | Update of int * string Lwt_stream.t
+    | Commit_update
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
@@ -422,6 +426,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Shutdown -> "SHUTDOWN"
     | Reboot -> "REBOOT"
     | Reset -> "RESET"
+    | Update _ -> "UPDATE"
+    | Commit_update -> "COMMIT-UPDATE"
 
   let version_of_string s = match Astring.String.cut ~sep:"." s with
     | None -> Error (Bad_request, "Failed to parse version: no separator (.). A valid version would be '4.2'.")
@@ -468,6 +474,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     info : Json.info ;
     system_info : Json.system_info ;
     mbox : cb Lwt_mvar.t ;
+    res_mbox : (unit, string) result Lwt_mvar.t ;
     device_id : string ;
   }
 
@@ -1527,48 +1534,88 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Hash = Mirage_crypto.Hash.SHA256
     module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
+    let update_mutex = Lwt_mutex.create ()
+
     let update t s =
-      let open Lwt_result.Infix in
-      (* stream contains:
-         - signature (hash of the rest)
-         - changelog
-         - version number
-         - software image,
-         first three are prefixed by 4 byte length *)
-      get_field s >>= fun (signature, s') ->
-      let hash = Hash.empty in
-      get_field s' >>= fun (changes, s'') ->
-      let hash' = Hash.feed hash (Cstruct.of_string @@ prefix_len changes) in
-      get_field s'' >>= fun (version, s''') ->
-      Lwt.return (version_of_string version) >>= fun version' ->
-      let hash'' = Hash.feed hash' (Cstruct.of_string @@ prefix_len version) in
-      Lwt_stream.fold_s (fun chunk acc ->
-        match acc with
-        | Error e -> Lwt.return (Error e)
-        | Ok hash ->
-          (*TODO stream to s_update*)
-          let hash' = Hash.feed hash (Cstruct.of_string chunk) in
-          Lwt.return @@ Ok hash')
-        s''' (Ok hash'') >>= fun hash ->
-      let final_hash = Hash.get hash in
-      let signature = Cstruct.of_string signature in
-      if Pss_sha256.verify ~key:Crypto.software_update_key ~signature (`Digest final_hash) then
-        let current = t.system_info.softwareVersion in
-        if version_is_upgrade ~current ~update:version' then
-        begin
-          (* store changelog *)
-          t.has_changes <- Some changes;
-          Lwt.return (Ok changes)
-        end
-        else
-          Lwt.return (Error (Conflict, "Software version downgrade not allowed."))
-      else
-        Lwt.return (Error (Bad_request, "Signature check of update image failed."))
+      match t.has_changes with
+      | Some _ -> Lwt.return (Error (Conflict, "Update already in progress."))
+      | None ->
+        Lwt_mutex.with_lock update_mutex
+          (fun () ->
+             let open Lwt_result.Infix in
+             (* stream contains:
+                - signature (hash of the rest)
+                - changelog
+                - version number
+                - 32bit size (in blocks of 512 bytes)
+                - software image,
+                first four are prefixed by 4 byte length *)
+             get_field s >>= fun (signature, s) ->
+             let hash = Hash.empty in
+             get_field s >>= fun (changes, s) ->
+             let hash = Hash.feed hash (Cstruct.of_string (prefix_len changes)) in
+             get_field s >>= fun (version, s) ->
+             Lwt.return (version_of_string version) >>= fun version' ->
+             let hash = Hash.feed hash (Cstruct.of_string (prefix_len version)) in
+             read_n s 4 >>= fun (blockss, s) ->
+             let blocks =
+               Int32.to_int (Cstruct.BE.get_uint32 (Cstruct.of_string blockss) 0)
+             in
+             let hash = Hash.feed hash (Cstruct.of_string blockss) in
+             let bytes = 512 * blocks in
+             let platform_stream, pushf = Lwt_stream.create () in
+             Lwt_result.ok (Lwt_mvar.put t.mbox (Update (blocks, platform_stream))) >>= fun () ->
+             Lwt_stream.fold_s (fun chunk acc ->
+                 match acc with
+                 | Error e -> Lwt.return (Error e)
+                 | Ok (left, hash) ->
+                   let left = left - String.length chunk in
+                   let hash = Hash.feed hash (Cstruct.of_string chunk) in
+                   pushf (Some chunk);
+                   Lwt.return @@ Ok (left, hash))
+               s (Ok (bytes, hash)) >>= fun (left, hash) ->
+             pushf None;
+             (let open Lwt.Infix in
+              Lwt_mvar.take t.res_mbox >|= function
+              | Ok () -> Ok ()
+              | Error msg ->
+                Log.warn (fun m -> m "during update, platform reported %s" msg);
+                Error (Bad_request, "update failed: " ^ msg)) >>= fun () ->
+             (Lwt.return
+                (if left = 0 then
+                   Ok ()
+                 else
+                   Error (Bad_request, "unexpected end of data"))) >>= fun () ->
+             let final_hash = Hash.get hash in
+             let signature = Cstruct.of_string signature in
+             if Pss_sha256.verify ~key:Crypto.software_update_key ~signature (`Digest final_hash) then
+               let current = t.system_info.softwareVersion in
+               if version_is_upgrade ~current ~update:version' then
+                 begin
+                   (* store changelog *)
+                   t.has_changes <- Some changes;
+                   Lwt.return (Ok changes)
+                 end
+               else
+                 Lwt.return (Error (Conflict, "Software version downgrade not allowed."))
+             else
+               Lwt.return (Error (Bad_request, "Signature check of update image failed.")))
 
     let commit_update t =
+      let open Lwt.Infix in
       match t.has_changes with
-      | None -> Error (Precondition_failed, "No update available. Please upload a system image to /system/update.")
-      | Some _changes -> Ok () (* TODO call hardware *)
+      | None ->
+        Lwt.return
+          (Error (Precondition_failed, "No update available. Please upload a system image to /system/update."))
+      | Some _changes ->
+        Lwt_mvar.put t.mbox Commit_update >>= fun () ->
+        Lwt_mvar.take t.res_mbox >>= function
+        | Ok () ->
+          Lwt_mvar.put t.mbox Reboot >|= fun () ->
+          Ok ()
+        | Error msg ->
+          Log.warn (fun m -> m "commit of update failed %s" msg);
+          Lwt.return (Error (Bad_request, "commit failed: " ^ msg))
 
     let cancel_update t =
       match t.has_changes with
@@ -1736,6 +1783,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
+    and res_mbox = Lwt_mvar.create_empty ()
     in
     let open Lwt.Infix in
     begin
@@ -1748,14 +1796,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert ()
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id } in
+        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; res_mbox ; device_id } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
           boot_config_store kv device_id >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; device_id }
+          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; res_mbox ; device_id }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"
@@ -1778,7 +1826,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         dump ()
       in
       Lwt.async dump_key_ops;
-      t, t.mbox
+      t, t.mbox, t.res_mbox
     | Error `Msg msg ->
       Log.err (fun m -> m "error booting %s" msg);
       invalid_arg "broken NetHSM"

@@ -56,7 +56,7 @@ struct
     | _ -> next ip request body
 
   module T = Internal_stack.TCP
-  let write_platform stack cmd =
+  let write_platform ?additional_data stack cmd =
     if Key_gen.no_platform () then begin
       Log.warn (fun m -> m "Communication to the platform has been disabled with '--no-platform'. This is not meant for production. Skipping to send %s, replying with the empty string." cmd);
       Lwt.return (Ok "")
@@ -103,7 +103,19 @@ struct
                 T.close flow >|= fun () ->
                 Error (`Read (Fmt.to_to_string T.pp_error e))
             in
-            read Cstruct.empty
+            (match additional_data with
+             | None -> Lwt.return (Ok ())
+             | Some f ->
+               let write data =
+                 T.write flow (Cstruct.of_string data) >>= function
+                 | Error we ->
+                   T.close flow >|= fun () ->
+                   Error (Fmt.to_to_string T.pp_write_error we)
+                 | Ok () -> Lwt.return (Ok ())
+               in
+               f write) >>= function
+            | Ok () -> read Cstruct.empty
+            | Error e -> Lwt.return (Error (`Additional e))
       ]
     end
 
@@ -115,6 +127,7 @@ struct
     | `Remote err -> Format.fprintf ppf "received error %s" err
     | `Parse err -> Format.fprintf ppf "couldn't decode message %s" err
     | `Timeout -> Format.fprintf ppf "timeout"
+    | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
   let start console _entropy () () assets internal_stack ctx ext_net ext_eth ext_arp =
     Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]);
@@ -155,7 +168,7 @@ struct
           Log.err (fun m -> m "couldn't retrieve device id: %a" pp_platform_err e);
           Lwt.fail_with "failed to retrieve device id from platform"
         | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
-      Hsm.boot ~device_id store >>= fun (hsm_state, mvar) ->
+      Hsm.boot ~device_id store >>= fun (hsm_state, mvar, res_mvar) ->
       let setup_stack ?gateway cidr =
         Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
         Ext_icmp.connect ipv4 >>= fun icmp ->
@@ -223,6 +236,28 @@ struct
         | Hsm.Network (cidr, gateway) ->
           shutdown_stack tcp ext_stack >>= fun () ->
           reconfigure_network cidr gateway >>= fun (tcp, ext_stack, http) ->
+          handle_cb tcp ext_stack http
+        | Hsm.Update (blocks, stream) as cmd ->
+          begin
+            let additional_data write =
+              write (string_of_int blocks ^ "\n") >>= fun r ->
+              Lwt_stream.fold_s (fun chunk acc ->
+                  match acc with
+                  | Ok () -> write chunk
+                  | Error e -> Lwt.return (Error e))
+                stream r
+            in
+            write_platform ~additional_data internal_stack (Hsm.cb_to_string cmd) >>= function
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
+          end >>= fun () ->
+          handle_cb tcp ext_stack http
+        | Hsm.Commit_update as cmd ->
+          begin
+            write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
+          end >>= fun () ->
           handle_cb tcp ext_stack http
       in
       Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->

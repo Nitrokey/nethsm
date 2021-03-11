@@ -91,7 +91,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method! process_post rd =
-      match Hsm.System.commit_update hsm_state with
+      Hsm.System.commit_update hsm_state >>= function
       | Error e -> Endpoint.respond_error e rd
       | Ok () -> Wm.continue true rd
   end

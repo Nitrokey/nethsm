@@ -30,6 +30,8 @@ module type S = sig
     | Shutdown
     | Reboot
     | Reset
+    | Update of int * string Lwt_stream.t
+    | Commit_update
 
   val cb_to_string : cb -> string
 
@@ -114,7 +116,7 @@ module type S = sig
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
-    val commit_update : t -> (unit, error) result
+    val commit_update : t -> (unit, error) result Lwt.t
 
     val cancel_update : t -> (unit, error) result
 
@@ -191,5 +193,5 @@ end
 module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
-  val boot : device_id:string -> KV.t -> (t * cb Lwt_mvar.t) Lwt.t
+  val boot : device_id:string -> KV.t -> (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
 end

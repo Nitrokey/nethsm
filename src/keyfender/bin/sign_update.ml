@@ -62,10 +62,27 @@ let sign key_file changelog_file version image_file output_file =
   in
   let update_hash hash bytes = Hash.feed hash (Cstruct.of_bytes bytes) in
   let hash = Hash.empty in
-  let hash' = read_file_chunked changelog_file hash true update_hash in
-  let hash'' = Hash.feed hash' (Cstruct.of_string @@ prepend_len version) in
-  let hash''' = read_file_chunked image_file hash'' false update_hash in
-  let final_hash = Hash.get hash''' in
+  let hash = read_file_chunked changelog_file hash true update_hash in
+  let hash = Hash.feed hash (Cstruct.of_string @@ prepend_len version) in
+  let filesize = (Unix.stat image_file).Unix.st_size in
+  let block_size = 512 in
+  let blocks = (filesize + (pred block_size)) / block_size in
+  let pad_buf =
+    let padding = block_size - (filesize mod block_size) in
+    if padding = block_size then
+      Cstruct.empty
+    else
+      Cstruct.create padding
+  in
+  let blocks_buf =
+    let l = Cstruct.create 4 in
+    Cstruct.BE.set_uint32 l 0 (Int32.of_int blocks);
+    l
+  in
+  let hash = Hash.feed hash blocks_buf in
+  let hash = read_file_chunked image_file hash false update_hash in
+  let hash = Hash.feed hash pad_buf in
+  let final_hash = Hash.get hash in
   let signature = sign_update key final_hash in
   let fd = match output_file with
    | None -> Unix.stdout
@@ -81,7 +98,9 @@ let sign key_file changelog_file version image_file output_file =
   write_chunk () @@ Bytes.unsafe_of_string signature;
   read_file_chunked changelog_file () true write_chunk;
   write_chunk () @@ Bytes.unsafe_of_string @@ prepend_len version;
+  write_chunk () @@ Cstruct.to_bytes blocks_buf;
   read_file_chunked image_file () false write_chunk;
+  write_chunk () @@ Cstruct.to_bytes pad_buf;
   Unix.close fd;
   Ok ()
 
