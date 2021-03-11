@@ -1235,7 +1235,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                 Metrics.key_op `Sign;
                 Hashtbl.replace cached_operations id (succ key_data.operations);
                 Base64.encode_string @@ Cstruct.to_string signature
-              with Mirage_crypto_pk.Rsa.Insufficient_key ->
+              with Mirage_crypto_pk.Rsa.Insufficient_key | Mirage_crypto_ec.Message_too_long ->
                 Lwt.return (Error (Bad_request, "Signing failure."))
             end
           | `ED25519 key ->
