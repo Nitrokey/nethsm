@@ -1,15 +1,8 @@
 FROM ocaml/opam:alpine-3.12-ocaml-4.11-flambda AS builder
 
-ARG GIT_USER
-ARG GIT_PASSWORD
-ARG GIT_COMMIT=master
+ADD .git/ /tmp/repo
 
-RUN cd /home/opam \
-  && [ ! -d nethsm ] \
-  && git clone https://$GIT_USER:$GIT_PASSWORD@git.dotplex.com/nitrokey/nethsm/nethsm.git \
-  && cd nethsm \
-  && git reset --hard $GIT_COMMIT \
-  && cd ..
+RUN git clone -s /tmp/repo /home/opam/nethsm
 
 RUN cd /home/opam/opam-repository \
   && git fetch origin master \
@@ -23,7 +16,7 @@ RUN opam exec -- make fetch-submodules
 
 RUN opam exec -- make -j$(nproc) build-keyfender
 
-COPY static src/s_keyfender/htdocs
+COPY src/container/static src/s_keyfender/htdocs
 
 RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make -j$(nproc) build-keyfender
 
@@ -35,7 +28,7 @@ VOLUME /data
 
 EXPOSE 8443
 
-COPY alpine/start.sh /
+COPY src/container/alpine/start.sh /
 
 ENTRYPOINT /start.sh
 

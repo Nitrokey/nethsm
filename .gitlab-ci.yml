@@ -13,6 +13,7 @@ stages:
   - check
   - test
   - build_dev
+  - build_docs
   - build_container
   - build_muen
   - deploy
@@ -47,7 +48,8 @@ build_muen_qemu_kvm:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
   stage: build_muen
-  needs: [build_keyfender]
+  needs:
+    - build_keyfender
   script:
     - make fetch-submodules
     - make -j$(nproc) build artifacts
@@ -60,7 +62,8 @@ build_muen_supermicro_x11ssh_tf:
     MODE: muen
     MUEN_HARDWARE: supermicro-x11ssh-tf
   stage: build_muen
-  needs: [build_keyfender]
+  needs:
+    - build_keyfender
   script:
     - make fetch-submodules
     - make -j$(nproc) build artifacts
@@ -85,26 +88,25 @@ build_container_image:
     DOCKER_HOST: tcp://docker:2375
     # This will instruct Docker not to start over TLS.
     DOCKER_TLS_CERTDIR: ""
+  dependencies:
+    - validate_api_spec
+    - build_api_docs
+  artifacts: {}
   services:
     - docker:dind
   stage: build_container
   image: "docker"
-  artifacts: {}
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - cd src/container
+    - mv api_docs src/container/static/
+    - mv api_spec/* src/container/static/api_docs/
+    - cp docs/nethsm-api.raml src/container/static/api_docs/
     - >
       docker build
-      --build-arg GIT_USER=gitlab-ci-token
-      --build-arg GIT_PASSWORD=$CI_JOB_TOKEN
-      --build-arg GIT_COMMIT=$CI_COMMIT_SHORT_SHA
       --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-      -f alpine/Dockerfile .
-    - |
-      if [ $CI_PIPELINE_SOURCE != "schedule" ] ; then
-        docker push -a $CI_REGISTRY_IMAGE
-      fi
+      -f src/container/alpine/Dockerfile .
+    - if [ $CI_PIPELINE_SOURCE != "schedule" ] ; then docker push -a $CI_REGISTRY_IMAGE ; fi
 
 deploy_container_image:
   only:
@@ -122,6 +124,7 @@ deploy_container_image:
     - docker:dind
   stage: deploy
   image: "docker"
+  dependencies: []
   artifacts: {}
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
@@ -141,8 +144,35 @@ validate_api_spec:
     API_SPEC: "docs/nethsm-api.raml"
   stage: check
   image: "node:alpine3.12"
-  artifacts: {}
+  dependencies: []
+  artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
+    paths:
+      - api_spec/
   before_script: []
   script:
     - npm install webapi-parser
     - $VALIDATOR < $API_SPEC
+    - mkdir api_spec
+    - cp gen_nethsm_api_* api_spec/
+
+build_api_docs:
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  variables:
+    API_SPEC: "docs/nethsm-api.raml"
+  stage: build_docs
+  image: "node:alpine3.12"
+  dependencies: []
+  artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
+    paths:
+      - api_docs/
+  before_script: []
+  script:
+    - npm install -g api-console-cli
+    - api-console build -t "RAML 1.0" --app-title "NetHSM API"
+        --verbose --strict -o api_docs/ $API_SPEC
