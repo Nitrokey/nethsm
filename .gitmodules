@@ -41,3 +41,7 @@
 	path = src/u-root/src/golang.org/x/sys
 	url = https://github.com/golang/sys
 	branch = master
+[submodule "src/util-linux"]
+	path = src/util-linux
+	url = ../util-linux.git
+	branch = nethsm
