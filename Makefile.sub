@@ -332,11 +332,11 @@ MUEN_LINUX_CONFIG := $(MUEN_DIR)/linux/config-5.4-$(MUEN_HARDWARE)
 ifeq ($(MUEN_HARDWARE),qemu-kvm)
 MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
 MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
-COREBOOT_CONFIG := configs/config.nitrohsm_qemu_q35
+COREBOOT_CONFIG := ../config.nethsm_qemu_q35
 else ifeq ($(MUEN_HARDWARE),supermicro-x11ssh-tf)
 MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
 MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
-COREBOOT_CONFIG := configs/config.nitrohsm_supermicro_x11_ssh_tf
+COREBOOT_CONFIG := ../config.nethsm_supermicro_x11_ssh_tf
 else
 $(error Invalid MUEN_HARDWARE)
 endif
@@ -459,6 +459,30 @@ $(INSTALL_MKE2FS): $(MKE2FS)
 	strip $@
 
 # ------------------------------------------------------------------------------
+UTIL_LINUX_DIR := src/util-linux
+SFDISK := $(UTIL_LINUX_DIR)/sfdisk.static
+INSTALL_SFDISK := $(OBJ_INITRAMFS_DIR)/bin/sfdisk
+
+$(UTIL_LINUX_DIR)/configure: $(UTIL_LINUX_DIR)/configure.ac
+	cd $(UTIL_LINUX_DIR) && ./autogen.sh
+
+$(UTIL_LINUX_DIR)/Makefile: $(UTIL_LINUX_DIR)/configure
+	cd $(UTIL_LINUX_DIR) && \
+	    ./configure --host=x86_64-linux-musl \
+	    --disable-shared --disable-nls \
+	    --disable-all-programs \
+	    --enable-libfdisk --enable-libuuid --enable-libsmartcols \
+	    --enable-sfdisk --enable-static-programs=sfdisk \
+	    --without-tinfo --without-systemd --without-python
+
+$(SFDISK): $(UTIL_LINUX_DIR)/Makefile
+	$(MAKE) -C $(UTIL_LINUX_DIR)
+
+$(INSTALL_SFDISK): $(SFDISK)
+	cp $< $@
+	strip $@
+
+# ------------------------------------------------------------------------------
 COREBOOT_SRC := src/coreboot/coreboot
 COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
 OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
@@ -496,10 +520,16 @@ endif
 $(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_BLOBS)
 	$(MAKE) -C $(COREBOOT_SRC)
 
-$(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL)
+# After building Coreboot, add the trusted public key and GRUB configuration
+# file to CBFS.
+COREBOOT_GRUB_CFG := src/coreboot/grub.cfg
+
+$(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREBOOT_GRUB_CFG)
 	cp $< $@
 	$(CBFSTOOL) $@ add \
 	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
+	$(CBFSTOOL) $@ add \
+	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
 
 # When building a Muen system with S-Platform-Updater, install coreboot.rom into
 # /data on the initramfs.
@@ -574,7 +604,8 @@ $(U_ROOT_BIN):
 ifdef MUEN_BUILD_UPDATER
 INITRAMFS_DEPS := $(INSTALL_PCIUTILS) $(INSTALL_FLASHROM) $(INSTALL_COREBOOT_ROM)
 else
-INITRAMFS_DEPS := $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_DATA_CPIO)
+INITRAMFS_DEPS := $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_SFDISK) \
+    $(INSTALL_DATA_CPIO)
 endif
 
 $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS)
@@ -588,7 +619,7 @@ $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS)
 # Ensure u-root initramfs is rebuilt if nethsm uinit sources change.
 # There might be a better way of doing this, but this will have to do for now.
 $(OBJ_INITRAMFS): \
-    $(U_ROOT_GOPATH)/src/nethsm/uinit/uinit.go \
+    $(wildcard $(U_ROOT_GOPATH)/src/nethsm/uinit/*.go) \
     $(U_ROOT_GOPATH)/src/nethsm/uinit/script/script.go
 
 # ------------------------------------------------------------------------------
@@ -647,14 +678,36 @@ OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
 $(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
 	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
 
-ifneq ($(MUEN_HARDWARE),qemu-kvm)
-# When building for real hardware, stop here.
+SIGN_UPDATE := src/keyfender/_build/default/bin/sign_update.exe
+SIGN_UPDATE_KEY := src/keyfender/test/key.pem
+
+OBJ_UPDATE_IMG := $(OBJ_DIR)/update.img.bin
+OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
+
+# TODO: Extract from an actual changelog, including a version number?
+$(OBJ_UPDATE_CHANGELOG):
+	echo "dummy changelog" >$@
+
+# TODO: Integrate this with the PGP key used for SBS-signing system.img.cpio,
+# and do so in a way that facilitates #58 (use external Smartcard for signing
+# production images).
+$(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG)
+	$(SIGN_UPDATE) \
+	    $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG) 1.0 $(OBJ_SYSTEM_IMG) \
+	    >$@
 
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM)
+
+ifndef MUEN_BUILD_UPDATER
+
+ARTIFACTS += $(OBJ_UPDATE_IMG)
+
+endif
+
 .PHONY: build
 build: $(ARTIFACTS)
 
-else
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
 # ------------------------------------------------------------------------------
 # The remaining rules apply to building and running a QEMU/KVM emulated system.
 
@@ -663,9 +716,9 @@ OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
 $(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nethsm-install.sh
 	tools/nethsm-install.sh -f -E 1G $@ $<
 
-ARTIFACTS := $(OBJ_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM)
-.PHONY: build
-build: $(ARTIFACTS)
+# This both adds the QEMU disk image to the build: rule above, and adds it to
+# the list of artifacts.
+ARTIFACTS += $(OBJ_QEMU_DISK_IMG)
 
 RUN_DIR := $(TOP_DIR)/run
 RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
@@ -675,7 +728,7 @@ $(RUN_QEMU_DISK_IMG): $(OBJ_QEMU_DISK_IMG)
 	cp $< $@
 
 $(RUN_DIR)/screenrc:
-	echo "logfile $(RUN_DIR)/emulate.out" >$@
+	echo "logfile $(RUN_DIR)/serial.out" >$@
 
 $(RUN_DIR)/swtpm.pid:
 	mkdir -p $(RUN_DIR)/swtpm-state
@@ -692,7 +745,8 @@ QEMU ?= qemu-system-x86_64
 QEMU_OPTS := \
     -bios $(OBJ_COREBOOT_ROM) \
     -drive file=$(RUN_QEMU_DISK_IMG),format=raw \
-    -serial file:run/serial.out \
+    -serial stdio \
+    -display none \
     -machine q35,accel=kvm,kernel-irqchip=split \
     -cpu host,+invtsc \
     -m 5120 \
@@ -705,8 +759,7 @@ QEMU_OPTS := \
     -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
     -chardev socket,id=chrtpm,path=$(RUN_DIR)/swtpm-sock \
     -tpmdev emulator,id=tpm0,chardev=chrtpm \
-    -device tpm-tis,tpmdev=tpm0 \
-    -curses
+    -device tpm-tis,tpmdev=tpm0
 QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
 
 .PHONY: check-running
@@ -726,7 +779,7 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running 
 	@for i in $$(seq 1 5); do \
 	    sleep 1; \
 	    echo -n .; \
-	    boot=$$(cat $(RUN_DIR)/serial.out 2>/dev/null | grep 'Booting Muen'); \
+	    boot=$$(cat $(RUN_DIR)/serial.out 2>/dev/null | grep 'coreboot.*bootblock starting'); \
 	    if [ -n "$$boot" ]; then \
 	        echo " OK"; echo; \
 	        echo "Console: screen -r kvm-muen"; \
@@ -734,7 +787,7 @@ run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running 
 	        break; \
 	    fi; \
 	done; \
-	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/emulate.out && exit 1; fi
+	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/serial.out && exit 1; fi
 
 endif # QEMU/KVM
 
@@ -771,6 +824,7 @@ clean: clean-keyfender
 	$(MAKE) -C src/flashrom --silent --no-print-directory distclean
 	$(MAKE) -C src/pciutils --silent --no-print-directory distclean
 	$(MAKE) -C src/zlib --silent --no-print-directory distclean
+	$(MAKE) -C src/util-linux --silent --no-print-directory distclean
 	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
 	$(RM) -r $(E2FSPROGS_DIR)
 	$(RM) $(U_ROOT_BIN)

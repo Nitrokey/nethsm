@@ -1,5 +1,6 @@
-// The TPM package encapsulates TPM-dependent functionality for NetHSM.
-package TPM
+// tpm.go contains TPM-related functions used to provision/retrieve and delete
+// the "Device ID" stored in the TPM.
+package main
 
 import (
 	"fmt"
@@ -14,26 +15,31 @@ import (
 // of reserved TPM 2.0 handles and localities"
 // [https://trustedcomputinggroup.org/wp-content/uploads/131011-Registry-of-reserved-TPM2-handles-and-localities.pdf].
 var nvIndexHandle = tpmutil.Handle(0x01804e01)
+
 // nvIndexPassword is the [Go: authString] for nvIndexHandle.
 // This would only be used if the NV Index attributes AttrAuthRead or
 // AttrAuthWrite were set.
 var nvIndexPassword = ""
+
 // nvIndexAttr are the [Go: attributes] for nvIndexHandle.
 var nvIndexAttr = tpm2.AttrOwnerRead | tpm2.AttrOwnerWrite | tpm2.AttrWriteAll
+
 // nvIndexSize is the size of the data stored by nvIndexHandle.
 // XXX Document limitations here? Apparently size is limited by the TPMs
 // "best" digest algo size?
 // 0x20 -> 256 bits
 var nvIndexSize = uint16(0x20)
+
 // nvAuthHandle is the [Go: tpm2.HandleOwner, TSS: TPM_RH_OWNER] role
 // handle for nvIndexHandle's hierarchy.
 var nvAuthHandle = tpm2.HandleOwner
+
 // nvAuthPassword is the [Go: authString or password] for nvAuthHandle.
 // This is empty on an un-owned TPM.
 var nvAuthPassword = ""
 
-// GetDeviceId returns the 256-bit "Device ID" of the NetHSM stored in the TPM
-// NVRAM.
+// tpmGetDeviceId returns the 256-bit "Device ID" of the NetHSM stored in the
+// TPM NVRAM.
 //
 // tpmPath is the path to the TPM character device, normally "/dev/tpm0".
 //
@@ -42,7 +48,7 @@ var nvAuthPassword = ""
 //
 // If the TPM is blank and un-owned, it will be provisioned with a random
 // "Device ID".
-func GetDeviceId(tpmPath string) ([]byte, error) {
+func tpmGetDeviceId(tpmPath string) ([]byte, error) {
 	tpm, err := tpm2.OpenTPM(tpmPath)
 	if err != nil {
 		return nil, fmt.Errorf("Error in OpenTPM(%s): %v", tpmPath, err)
@@ -103,14 +109,16 @@ func GetDeviceId(tpmPath string) ([]byte, error) {
 	return data, nil
 }
 
-// DeleteDeviceId can be used to delete an existing "Device ID" NV Index from
-// the TPM.
+// tpmDeleteDeviceId can be used to delete an existing "Device ID" NV Index
+// from the TPM.
+//
+// tpmPath is the path to the TPM character device, normally "/dev/tpm0".
 //
 // XXX: I don't expect this functionality to be in any "final" version of a
 // TPM-based design, at least not in this form, but it is currently useful for
 // testing to be able to delete the "Device ID" via the "Factory reset" API
 // endpoint.
-func DeleteDeviceId(tpmPath string) (error) {
+func tpmDeleteDeviceId(tpmPath string) error {
 	tpm, err := tpm2.OpenTPM(tpmPath)
 	if err != nil {
 		return fmt.Errorf("Error in OpenTPM(%s): %v", tpmPath, err)

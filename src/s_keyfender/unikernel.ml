@@ -63,7 +63,7 @@ struct
     end else begin
       Log.debug (fun m -> m "sending %s to platform" cmd);
       Lwt.pick [
-        (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
+        (Time.sleep_ns (Duration.of_sec 30) >|= fun () -> (* XXX: actual timeout TBD *)
          Log.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
          Error `Timeout) ;
         T.create_connection (Internal_stack.tcp stack) (Ipaddr.V4 (Key_gen.platform ()), Key_gen.platform_port ()) >>= function
