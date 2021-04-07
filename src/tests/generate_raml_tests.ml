@@ -11,13 +11,6 @@ let userid = "operator"
 let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let raml_file = "../../docs/nethsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
-let allowed_request_types = [
-  "application/json" ;
-  "application/x-pem-file" ;
-  "application/octet-stream" ;
-  "application/x-x509-ca-cert" ;
-  "application/pgp-keys";
-]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
 let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"; "/config/tls/cert.pem"]
 let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics"; "/config/time"; "/system/info"]
@@ -59,20 +52,18 @@ let example_of_type yml =
 let write file content =
   let oc = open_out file in
   Printf.fprintf oc "%s" content;
-  close_out oc;
-  ()
+  close_out oc
 
 let write_cmd file content =
   write file content;
-  let _ = Sys.command("chmod u+x " ^ file) in
-  ()
+  ignore (Sys.command("chmod u+x " ^ file))
 
 let path_to_filename state meth path =
   let path = Str.global_replace (Str.regexp_string "/") "_" path in
   let path = Str.global_replace (Str.regexp_string ".") "_" path in
   let path = Str.global_replace (Str.regexp_string "{") "" path in
   let path = Str.global_replace (Str.regexp_string "}") "" path in
-  let path = String.sub path 1 (String.length path -1) in (* remove leading / *)
+  let path = String.sub path 1 (String.length path - 1) in (* remove leading / *)
   let outdir = Printf.sprintf "generated/%s_%s_%s" state path meth in
   let outfile = "cmd.sh" in
   (outdir, outfile)
@@ -81,13 +72,14 @@ let auth_header (user, pass) =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   " -H \"Authorization: Basic " ^ base64 ^ "\" "
 
-(* TODO Metrics and Backup passphrase are different in RAML *)
 let passphrase = function
   | "Administrator" -> ("admin", "Administrator")
   | "Operator" -> ("operator", "OperatorOperator")
   | "Metrics" -> ("metrics", "MetricsMetrics")
   | "Backup" -> ("backup", "BackupBackup")
-  | _ -> assert false
+  | s ->
+    Printf.printf "passphrase for unsupported role %s requested\n" s;
+    assert false
 
 let prepare_setup _meth _path _cmd (state, role, _req) =
   (* 1. prepare server state *)
@@ -101,7 +93,9 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
   | "Unprovisioned" -> ""
   | "Locked" -> provision ^ "\n" ^ lock
   | "Operational" -> provision
-  | s -> Printf.printf "Error: Unknown prerequisite state in raml: %s\n" s; ""
+  | s ->
+    Printf.printf "Error: Unknown prerequisite state in raml: %s\n" s;
+    assert false
   in
   (* 2. prepare role *)
   let add_user role =
@@ -128,8 +122,6 @@ let make_post_data req =
   | exception Not_found -> [""]
   | mediatypes ->
     let f (mediatype, yml) =
-      if not @@ List.mem mediatype allowed_request_types
-      then Printf.printf "Request type %s found but not supported, raml malformed?" mediatype;
       let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
       let example = example_of_type yml in
       header ^ "--data " ^ escape @@ Ezjsonm.value_to_string example
@@ -144,17 +136,18 @@ let make_req_data req meth =
   | "Operator" :: _ -> Some "Operator", auth_header (passphrase "Operator")
   | [ "Metrics" ] -> Some "Metrics", auth_header (passphrase "Metrics")
   | [ "Backup" ] -> Some "Backup", auth_header (passphrase "Backup")
-  | x :: _ -> Printf.printf "unknown role %s" x; None, "" (*assert false*)
-  | _ -> assert false
+  | r ->
+    Printf.printf "can't handle roles (make_req_data): %s\n"
+      (String.concat "; " r);
+    assert false
   in
   let states = req_states req in
   let states_and_data_for_mediatype = match meth with
   | "get" -> [(states, role, auth_header)]
   | "post"
   | "put" -> List.map (fun d -> (states, role, auth_header ^ d)) (make_post_data req)
-  | m -> Printf.printf "Error: Method %s not allowed" m; [(states, role, auth_header)]
+  | m -> Printf.printf "Error: Method %s not allowed\n" m; assert false
   in
-  (* TODO unroll roles? *)
   let unroll_states (states, role, data) =
     let other_states = List.filter (fun x -> not @@ List.mem x states) all_states in
     List.append
@@ -180,18 +173,18 @@ let make_resp_data raml_meth =
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd (response_code, response_body) (_test_case, state, role, req) =
+let tests_for_states meth path cmd (response_code, response_body) (test_res, state, role, req) =
   let (outdir, test_file) = path_to_filename state meth path in
-  let _ = Sys.command("mkdir -p " ^ outdir) in
+  ignore (Sys.command("mkdir -p " ^ outdir));
 
   let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
   let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
 
   (* for negative test cases (state tests), add an error code prefix *)
-  let resp_code = if _test_case = `Neg then "412_" else "" in
+  let resp_code = if test_res = `Neg then "412_" else "" in
   let test_cmd = Printf.sprintf "%s %s  -D %sheaders.out -o body.out \n\n" cmd'' req resp_code in
 
-  if _test_case = `Pos then
+  if test_res = `Pos then
   begin
     (* if keyid was set, prepare a wrong one *)
     if cmd <> cmd' then
@@ -219,28 +212,35 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
         let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
         let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
         write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd;
+      end;
 
-        (* prepare wrong auth header *)
-        let someone_else = match role with
-        | Some "Administrator" -> auth_header (passphrase "Backup")
-        | Some "Operator" -> auth_header (passphrase "Metrics")
-        | Some "Metrics" -> auth_header (passphrase "Backup")
-        | Some "Backup" -> auth_header (passphrase "Metrics")
-        | _ -> ""
+    (* prepare wrong auth header if endpoint requires authentication *)
+    begin match role with
+      | None -> ()
+      | Some r ->
+        let current_auth = auth_header (passphrase r) in
+        let someone_else = match r with
+          | "Administrator" -> auth_header (passphrase "Backup")
+          | "Operator" -> auth_header (passphrase "Metrics")
+          | "Metrics" -> auth_header (passphrase "Backup")
+          | "Backup" -> auth_header (passphrase "Metrics")
+          | r ->
+            Printf.printf "unknown role requested (invalid auth header) %s\n" r;
+            assert false
         in
-        let wrong_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) someone_else req in
+        let wrong_auth = Str.global_replace (Str.regexp_string current_auth) someone_else req in
         if req <> wrong_auth then
           begin
             let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
             write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
           end;
-        let no_auth = Str.global_replace (Str.regexp_string {|-H "Authorization: Basic YWRtaW46QWRtaW5pc3RyYXRvcg=="|}) "" req in
+        let no_auth = Str.global_replace (Str.regexp_string current_auth) "" req in
         if req <> no_auth then
           begin
             let no_auth_cmd = Printf.sprintf "%s %s  -D 401_no_auth_headers.out -o /dev/null \n\n" cmd'' no_auth in
             write_cmd (outdir ^ "/401_no_auth_cmd.sh") no_auth_cmd;
           end;
-      end;
+    end;
 
     let other_method = "PATCH" in
     let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd'' in
@@ -251,7 +251,7 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
         let wrong_meth_cmd = Printf.sprintf "%s %s  -D 501_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
         write_cmd (outdir ^ "/501_wrong_meth_cmd.sh") wrong_meth_cmd;
       end;
-    end; (* end if _test_case = `Pos *)
+    end; (* end if test_res = `Pos *)
 
   write_cmd (outdir ^ "/" ^ resp_code ^ test_file) test_cmd;
 
@@ -259,7 +259,7 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
   let setup_file = outdir ^ "/setup.sh" in
   let setup_cmd = prepare_setup meth path cmd (state, role, req) in
   write setup_file setup_cmd;
-  let _ = Sys.command("chmod u+x " ^ setup_file) in
+  ignore (Sys.command("chmod u+x " ^ setup_file));
 
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =
@@ -267,9 +267,9 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
     {|NITROHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
   in
   write shutdown_file shutdown_cmd;
-  let _ = Sys.command("chmod u+x " ^ shutdown_file) in
+  ignore (Sys.command("chmod u+x " ^ shutdown_file));
 
-  if _test_case = `Pos then
+  if test_res = `Pos then
   begin
     let expected_body =
       match response_body with
@@ -287,11 +287,8 @@ let tests_for_states meth path cmd (response_code, response_body) (_test_case, s
     write (outdir ^ "/headers.expected") reply;
 
     if List.mem path skip_body_endpoints then
-      let _ = Sys.command("touch " ^ outdir ^ "/body.skip") in
-      ();
-  end;
-
-  ()
+      ignore (Sys.command("touch " ^ outdir ^ "/body.skip"))
+  end
 
 let print_method path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *)
