@@ -145,6 +145,13 @@ type log =
 
 type random_req = { length : int }[@@deriving yojson]
 
+let random_req_of_yojson x =
+  random_req_of_yojson x >>= fun rr ->
+  if rr.length < 1 || rr.length > 1024 then
+    Error "length must be between 1 and 1024"
+  else
+    Ok rr
+
 type key = {
   primeP : (string [@default ""]) ;
   primeQ : (string [@default ""]) ;

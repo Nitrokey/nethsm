@@ -48,6 +48,22 @@ let locked_mock () =
     assert (r = Ok ());
     Hsm.boot ~device_id:"test dispatch" kv >|= fst)
 
+let auth_header user pass =
+  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
+  Header.init_with "authorization" ("Basic " ^ base64)
+
+let admin_headers = auth_header "admin" "test1Passphrase"
+
+let operator_headers = auth_header "operator" "test2Passphrase"
+
+let admin_put_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
+  let headers = admin_headers in
+  request ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
+
+let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
+  let headers = admin_headers in
+  request ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query path
+
 let empty () =
   "a request for / will produce no result"
     @? begin match request "/" with
@@ -85,6 +101,26 @@ let health_state_ok () =
        | _ -> false
     end
 
+let random_ok () =
+  let body = `String {| { "length": 10 } |} in
+  let hsm_state = operational_mock () in
+  let headers = operator_headers in
+  "a request for /random will produce an HTTP 200 and returns random data"
+    @? begin match request ~meth:`POST ~hsm_state ~headers ~body "/random" with
+       | _, Some (`OK, _, _, _) -> true
+       | _ -> false
+    end
+
+let random_error_bad_length () =
+  let body = `String {| { "length": 10000 } |} in
+  let hsm_state = operational_mock () in
+  let headers = operator_headers in
+  "a request for /random will produce an HTTP 400"
+    @? begin match request ~meth:`POST ~hsm_state ~headers ~body "/random" with
+       | _, Some (`Bad_request, _, _, _) -> true
+       | _ -> false
+    end
+
 let provision_json = {| {
   "unlockPassphrase": "UnlockPassphrase",
   "adminPassphrase": "Administrator",
@@ -118,22 +154,6 @@ let provision_error_precondition_failed () =
          end
        | _ -> false
     end
-
-let auth_header user pass =
-  let base64 = Base64.encode_string (user ^ ":" ^ pass) in
-  Header.init_with "authorization" ("Basic " ^ base64)
-
-let admin_headers = auth_header "admin" "test1Passphrase"
-
-let operator_headers = auth_header "operator" "test2Passphrase"
-
-let admin_put_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
-  let headers = admin_headers in
-  request ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
-
-let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?content_type ?query path =
-  let headers = admin_headers in
-  request ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query path
 
 let system_info_ok () =
   "a request for /system/info with authenticated user returns 200"
@@ -1472,6 +1492,8 @@ let () =
     "/health/ready" >:: health_ready_ok;
     "/health/ready" >:: health_ready_error_precondition_failed;
     "/health/state" >:: health_state_ok;
+    "/random" >:: random_ok;
+    "/random" >:: random_error_bad_length;
     "/provision" >:: provision_ok;
     "/provision" >:: provision_error_malformed_request;
     "/provision" >:: provision_error_precondition_failed;
