@@ -1224,12 +1224,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                 Lwt_result.lift
                   (match sign_mode with
                    | Json.PKCS1 -> Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
-                   | PSS_MD5 -> Ok (Pss_md5.sign ~key (`Message to_sign_cs))
-                   | PSS_SHA1 -> Ok (Pss_sha1.sign ~key (`Message to_sign_cs))
-                   | PSS_SHA224 -> Ok (Pss_sha224.sign ~key (`Message to_sign_cs))
-                   | PSS_SHA256 -> Ok (Pss_sha256.sign ~key (`Message to_sign_cs))
-                   | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Message to_sign_cs))
-                   | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Message to_sign_cs))
+                   | PSS_MD5 -> Ok (Pss_md5.sign ~key (`Digest to_sign_cs))
+                   | PSS_SHA1 -> Ok (Pss_sha1.sign ~key (`Digest to_sign_cs))
+                   | PSS_SHA224 -> Ok (Pss_sha224.sign ~key (`Digest to_sign_cs))
+                   | PSS_SHA256 -> Ok (Pss_sha256.sign ~key (`Digest to_sign_cs))
+                   | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Digest to_sign_cs))
+                   | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Digest to_sign_cs))
                    | _ -> Error (Bad_request, "Invalid sign mode for key type."))
                 >|= fun signature ->
                 Metrics.key_op `Sign;
