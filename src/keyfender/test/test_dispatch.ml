@@ -1043,7 +1043,27 @@ let keys_key_get () =
   "GET on /keys/keyID succeeds"
   @? begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
-  | _, Some (`OK, _, _, _) -> true
+  | _, Some (`OK, _, `String data, _) ->
+    let json_data = Yojson.Safe.from_string data in
+    begin match json_data with
+      | `Assoc xs ->
+        begin
+          List.exists (fun (k, v) -> k = "mechanisms" && match v with `List _ -> true | _ -> false) xs &&
+          List.exists (fun (k, v) -> k = "algorithm" && match v with `String a -> a = "RSA" | _ -> false) xs &&
+          List.exists (fun (k, v) -> k = "operations" && match v with `Int _ -> true | _ -> false) xs &&
+          List.exists (fun (k, v) ->
+              k = "key" &&
+              match v with
+              | `Assoc a ->
+                List.exists (fun (k, v) -> k = "modulus" && match v with `String _ -> true | _ -> false) a &&
+                List.exists (fun (k, v) -> k = "publicExponent" && match v with `String _ -> true | _ -> false) a &&
+                List.length a = 2
+              | _ -> false)
+            xs &&
+          List.length xs = 4
+        end
+      | _ -> false
+    end
   | _ -> false
   end
 

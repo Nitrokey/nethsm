@@ -253,19 +253,20 @@ let algorithm_matches_mechanism alg m =
   | ECDSA_P521 -> m = ECDSA_P521_Signature
 
 type rsaPublicKey = {
-  mechanisms : MS.t;
-  algorithm : algorithm ;
   modulus : string ;
   publicExponent : string ;
-  operations : int
-} [@@deriving yojson]
+} [@@deriving to_yojson]
 
 type ecPublicKey = {
-  mechanisms : MS.t ;
-  algorithm : algorithm ;
   data : string ;
-  operations : int
-} [@@deriving yojson]
+} [@@deriving to_yojson]
+
+type publicKey = {
+  mechanisms : MS.t;
+  algorithm : algorithm;
+  operations : int;
+  key : Yojson.Safe.t;
+} [@@deriving to_yojson]
 
 type private_key_req = {
   mechanisms : MS.t ;

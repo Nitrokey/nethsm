@@ -1041,78 +1041,50 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let get_json t ~id =
       let open Lwt_result.Infix in
-      get_key t id >|= fun key ->
-      let z_to_b64 n =
-        Base64.encode_string @@ Cstruct.to_string @@ Mirage_crypto_pk.Z_extra.to_cstruct_be n
+      let open Mirage_crypto_ec in
+      get_key t id >|= fun pkey ->
+      let cs_to_b64 cs = Base64.encode_string (Cstruct.to_string cs) in
+      let key, algorithm =
+        match pkey.priv with
+        | `RSA k ->
+          let z_to_b64 n =
+            Mirage_crypto_pk.Z_extra.to_cstruct_be n |> cs_to_b64
+          in
+          let modulus = z_to_b64 k.Mirage_crypto_pk.Rsa.n
+          and publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e
+          in
+          Json.rsaPublicKey_to_yojson { Json.modulus ; publicExponent }, Json.RSA
+        | `ED25519 k ->
+          let data =
+            cs_to_b64 (Hacl_ed25519.priv_to_public k)
+          in
+          Json.ecPublicKey_to_yojson { Json.data }, Json.ED25519
+        | `P224 k ->
+          let data =
+            P224.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
+          in
+          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P224
+        | `P256 k ->
+          let data =
+            P256.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
+          in
+          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P256
+        | `P384 k ->
+          let data =
+            P384.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
+          in
+          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P384
+        | `P521 k ->
+          let data =
+            P521.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
+          in
+          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P521
       in
-      match key.priv with
-      | `RSA k ->
-        Json.rsaPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.RSA ;
-            modulus = z_to_b64 k.Mirage_crypto_pk.Rsa.n ;
-            publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e ;
-            operations = key.operations ;
-          }
-      | `ED25519 k ->
-        Json.ecPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.ED25519 ;
-            data = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.priv_to_public k));
-            operations = key.operations ;
-          }
-      | `P224 k ->
-        let data =
-          let pub = Mirage_crypto_ec.P224.Dsa.pub_of_priv k in
-          let cs = Mirage_crypto_ec.P224.Dsa.pub_to_cstruct pub in
-          let s = Cstruct.to_string cs in
-          Base64.encode_string s
-        in
-        Json.ecPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.ECDSA_P224 ;
-            data ;
-            operations = key.operations ;
-          }
-      | `P256 k ->
-        let data =
-          let pub = Mirage_crypto_ec.P256.Dsa.pub_of_priv k in
-          let cs = Mirage_crypto_ec.P256.Dsa.pub_to_cstruct pub in
-          let s = Cstruct.to_string cs in
-          Base64.encode_string s
-        in
-        Json.ecPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.ECDSA_P256 ;
-            data ;
-            operations = key.operations ;
-          }
-      | `P384 k ->
-        let data =
-          let pub = Mirage_crypto_ec.P384.Dsa.pub_of_priv k in
-          let cs = Mirage_crypto_ec.P384.Dsa.pub_to_cstruct pub in
-          let s = Cstruct.to_string cs in
-          Base64.encode_string s
-        in
-        Json.ecPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.ECDSA_P384 ;
-            data ;
-            operations = key.operations ;
-          }
-      | `P521 k ->
-        let data =
-          let pub = Mirage_crypto_ec.P521.Dsa.pub_of_priv k in
-          let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct pub in
-          let s = Cstruct.to_string cs in
-          Base64.encode_string s
-        in
-        Json.ecPublicKey_to_yojson
-          { Json.mechanisms = key.mechanisms ;
-            algorithm = Json.ECDSA_P521 ;
-            data ;
-            operations = key.operations ;
-          }
+      Json.publicKey_to_yojson
+        { Json.mechanisms = pkey.mechanisms ;
+          algorithm ;
+          operations = pkey.operations ;
+          key }
 
     let get_pem t ~id =
       let open Lwt_result.Infix in
