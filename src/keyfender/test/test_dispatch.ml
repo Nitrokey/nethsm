@@ -417,6 +417,15 @@ let unlock_failed () =
   | _ -> false
   end
 
+let unlock_failed_two () =
+  "a request for /unlock with the wrong passphrase fails"
+  @? begin
+    let wrong_passphrase = {|{ "passphrase": "wrongwrongwrong" }|} in
+    match request ~meth:`POST ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
+  | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Locked
+  | _ -> false
+  end
+
 let unlock_twice () =
   "the first request for /unlock unlocks the HSM, the second fails"
   @? begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
@@ -1548,6 +1557,7 @@ let () =
     "/system/backup" >:: system_backup_and_restore_ok;
     "/unlock" >:: unlock_ok;
     "/unlock" >:: unlock_failed;
+    "/unlock" >:: unlock_failed_two;
     "/unlock" >:: unlock_twice;
     "/lock" >:: lock_ok;
     "/lock" >:: lock_failed;

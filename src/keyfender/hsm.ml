@@ -11,6 +11,7 @@ module type S = sig
   type status_code =
     | Internal_server_error
     | Bad_request
+    | Forbidden
     | Precondition_failed
     | Conflict
     | Too_many_requests
@@ -371,6 +372,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   type status_code =
     | Internal_server_error
     | Bad_request
+    | Forbidden
     | Precondition_failed
     | Conflict
     | Too_many_requests
@@ -382,6 +384,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let status = match code with
     | Internal_server_error -> `Internal_server_error
     | Bad_request -> `Bad_request
+    | Forbidden -> `Forbidden
     | Precondition_failed -> `Precondition_failed
     | Conflict -> `Conflict
     | Too_many_requests -> `Too_many_requests
@@ -541,7 +544,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     internal_server_error "Prepare keys" Config_store.pp_error
       (Config_store.get kv (get_salt_key slot)) >>= fun salt ->
     let unlock_key = Crypto.key_of_passphrase ~salt credentials in
-    Lwt_result.map_err (function `Msg m -> Bad_request, m)
+    Lwt_result.map_err (function `Msg m -> Forbidden, m)
       (Domain_key_store.get kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len

@@ -597,6 +597,8 @@ annotationTypes:
     responses:
       204:
         description: Unlock was successful, NetHSM is <i>Operational</i> now.
+      400:
+        description: Bad request (invalid passphrase).
       403:
         description: Unlock failed (access denied).
       412:

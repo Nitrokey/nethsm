@@ -11,6 +11,7 @@ module type S = sig
   type status_code =
     | Internal_server_error
     | Bad_request
+    | Forbidden
     | Precondition_failed
     | Conflict
     | Too_many_requests
