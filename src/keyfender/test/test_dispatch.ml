@@ -1194,6 +1194,18 @@ let operator_keys_key_sign_fails () =
     | _ -> false
   end
 
+let operator_keys_key_sign_fails_bad_data () =
+  "POST on /keys/keyID/sign fails (msg too short)"
+  @? begin
+    let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PSS_SHA256) () in
+    let sign_request =
+      {|{ mode: "PSS_SHA256", message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="}|}
+    in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let operator_keys_key_sign_fails_wrong_mech () =
   "POST on /keys/keyID/sign fails (wrong mechanism)"
   @? begin
@@ -1599,6 +1611,7 @@ let () =
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_wrong_mech;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
+    "/keys/keyID/sign" >:: operator_keys_key_sign_fails_bad_data;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails_wrong_mech;
     "/keys/keyID/decrypt and /sign" >:: operator_keys_key_sign_and_decrypt;
     "/keys/keyID/sign" >:: operator_sign_ed25519_succeeds;
