@@ -798,8 +798,15 @@ let user_operator_add_empty_passphrase () =
   "PUT on /users/op succeeds"
   @? begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
-  | _, Some (`Bad_request, _, _, _) ->
-    true
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_add_invalid_id () =
+  "PUT on /users/op fails (invalid id)"
+  @? begin
+  match admin_put_request ~body:(`String operator_json) "/users//" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -808,6 +815,22 @@ let user_operator_delete () =
   @? begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator" with
   | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_delete_not_found () =
+  "DELETE on /users/operator fails (not found)"
+  @? begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator2" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_delete_invalid_id () =
+  "DELETE on /users/operator fails (invalid ID)"
+  @? begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users//" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -841,6 +864,14 @@ let user_operator_get_not_found () =
   @? begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_get_invalid_id () =
+  "GET on /users// returns bad request"
+  @? begin
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users//" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -897,6 +928,24 @@ let user_passphrase_administrator_post () =
     let new_passphrase = "my super new passphrase" in
     match request ~hsm_state:(operational_mock ()) ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) ~meth:`POST ~headers "/users/admin/passphrase" with
   | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_passphrase_post_fails_not_found () =
+  "POST on /users/foobar/passphrase fails (not found)"
+  @? begin
+    let new_passphrase = "my super new passphrase" in
+    match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users/foobar/passphrase" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_passphrase_post_fails_invalid_id () =
+  "POST on /users//passphrase fails (invalid ID)"
+  @? begin
+    let new_passphrase = "my super new passphrase" in
+    match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users//passphrase" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -1076,6 +1125,30 @@ let keys_key_get () =
   | _ -> false
   end
 
+let keys_key_get_not_found () =
+  "GET on /keys/keyID fails (ID not found)"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_get_invalid_id () =
+  "GET on /keys/keyID fails (invalid ID)"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys//" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_get_invalid_id2 () =
+  "GET on /keys/keyID fails (invalid ID)"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/--" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let keys_key_put () =
   "PUT on /keys/keyID succeeds"
   @? begin
@@ -1084,11 +1157,43 @@ let keys_key_put () =
   | _ -> false
   end
 
+let keys_key_put_already_there () =
+  "PUT on /keys/keyID succeeds"
+  @? begin
+  match admin_put_request ~hsm_state:(hsm_with_key ()) ~body:(`String key_json) "/keys/keyID" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_put_invalid_id () =
+  "PUT on /keys/keyID fails (invalid ID)"
+  @? begin
+  match admin_put_request ~body:(`String key_json) "/keys//" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let keys_key_delete () =
   "DELETE on /keys/keyID succeeds"
   @? begin
   match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
   | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_delete_not_found () =
+  "DELETE on /keys/keyID fails (ID not found)"
+  @? begin
+  match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_delete_invalid_id () =
+  "DELETE on /keys/keyID fails (invalid ID)"
+  @? begin
+  match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys//" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
 
@@ -1108,6 +1213,22 @@ let operator_keys_key_public_pem () =
   | _ -> false
   end
 
+let operator_keys_key_public_pem_not_found () =
+  "GET on /keys/keyID/public.pem fails (ID not found)"
+  @? begin
+  match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2/public.pem" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let operator_keys_key_public_pem_invalid_id () =
+  "GET on /keys/keyID/public.pem fails (invalid ID)"
+  @? begin
+  match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys//public.pem" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let admin_keys_key_csr_pem () =
   "POST on /keys/keyID/csr.pem succeeds"
   @? begin
@@ -1123,6 +1244,23 @@ let operator_keys_key_csr_pem () =
   | _, Some (`OK, _, _, _) -> true
   | _ -> false
   end
+
+let operator_keys_key_csr_pem_not_found () =
+  "POST on /keys/keyID/csr.pem fails (ID not found)"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID2/csr.pem" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let operator_keys_key_csr_pem_invalid_id () =
+  "POST on /keys/keyID/csr.pem fails (invalid ID)"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys//csr.pem" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 
 let message = "Hi Alice! Please bring malacpörkölt for dinner!"
 
@@ -1166,6 +1304,22 @@ let operator_keys_key_decrypt_fails_wrong_mech () =
   let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Decryption_RAW) () in
   match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
     | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_decrypt_fails_invalid_id () =
+  "POST on /keys/keyID/decrypt fails (invalid ID)"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys//decrypt" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_decrypt_fails_not_found () =
+  "POST on /keys/keyID/decrypt fails (ID not found)"
+  @? begin
+  match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys/keyID2/decrypt" with
+    | _, Some (`Not_found, _, _, _) -> true
     | _ -> false
   end
 
@@ -1222,6 +1376,24 @@ let operator_keys_key_sign_fails_wrong_mech () =
     let hsm_state = hsm_with_key ~mechanisms () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
     | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_sign_fails_invalid_id () =
+  "POST on /keys/keyID/sign fails (invalid ID)"
+  @? begin
+    let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys//sign" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_sign_fails_not_found () =
+  "POST on /keys/keyID/sign fails (ID not found)"
+  @? begin
+    let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID2/sign" with
+    | _, Some (`Not_found, _, _, _) -> true
     | _ -> false
   end
 
@@ -1355,6 +1527,24 @@ let keys_key_cert_get () =
     | _ -> false
   end
 
+let keys_key_cert_get_not_found () =
+  "GET on /keys/keyID/cert fails (ID not found)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match request ~headers:operator_headers ~hsm_state "/keys/keyID2/cert" with
+    | _, Some (`Not_found, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_cert_get_invalid_id () =
+  "GET on /keys/keyID/cert fails (invalid ID)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match request ~headers:operator_headers ~hsm_state "/keys//cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let keys_key_cert_put () =
   "PUT on /keys/keyID/cert succeeds"
   @? begin
@@ -1373,6 +1563,24 @@ let keys_key_cert_put_fails () =
     | _ -> false
   end
 
+let keys_key_cert_put_not_found () =
+  "PUT on /keys/keyID/cert fails (ID not found)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID2/cert" with
+    | _, Some (`Not_found, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_cert_put_invalid_id () =
+  "PUT on /keys/keyID/cert fails (invalid ID)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match admin_put_request ~body:(`String "data") ~hsm_state "/keys//cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
 let keys_key_cert_delete () =
   "DELETE on /keys/keyID/cert succeeds"
   @? begin
@@ -1380,6 +1588,24 @@ let keys_key_cert_delete () =
     let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"text/plain" "data") in
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID/cert" with
     | _, Some (`No_content, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_cert_delete_not_found () =
+  "DELETE on /keys/keyID/cert fails (ID not found)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID2/cert" with
+    | _, Some (`Not_found, _, _, _) -> true
+    | _ -> false
+  end
+
+let keys_key_cert_delete_invalid_id () =
+  "DELETE on /keys/keyID/cert fails (invalid ID)"
+  @? begin
+    let hsm_state = hsm_with_key () in
+    match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys//cert" with
+    | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
 
@@ -1589,16 +1815,22 @@ let () =
     "/users" >:: users_post;
     "/users/operator" >:: user_operator_add;
     "/users/operator" >:: user_operator_add_empty_passphrase;
+    "/users/operator" >:: user_operator_add_invalid_id;
     "/users/operator" >:: user_operator_delete;
+    "/users/operator" >:: user_operator_delete_not_found;
+    "/users/operator" >:: user_operator_delete_invalid_id;
     "/users/operator" >:: user_operator_delete_fails;
     "/users/operator" >:: user_op_delete_fails;
     "/users/operator" >:: user_operator_get;
     "/users/operator" >:: user_operator_get_not_found;
+    "/users/operator" >:: user_operator_get_invalid_id;
     "/users/.version" >:: user_version_get_bad_request;
     "/users/.version" >:: user_version_delete_fails_invalid_id;
     "/users/admin/passphrase" >:: user_passphrase_post;
     "/users/operator/passphrase" >:: user_passphrase_operator_post;
     "/users/admin/passphrase" >:: user_passphrase_administrator_post;
+    "/users/admin/passphrase" >:: user_passphrase_post_fails_not_found;
+    "/users/admin/passphrase" >:: user_passphrase_post_fails_invalid_id;
     "/keys" >:: keys_get;
     "/keys" >:: keys_post_json;
     "/keys" >:: keys_post_pem;
@@ -1610,19 +1842,33 @@ let () =
     "/keys/generate" >:: keys_generate_ed25519;
     "/keys/generate" >:: keys_generate_ed25519_fail;
     "/keys/keyID" >:: keys_key_get;
+    "/keys/keyID" >:: keys_key_get_not_found;
+    "/keys/keyID" >:: keys_key_get_invalid_id;
     "/keys/keyID" >:: keys_key_put;
+    "/keys/keyID" >:: keys_key_put_already_there;
+    "/keys/keyID" >:: keys_key_put_invalid_id;
     "/keys/keyID" >:: keys_key_delete;
+    "/keys/keyID" >:: keys_key_delete_not_found;
+    "/keys/keyID" >:: keys_key_delete_invalid_id;
     "/keys/keyID/public.pem" >:: admin_keys_key_public_pem;
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem;
+    "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_not_found;
+    "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_invalid_id;
     "/keys/keyID/csr.pem" >:: admin_keys_key_csr_pem;
     "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem;
+    "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem_not_found;
+    "/keys/keyID/csr.pem" >:: operator_keys_key_csr_pem_invalid_id;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_wrong_mech;
+    "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_invalid_id;
+    "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_not_found;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails_bad_data;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails_wrong_mech;
+    "/keys/keyID/sign" >:: operator_keys_key_sign_fails_invalid_id;
+    "/keys/keyID/sign" >:: operator_keys_key_sign_fails_not_found;
     "/keys/keyID/decrypt and /sign" >:: operator_keys_key_sign_and_decrypt;
     "/keys/keyID/sign" >:: operator_sign_ed25519_succeeds;
     "/keys/keyID/sign" >:: operator_sign_ed25519_fails;
@@ -1630,9 +1876,15 @@ let () =
     "/keys/keyID" >:: keys_key_put_ed25519;
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_ed25519;
     "/keys/keyID/cert" >:: keys_key_cert_get;
+    "/keys/keyID/cert" >:: keys_key_cert_get_not_found;
+    "/keys/keyID/cert" >:: keys_key_cert_get_invalid_id;
     "/keys/keyID/cert" >:: keys_key_cert_put;
     "/keys/keyID/cert" >:: keys_key_cert_put_fails;
+    "/keys/keyID/cert" >:: keys_key_cert_put_not_found;
+    "/keys/keyID/cert" >:: keys_key_cert_put_invalid_id;
     "/keys/keyID/cert" >:: keys_key_cert_delete;
+    "/keys/keyID/cert" >:: keys_key_cert_delete_not_found;
+    "/keys/keyID/cert" >:: keys_key_cert_delete_invalid_id;
     "/keys/version" >:: keys_key_version_get_fails;
     "/keys/version" >:: keys_key_version_delete_fails;
     "/keys/version/cert" >:: keys_key_version_cert_get_fails;

@@ -350,7 +350,8 @@ let valid_id id =
     "ID cannot be shorter than 1 character." >>= fun () ->
   guard (String.length id <= 128)
     "ID cannot be longer than 128 characters." >>= fun () ->
-  guard (is_alphanum id) "ID may only contain alphanumeric characters."
+  guard (is_alphanum id) "ID may only contain alphanumeric characters." >>| fun () ->
+  id
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
@@ -363,9 +364,9 @@ let decode_generate_key_req s =
     "Mechanism does not match key algorithm" >>= fun () ->
   guard (MS.cardinal r.mechanisms > 0) "Empty set of mechanisms" >>= fun () ->
   let empty_or_valid id =
-    if String.length id = 0 then Ok () else valid_id id
+    if String.length id = 0 then Ok "" else valid_id id
   in
-  empty_or_valid r.id >>| fun () ->
+  empty_or_valid r.id >>| fun _ ->
   r
 
 type role = [ `Administrator | `Operator | `Metrics | `Backup ] [@@deriving yojson]

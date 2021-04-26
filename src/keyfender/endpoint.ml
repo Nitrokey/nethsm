@@ -16,6 +16,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     | Error m -> respond_error (Bad_request, m) rd
     | Ok data -> ok data
 
+  let lookup_path_info ok key rd =
+    err_to_bad_request ok rd
+      (match Webmachine.Rd.lookup_path_info key rd with
+       | None -> Error "no ID provided"
+       | Some x -> Json.valid_id x)
+
   let date () =
     let ptime_to_http_date ptime =
       let (y, m, d), ((hh, mm, ss), _)  = Ptime.to_date_time ptime

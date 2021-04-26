@@ -61,19 +61,20 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.role_operator_get hsm_state ip
 
     method private get_json rd =
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.User.get hsm_state ~id >>= function
-      | Error e -> Endpoint.respond_error e rd
-      | Ok (name, role) ->
-        let user = { Json.realName = name ; role } in
-        let body = Yojson.Safe.to_string (Json.user_res_to_yojson user) in
-        Wm.continue (`String body) rd
+      let ok id =
+        Hsm.User.get hsm_state ~id >>= function
+        | Error e -> Endpoint.respond_error e rd
+        | Ok (name, role) ->
+          let user = { Json.realName = name ; role } in
+          let body = Yojson.Safe.to_string (Json.user_res_to_yojson user) in
+          Wm.continue (`String body) rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method private set_json rd =
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok (user : Json.user_req) =
+      let ok id (user : Json.user_req) =
         Hsm.User.add ~id hsm_state ~role:user.role ~name:user.realName ~passphrase:user.passphrase >>= function
         | Ok _id ->
           let cc hdr = Cohttp.Header.replace hdr "Location" (Uri.path rd.uri) in
@@ -81,15 +82,19 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           Wm.continue true rd'
         | Error e -> Endpoint.respond_error e rd
       in
-      let (>>==) = Rresult.R.bind in
-      (Json.valid_id id >>== fun () -> Json.decode_user_req content) |>
-      Endpoint.err_to_bad_request ok rd
+      let ok id =
+        Endpoint.err_to_bad_request (ok id) rd
+          (Json.decode_user_req content)
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method! resource_exists rd =
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.User.exists hsm_state ~id >>= function
-      | Ok does_exist -> Wm.continue does_exist rd
-      | Error e -> Endpoint.respond_error e rd
+      let ok id =
+        Hsm.User.exists hsm_state ~id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method! allowed_methods rd =
       Wm.continue [`PUT; `GET; `DELETE ] rd
@@ -103,10 +108,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       ] rd
 
     method! delete_resource rd =
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.User.remove hsm_state ~id >>= function
-      | Ok () -> Wm.continue true rd
-      | Error e -> Endpoint.respond_error e rd
+      let ok id =
+        Hsm.User.remove hsm_state ~id >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method! generate_etag rd =
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -121,19 +128,24 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method private of_json json rd =
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      let ok passphrase =
+      let ok id passphrase =
         Hsm.User.set_passphrase hsm_state ~id ~passphrase >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
-      Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
+      let ok id =
+        Json.decode_passphrase json |>
+        Endpoint.err_to_bad_request (ok id) rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method! resource_exists rd =
-      let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-      Hsm.User.exists hsm_state ~id >>= function
-      | Ok does_exist -> Wm.continue does_exist rd
-      | Error e -> Endpoint.respond_error e rd
+      let ok id =
+        Hsm.User.exists hsm_state ~id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
 
     method! is_authorized = Access.is_authorized hsm_state ip
 
