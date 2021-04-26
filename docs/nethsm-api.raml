@@ -612,6 +612,8 @@ annotationTypes:
     responses:
       204:
         description: Lock was successful, NetHSM is <i>Locked</i> now.
+      401:
+        description: Authentication required but none provided.
       403:
         description: Lock failed (access denied).
       412:
