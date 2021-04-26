@@ -1190,80 +1190,52 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok to_sign ->
         if Json.MS.mem (Json.mechanism_of_sign_mode sign_mode) key_data.mechanisms then
           let to_sign_cs = Cstruct.of_string to_sign in
-          match key_data.priv with
-          | `RSA key ->
-            begin try
-                Lwt_result.lift
-                  (match sign_mode with
-                   | Json.PKCS1 -> Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
-                   | PSS_MD5 -> Ok (Pss_md5.sign ~key (`Digest to_sign_cs))
-                   | PSS_SHA1 -> Ok (Pss_sha1.sign ~key (`Digest to_sign_cs))
-                   | PSS_SHA224 -> Ok (Pss_sha224.sign ~key (`Digest to_sign_cs))
-                   | PSS_SHA256 -> Ok (Pss_sha256.sign ~key (`Digest to_sign_cs))
-                   | PSS_SHA384 -> Ok (Pss_sha384.sign ~key (`Digest to_sign_cs))
-                   | PSS_SHA512 -> Ok (Pss_sha512.sign ~key (`Digest to_sign_cs))
-                   | _ -> Error (Bad_request, "Invalid sign mode for key type."))
-                >|= fun signature ->
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                Base64.encode_string @@ Cstruct.to_string signature
-              with Mirage_crypto_pk.Rsa.Insufficient_key | Mirage_crypto_ec.Message_too_long ->
-                Lwt.return (Error (Bad_request, "Signing failure."))
-            end
-          | `ED25519 key ->
-            begin match sign_mode with
-              | Json.ED25519 ->
-                let signature = Hacl_ed25519.sign key to_sign_cs in
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-              | _ ->
-                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
-            end
-          | `P224 key ->
-            begin match sign_mode with
-              | Json.ECDSA_P224 ->
-                let r, s = Mirage_crypto_ec.P224.Dsa.sign ~key to_sign_cs in
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                let signature = Cstruct.append r s in
-                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-              | _ ->
-                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
-            end
-          | `P256 key ->
-            begin match sign_mode with
-              | Json.ECDSA_P256 ->
-                let r, s = Mirage_crypto_ec.P256.Dsa.sign ~key to_sign_cs in
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                let signature = Cstruct.append r s in
-                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-              | _ ->
-                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
-            end
-          | `P384 key ->
-            begin match sign_mode with
-              | Json.ECDSA_P384 ->
-                let r, s = Mirage_crypto_ec.P384.Dsa.sign ~key to_sign_cs in
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                let signature = Cstruct.append r s in
-                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-              | _ ->
-                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
-            end
-          | `P521 key ->
-            begin match sign_mode with
-              | Json.ECDSA_P521 ->
-                let r, s = Mirage_crypto_ec.P521.Dsa.sign ~key to_sign_cs in
-                Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
-                let signature = Cstruct.append r s in
-                Lwt.return (Ok (Base64.encode_string @@ Cstruct.to_string signature))
-              | _ ->
-                Lwt.return (Error (Bad_request, "Invalid sign mode for key type."))
-            end
+          let open Rresult.R.Infix in
+          Lwt.return @@
+          begin
+            (try
+               match key_data.priv, sign_mode with
+               | `RSA key, Json.PKCS1 ->
+                 Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
+               | `RSA key, Json.PSS_MD5 ->
+                 Ok (Pss_md5.sign ~key (`Digest to_sign_cs))
+               | `RSA key, Json.PSS_SHA1 ->
+                 Ok (Pss_sha1.sign ~key (`Digest to_sign_cs))
+               | `RSA key, Json.PSS_SHA224 ->
+                 Ok (Pss_sha224.sign ~key (`Digest to_sign_cs))
+               | `RSA key, Json.PSS_SHA256 ->
+                 Ok (Pss_sha256.sign ~key (`Digest to_sign_cs))
+               | `RSA key, Json.PSS_SHA384 ->
+                 Ok (Pss_sha384.sign ~key (`Digest to_sign_cs))
+               | `RSA key, Json.PSS_SHA512 ->
+                 Ok (Pss_sha512.sign ~key (`Digest to_sign_cs))
+               | `ED25519 key, Json.ED25519 ->
+                 Ok (Hacl_ed25519.sign key to_sign_cs)
+               | `P224 key, Json.ECDSA_P224 ->
+                 let r, s = Mirage_crypto_ec.P224.Dsa.sign ~key to_sign_cs in
+                 Ok (Cstruct.append r s)
+               | `P256 key, Json.ECDSA_P256 ->
+                 let r, s = Mirage_crypto_ec.P256.Dsa.sign ~key to_sign_cs in
+                 Ok (Cstruct.append r s)
+               | `P384 key, Json.ECDSA_P384 ->
+                 let r, s = Mirage_crypto_ec.P384.Dsa.sign ~key to_sign_cs in
+                 Ok (Cstruct.append r s)
+               | `P521 key, Json.ECDSA_P521 ->
+                 let r, s = Mirage_crypto_ec.P521.Dsa.sign ~key to_sign_cs in
+                 Ok (Cstruct.append r s)
+               | _ -> Error (Bad_request, "Invalid sign mode for key type.")
+             with
+             | Mirage_crypto_pk.Rsa.Insufficient_key ->
+               Error (Bad_request, "Signing failure: RSA key too short.")
+             | Mirage_crypto_ec.Message_too_long ->
+               Error (Bad_request, "Signing failure: Message too long.")
+             | Invalid_argument x ->
+               (* if RSA-PSS is used, and (`Digest yy) is not of digest length *)
+               Error (Bad_request, "Signing failure: " ^ x)) >>| fun signature ->
+            Metrics.key_op `Sign;
+            Hashtbl.replace cached_operations id (succ key_data.operations);
+            Base64.encode_string @@ Cstruct.to_string signature
+          end
         else
           Lwt.return (Error (Bad_request, "Key mechanisms do not allow requested signing."))
 
