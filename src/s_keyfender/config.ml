@@ -6,7 +6,7 @@ let internal_stack =
     let network = Ipaddr.V4.Prefix.make 24 ip in
     { network = network ; gateway = None }
   in
-  generic_stackv4 ~group:"internal" ~config:default_internal
+  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal
     (netif ~group:"internal" "internal")
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
@@ -61,64 +61,78 @@ type mimic = Mimic
 
 let mimic = typ Mimic
 
-let mimic_tcp_conf ~edn () =
-  let packages = [ package "git-mirage" ~sublibs:[ "tcp" ] ] in
-  let edn = Key.abstract edn in
+let mimic_count =
+  let v = ref (-1) in
+  fun () -> incr v ; !v
+
+let mimic_conf () =
+  let packages = [ package "mimic" ] in
   impl @@ object
        inherit base_configurable
-       method ty = stackv4 @-> mimic
-       method! keys = [ edn ]
+       method ty = mimic @-> mimic @-> mimic
+       method module_name = "Mimic.Merge"
+       method! packages = Key.pure packages
+       method name = Fmt.str "merge_ctx%02d" (mimic_count ())
+       method! connect _ _modname =
+         function
+         | [ a; b ] -> Fmt.str "Lwt.return (Mimic.merge %s %s)" a b
+         | [ x ] -> Fmt.str "%s.ctx" x
+         | _ -> Fmt.str "Lwt.return Mimic.empty"
+     end
+
+let merge ctx0 ctx1 = mimic_conf () $ ctx0 $ ctx1
+
+let mimic_tcp_conf =
+  let packages = [ package "git-mirage" ~sublibs:[ "tcp" ] ] in
+  impl @@ object
+       inherit base_configurable
+       method ty = stackv4v6 @-> mimic
        method module_name = "Git_mirage_tcp.Make"
        method! packages = Key.pure packages
        method name = "tcp_ctx"
-       method! connect _ modname =
-         function
+       method! connect _ modname = function
          | [ stack ] ->
-             Fmt.str
-               {|let tcp_ctx0 = %s.with_stack %s %s.ctx in
-                 Lwt.return tcp_ctx0|}
-               modname stack modname
+           Fmt.str {ocaml|Lwt.return (%s.with_stack %s %s.ctx)|ocaml}
+             modname stack modname
          | _ -> assert false
      end
 
-let mimic_tcp_impl ~edn stackv4 = mimic_tcp_conf ~edn () $ stackv4
+let mimic_tcp_impl stackv4v6 = mimic_tcp_conf $ stackv4v6
 
-let mimic_git_conf ~edn () =
-  let packages = [ package "git-mirage" ] in
-  let edn = Key.abstract edn in
+let mimic_dns_conf =
+  let packages = [ package "git-mirage" ~sublibs:[ "dns" ] ] in
   impl @@ object
        inherit base_configurable
-       method ty = stackv4 @-> mimic @-> mimic
-       method! keys = [ edn ]
-       method module_name = "Git_mirage.Make"
+       method ty = random @-> mclock @-> time @-> stackv4v6 @-> mimic @-> mimic
+       method module_name = "Git_mirage_dns.Make"
        method! packages = Key.pure packages
-       method name = "git_ctx"
+       method name = "dns_ctx"
        method! connect _ modname =
          function
-         | [ _ ; mimic ] ->
-           Fmt.str
-             {|let git_ctx0 = %s.with_smart_git_endpoint (%a) %s in
-             let git_ctx1 = %s.with_resolv git_ctx0 in
-             Lwt.return git_ctx1|}
-             modname Key.serialize_call edn mimic
-             modname
+         | [ _; _; _; stack; tcp_ctx ] ->
+             Fmt.str
+               {ocaml|let dns_ctx00 = Mimic.merge %s %s.ctx in
+                      let dns_ctx01 = %s.with_dns %s dns_ctx00 in
+                      Lwt.return dns_ctx01|ocaml}
+               tcp_ctx modname
+               modname stack
          | _ -> assert false
      end
 
-let mimic_git_impl ~edn stackv4 mimic_tcp =
-  mimic_git_conf ~edn () $ stackv4 $ mimic_tcp
+let mimic_dns_impl random mclock time stackv4v6 mimic_tcp =
+  mimic_dns_conf $ random $ mclock $ time $ stackv4v6 $ mimic_tcp
 
 let main =
   let packages = [
     package "keyfender";
-    package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4"] "tcpip";
+    package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4";"ipv6";"ipv4"] "tcpip";
     package "conduit-mirage";
     package "cohttp-mirage";
-    package ~min:"3.10.1" "mirage-runtime";
-    package ~min:"2.3.0" "irmin-mirage";
-    package ~min:"2.3.0" "irmin-mirage-git";
-    package ~min:"3.1.0" "git";
-    package ~max:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
+    package ~min:"3.10.4" "mirage-runtime";
+    package ~min:"2.6.0" "irmin-mirage";
+    package ~min:"2.6.0" "irmin-git";
+    package ~min:"3.4.0" "git";
+    package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
   ] in
   let keys =
@@ -133,17 +147,17 @@ let main =
     ~packages ~keys
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @->
-     stackv4 @-> mimic @->
+     stackv4v6 @-> mimic @->
      network @-> ethernet @-> arpv4 @->
      job)
 
-let mimic ~edn stackv4 =
-  let mtcp = mimic_tcp_impl ~edn stackv4 in
-  mimic_git_impl ~edn stackv4 mtcp
+let mimic stackv4v6 random mclock time =
+  let mtcp = mimic_tcp_impl stackv4v6 in
+  mimic_dns_impl random mclock time stackv4v6 mtcp
 
 let () =
   register "keyfender"
     [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
-      internal_stack $ mimic ~edn:remote internal_stack $
+      internal_stack $ mimic internal_stack default_random default_monotonic_clock default_time $
       external_netif $ external_eth $ external_arp
     ]

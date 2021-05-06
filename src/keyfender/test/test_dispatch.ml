@@ -1447,7 +1447,7 @@ let ed25519_priv = match X509.Private_key.decode_pem (Cstruct.of_string ed25519_
   | Ok `ED25519 priv -> priv
   | _ -> assert false
 
-let ed25519_pub = Hacl_ed25519.priv_to_public ed25519_priv
+let ed25519_pub = Mirage_crypto_ec.Ed25519.pub_of_priv ed25519_priv
 
 let operator_sign_ed25519_succeeds () =
   "POST on /keys/keyID/sign succeeds with ed25519 sign key"
@@ -1465,7 +1465,7 @@ let operator_sign_ed25519_succeeds () =
             | Error _ -> false
             | Ok signature ->
               let signature = Cstruct.of_string signature in
-              Hacl_ed25519.verify ~pub:ed25519_pub ~msg:(Cstruct.of_string message) ~signature
+              Mirage_crypto_ec.Ed25519.verify ~key:ed25519_pub signature ~msg:(Cstruct.of_string message)
           end
         | _ -> false
       end
@@ -1494,7 +1494,7 @@ let keys_key_get_ed25519 () =
   end
 
 let ed25519_json =
-  let b64 = Base64.encode_string (Cstruct.to_string (Hacl_ed25519.encode_priv ed25519_priv)) in
+  let b64 = Base64.encode_string (Cstruct.to_string (Mirage_crypto_ec.Ed25519.priv_to_cstruct ed25519_priv)) in
   Printf.sprintf {| { mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519", key: { data: "%s" } } |} b64
 
 let keys_key_put_ed25519 () =

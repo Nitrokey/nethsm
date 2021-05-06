@@ -36,8 +36,8 @@ depends: [
   "ppx_blob"
   "scrypt-kdf" {>= "1.1.0"}
   "mirage-kv" {>= "3.0.0"}
-  "tls" {>= "0.12.2"}
-  "x509"
+  "tls" {>= "0.13.1"}
+  "x509" {>= "0.13.0"}
   "mirage-crypto-ec"
   "base64" {>= "3.0.0"}
   "hex"
@@ -57,12 +57,8 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.2.2.99" "git+https://github.com/roburio/ocaml-conduit.git#client-ip"]
-  ["cohttp.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["cohttp-lwt.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["cohttp-mirage.2.5.99" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip"]
-  ["x509.0.11.99~dev" "git+https://github.com/hannesm/ocaml-x509.git#ecc2"]
-  ["mirage-crypto-ec.0.8.10" "git+https://github.com/hannesm/mirage-crypto.git#ecc2"]
-  ["git.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
-  ["git-mirage.3.1.1" "git+https://github.com/hannesm/ocaml-git.git#caps"]
+  ["conduit-mirage.4.0.0" "git+https://github.com/roburio/ocaml-conduit.git#client-ip4"]
+  ["cohttp.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
+  ["cohttp-lwt.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
+  ["cohttp-mirage.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
 ]

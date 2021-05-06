@@ -8,8 +8,9 @@ module Time = struct
   let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
 end
 
-module Conduit = Conduit_mirage.With_tcp(Tcpip_stack_socket.V4)
-module Http = Cohttp_mirage.Server_with_conduit
+module Conduit = Conduit_mirage.TCP(Tcpip_stack_socket.V4V6)
+module Conduit_tls = Conduit_mirage.TLS(Conduit)
+module Http = Cohttp_mirage.Server.Make(Conduit_tls)
 
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 module Store = Mirage_kv_mem.Make(Hsm_clock)
@@ -27,17 +28,16 @@ let () =
     Store.connect () >>= fun store ->
     Hsm.boot ~device_id:"test server" store >>= fun (hsm_state, mvar) ->
     let any = Ipaddr.V4.Prefix.global in
-    Tcpv4_socket.connect any >>= fun tcp ->
-    Udpv4_socket.connect any >>= fun udp ->
-    Tcpip_stack_socket.V4.connect udp tcp >>= fun stack ->
-    Conduit.connect stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
-    Http.connect conduit >>= fun http ->
+    Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun tcp ->
+    Udpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun udp ->
+    Tcpip_stack_socket.V4V6.connect udp tcp >>= fun stack ->
     let certificates = Hsm.own_cert hsm_state in
     let tls_cfg = Tls.Config.server ~certificates () in
     let https_port = 4433 in
     let tls = `TLS (tls_cfg, `TCP https_port) in
     let http_port = 8080 in
     let tcp = `TCP http_port in
+    let http = Http.listen stack in
     let open Webserver in
     let https =
       Log.info (fun f -> f "listening on %d/TCP" https_port);

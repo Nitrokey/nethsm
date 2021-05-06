@@ -65,9 +65,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method private of_json json rd =
       let ok subject =
-        Hsm.Config.tls_csr_pem hsm_state subject >>= fun csr_pem ->
-        let rd' = { rd with resp_body = `String csr_pem } in
-        Wm.continue true rd'
+        Hsm.Config.tls_csr_pem hsm_state subject >>= function
+        | Ok csr_pem ->
+          let rd' = { rd with resp_body = `String csr_pem } in
+          Wm.continue true rd'
+        | Error e -> Endpoint.respond_error e rd
       in
       Json.to_ocaml Json.subject_req_of_yojson json |>
       Endpoint.err_to_bad_request ok rd

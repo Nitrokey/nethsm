@@ -80,7 +80,7 @@ module type S = sig
 
     val tls_cert_digest : t -> string option Lwt.t
 
-    val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
+    val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
     val network : t -> Json.network Lwt.t
 

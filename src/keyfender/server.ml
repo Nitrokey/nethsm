@@ -70,7 +70,31 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
       ]
 end
 
-module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = struct
+module type Server = sig
+  module IO : Cohttp_lwt.IO
+
+  type conn = IO.conn * Cohttp.Connection.t
+
+  type t
+
+  val respond :
+    ?headers:Cohttp.Header.t ->
+    ?flush:bool ->
+    status:Cohttp.Code.status_code ->
+    body:Cohttp_lwt.Body.t ->
+    unit ->
+    (Cohttp.Response.t * Cohttp_lwt.Body.t) Lwt.t
+
+  val make :
+    ?conn_closed:(conn -> unit) ->
+    callback:
+      (conn -> Ipaddr.t -> Cohttp.Request.t -> Cohttp_lwt.Body.t ->
+       (Cohttp.Response.t * Cohttp_lwt.Body.t) Lwt.t) ->
+    unit ->
+    t
+end
+
+module Make (R : Mirage_random.S) (Http: Server) (Hsm : Hsm.S) = struct
 
   module Handlers = Make_handlers(R)(Hsm)
 
@@ -114,6 +138,12 @@ module Make (R : Mirage_random.S) (Http: Cohttp_lwt.S.Server) (Hsm : Hsm.S) = st
 
   let serve cb =
     let callback (_, cid) ip request body =
+      let ip = match ip with
+        | Ipaddr.V4 ip -> ip
+        | V6 _ ->
+          Access_log.err (fun m -> m "IPv6 not supported");
+          Ipaddr.V4.localhost
+      in
       Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
       let uri = Cohttp.Request.uri request in
       let cid = Cohttp.Connection.to_string cid in

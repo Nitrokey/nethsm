@@ -80,7 +80,7 @@ module type S = sig
 
     val tls_cert_digest : t -> string option Lwt.t
 
-    val tls_csr_pem : t -> Json.subject_req -> string Lwt.t
+    val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
     val network : t -> Json.network Lwt.t
 
@@ -588,12 +588,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     and valid_until = Ptime.max
     in
     let dn = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN "keyfender")) ] in
-    let csr = X509.Signing_request.create dn priv in
-    match X509.Signing_request.sign csr ~valid_from ~valid_until priv dn with
+    match X509.Signing_request.create dn priv with
     | Error e ->
-      fatal "signing certificate signing request"
+      fatal "creating signing request"
         ~pp_error:X509.Validation.pp_signature_error e
-    | Ok cert -> cert, priv
+    | Ok csr ->
+      match X509.Signing_request.sign csr ~valid_from ~valid_until priv dn with
+      | Error e ->
+        fatal "signing certificate signing request"
+          ~pp_error:X509.Validation.pp_signature_error e
+      | Ok cert -> cert, priv
 
   let certificate_chain kv =
     let open Lwt_result.Infix in
@@ -633,10 +637,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let info t = t.info
 
-  let own_cert t =
-    match t.key with
-    | `RSA pk -> `Single (t.cert :: t.chain, pk)
-    | _ -> `None (* cannot happen *)
+  let own_cert t = `Single (t.cert :: t.chain, t.key)
 
   let default_network_configuration =
     let ip = Ipaddr.V4.of_string_exn "192.168.1.1" in
@@ -967,30 +968,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           to_z "publicExponent" key.publicExponent >>= fun e ->
           Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q >>| fun key ->
           `RSA key
-        | Json.ED25519 ->
+        | _ ->
           b64_data key.data >>= fun k ->
-          (try Ok (`ED25519 (Hacl_ed25519.priv (Cstruct.of_string k))) with
-             Invalid_argument e -> Error (`Msg ("invalid ED25519 key: " ^ e)))
-        | Json.ECDSA_P224 ->
-          b64_data key.data >>= fun k ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P224.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
-          `P224 p
-        | Json.ECDSA_P256 ->
-          b64_data key.data >>= fun k ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P256.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
-          `P256 p
-        | Json.ECDSA_P384 ->
-          b64_data key.data >>= fun k ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P384.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
-          `P384 p
-        | Json.ECDSA_P521 ->
-          b64_data key.data >>= fun k ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P521.Dsa.priv_of_cstruct (Cstruct.of_string k)) >>| fun p ->
-          `P521 p
+          let typ = match algorithm with
+            | Json.ED25519 -> `ED25519
+            | ECDSA_P224 -> `P224
+            | ECDSA_P256 -> `P256
+            | ECDSA_P384 -> `P384
+            | ECDSA_P521 -> `P521
+            | RSA -> assert false
+          in
+          X509.Private_key.of_cstruct (Cstruct.of_string k) typ
       with
       | Error `Msg e -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~id t mechanisms priv
@@ -1003,34 +991,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let generate ~id t typ mechanisms ~length =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
-      match typ with
-      | Json.RSA ->
-        if 1024 <= length && length <= 8192 then begin
-          let priv = Mirage_crypto_pk.Rsa.generate ~bits:length () in
-          Metrics.key_op `Generate;
-          add ~id t mechanisms (`RSA priv)
-        end else
-          Lwt.return @@ Error (Bad_request, "Length must be between 1024 and 8192.")
-      | Json.ED25519 ->
-        let priv = Hacl_ed25519.priv (Mirage_crypto_rng.generate 32) in
+      Lwt.return
+        (match typ with
+         | Json.RSA ->
+           if 1024 <= length && length <= 8192 then
+             Ok (Some length, `RSA)
+           else
+             Error (Bad_request, "Length must be between 1024 and 8192.")
+         | Json.ED25519 -> Ok (None, `ED25519)
+         | Json.ECDSA_P224 -> Ok (None, `P224)
+         | Json.ECDSA_P256 -> Ok (None, `P256)
+         | Json.ECDSA_P384 -> Ok (None, `P384)
+         | Json.ECDSA_P521 -> Ok (None, `P521)) >>= fun (bits, typ) ->
+        let priv = X509.Private_key.generate ?bits typ in
         Metrics.key_op `Generate;
-        add ~id t mechanisms (`ED25519 priv)
-      | Json.ECDSA_P224 ->
-        let priv, _ = Mirage_crypto_ec.P224.Dsa.generate ~rng:Mirage_crypto_rng.generate in
-        Metrics.key_op `Generate;
-        add ~id t mechanisms (`P224 priv)
-      | Json.ECDSA_P256 ->
-        let priv, _ = Mirage_crypto_ec.P256.Dsa.generate ~rng:Mirage_crypto_rng.generate in
-        Metrics.key_op `Generate;
-        add ~id t mechanisms (`P256 priv)
-      | Json.ECDSA_P384 ->
-        let priv, _ = Mirage_crypto_ec.P384.Dsa.generate ~rng:Mirage_crypto_rng.generate in
-        Metrics.key_op `Generate;
-        add ~id t mechanisms (`P384 priv)
-      | Json.ECDSA_P521 ->
-        let priv, _ = Mirage_crypto_ec.P521.Dsa.generate ~rng:Mirage_crypto_rng.generate in
-        Metrics.key_op `Generate;
-        add ~id t mechanisms (`P521 priv)
+        add ~id t mechanisms priv
 
     let remove t ~id =
       let open Lwt_result.Infix in
@@ -1059,7 +1034,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Json.rsaPublicKey_to_yojson { Json.modulus ; publicExponent }, Json.RSA
         | `ED25519 k ->
           let data =
-            cs_to_b64 (Hacl_ed25519.priv_to_public k)
+            Ed25519.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ecPublicKey_to_yojson { Json.data }, Json.ED25519
         | `P224 k ->
@@ -1101,9 +1076,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match key.priv with
       | `RSA priv ->
         let subject' = Json.to_distinguished_name subject in
-        let csr = X509.Signing_request.create subject' (`RSA priv) in
-        let data = Cstruct.to_string @@ X509.Signing_request.encode_pem csr in
-        Lwt.return (Ok data)
+        Lwt.return
+          (match X509.Signing_request.create subject' (`RSA priv) with
+           | Error `Msg e -> Error (Bad_request, "creating signing request: " ^ e)
+           | Ok csr ->
+             let data = Cstruct.to_string @@ X509.Signing_request.encode_pem csr in
+             Ok data)
       | _ ->
         Lwt.return (Error (Bad_request, "CSR only supported for RSA keys"))
 
@@ -1176,13 +1154,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
            else
              Error (Bad_request, "Key mechanisms do not allow requested decryption."))
 
-    module Pss_md5 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.MD5)
-    module Pss_sha1 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA1)
-    module Pss_sha224 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA224)
-    module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
-    module Pss_sha384 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA384)
-    module Pss_sha512 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA512)
-
     let sign t ~id sign_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
@@ -1194,51 +1165,32 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         if Json.MS.mem (Json.mechanism_of_sign_mode sign_mode) key_data.mechanisms then
           let to_sign_cs = Cstruct.of_string to_sign in
           let open Rresult.R.Infix in
-          Lwt.return @@
-          begin
-            (try
-               match key_data.priv, sign_mode with
+          Lwt.return
+            (begin match key_data.priv, sign_mode with
                | `RSA key, Json.PKCS1 ->
-                 Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs)
-               | `RSA key, Json.PSS_MD5 ->
-                 Ok (Pss_md5.sign ~key (`Digest to_sign_cs))
-               | `RSA key, Json.PSS_SHA1 ->
-                 Ok (Pss_sha1.sign ~key (`Digest to_sign_cs))
-               | `RSA key, Json.PSS_SHA224 ->
-                 Ok (Pss_sha224.sign ~key (`Digest to_sign_cs))
-               | `RSA key, Json.PSS_SHA256 ->
-                 Ok (Pss_sha256.sign ~key (`Digest to_sign_cs))
-               | `RSA key, Json.PSS_SHA384 ->
-                 Ok (Pss_sha384.sign ~key (`Digest to_sign_cs))
-               | `RSA key, Json.PSS_SHA512 ->
-                 Ok (Pss_sha512.sign ~key (`Digest to_sign_cs))
-               | `ED25519 key, Json.ED25519 ->
-                 Ok (Hacl_ed25519.sign key to_sign_cs)
-               | `P224 key, Json.ECDSA_P224 ->
-                 let r, s = Mirage_crypto_ec.P224.Dsa.sign ~key to_sign_cs in
-                 Ok (Cstruct.append r s)
-               | `P256 key, Json.ECDSA_P256 ->
-                 let r, s = Mirage_crypto_ec.P256.Dsa.sign ~key to_sign_cs in
-                 Ok (Cstruct.append r s)
-               | `P384 key, Json.ECDSA_P384 ->
-                 let r, s = Mirage_crypto_ec.P384.Dsa.sign ~key to_sign_cs in
-                 Ok (Cstruct.append r s)
-               | `P521 key, Json.ECDSA_P521 ->
-                 let r, s = Mirage_crypto_ec.P521.Dsa.sign ~key to_sign_cs in
-                 Ok (Cstruct.append r s)
-               | _ -> Error (Bad_request, "Invalid sign mode for key type.")
-             with
-             | Mirage_crypto_pk.Rsa.Insufficient_key ->
-               Error (Bad_request, "Signing failure: RSA key too short.")
-             | Mirage_crypto_ec.Message_too_long ->
-               Error (Bad_request, "Signing failure: Message too long.")
-             | Invalid_argument x ->
-               (* if RSA-PSS is used, and (`Digest yy) is not of digest length *)
-               Error (Bad_request, "Signing failure: " ^ x)) >>| fun signature ->
-            Metrics.key_op `Sign;
-            Hashtbl.replace cached_operations id (succ key_data.operations);
-            Base64.encode_string @@ Cstruct.to_string signature
-          end
+                 (try Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs) with
+                  | Mirage_crypto_pk.Rsa.Insufficient_key ->
+                    Error (Bad_request, "Signing failure: RSA key too short."))
+               | _ ->
+                 (match sign_mode with
+                  | Json.PSS_MD5 -> Ok (`RSA_PSS, `MD5, `Digest to_sign_cs)
+                  | PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign_cs)
+                  | PSS_SHA224 -> Ok (`RSA_PSS, `SHA224, `Digest to_sign_cs)
+                  | PSS_SHA256 -> Ok (`RSA_PSS, `SHA256, `Digest to_sign_cs)
+                  | PSS_SHA384 -> Ok (`RSA_PSS, `SHA384, `Digest to_sign_cs)
+                  | PSS_SHA512 -> Ok (`RSA_PSS, `SHA512, `Digest to_sign_cs)
+                  | ED25519 -> Ok (`ED25519, `SHA512, `Message to_sign_cs)
+                  | ECDSA_P224 -> Ok (`ECDSA, `SHA224, `Digest to_sign_cs)
+                  | ECDSA_P256 -> Ok (`ECDSA, `SHA256, `Digest to_sign_cs)
+                  | ECDSA_P384 -> Ok (`ECDSA, `SHA384, `Digest to_sign_cs)
+                  | ECDSA_P521 -> Ok (`ECDSA, `SHA512, `Digest to_sign_cs)
+                  | _ -> Error (Bad_request, "invalid sign mode")) >>= fun (scheme, hash, data) ->
+                 Rresult.R.reword_error (function `Msg m -> Bad_request, m)
+                   (X509.Private_key.sign hash ~scheme key_data.priv data)
+             end >>| fun signature ->
+             Metrics.key_op `Sign;
+             Hashtbl.replace cached_operations id (succ key_data.operations);
+             Base64.encode_string @@ Cstruct.to_string signature)
         else
           Lwt.return (Error (Bad_request, "Key mechanisms do not allow requested signing."))
 
@@ -1427,8 +1379,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let tls_csr_pem t subject =
       let dn = Json.to_distinguished_name subject in
-      let csr = X509.Signing_request.create dn t.key in
-      Lwt.return (Cstruct.to_string (X509.Signing_request.encode_pem csr))
+      Lwt.return
+        (match X509.Signing_request.create dn t.key with
+         | Ok csr -> Ok (Cstruct.to_string (X509.Signing_request.encode_pem csr))
+         | Error `Msg m -> Error (Bad_request, "while creating CSR: " ^ m))
 
     let network t =
       let open Lwt.Infix in

@@ -8,22 +8,25 @@ module Main
     (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Static_assets: Mirage_kv.RO)
-    (Internal_stack: Mirage_stack.V4) (_ : sig end)
+    (Internal_stack: Mirage_stack.V4V6) (_ : sig end)
     (External_net: Mirage_net.S) (External_eth: Mirage_protocols.ETHERNET) (External_arp: Mirage_protocols.ARP)
 =
 struct
   module Time = OS.Time
   module Ext_ipv4 = Static_ipv4.Make(Rng)(Mclock)(External_eth)(External_arp)
+  module Ext_ipv6 = Ipv6.Make(External_net)(External_eth)(Rng)(Time)(Mclock)
   module Ext_icmp = Icmpv4.Make(Ext_ipv4)
-  module Ext_udp = Udp.Make(Ext_ipv4)(Rng)
-  module Ext_tcp = Tcp.Flow.Make(Ext_ipv4)(Time)(Mclock)(Rng)
-  module Ext_stack = Tcpip_stack_direct.Make(Time)(Rng)(External_net)(External_eth)(External_arp)(Ext_ipv4)(Ext_icmp)(Ext_udp)(Ext_tcp)
+  module Ext_ip = Tcpip_stack_direct.IPV4V6(Ext_ipv4)(Ext_ipv6)
+  module Ext_udp = Udp.Make(Ext_ip)(Rng)
+  module Ext_tcp = Tcp.Flow.Make(Ext_ip)(Time)(Mclock)(Rng)
+  module Ext_stack = Tcpip_stack_direct.MakeV4V6(Time)(Rng)(External_net)(External_eth)(External_arp)(Ext_ip)(Ext_icmp)(Ext_udp)(Ext_tcp)
 
-  module Conduit = Conduit_mirage.With_tcp(Ext_stack)
-  module Http = Cohttp_mirage.Server_with_conduit
+  module Conduit = Conduit_mirage.TCP(Ext_stack)
+  module Conduit_tls = Conduit_mirage.TLS(Conduit)
+  module Http = Cohttp_mirage.Server.Make(Conduit_tls)
 
   module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
-  module Git_store = Irmin_mirage_git.KV_RW(Irmin_git.Mem)(Hsm_clock)
+  module Git_store = Store.KV_RW(Irmin_git.Mem)(Hsm_clock)
 
   module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
@@ -52,7 +55,7 @@ struct
       Http.respond ~headers ~status:`OK ~body:(`String data) ()
     | _ -> next ip request body
 
-  module T = Internal_stack.TCPV4
+  module T = Internal_stack.TCP
   let write_platform stack cmd =
     if Key_gen.no_platform () then begin
       Log.warn (fun m -> m "Communication to the platform has been disabled with '--no-platform'. This is not meant for production. Skipping to send %s, replying with the empty string." cmd);
@@ -63,7 +66,7 @@ struct
         (Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
          Log.err (fun m -> m "couldn't connect to platform (while sending %s)" cmd);
          Error `Timeout) ;
-        T.create_connection (Internal_stack.tcpv4 stack) (Key_gen.platform (), Key_gen.platform_port ()) >>= function
+        T.create_connection (Internal_stack.tcp stack) (Ipaddr.V4 (Key_gen.platform ()), Key_gen.platform_port ()) >>= function
         | Error e ->
           Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
         | Ok flow ->
@@ -156,21 +159,24 @@ struct
       let setup_stack ?gateway cidr =
         Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
         Ext_icmp.connect ipv4 >>= fun icmp ->
-        Ext_udp.connect ipv4 >>= fun udp ->
-        Ext_tcp.connect ipv4 >>= fun tcp ->
-        Ext_stack.connect ext_net ext_eth ext_arp ipv4 icmp udp tcp >|= fun ext_stack ->
+        Ext_ipv6.connect ~no_init:true ~handle_ra:false ext_net ext_eth >>= fun ipv6 ->
+        Ext_ip.connect ~ipv4_only:true ~ipv6_only:false ipv4 ipv6 >>= fun ip ->
+        Ext_udp.connect ip >>= fun udp ->
+        Ext_tcp.connect ip >>= fun tcp ->
+        Ext_stack.connect ext_net ext_eth ext_arp ip icmp udp tcp >|= fun ext_stack ->
         tcp, ext_stack
       and shutdown_stack tcp stack =
         Ext_tcp.disconnect tcp >>= fun () ->
         Ext_stack.disconnect stack
-      and setup_conduit ext_stack =
-        Conduit.connect ext_stack Conduit_mirage.empty >>= Conduit_mirage.with_tls >>= fun conduit ->
-        Http.connect conduit
       and setup_log ext_stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
         then
-          let reporter = Syslog.create console ext_stack ~hostname:"keyfender" log.Keyfender.Json.ipAddress ~port:log.Keyfender.Json.port () in
+          let reporter =
+            let port = log.Keyfender.Json.port in
+            Syslog.create console ext_stack ~hostname:"keyfender"
+              (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
+          in
           Logs.set_reporter reporter
         else
           Log_reporter.set_reporter (Log_reporter.create ())
@@ -196,7 +202,7 @@ struct
       in
       let reconfigure_network cidr gateway =
         setup_stack ?gateway cidr >>= fun (tcp, ext_stack) ->
-        setup_conduit ext_stack >>= fun http ->
+        let http = Http.listen ext_stack in
         Lwt.async (fun () -> setup_http_listener http);
         Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
         Hsm.Config.log hsm_state >|= fun log ->
