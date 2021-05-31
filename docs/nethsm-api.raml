@@ -50,11 +50,11 @@ types:
   KeyAlgorithm:
     enum:
       - RSA
-      - ED25519
-      - ECDSA_P224
-      - ECDSA_P256
-      - ECDSA_P384
-      - ECDSA_P521
+      - Curve25519
+      - EC_P224
+      - EC_P256
+      - EC_P384
+      - EC_P521
   KeyMechanism:
     enum:
       - RSA_Decryption_RAW
@@ -72,11 +72,8 @@ types:
       - RSA_Signature_PSS_SHA256
       - RSA_Signature_PSS_SHA384
       - RSA_Signature_PSS_SHA512
-      - ED25519_Signature
-      - ECDSA_P224_Signature
-      - ECDSA_P256_Signature
-      - ECDSA_P384_Signature
-      - ECDSA_P521_Signature
+      - EdDSA_Signature
+      - ECDSA_Signature
   DecryptMode:
     enum:
       - RAW
@@ -96,11 +93,8 @@ types:
       - PSS_SHA256
       - PSS_SHA384
       - PSS_SHA512
-      - ED25519
-      - ECDSA_P224
-      - ECDSA_P256
-      - ECDSA_P384
-      - ECDSA_P521
+      - EdDSA
+      - ECDSA
   KeyList:
     type: array
     items: KeyItem
