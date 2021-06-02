@@ -173,6 +173,7 @@ build_api_docs:
       - api_docs/
   before_script: []
   script:
-    - npm install -g api-console-cli
-    - api-console build -t "RAML 1.0" --app-title "NetHSM API"
+    - npm install api-console-cli
+    - npm install amf-client-js@4.7.2 # 4.7.3 is broken
+    - ./node_modules/.bin/api-console build -t "RAML 1.0" --app-title "NetHSM API"
         --verbose --strict -o api_docs/ $API_SPEC
