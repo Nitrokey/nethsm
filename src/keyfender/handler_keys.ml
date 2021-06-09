@@ -82,6 +82,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method private set_json rd =
+      let cc hdr = Cohttp.Header.remove hdr "location" in
+      let rd = Webmachine.Rd.with_resp_headers cc rd in
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok (key : Json.generate_key_req) =
@@ -91,7 +93,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | id, _ -> id
         in
         Hsm.Key.generate hsm_state ~id key.algorithm key.mechanisms ~length:key.length >>= function
-        | Ok () -> Wm.continue true rd
+        | Ok () ->
+          let cc hdr = Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id) in
+          let rd' = Webmachine.Rd.with_resp_headers cc rd in
+          Wm.continue true rd'
         | Error e -> Endpoint.respond_error e rd
       in
       Json.decode_generate_key_req content |>

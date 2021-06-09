@@ -1044,11 +1044,10 @@ let keys_generate_no_mech () =
   | _ -> false
   end
 
-let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519" }|}
-
 let keys_generate_ed25519 () =
   "POST on /keys/generate with ED25519 succeeds"
   @? begin
+  let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519" }|} in
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Created, headers, _, _) ->
     begin match Cohttp.Header.get headers "location" with
@@ -1059,12 +1058,29 @@ let keys_generate_ed25519 () =
   | _ -> false
   end
 
+let keys_generate_ed25519_explicit_keyid () =
+  "POST on /keys/generate with ED25519 succeeds (with explicit key ID)"
+  @? begin
+  let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519", "id": "mynewkey" }|} in
+  match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
+  | _, Some (`Created, headers, _, _) ->
+    begin match Cohttp.Header.get headers "location" with
+    | None -> false
+    | Some loc -> String.equal loc "/api/v1/keys/mynewkey"
+    end
+  | _ -> false
+  end
+
 let keys_generate_ed25519_fail () =
   let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "ED25519" }|} in
   "POST on /keys/generate with ED25519 fails (wrong mechanism)"
   @? begin
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
-  | _, Some (`Bad_request, _, _, _) -> true
+  | _, Some (`Bad_request, headers, _, _) ->
+    begin match Cohttp.Header.get headers "location" with
+      | None -> true
+      | Some _ -> false
+    end
   | _ -> false
   end
 
@@ -1840,6 +1856,7 @@ let () =
     "/keys/generate" >:: keys_generate_invalid_mech;
     "/keys/generate" >:: keys_generate_no_mech;
     "/keys/generate" >:: keys_generate_ed25519;
+    "/keys/generate" >:: keys_generate_ed25519_explicit_keyid;
     "/keys/generate" >:: keys_generate_ed25519_fail;
     "/keys/keyID" >:: keys_key_get;
     "/keys/keyID" >:: keys_key_get_not_found;
