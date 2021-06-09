@@ -1073,17 +1073,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let csr_pem t ~id subject =
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
-      match key.priv with
-      | `RSA priv ->
-        let subject' = Json.to_distinguished_name subject in
-        Lwt.return
-          (match X509.Signing_request.create subject' (`RSA priv) with
-           | Error `Msg e -> Error (Bad_request, "creating signing request: " ^ e)
-           | Ok csr ->
-             let data = Cstruct.to_string @@ X509.Signing_request.encode_pem csr in
-             Ok data)
-      | _ ->
-        Lwt.return (Error (Bad_request, "CSR only supported for RSA keys"))
+      let subject' = Json.to_distinguished_name subject in
+      Lwt_result.lift
+        (match X509.Signing_request.create subject' key.priv with
+         | Error `Msg e -> Error (Bad_request, "creating signing request: " ^ e)
+         | Ok c -> Ok (Cstruct.to_string @@ X509.Signing_request.encode_pem c))
 
     let get_cert t ~id =
       let open Lwt_result.Infix in
