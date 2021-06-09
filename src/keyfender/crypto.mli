@@ -1,6 +1,3 @@
-val initial_key_rsa_bits : int
-(** The number of bits for the initial RSA private key. *)
-
 val salt_len : int
 (** The length of the salt used in password derivation, in bytes. *)
 

@@ -1,8 +1,6 @@
 
 module GCM = Mirage_crypto.Cipher_block.AES.GCM
 
-let initial_key_rsa_bits = 2048
-
 (* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
 let scrypt_n = 16384
 let scrypt_r = 8

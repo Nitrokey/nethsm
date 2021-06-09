@@ -582,7 +582,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     t.state <- state'
 
   let generate_cert () =
-    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:Crypto.initial_key_rsa_bits ()) in
+    let priv = X509.Private_key.generate `P256 in
     (* this is before provisioning, our posix time may be not accurate *)
     let valid_from = Ptime.epoch
     and valid_until = Ptime.max
@@ -1343,7 +1343,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error `Msg m -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
-        if X509.Private_key.public t.key = X509.Certificate.public_key cert then
+        let key_eq a b =
+          Cstruct.equal
+            (X509.Public_key.fingerprint a)
+            (X509.Public_key.fingerprint b)
+        in
+        if key_eq (X509.Private_key.public t.key) (X509.Certificate.public_key cert) then
           let valid = match List.rev chain with
             | [] -> Ok cert
             | ta :: chain' ->
