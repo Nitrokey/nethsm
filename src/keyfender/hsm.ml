@@ -971,11 +971,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | _ ->
           b64_data key.data >>= fun k ->
           let typ = match algorithm with
-            | Json.ED25519 -> `ED25519
-            | ECDSA_P224 -> `P224
-            | ECDSA_P256 -> `P256
-            | ECDSA_P384 -> `P384
-            | ECDSA_P521 -> `P521
+            | Json.Curve25519 -> `ED25519
+            | EC_P224 -> `P224
+            | EC_P256 -> `P256
+            | EC_P384 -> `P384
+            | EC_P521 -> `P521
             | RSA -> assert false
           in
           X509.Private_key.of_cstruct (Cstruct.of_string k) typ
@@ -998,11 +998,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
              Ok (Some length, `RSA)
            else
              Error (Bad_request, "Length must be between 1024 and 8192.")
-         | Json.ED25519 -> Ok (None, `ED25519)
-         | Json.ECDSA_P224 -> Ok (None, `P224)
-         | Json.ECDSA_P256 -> Ok (None, `P256)
-         | Json.ECDSA_P384 -> Ok (None, `P384)
-         | Json.ECDSA_P521 -> Ok (None, `P521)) >>= fun (bits, typ) ->
+         | Json.Curve25519 -> Ok (None, `ED25519)
+         | Json.EC_P224 -> Ok (None, `P224)
+         | Json.EC_P256 -> Ok (None, `P256)
+         | Json.EC_P384 -> Ok (None, `P384)
+         | Json.EC_P521 -> Ok (None, `P521)) >>= fun (bits, typ) ->
         let priv = X509.Private_key.generate ?bits typ in
         Metrics.key_op `Generate;
         add ~id t mechanisms priv
@@ -1036,27 +1036,27 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           let data =
             Ed25519.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.ED25519
+          Json.ecPublicKey_to_yojson { Json.data }, Json.Curve25519
         | `P224 k ->
           let data =
             P224.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P224
+          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P224
         | `P256 k ->
           let data =
             P256.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P256
+          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P256
         | `P384 k ->
           let data =
             P384.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P384
+          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P384
         | `P521 k ->
           let data =
             P521.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.ECDSA_P521
+          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P521
       in
       Json.publicKey_to_yojson
         { Json.mechanisms = pkey.mechanisms ;
@@ -1166,18 +1166,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                   | Mirage_crypto_pk.Rsa.Insufficient_key ->
                     Error (Bad_request, "Signing failure: RSA key too short."))
                | _ ->
-                 (match sign_mode with
-                  | Json.PSS_MD5 -> Ok (`RSA_PSS, `MD5, `Digest to_sign_cs)
-                  | PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign_cs)
-                  | PSS_SHA224 -> Ok (`RSA_PSS, `SHA224, `Digest to_sign_cs)
-                  | PSS_SHA256 -> Ok (`RSA_PSS, `SHA256, `Digest to_sign_cs)
-                  | PSS_SHA384 -> Ok (`RSA_PSS, `SHA384, `Digest to_sign_cs)
-                  | PSS_SHA512 -> Ok (`RSA_PSS, `SHA512, `Digest to_sign_cs)
-                  | ED25519 -> Ok (`ED25519, `SHA512, `Message to_sign_cs)
-                  | ECDSA_P224 -> Ok (`ECDSA, `SHA224, `Digest to_sign_cs)
-                  | ECDSA_P256 -> Ok (`ECDSA, `SHA256, `Digest to_sign_cs)
-                  | ECDSA_P384 -> Ok (`ECDSA, `SHA384, `Digest to_sign_cs)
-                  | ECDSA_P521 -> Ok (`ECDSA, `SHA512, `Digest to_sign_cs)
+                 (match key_data.priv, sign_mode with
+                  | `RSA _, Json.PSS_MD5 -> Ok (`RSA_PSS, `MD5, `Digest to_sign_cs)
+                  | `RSA _, PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign_cs)
+                  | `RSA _, PSS_SHA224 -> Ok (`RSA_PSS, `SHA224, `Digest to_sign_cs)
+                  | `RSA _, PSS_SHA256 -> Ok (`RSA_PSS, `SHA256, `Digest to_sign_cs)
+                  | `RSA _, PSS_SHA384 -> Ok (`RSA_PSS, `SHA384, `Digest to_sign_cs)
+                  | `RSA _, PSS_SHA512 -> Ok (`RSA_PSS, `SHA512, `Digest to_sign_cs)
+                  | `ED25519 _, EdDSA -> Ok (`ED25519, `SHA512, `Message to_sign_cs)
+                  | `P224 _, ECDSA -> Ok (`ECDSA, `SHA224, `Digest to_sign_cs)
+                  | `P256 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign_cs)
+                  | `P384 _, ECDSA -> Ok (`ECDSA, `SHA384, `Digest to_sign_cs)
+                  | `P521 _, ECDSA -> Ok (`ECDSA, `SHA512, `Digest to_sign_cs)
                   | _ -> Error (Bad_request, "invalid sign mode")) >>= fun (scheme, hash, data) ->
                  Rresult.R.reword_error (function `Msg m -> Bad_request, m)
                    (X509.Private_key.sign hash ~scheme key_data.priv data)

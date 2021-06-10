@@ -175,11 +175,8 @@ type mechanism =
   | RSA_Signature_PSS_SHA256
   | RSA_Signature_PSS_SHA384
   | RSA_Signature_PSS_SHA512
-  | ED25519_Signature
-  | ECDSA_P224_Signature
-  | ECDSA_P256_Signature
-  | ECDSA_P384_Signature
-  | ECDSA_P521_Signature
+  | EdDSA_Signature
+  | ECDSA_Signature
 [@@deriving yojson, ord]
 
 let mechanism_of_yojson = function
@@ -222,11 +219,11 @@ let mechanisms_of_string m =
 
 type algorithm =
   | RSA
-  | ED25519
-  | ECDSA_P224
-  | ECDSA_P256
-  | ECDSA_P384
-  | ECDSA_P521
+  | Curve25519
+  | EC_P224
+  | EC_P256
+  | EC_P384
+  | EC_P521
 [@@deriving yojson]
 
 let algorithm_of_yojson = function
@@ -246,11 +243,11 @@ let algorithm_matches_mechanism alg m =
                  RSA_Signature_PSS_SHA1 ; RSA_Signature_PSS_SHA224 ;
                  RSA_Signature_PSS_SHA256 ; RSA_Signature_PSS_SHA384 ;
                  RSA_Signature_PSS_SHA512 ]
-  | ED25519 -> m = ED25519_Signature
-  | ECDSA_P224 -> m = ECDSA_P224_Signature
-  | ECDSA_P256 -> m = ECDSA_P256_Signature
-  | ECDSA_P384 -> m = ECDSA_P384_Signature
-  | ECDSA_P521 -> m = ECDSA_P521_Signature
+  | Curve25519 -> m = EdDSA_Signature
+  | EC_P224 -> m = ECDSA_Signature
+  | EC_P256 -> m = ECDSA_Signature
+  | EC_P384 -> m = ECDSA_Signature
+  | EC_P521 -> m = ECDSA_Signature
 
 type rsaPublicKey = {
   modulus : string ;
@@ -309,11 +306,8 @@ type sign_mode =
   | PSS_SHA256
   | PSS_SHA384
   | PSS_SHA512
-  | ED25519
-  | ECDSA_P224
-  | ECDSA_P256
-  | ECDSA_P384
-  | ECDSA_P521
+  | EdDSA
+  | ECDSA
 [@@deriving yojson]
 
 let mechanism_of_sign_mode = function
@@ -324,11 +318,8 @@ let mechanism_of_sign_mode = function
   | PSS_SHA256 -> RSA_Signature_PSS_SHA256
   | PSS_SHA384 -> RSA_Signature_PSS_SHA384
   | PSS_SHA512 -> RSA_Signature_PSS_SHA512
-  | ED25519 -> ED25519_Signature
-  | ECDSA_P224 -> ECDSA_P224_Signature
-  | ECDSA_P256 -> ECDSA_P256_Signature
-  | ECDSA_P384 -> ECDSA_P384_Signature
-  | ECDSA_P521 -> ECDSA_P521_Signature
+  | EdDSA -> EdDSA_Signature
+  | ECDSA -> ECDSA_Signature
 
 let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [s])

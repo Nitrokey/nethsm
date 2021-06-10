@@ -1027,7 +1027,7 @@ let keys_generate_invalid_id_length () =
   end
 
 let keys_generate_invalid_mech () =
-  let generate_json = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "RSA", length: 2048, id: "1234" }|} in
+  let generate_json = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "RSA", length: 2048, id: "1234" }|} in
   "POST on /keys/generate with invalid mechanism fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1047,7 +1047,7 @@ let keys_generate_no_mech () =
 let keys_generate_ed25519 () =
   "POST on /keys/generate with ED25519 succeeds"
   @? begin
-  let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519" }|} in
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Created, headers, _, _) ->
     begin match Cohttp.Header.get headers "location" with
@@ -1061,7 +1061,7 @@ let keys_generate_ed25519 () =
 let keys_generate_ed25519_explicit_keyid () =
   "POST on /keys/generate with ED25519 succeeds (with explicit key ID)"
   @? begin
-  let generate_ed25519 = {|{ mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519", "id": "mynewkey" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519", "id": "mynewkey" }|} in
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Created, headers, _, _) ->
     begin match Cohttp.Header.get headers "location" with
@@ -1072,7 +1072,7 @@ let keys_generate_ed25519_explicit_keyid () =
   end
 
 let keys_generate_ed25519_fail () =
-  let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "ED25519" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "Curve25519" }|} in
   "POST on /keys/generate with ED25519 fails (wrong mechanism)"
   @? begin
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
@@ -1455,7 +1455,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
 let hsm_with_ed25519_key () =
   let hsm_state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton ED25519_Signature) ~id:"keyID" ed25519_priv_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton EdDSA_Signature) ~id:"keyID" ed25519_priv_pem >|= function
     | Ok () -> hsm_state
     | Error _ -> assert false)
 
@@ -1470,7 +1470,7 @@ let operator_sign_ed25519_succeeds () =
   @? begin
     let hsm_state = hsm_with_ed25519_key () in
     let sign_request =
-      Printf.sprintf {|{ mode: "ED25519", message: "%s"}|}
+      Printf.sprintf {|{ mode: "EdDSA", message: "%s"}|}
         (Base64.encode_string message)
     in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
@@ -1511,7 +1511,7 @@ let keys_key_get_ed25519 () =
 
 let ed25519_json =
   let b64 = Base64.encode_string (Cstruct.to_string (Mirage_crypto_ec.Ed25519.priv_to_cstruct ed25519_priv)) in
-  Printf.sprintf {| { mechanisms: [ "ED25519_Signature" ], algorithm: "ED25519", key: { data: "%s" } } |} b64
+  Printf.sprintf {| { mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519", key: { data: "%s" } } |} b64
 
 let keys_key_put_ed25519 () =
   "PUT on /keys/keyID succeeds with ED25519 key"
