@@ -269,11 +269,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [`POST ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
+      Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ] rd
 
     method content_types_accepted rd =
       Wm.continue [
-        ("application/x-pem-file", self#csr_pem)
+        ("application/json", self#csr_pem)
       ] rd
 
     method! is_authorized = Access.is_authorized hsm_state ip

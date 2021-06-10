@@ -1249,7 +1249,11 @@ let admin_keys_key_csr_pem () =
   "POST on /keys/keyID/csr.pem succeeds"
   @? begin
   match admin_post_request ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
-  | _, Some (`OK, _, _, _) -> true
+  | _, Some (`OK, headers, _, _) ->
+    begin match Cohttp.Header.get headers "content-type" with
+      | None -> false
+      | Some ct -> String.equal ct "application/x-pem-file"
+    end
   | _ -> false
   end
 
