@@ -217,7 +217,7 @@ let mechanisms_of_string m =
     (Ok []) (Astring.String.cuts ~sep:"," m) >>| fun ms ->
   MS.of_list ms
 
-type algorithm =
+type key_type =
   | RSA
   | Curve25519
   | EC_P224
@@ -226,14 +226,14 @@ type algorithm =
   | EC_P521
 [@@deriving yojson]
 
-let algorithm_of_yojson = function
-  | `String _ as s -> algorithm_of_yojson (`List [s])
-  | _ -> Error "Expected JSON string for algorithm"
+let key_type_of_yojson = function
+  | `String _ as s -> key_type_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for type"
 
-let algorithm_to_yojson alg = head @@ algorithm_to_yojson alg
+let key_type_to_yojson typ = head @@ key_type_to_yojson typ
 
-let algorithm_matches_mechanism alg m =
-  match alg with
+let type_matches_mechanism typ m =
+  match typ with
   | RSA ->
     List.mem m [ RSA_Decryption_RAW ; RSA_Decryption_PKCS1 ;
                  RSA_Decryption_OAEP_MD5 ; RSA_Decryption_OAEP_SHA1 ;
@@ -260,14 +260,14 @@ type ecPublicKey = {
 
 type publicKey = {
   mechanisms : MS.t;
-  algorithm : algorithm;
+  typ : key_type [@key "type"];
   operations : int;
   key : Yojson.Safe.t;
 } [@@deriving to_yojson]
 
 type private_key_req = {
   mechanisms : MS.t ;
-  algorithm: algorithm ;
+  typ : key_type [@key "type"];
   key : key
 }[@@deriving yojson]
 
@@ -329,7 +329,7 @@ type sign_req = { mode : sign_mode ; message : string }[@@deriving yojson]
 
 type generate_key_req = {
   mechanisms : MS.t ;
-  algorithm : algorithm ;
+  typ : key_type [@key "type"];
   length : (int [@default 0]) ;
   id : (string [@default ""])
 } [@@deriving yojson]
@@ -346,13 +346,13 @@ let valid_id id =
 
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
-  (match r.algorithm with
+  (match r.typ with
    | RSA ->
      guard (1024 <= r.length && r.length <= 8192)
        "RSA key length must be between 1024 and 8192."
    | _ -> Ok ()) >>= fun () ->
-  guard (MS.for_all (algorithm_matches_mechanism r.algorithm) r.mechanisms)
-    "Mechanism does not match key algorithm" >>= fun () ->
+  guard (MS.for_all (type_matches_mechanism r.typ) r.mechanisms)
+    "Mechanism does not match key type" >>= fun () ->
   guard (MS.cardinal r.mechanisms > 0) "Empty set of mechanisms" >>= fun () ->
   let empty_or_valid id =
     if String.length id = 0 then Ok "" else valid_id id

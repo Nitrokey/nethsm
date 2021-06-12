@@ -157,13 +157,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.MS.t -> Json.algorithm -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key ->
       (unit, error) result Lwt.t
 
     val add_pem : id:string -> t -> Json.MS.t -> string ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> Json.algorithm -> Json.MS.t -> length:int ->
+    val generate : id:string -> t -> Json.key_type -> Json.MS.t -> length:int ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -951,7 +951,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | None ->
         encode_and_write t id { mechanisms ; priv ; cert = None ; operations = 0 }
 
-    let add_json ~id t mechanisms algorithm key =
+    let add_json ~id t mechanisms typ key =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s"
@@ -968,7 +968,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       in
       let open Rresult.R.Infix in
       match
-        match algorithm with
+        match typ with
         | Json.RSA ->
           to_z "primeP" key.Json.primeP >>= fun p ->
           to_z "primeQ" key.primeQ >>= fun q ->
@@ -977,7 +977,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           `RSA key
         | _ ->
           b64_data key.data >>= fun k ->
-          let typ = match algorithm with
+          let typ = match typ with
             | Json.Curve25519 -> `ED25519
             | EC_P224 -> `P224
             | EC_P256 -> `P256
@@ -1029,7 +1029,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Mirage_crypto_ec in
       get_key t id >|= fun pkey ->
       let cs_to_b64 cs = Base64.encode_string (Cstruct.to_string cs) in
-      let key, algorithm =
+      let key, typ =
         match pkey.priv with
         | `RSA k ->
           let z_to_b64 n =
@@ -1067,7 +1067,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       in
       Json.publicKey_to_yojson
         { Json.mechanisms = pkey.mechanisms ;
-          algorithm ;
+          typ ;
           operations = pkey.operations ;
           key }
 

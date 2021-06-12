@@ -47,7 +47,7 @@ types:
       - info
       - warning
       - error
-  KeyAlgorithm:
+  KeyType:
     enum:
       - RSA
       - Curve25519
@@ -117,12 +117,12 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # mechanisms are constrained by algorithm, only RSA keys can decrypt
-      algorithm: KeyAlgorithm
+      # mechanisms are constrained by type, only RSA keys can decrypt
+      type: KeyType
       key: KeyPrivateData
     example:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-      algorithm: "RSA"
+      type: "RSA"
       key:
         primeP: "frtz7u89gft89uz"
         primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
@@ -130,8 +130,8 @@ types:
   KeyPrivateData:
     type: object
     # this should express:
-    #   keyAlgorithm = RSA, primeP, primeQ, publicExponent are required
-    #   keyAlgorithm = ED25519 or ECDSA_*, data is required
+    #   keyType = RSA, primeP, primeQ, publicExponent are required
+    #   keyType = ED25519 or ECDSA_*, data is required
     properties:
       primeP:
         type: string
@@ -149,13 +149,13 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # keyMechanisms are constrained by algorithm, only RSA keys can decrypt
-      algorithm: KeyAlgorithm
+      # keyMechanisms are constrained by type, only RSA keys can decrypt
+      type: KeyType
       key: KeyPublicData
       operations: integer
     example:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-      algorithm: "RSA"
+      type: "RSA"
       key:
         modulus: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
         publicExponent: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
@@ -163,8 +163,8 @@ types:
   KeyPublicData:
     type: object
     # this should express:
-    #   keyAlgorithm = RSA, modulus and publicExponent are required
-    #   keyAlgorithm = ED25519 or ECDSA_*, data is required
+    #   keyType = RSA, modulus and publicExponent are required
+    #   keyType = ED25519 or ECDSA_*, data is required
     properties:
       modulus:
         type: string
@@ -247,8 +247,8 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # mechanisms are constrained by algorithm, only RSA allows decrypt
-      algorithm: KeyAlgorithm
+      # mechanisms are constrained by type, only RSA allows decrypt
+      type: KeyType
       length:
         # required for RSA keys
         type: integer
@@ -260,7 +260,7 @@ types:
         required: false
     example:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
-      algorithm: "RSA"
+      type: "RSA"
       length: 2048 # Not required for EC keys
       id: "myKey2" # KeyID is optional, will be created if not present
   DecryptRequestData:

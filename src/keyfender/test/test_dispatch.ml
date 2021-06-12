@@ -1021,7 +1021,7 @@ let keys_get () =
   | _ -> false
   end
 
-let key_json = {| { mechanisms: [ "RSA_Signature_PKCS1" ], algorithm: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
+let key_json = {| { mechanisms: [ "RSA_Signature_PKCS1" ], type: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
 
 let keys_post_json () =
   "POST on /keys succeeds"
@@ -1057,7 +1057,7 @@ let keys_post_pem () =
   | _ -> false
   end
 
-let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048 }|}
+let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048 }|}
 
 let keys_generate () =
   "POST on /keys/generate succeeds"
@@ -1072,7 +1072,7 @@ let keys_generate () =
   end
 
 let keys_generate_invalid_id () =
-  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048, id: "&*&*&*" }|} in
+  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "&*&*&*" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1083,7 +1083,7 @@ let keys_generate_invalid_id () =
   end
 
 let keys_generate_invalid_id_length () =
-  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
+  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
   "POST on /keys/generate with invalid ID fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1092,7 +1092,7 @@ let keys_generate_invalid_id_length () =
   end
 
 let keys_generate_invalid_mech () =
-  let generate_json = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "RSA", length: 2048, id: "1234" }|} in
+  let generate_json = {|{ mechanisms: [ "EdDSA_Signature" ], type: "RSA", length: 2048, id: "1234" }|} in
   "POST on /keys/generate with invalid mechanism fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1101,7 +1101,7 @@ let keys_generate_invalid_mech () =
   end
 
 let keys_generate_no_mech () =
-  let generate_json = {|{ mechanisms: [ ], algorithm: "RSA", length: 2048, id: "1234" }|} in
+  let generate_json = {|{ mechanisms: [ ], type: "RSA", length: 2048, id: "1234" }|} in
   "POST on /keys/generate with no mechanism fails"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1112,7 +1112,7 @@ let keys_generate_no_mech () =
 let keys_generate_ed25519 () =
   "POST on /keys/generate with ED25519 succeeds"
   @? begin
-  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519" }|} in
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Created, headers, _, _) ->
     begin match Cohttp.Header.get headers "location" with
@@ -1126,7 +1126,7 @@ let keys_generate_ed25519 () =
 let keys_generate_ed25519_explicit_keyid () =
   "POST on /keys/generate with ED25519 succeeds (with explicit key ID)"
   @? begin
-  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519", "id": "mynewkey" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", "id": "mynewkey" }|} in
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
   | _, Some (`Created, headers, _, _) ->
     begin match Cohttp.Header.get headers "location" with
@@ -1137,7 +1137,7 @@ let keys_generate_ed25519_explicit_keyid () =
   end
 
 let keys_generate_ed25519_fail () =
-  let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], algorithm: "Curve25519" }|} in
+  let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "Curve25519" }|} in
   "POST on /keys/generate with ED25519 fails (wrong mechanism)"
   @? begin
   match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
@@ -1188,7 +1188,7 @@ let keys_key_get () =
       | `Assoc xs ->
         begin
           List.exists (fun (k, v) -> k = "mechanisms" && match v with `List _ -> true | _ -> false) xs &&
-          List.exists (fun (k, v) -> k = "algorithm" && match v with `String a -> a = "RSA" | _ -> false) xs &&
+          List.exists (fun (k, v) -> k = "type" && match v with `String a -> a = "RSA" | _ -> false) xs &&
           List.exists (fun (k, v) -> k = "operations" && match v with `Int _ -> true | _ -> false) xs &&
           List.exists (fun (k, v) ->
               k = "key" &&
@@ -1580,7 +1580,7 @@ let keys_key_get_ed25519 () =
 
 let ed25519_json =
   let b64 = Base64.encode_string (Cstruct.to_string (Mirage_crypto_ec.Ed25519.priv_to_cstruct ed25519_priv)) in
-  Printf.sprintf {| { mechanisms: [ "EdDSA_Signature" ], algorithm: "Curve25519", key: { data: "%s" } } |} b64
+  Printf.sprintf {| { mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", key: { data: "%s" } } |} b64
 
 let keys_key_put_ed25519 () =
   "PUT on /keys/keyID succeeds with ED25519 key"

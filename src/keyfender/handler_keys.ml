@@ -23,7 +23,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
       let ok (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.mechanisms key.algorithm key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -92,7 +92,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | "", None -> assert false (* can never happen, see above *)
         | id, _ -> id
         in
-        Hsm.Key.generate hsm_state ~id key.algorithm key.mechanisms ~length:key.length >>= function
+        Hsm.Key.generate hsm_state ~id key.typ key.mechanisms ~length:key.length >>= function
         | Ok () ->
           let cc hdr = Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id) in
           let rd' = Webmachine.Rd.with_resp_headers cc rd in
@@ -149,7 +149,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.mechanisms key.algorithm key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in

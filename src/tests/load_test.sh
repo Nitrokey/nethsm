@@ -11,7 +11,7 @@ REQUEST=$(mktemp)
 cat <<EOF >${REQUEST}
 source "$(dirname $0)/common_functions.sh"
 POST_admin /v1/keys/generate <<EOM
-{ "mechanisms": ["RSA_Signature_PKCS1"], "algorithm": "RSA", "length": 2048 }
+{ "mechanisms": ["RSA_Signature_PKCS1"], "type": "RSA", "length": 2048 }
 EOM
 EOF
 seq ${ITERS} | ${PARALLEL} bash ${REQUEST} || exit 1
