@@ -1038,34 +1038,34 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           let modulus = z_to_b64 k.Mirage_crypto_pk.Rsa.n
           and publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e
           in
-          Json.rsaPublicKey_to_yojson { Json.modulus ; publicExponent }, Json.RSA
+          Json.rsa_public_key_to_yojson { Json.modulus ; publicExponent }, Json.RSA
         | `ED25519 k ->
           let data =
             Ed25519.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.Curve25519
+          Json.ec_public_key_to_yojson { Json.data }, Json.Curve25519
         | `P224 k ->
           let data =
             P224.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P224
+          Json.ec_public_key_to_yojson { Json.data }, Json.EC_P224
         | `P256 k ->
           let data =
             P256.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P256
+          Json.ec_public_key_to_yojson { Json.data }, Json.EC_P256
         | `P384 k ->
           let data =
             P384.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P384
+          Json.ec_public_key_to_yojson { Json.data }, Json.EC_P384
         | `P521 k ->
           let data =
             P521.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
-          Json.ecPublicKey_to_yojson { Json.data }, Json.EC_P521
+          Json.ec_public_key_to_yojson { Json.data }, Json.EC_P521
       in
-      Json.publicKey_to_yojson
+      Json.public_key_to_yojson
         { Json.mechanisms = pkey.mechanisms ;
           typ ;
           operations = pkey.operations ;

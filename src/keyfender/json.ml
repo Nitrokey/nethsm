@@ -249,16 +249,16 @@ let type_matches_mechanism typ m =
   | EC_P384 -> m = ECDSA_Signature
   | EC_P521 -> m = ECDSA_Signature
 
-type rsaPublicKey = {
+type rsa_public_key = {
   modulus : string ;
   publicExponent : string ;
 } [@@deriving to_yojson]
 
-type ecPublicKey = {
+type ec_public_key = {
   data : string ;
 } [@@deriving to_yojson]
 
-type publicKey = {
+type public_key = {
   mechanisms : MS.t;
   typ : key_type [@key "type"];
   operations : int;
