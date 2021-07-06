@@ -103,28 +103,27 @@ build_container_image:
   except:
     variables:
       - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
-  variables:
-    DOCKER_HOST: tcp://docker:2375
-    # This will instruct Docker not to start over TLS.
-    DOCKER_TLS_CERTDIR: ""
   needs:
     - validate_api_spec
     - build_api_docs
-  services:
-    - docker:dind
   stage: build_container
-  image: "docker"
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - mkdir -p /kaniko/.docker
+    - >
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",
+      \"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - mv api_docs src/container/static/
     - mv api_spec/* src/container/static/api_docs/
     - cp docs/nethsm-api.raml src/container/static/api_docs/
+    - if [ $CI_PIPELINE_SOURCE == "schedule" ] ; then NOPUSH="--no-push" ; fi
     - >
-      docker build
-      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-      -f src/container/alpine/Dockerfile .
-    - if [ $CI_PIPELINE_SOURCE != "schedule" ] ; then docker push -a $CI_REGISTRY_IMAGE ; fi
+      /kaniko/executor --context $CI_PROJECT_DIR
+      --dockerfile $CI_PROJECT_DIR/src/container/alpine/Dockerfile
+      --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $NOPUSH
 
 deploy_container_image:
   only:
@@ -132,25 +131,18 @@ deploy_container_image:
   except:
     - schedules
   variables:
-    DOCKER_HOST: tcp://docker:2375
-    # This will instruct Docker not to start over TLS.
-    DOCKER_TLS_CERTDIR: ""
     IMAGE_NAME: "nitrokey/nethsm"
     IMAGE_TAG: "testing"
     REGISTRY: "docker.io"
-  services:
-    - docker:dind
   stage: deploy
-  image: "docker"
+  image: $CI_REGISTRY_IMAGE/skopeo
   dependencies: []
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - cat $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USER --password-stdin $REGISTRY
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
   script:
-    - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
-    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-    - docker push -a $REGISTRY/$IMAGE_NAME
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
 validate_api_spec:
   except:
