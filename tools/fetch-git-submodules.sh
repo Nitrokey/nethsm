@@ -127,11 +127,18 @@ git -C src/coreboot/coreboot config --local \
     submodule.3rdparty/ffs.url https://review.coreboot.org/ffs.git
 git -C src/coreboot/coreboot config --local \
     submodule.3rdparty/amd_blobs.url https://review.coreboot.org/amd_blobs
+git -C src/coreboot/coreboot config --local \
+    submodule.3rdparty/intel-sec-tools.url https://review.coreboot.org/9esec-security-tooling.git
+git -C src/coreboot/coreboot config --local \
+    submodule.3rdparty/stm.url https://review.coreboot.org/STM.git
+git -C src/coreboot/coreboot config --local \
+    submodule.3rdparty/cmocka.url https://review.coreboot.org/cmocka.git
 # The following don't like shallow clones
 git -C src/coreboot/coreboot submodule update 3rdparty/chromeec
 git -C src/coreboot/coreboot submodule update 3rdparty/arm-trusted-firmware
 git -C src/coreboot/coreboot submodule update 3rdparty/opensbi
 git -C src/coreboot/coreboot submodule update 3rdparty/vboot
+git -C src/coreboot/coreboot submodule update 3rdparty/stm
 # Rest of Coreboot's submodules
 git -C src/coreboot/coreboot submodule update ${DEPTH}
 }

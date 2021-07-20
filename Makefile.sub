@@ -20,7 +20,8 @@ NET_INTERNAL ?= tap201
 # (actual setting is performed later)
 
 # Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
-# built for. Currently supported: qemu-kvm or supermicro-x11ssh-tf.
+# built for. Currently supported: qemu-kvm or supermicro-x11ssh-tf or
+# prodrive-hermes-1.0.
 #
 # TODO: This should be persisted similarly to MODE=, or otherwise detect that
 # it changed?
@@ -328,15 +329,15 @@ else ifeq ($(XMODE),muen)
 MUEN_DIR := $(TOP_DIR)/src/muen
 MUEN_POLICY_DIR := $(TOP_DIR)/src/muen/policy
 MUEN_LINUX_CONFIG := $(MUEN_DIR)/linux/config-5.4-$(MUEN_HARDWARE)
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 
 ifeq ($(MUEN_HARDWARE),qemu-kvm)
-MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
-MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 COREBOOT_CONFIG := ../config.nethsm_qemu_q35
 else ifeq ($(MUEN_HARDWARE),supermicro-x11ssh-tf)
-MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
-MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 COREBOOT_CONFIG := ../config.nethsm_supermicro_x11_ssh_tf
+else ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+COREBOOT_CONFIG := ../config.nethsm_prodrive_hermes_1.0
 else
 $(error Invalid MUEN_HARDWARE)
 endif
