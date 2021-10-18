@@ -55,6 +55,7 @@ types:
       - EC_P256
       - EC_P384
       - EC_P521
+      - Generic
   KeyMechanism:
     enum:
       - RSA_Decryption_RAW
@@ -74,6 +75,11 @@ types:
       - RSA_Signature_PSS_SHA512
       - EdDSA_Signature
       - ECDSA_Signature
+      - AES_Encryption_CBC
+      - AES_Decryption_CBC
+  EncryptMode:
+    enum:
+      - AES_CBC
   DecryptMode:
     enum:
       - RAW
@@ -84,6 +90,7 @@ types:
       - OAEP_SHA256
       - OAEP_SHA384
       - OAEP_SHA512
+      - AES_CBC
   SignMode:
     enum:
       - PKCS1
@@ -117,7 +124,7 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # mechanisms are constrained by type, only RSA keys can decrypt
+      # mechanisms are constrained by type
       type: KeyType
       key: KeyPrivateData
     example:
@@ -131,7 +138,7 @@ types:
     type: object
     # this should express:
     #   keyType = RSA, primeP, primeQ, publicExponent are required
-    #   keyType = ED25519 or ECDSA_*, data is required
+    #   keyType = ED25519, ECDSA_* or Generic, data is required
     properties:
       primeP:
         type: string
@@ -149,7 +156,7 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # keyMechanisms are constrained by type, only RSA keys can decrypt
+      # keyMechanisms are constrained by type
       type: KeyType
       key: KeyPublicData
       operations: integer
@@ -247,12 +254,12 @@ types:
     type: object
     properties:
       mechanisms: KeyMechanisms
-      # mechanisms are constrained by type, only RSA allows decrypt
+      # mechanisms are constrained by type
       type: KeyType
       length:
-        # required for RSA keys
+        # required for RSA and Generic keys
         type: integer
-        minimum: 1024
+        minimum: 128
         maximum: 8192
         required: false
       id:
@@ -263,11 +270,33 @@ types:
       type: "RSA"
       length: 2048 # Not required for EC keys
       id: "myKey2" # KeyID is optional, will be created if not present
+  EncryptRequestData:
+    type: object
+    properties:
+      mode: EncryptMode
+      message: Base64
+      iv: # for block cipher mode (optional, otherwise generated)
+        type: Base64
+        required: false
+    example:
+      mode: "AES_CBC"
+      message: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
+  EncryptData:
+    type: object
+    properties:
+      encrypted: Base64
+      iv: Base64
+    example:
+      encrypted: "IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA=="
+      iv: "MTIzNDU2Nzg5MDEyMzQ1Ng=="
   DecryptRequestData:
     type: object
     properties:
       mode: DecryptMode
       encrypted: Base64
+      iv:
+        type: Base64 # for block cipher modes
+        required: false
     example:
       mode: "RAW"
       encrypted: "nhrfotu32409ru0rgert45z54z099u23r03498uhtr=="
