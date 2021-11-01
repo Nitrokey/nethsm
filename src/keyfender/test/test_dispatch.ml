@@ -1820,6 +1820,188 @@ let auth_decode_invalid_base64 () =
       | _ -> false
    end
 
+let rsa2048_priv_pem = {|-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAx1CQY/rCAyoh2vJ6aNQi2W3jxx8yynoo1L433lhGcDtaPQaq
++jDlucORkb190MlqbBslXPGDyCUPq5c3GLV7u2dp5Xe2NsMQ23+ijqssKo290La9
+Lvcmz34+StCB6HcoPXyw8vni4TZwmNwDTvaxBLXV/wg7s96cLu6+gexjSsgcXFkJ
+zVF9PFi4ijyyxzhRLxWzVDwSXgtL7gcl/VXrnJwKepGBj7O9MT87M1fCLkrpnE2l
+Z7XQ5wKFWWLVQScqLEn7NZYqyQAZ8lvKNt2uItSZuVCVvuuM9HjDdHuqprf0dDbP
+o7IJuuaDv+1ehcxcW2pmbgjk6lnrlOSBga7klQIDAQABAoIBAQCtqJ81zUzvTu1S
+hARtg6+dfCaC3sb1LbyXp+irnIQ60yvLkhy0gpgV47TYo56UpHlKGdjTA0cLwmbF
+3anOqIlW/kKBAW3MhucQKEPtRGzl4ruotx9cZVD2ZotFyif18KQp9pOCEIFCMpmm
+RcPIMB6J+Rir7XN/Q40XQ0LPlrPoearBW999Lc5zbg715F7cfctTEsOL3+RKncsx
+Fj9XkbYXBVWpL5Six0eJAK/0yRSxHfAVfFs4RzRJokyBK6oDt+41U7saZkyOn3ER
+Q9fm8b4MsxrOAiQ/yVCOPX7sGbVB+n6y5XNyWYYavERydM/h3DMon3OltqwlxKQn
+EMm+rCR9AoGBAOOKVIoovynxEeNmhiCjx2bLr9jaHiJoKfLqB9CVbxw9lUkvE/3s
+j4U/bNW8+AGqrDylSCmYa3dI8lYTtFb2VXUQF5CU7903mgxrYNl0zjfhk/cwk1Xa
+ILNBku8ykfUiNcfMB8pdcK7OFdSZ32Hu9aEgyAACnbCFjSKvv9H4sY0bAoGBAOA+
+eEoACKLrrEBt38lq/u7yyCfWc+PfCsK7Y34kTWp/njKElFAAbhaUKRuTZOfYWLn+
+9Zd6S1/LztqG7RRCyQ4X3KPw9hwxo+M/KbRw3qXg+3N6IgmB4AqVAeqKjFtEGk18
+fk94HTDjfP+VoQOzgAP+WEyU6iP4MX48fKYIcOAPAoGBAKUWTyHyUEgg5MalMvlp
+epoFfG8MScLS6mSZEdRvJy9JKw/u/UVFJhgaHV+x/ApRhyd1D7dGI+pm3ZRANZ7G
+mNgXNdGrjaBl3/nUym7bhWcb3lwBPVSTrxf/opizixxclsKAMMLNKp1ZXpNilKUc
+V9Bw1UrUmw5gxzZ8ZuLz2fYzAoGAU8WipGp8z3hhgjRJzPImyNd0BMXtx2wUlgjx
+MzeWoDmKvO6ghX6ToeW5sa6PnLlK9DkWQH+UVvZJkYOkX9RPTe+GIsyq9H9q7UM0
+bk9YLfntlgdDXe/h5bIi5B7cLmAzv0zJ1yBVL2Vc1hJs83gEU/mZvQpIqiVXQASS
+wGgY2usCgYBNTWTUeE9Ua9rmG2SJk5mr6jCwAX9BHpl1cue+7mqKNtc+Ma98OmF8
+6f5wf5MawPcuM8H/lFVgCfouD3u0AA6v39+t/qGJzv3Dr9MMTHYWOTUsMuf+JVOJ
+g4nEL7yCJH4hBR0mqM/f6pnqgsQDE3c5nP4vQRmndFtMWk1dRHNqRg==
+-----END RSA PRIVATE KEY-----|}
+
+let rsa2048_pub =
+  match X509.Private_key.decode_pem (Cstruct.of_string rsa2048_priv_pem) with
+  | Ok `RSA k -> Mirage_crypto_pk.Rsa.pub_of_priv k
+  | _ -> assert false
+
+let add_pem state ~id ms key =
+  match Lwt_main.run (Hsm.Key.add_pem ~id state ms key) with
+  | Ok () -> ()
+  | Error _ -> assert false
+
+module Oaep_md5 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.MD5)
+module Oaep_sha1 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA1)
+module Oaep_sha224 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA224)
+module Oaep_sha256 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA256)
+module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA384)
+module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA512)
+
+let enc_test_data =
+  Cstruct.of_string "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcd"
+
+let crypto_rsa_decrypt () =
+  let algos =
+    Keyfender.Json.[
+      256, "fvIOfN3+AOt3wvaRVMT6+SjlYfyeqP/llAl93KBEPcmb4eoKKAhEhoPdL6NkCr26lFKL0QuPqHA1mS8jw9nVBHFoBhBwU2dlNfa7NNlSE2Ph/FwJVF7NAXtw4LXTECYL5aPBj1Svo8IfWUQXJVPNF1HA3Uw4jxDusFNbjvT0Xk7SsPJnLT1DAQlsoV9xWjonnd53LjuHjJ1BAvq/wYnjOjvsAZu7Zp730Kg4HuBAoj3FE3wlq3/ABxS13+lEuL2RT+tJEROAWVK6J/D7ya2kCVXY+9OhIQgndUS7KRO7LhW2uhbPKs2jG/sjNgSw5NM/d0S9fcUN5IPpiPaGOzy9cw==", RAW, "RAW" ;
+      245, "s0bvjV8/3BJYdtYsAGtD3yCWeGXIxreSFi0Vsw3juMyxpDOcBCl6xMjJhnHuxhdJ+HqiKSRZkgOVab9JXUUIZpr4ja1U42kOo9Zs2MYLhMrBFdkiXli6/UjHWT93GlcxIavYMOblh16FOaKlZH5cZrzfiQTeqDLBnWgZxmtKnXaNaeAZ5L8y7lT1hldS7nz0+vOSHEeW1BfbJwAuijb/hv/tSta2+78gkuRQTXAfwcePi5D7PRaRc72keX0TzHGBQulN/JuxHR2m3trEgKb3SNsZW3zLLiAWxNQqYqgCe2xuiREnQYifAdMFGF9EeT23KBFh5I2mNknLLSppR2WRwA==", PKCS1, "PKCS1" ;
+      222, "fG1U6k+ZwNKxSOlTG0oUp+uz9YqWh51et7YX6/0xMGxNJrg+fB4tIhayPVE4BKY1mp/3GPYeBwiYxAI5+hG2zdMC3Z2JioghSkVrI2Ne7dt+7x6PY3UIrgPW0prx8qfQu9WGkv1RYc4tUpoAboGGO14aumwwYstMzSpsPOlt+7RFmcV4MmsfiOU7p0n4p+Fvs9T6yaczVAjx6AQLpdGFKg3u834I8S38z9fJU8MnwcYJAUrgiUVcbP4qCtQZYFL9Sx9SqS+gm9nWiTgq3pPjgvBCsRtnX8Gozd4HlCERmFqyfjjMyni+OQE4MrGcvRKcwZrm+QQxNQuTKE14ldtLiQ==", OAEP_MD5, "OAEP_MD5" ;
+      214, "wS+bLk7xSUIlVSPWIm8tWr/HTEKrcr7wwN5EG96s8BiFBh4/RbsNrpAp0kxHGMyPsXBREaqObYli9hxO/YsoCNcU5PG2b/VLBPgKGZ+t9gODXu/r0ANj/tdnTrgEy2+ukOdjE5y+wRZ3R0wwj0ZzWsKfBGhPtwwjXp6yjuEnwXprt4JdINI7IJG3/JUiP79qWCrupY6e9G/Raa9B2moFdyJwNrvu7siULIJ40yutzdG6yEs2s6bh8TQQz08i5X5YPlPq73hjvr71sEnRXMcjHZAJXgtofLiGv1d8YrF6O8SABM99Y0Pj1TYO/wGb4MjIjBsgnHm/Y7wXTe6Xb/gPGg==", OAEP_SHA1, "OAEP_SHA1" ;
+      198, "PMXEPfP+oaIFAJvOklA5ZRUCeoUfJHOwj2V3Oh8SQww9affvW3G40jCOg1SLFh5CiFRk3QdU4sanuuQQUiHoYeV5L6iwm/HK/B7LrS6BRrYjk7KnQR/mVgPn6hLHpAtwRWYuaUJHZQawTZHrod4XVti2vO23Cn+4S9pXAJnoJIHsb8AQAlTn01QjOMd4AhxSsT5AKeG5GRWgP1sFaTnaGQ4KKVS3cJW+MGrC6boZGN/Tjr4x5efIVp5dMnNXAU3aXb0G9C4S/WNIwp8ayoNrbL3TD/WY8GW3ypQZ78+YYb8vbYyn/gQJdqqckx9YH/AgdIXeZGrCVOSmNDxj7hrisQ==", OAEP_SHA224, "OAEP_SHA224" ;
+      190, "Fj0g5jxcZJMxQChCsw2QKVLK99VAVUOhB1XPOLatEh/2NXstdMNUVOT1MBqZ+jdm1T9VYitxhsa1qxjPkDG+mMWulp7BWNo9vBIAFJgCAantNUf4j3TWAms4QVYwBOwvgyhRBL4M9abC1KvEJWnMhzy2NFtHN4p0oOKgXC6LarUkX67o+Q2e62K2VtDONrBoOqWqaPQ0aphOvd9KM32cllC95gthBzg7MVUVcQbJSVXUvm8MIAttKxTmrw/vPIfmlkKIZenEkg8eYPk3cVuyuiwJyctqQCNFJbYtDqb0/hp72I3KfJFaZViLHS8/dEwqCxuUvkqmZZft1lDjzACHWA==", OAEP_SHA256, "OAEP_SHA256" ;
+      158, "nnhUPjJxUxcv2obRvC6IouLauuXxUe9ihtLTd92OThlMOIQqPaBZFKiY0cWujVyEC1aYM1+kPDQL3g2VKGD4RndwnUy9uE9FapWNn52VZq1MMMDAa5gDYQ92H9dmE4UYnym46IieZPt0hX54csqS6elwepcZPXSpdhk9D0C4Xc0+m56B8JS2/bvoHzxWHwrfL5ALutN01yiMrYkXzSuiXjdwG76SWCOZpsoj6HcP+gTglOAGIm6M80ENQfMWjNWYdF2nHhzNX2e4oVU8Nhp3/2U7ATlb2xwdwp7viMjBm6ExoqsI0fkguqLrUJ7Y5rWNWK2JmL8WQYIlUmniOvc8MA==", OAEP_SHA384, "OAEP_SHA384" ;
+      126, "CZah2t+0Gq63qOi1t5QkjyX0Ja+PVVshr7AGHj72yNnDKlQJsUIAl9QFvauuzirf1d83djBXaGz5wYEv4RQ/v/RqDFnl73SI5COiSlkxKp96V3nhRoT7B5a0IGegQJLHauAIpeOprGQMYfCOKliXz2s4dSOKosM7QpnACC6qc+AONcuDFfvsX9minQByrSqUHo+iQl780HMxtnCQnJMhZIv96Om8IfoxK7AzXU/tEtkoaStLiQeLsspfu9WOHO9kwQLVYV0KldYvFWZYeYrUmsqo4/FwngFUh8Rso5Bqwp3IpGdjY4uisfyovrg0rT/V+q4vPc7/LKnUaLxsI08Oxg==", OAEP_SHA512, "OAEP_SHA512" ;
+    ] in
+  let hsm = operational_mock () in
+  let mechs =
+    List.fold_right Keyfender.Json.MS.add
+      [ Keyfender.Json.RSA_Decryption_RAW ; RSA_Decryption_PKCS1 ;
+        RSA_Decryption_OAEP_MD5 ; RSA_Decryption_OAEP_SHA1 ;
+        RSA_Decryption_OAEP_SHA224 ; RSA_Decryption_OAEP_SHA256 ;
+        RSA_Decryption_OAEP_SHA384 ; RSA_Decryption_OAEP_SHA512 ]
+      Keyfender.Json.MS.empty
+  in
+  add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
+  List.iter (fun (idx, enc_data, dec_mode, txt) ->
+      ("decryption with RSA " ^ txt ^ " succeeds")
+      @? begin
+        match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" dec_mode enc_data) with
+     | Ok data ->
+       let b64_dec = Base64.decode_exn data in
+       String.equal b64_dec Cstruct.(to_string (sub enc_test_data 0 idx))
+     | Error _ -> false
+      end)
+    algos
+
+let sign_test_data = Cstruct.of_string "hello"
+
+let b64_and_hash h d =
+  Base64.encode_exn (Cstruct.to_string (Mirage_crypto.Hash.digest h d))
+
+let crypto_rsa_pkcs1_sign () =
+  let hsm = operational_mock () in
+  add_pem hsm ~id:"test" Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) rsa2048_priv_pem;
+  let signature_hc = "iGIgswYW3f1hGYutuI6T/511p41aBF0gNV1N/MdqG1Wofaj8onUDJd/LD4h7s5s8wsXJ/EoH0zMck2XovWi3TLwCoghH3nL+Dv9b9fn6YMEnYOk4Uv0klFclwvLDmpiW+8An+7WPti2zlSkCkl2diwfA6N1hBRqKpnYYWCxMHxQOXCnXfDu1fxm6+MsUP8YZ5WUtVG6BV9lm+lzktHXBAkXmCYswtUbiol5NRbOH9P1PhG37UylT22ekszC8Ime5K2PSt5+WvlzM2Ry+peCMjSS7fMnsgasnkqLrTnZrZLMD7J6jG6I4Jxq+nPAgj9sXkJ+ozqllab+4mRIJEiaPOg==" in
+  "signing with RSA PKCS1 succeeds"
+   @? begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.PKCS1 (b64_and_hash `SHA1 sign_test_data)) with
+     | Ok signature ->
+       assert (signature = signature_hc);
+       let b64_dec = Base64.decode_exn signature in
+       (match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key:rsa2048_pub (Cstruct.of_string b64_dec) with
+        | None -> false
+        | Some raw -> Cstruct.equal raw (Mirage_crypto.Hash.SHA1.digest sign_test_data))
+      | _ -> false
+   end
+
+let crypto_rsa_pss_sign () =
+  let algos =
+    Keyfender.Json.[
+      `MD5, PSS_MD5, "PSS_MD5" ;
+      `SHA1, PSS_SHA1, "PSS_SHA1" ;
+      `SHA224, PSS_SHA224, "PSS_SHA224" ;
+      `SHA256, PSS_SHA256, "PSS_SHA256" ;
+      `SHA384, PSS_SHA384, "PSS_SHA384" ;
+      `SHA512, PSS_SHA512, "PSS_SHA512" ;
+    ] in
+  let hsm = operational_mock () in
+  let mechs =
+    List.fold_right Keyfender.Json.MS.add
+      [ Keyfender.Json.RSA_Signature_PSS_MD5 ; RSA_Signature_PSS_SHA1 ;
+        RSA_Signature_PSS_SHA224 ; RSA_Signature_PSS_SHA256 ;
+        RSA_Signature_PSS_SHA384 ; RSA_Signature_PSS_SHA512 ]
+      Keyfender.Json.MS.empty
+  in
+  add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
+  List.iter (fun (hash, sign_mode, txt) ->
+      ("signing with RSA " ^ txt ^ " succeeds")
+      @? begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" sign_mode (b64_and_hash hash sign_test_data)) with
+     | Ok signature ->
+       let b64_dec = Base64.decode_exn signature in
+       (match X509.Public_key.verify hash ~scheme:`RSA_PSS ~signature:(Cstruct.of_string b64_dec) (`RSA rsa2048_pub) (`Message sign_test_data) with
+        | Ok () -> true
+        | Error _ -> false)
+     | Error _ -> false
+      end)
+    algos
+
+let ed25519_priv_pem = {|-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIIHCCOimH9qZePG/EZcb3trtpCVUy92dmaBpU1gWY5r7
+-----END PRIVATE KEY-----|}
+
+let ed25519_pub =
+  match X509.Private_key.decode_pem (Cstruct.of_string ed25519_priv_pem) with
+  | Ok k -> X509.Private_key.public k
+  | _ -> assert false
+
+let crypto_ed25519_sign () =
+  let hsm = operational_mock () in
+  let mechs = Keyfender.Json.MS.singleton Keyfender.Json.EdDSA_Signature in
+  add_pem hsm ~id:"test" mechs ed25519_priv_pem;
+  "signing with ED25519 succeeds"
+  @? begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.EdDSA (Base64.encode_exn (Cstruct.to_string sign_test_data))) with
+     | Ok signature ->
+       let exp_sig = "MXXfyOqswfWDcXAoE2zU2Cf2VW5GajdqZge8hh3is2uVcHW5bbewE/zlb9hvoUjAqSO7ObIm29D4Krb8CjlpCQ==" in
+       assert (exp_sig = signature);
+       let b64_dec = Base64.decode_exn signature in
+       (match X509.Public_key.verify `SHA512 ~scheme:`ED25519 ~signature:(Cstruct.of_string b64_dec) ed25519_pub (`Message sign_test_data) with
+        | Ok () -> true
+        | Error _ -> false)
+     | Error _ -> false
+  end
+
+let crypto_ecdsa_sign () =
+  let mechs = Keyfender.Json.MS.singleton Keyfender.Json.ECDSA_Signature in
+  let seed = Cstruct.create 16 in
+  let algos = [
+    `SHA224, X509.Private_key.generate ~seed `P224, "MDwCHFn8JgXlX/0M0hIYcmjNc5MPZrACrnoV0UWCkAMCHCqDX5Rm9xCodXSJ9mKZhjjjfjpNT69JOTPKLGk=", "P224" ;
+    `SHA256, X509.Private_key.generate ~seed `P256, "MEUCIQC3LKyNLNwZ+UhQ4tXzlbQdsnBzJuN/a6EbHl+N7J42XgIgRdacwWqGIatrRSdn9AEQ3RXRkNhiKHYmTmn8e3MKAYg=", "P256" ;
+    `SHA384, X509.Private_key.generate ~seed `P384, "MGUCMQDO9eNxo4+IAoZpxqMvQvAeitP+D+5h1WiWBFRECdAN75uhGdGa9I9B0Ei3fv1uAE8CMH25z78MU+VqU1a+i1M2AEoVd7Jpj3CRnaYne78KgwXNnUr4nGDkvjcDyTutXhInjA==", "P384" ;
+    `SHA512, X509.Private_key.generate ~seed `P521, "MIGIAkIBuBsgXU417z6tOTUKmUbemf/TbHt43MK7qPmq4QQKstcBCPzGavagjOU2arQPrKR3QCGffDGNG2C4jhx5m2HxQ9YCQgDx5HLLjbJGEAaz9mePAo+u/TPScLOHbEpO7vYloCSipEc6GjoimPvl4xTd6zeRpMD97jmhmLVeUbQWNi6Jthvftg==", "P521" ;
+  ] in
+  List.iter (fun (hash, priv, sign, txt) ->
+      let hsm = operational_mock () in
+      add_pem hsm ~id:"test" mechs (Cstruct.to_string (X509.Private_key.encode_pem priv));
+      let pub = X509.Private_key.public priv in
+      ("signing with ECDSA " ^ txt ^ " succeeds")
+      @? begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.ECDSA (b64_and_hash hash sign_test_data)) with
+     | Ok signature ->
+       assert (sign = signature);
+       let b64_dec = Base64.decode_exn signature in
+       (match X509.Public_key.verify hash ~scheme:`ECDSA ~signature:(Cstruct.of_string b64_dec) pub (`Message sign_test_data) with
+        | Ok () -> true
+        | Error _ -> false)
+     | Error _ -> false
+      end)
+    algos
+
 (* translate from ounit into boolean *)
 let rec ounit_success =
   function
@@ -1983,6 +2165,11 @@ let () =
     "/system/info" >:: rate_limit_for_get;
     "rate limit reset after successful login" >:: reset_rate_limit_after_successful_login;
     "access.ml: decode auth" >:: auth_decode_invalid_base64;
+    "RSA decrypt" >:: crypto_rsa_decrypt;
+    "RSA PKCS1 sign" >:: crypto_rsa_pkcs1_sign;
+    "RSA PSS sign" >:: crypto_rsa_pss_sign;
+    "ED25519 sign" >:: crypto_ed25519_sign;
+    "ECDSA sign" >:: crypto_ecdsa_sign;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
