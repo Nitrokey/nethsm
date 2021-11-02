@@ -56,6 +56,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/keys/:id/public.pem", fun () -> new Keys.handler_public hsm_state ip) ;
         ("/keys/:id/csr.pem", fun () -> new Keys.handler_csr hsm_state ip) ;
         ("/keys/:id/decrypt", fun () -> new Keys.handler_decrypt hsm_state ip) ;
+        ("/keys/:id/encrypt", fun () -> new Keys.handler_encrypt hsm_state ip) ;
         ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state ip) ;
         ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state ip) ;
         ("/system/info", fun () -> new System.info hsm_state ip) ;

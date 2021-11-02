@@ -180,7 +180,9 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
-    val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+    val decrypt : t -> id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+
+    val encrypt : t -> id:string -> iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
 
     val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 
@@ -252,19 +254,20 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let key_ops_src =
       let open Metrics in
       let doc = "Key operations" in
-      let data (generate, sign, decrypt) =
-        Data.v [ int "generate" generate ; int "sign" sign ; int "decrypt" decrypt ]
+      let data (generate, sign, decrypt, encrypt) =
+        Data.v [ int "generate" generate ; int "sign" sign ; int "decrypt" decrypt ; int "encrypt" encrypt ]
       in
       Src.v ~doc ~tags:Metrics.Tags.[] ~data "key operations"
 
-    let ops = ref (0, 0, 0)
+    let ops = ref (0, 0, 0, 0)
 
     let key_op op =
-      let g, s, d = !ops in
+      let g, s, d, e = !ops in
       (match op with
-      | `Generate -> ops := g + 1, s, d
-      | `Sign -> ops := g, s + 1, d
-      | `Decrypt -> ops := g, s, d + 1);
+      | `Generate -> ops := g + 1, s, d, e
+      | `Sign -> ops := g, s + 1, d, e
+      | `Decrypt -> ops := g, s, d + 1, e
+      | `Encrypt -> ops := g, s, d, e + 1);
       Metrics.add key_ops_src (fun t -> t) (fun m -> m !ops)
 
     let http_status = Hashtbl.create 7
@@ -849,16 +852,29 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
        to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
        json is not safe as well)!
     *)
-    type priv = X509.Private_key.t
+    type priv =
+      | X509 of X509.Private_key.t
+      | Generic of string
+    let pem_tag = "PEM"
+    let raw_tag = "raw"
+
     let priv_to_yojson p =
-      `String (Cstruct.to_string (X509.Private_key.encode_pem p))
+      match p with
+      | Generic s -> `Assoc [raw_tag, `String (Base64.encode_string s)]
+      | X509 p -> `Assoc [pem_tag,
+            `String (Cstruct.to_string (X509.Private_key.encode_pem p))]
     let priv_of_yojson = function
-      | `String data ->
-        begin match X509.Private_key.decode_pem (Cstruct.of_string data) with
-          | Ok priv -> Ok priv
+      | `Assoc [(tag, `String data)] when tag=raw_tag ->
+        begin match Base64.decode data with
+          | Ok s -> Ok (Generic s)
           | Error `Msg m -> Error m
         end
-      | _ -> Error "Expected json string as private key"
+      | `Assoc [(tag, `String data)] when tag=pem_tag ->
+        begin match X509.Private_key.decode_pem (Cstruct.of_string data) with
+          | Ok priv -> Ok (X509 priv)
+          | Error `Msg m -> Error m
+        end
+      | _ -> Error "Expected { <format>: <data> } as private key"
 
     let exists t ~id =
       let open Lwt_result.Infix in
@@ -974,7 +990,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           to_z "primeQ" key.primeQ >>= fun q ->
           to_z "publicExponent" key.publicExponent >>= fun e ->
           Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q >>| fun key ->
-          `RSA key
+          X509 (`RSA key)
+        | Json.Generic ->
+            b64_data key.data >>| fun k ->
+            Generic k
         | _ ->
           b64_data key.data >>= fun k ->
           let typ = match typ with
@@ -984,8 +1003,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             | EC_P384 -> `P384
             | EC_P521 -> `P521
             | RSA -> assert false
+            | Generic -> assert false
           in
-          X509.Private_key.of_cstruct (Cstruct.of_string k) typ
+          X509.Private_key.of_cstruct (Cstruct.of_string k) typ >>| fun p -> X509 p
       with
       | Error `Msg e -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~id t mechanisms priv
@@ -993,7 +1013,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let add_pem ~id t mechanisms data =
       match X509.Private_key.decode_pem (Cstruct.of_string data) with
       | Error `Msg m -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ~id t mechanisms priv
+      | Ok priv -> add ~id t mechanisms (X509 priv)
 
     let generate ~id t typ mechanisms ~length =
       let open Lwt_result.Infix in
@@ -1005,12 +1025,25 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
              Ok (Some length, `RSA)
            else
              Error (Bad_request, "Length must be between 1024 and 8192.")
+         | Json.Generic ->
+           if 128 <= length && length <= 8192 then
+             Ok (Some length, `Generic)
+           else
+                Error (Bad_request, "Length must be between 128 and 8192.")
          | Json.Curve25519 -> Ok (None, `ED25519)
          | Json.EC_P224 -> Ok (None, `P224)
          | Json.EC_P256 -> Ok (None, `P256)
          | Json.EC_P384 -> Ok (None, `P384)
          | Json.EC_P521 -> Ok (None, `P521)) >>= fun (bits, typ) ->
-        let priv = X509.Private_key.generate ?bits typ in
+        let priv = match typ with
+          | `Generic ->
+              begin match bits with 
+              | Some n -> Generic (Cstruct.to_string @@ Mirage_crypto_rng.generate ((n+7)/8))
+              | None -> assert false
+              end
+          | `ED25519 | `P224 | `P256 | `P384 | `P521 | `RSA as typ ->
+              X509 (X509.Private_key.generate ?bits typ)
+        in
         Metrics.key_op `Generate;
         add ~id t mechanisms priv
 
@@ -1031,7 +1064,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let cs_to_b64 cs = Base64.encode_string (Cstruct.to_string cs) in
       let key, typ =
         match pkey.priv with
-        | `RSA k ->
+        | X509 `RSA k ->
           let z_to_b64 n =
             Mirage_crypto_pk.Z_extra.to_cstruct_be n |> cs_to_b64
           in
@@ -1039,31 +1072,32 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           and publicExponent = z_to_b64 k.Mirage_crypto_pk.Rsa.e
           in
           Json.rsa_public_key_to_yojson { Json.modulus ; publicExponent }, Json.RSA
-        | `ED25519 k ->
+        | X509 `ED25519 k ->
           let data =
             Ed25519.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ec_public_key_to_yojson { Json.data }, Json.Curve25519
-        | `P224 k ->
+        | X509 `P224 k ->
           let data =
             P224.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ec_public_key_to_yojson { Json.data }, Json.EC_P224
-        | `P256 k ->
+        | X509 `P256 k ->
           let data =
             P256.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ec_public_key_to_yojson { Json.data }, Json.EC_P256
-        | `P384 k ->
+        | X509 `P384 k ->
           let data =
             P384.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ec_public_key_to_yojson { Json.data }, Json.EC_P384
-        | `P521 k ->
+        | X509 `P521 k ->
           let data =
             P521.Dsa.(pub_of_priv k |> pub_to_cstruct |> cs_to_b64)
           in
           Json.ec_public_key_to_yojson { Json.data }, Json.EC_P521
+        | Generic _ -> `Null, Json.Generic
       in
       Json.public_key_to_yojson
         { Json.mechanisms = pkey.mechanisms ;
@@ -1073,18 +1107,22 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let get_pem t ~id =
       let open Lwt_result.Infix in
-      get_key t id >|= fun key ->
-      let pub = X509.Private_key.public key.priv in
-      Cstruct.to_string @@ X509.Public_key.encode_pem pub
+      get_key t id >>= fun key ->
+      Lwt_result.lift @@ match key.priv with
+        | X509 p ->
+            let pub = X509.Private_key.public p in
+            Ok (Cstruct.to_string @@ X509.Public_key.encode_pem pub)
+        | Generic _ -> Error (Bad_request, "Generic keys have no public key")
 
     let csr_pem t ~id subject =
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
       let subject' = Json.to_distinguished_name subject in
-      Lwt_result.lift
-        (match X509.Signing_request.create subject' key.priv with
-         | Error `Msg e -> Error (Bad_request, "creating signing request: " ^ e)
-         | Ok c -> Ok (Cstruct.to_string @@ X509.Signing_request.encode_pem c))
+      Lwt_result.lift @@ match key.priv with
+        | X509 p -> (match X509.Signing_request.create subject' p with
+          | Error `Msg e -> Error (Bad_request, "creating signing request: " ^ e)
+          | Ok c -> Ok (Cstruct.to_string @@ X509.Signing_request.encode_pem c))
+        | Generic _ -> Error (Bad_request, "Generic keys can't create certificates")
 
     let get_cert t ~id =
       let open Lwt_result.Infix in
@@ -1116,44 +1154,109 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA384)
     module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA512)
 
-    let decrypt t ~id decrypt_mode data =
+    let decrypt t ~id ~iv decrypt_mode data =
       let open Lwt_result.Infix in
       get_key t id >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
-      Lwt_result.lift
-        (match Base64.decode oneline with
-         | Error `Msg msg ->
-           Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
-         | Ok encrypted_data ->
-           if Json.MS.mem (Json.mechanism_of_decrypt_mode decrypt_mode) key_data.mechanisms then
-             match key_data.priv with
-             | `RSA key ->
-               begin
-                 let dec_cs =
-                   let encrypted_cs = Cstruct.of_string encrypted_data in
-                   match decrypt_mode with
-                   | Json.RAW ->
-                     (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
-                      with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
-                   | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
-                   | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
-                   | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
-                   | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
-                   | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
-                   | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
-                   | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
-                 in
-                 match dec_cs with
-                 | None -> Error (Bad_request, "Decryption failure")
-                 | Some cs ->
-                   Metrics.key_op `Decrypt;
-                   Hashtbl.replace cached_operations id (succ key_data.operations);
-                   Ok (Base64.encode_string (Cstruct.to_string cs))
-               end
-             | _ ->
-               Error (Bad_request, "Decryption only supported for RSA keys.")
-           else
-             Error (Bad_request, "Key mechanisms do not allow requested decryption."))
+      Lwt_result.lift (
+        let open Rresult.R.Infix in
+        match Base64.decode oneline with
+          | Error `Msg msg ->
+            Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
+          | Ok encrypted_data ->
+            if Json.MS.mem (Json.mechanism_of_decrypt_mode decrypt_mode) key_data.mechanisms then
+              begin match key_data.priv with
+              | X509 `RSA key ->
+                begin
+                  let dec_cs =
+                    let encrypted_cs = Cstruct.of_string encrypted_data in
+                    match decrypt_mode with
+                    | Json.RAW ->
+                      (try Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
+                        with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+                    | PKCS1 -> Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
+                    | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
+                    | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
+                    | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
+                    | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
+                    | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
+                    | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
+                    | AES_CBC -> None
+                  in
+                  match dec_cs with
+                  | None -> Error (Bad_request, "Decryption failure")
+                  | Some cs -> Ok cs
+                end
+              | Generic key ->
+                begin
+                  let encrypted_cs = Cstruct.of_string encrypted_data in
+                  begin match decrypt_mode with
+                  | Json.AES_CBC ->
+                    begin
+                      match iv with
+                      | None -> Error (Bad_request, "AES-CBC decrypt requires IV")
+                      | Some iv ->
+                        begin
+                          try
+                            let iv = Base64.decode_exn iv |> Cstruct.of_string in
+                            let key = Mirage_crypto.Cipher_block.AES.CBC.of_secret @@ Cstruct.of_string key in
+                            Ok (Mirage_crypto.Cipher_block.AES.CBC.decrypt ~key ~iv encrypted_cs)
+                          with Invalid_argument err -> Error (Bad_request, "Decryption failed: " ^ err)
+                        end
+                    end
+                  | _ -> Error (Bad_request, "decrypt mode not supported by Generic key")
+                  end
+                end
+              | _ ->
+                  Error (Bad_request, "Decryption only supported for RSA and Generic keys.")
+              end
+              >>= fun cs ->
+                Metrics.key_op `Decrypt;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                Ok (Base64.encode_string (Cstruct.to_string cs))
+            else
+              Error (Bad_request, "Key mechanisms do not allow requested decryption."))
+
+    let encrypt t ~id ~iv encrypt_mode data =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key_data ->
+      let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
+      Lwt_result.lift (
+        let open Rresult.R.Infix in
+        match Base64.decode oneline with
+          | Error `Msg msg ->
+            Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
+          | Ok message_data ->
+            if Json.MS.mem (Json.mechanism_of_encrypt_mode encrypt_mode) key_data.mechanisms then
+              begin match key_data.priv with
+              | Generic key ->
+                begin
+                  let message_cs = Cstruct.of_string message_data in
+                  begin match encrypt_mode with
+                  | Json.AES_CBC ->
+                    begin
+                      try
+                        let iv = match iv with
+                        | None -> Mirage_crypto_rng.generate Mirage_crypto.Cipher_block.AES.CBC.block_size
+                        | Some iv -> Base64.decode_exn iv |> Cstruct.of_string
+                        in
+                        let key = Mirage_crypto.Cipher_block.AES.CBC.of_secret @@ Cstruct.of_string key in
+                        Ok (Mirage_crypto.Cipher_block.AES.CBC.encrypt ~key ~iv message_cs
+                                |> Cstruct.to_string |> Base64.encode_string,
+                              Some (Cstruct.to_string iv |> Base64.encode_string))
+                      with Invalid_argument err -> Error (Bad_request, "Encryption failed: " ^ err)
+                    end
+                  end
+                end
+              | _ ->
+                Error (Bad_request, "Encryption only supported for Generic keys.")
+              end
+              >>= fun (cs, iv) ->
+                Metrics.key_op `Encrypt;
+                Hashtbl.replace cached_operations id (succ key_data.operations);
+                Ok (cs, iv)
+            else
+              Error (Bad_request, "Key mechanisms do not allow requested encryption."))
 
     let sign t ~id sign_mode data =
       let open Lwt_result.Infix in
@@ -1168,12 +1271,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           let open Rresult.R.Infix in
           Lwt.return
             (begin match key_data.priv, sign_mode with
-               | `RSA key, Json.PKCS1 ->
+               | X509 `RSA key, Json.PKCS1 ->
                  (try Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign_cs) with
                   | Mirage_crypto_pk.Rsa.Insufficient_key ->
                     Error (Bad_request, "Signing failure: RSA key too short."))
-               | _ ->
-                 (match key_data.priv, sign_mode with
+               | Generic _, _ -> Error (Bad_request, "Generic keys can't sign.")
+               | X509 priv, _ ->
+                 (match priv, sign_mode with
                   | `RSA _, Json.PSS_MD5 -> Ok (`RSA_PSS, `MD5, `Digest to_sign_cs)
                   | `RSA _, PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign_cs)
                   | `RSA _, PSS_SHA224 -> Ok (`RSA_PSS, `SHA224, `Digest to_sign_cs)
@@ -1187,7 +1291,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                   | `P521 _, ECDSA -> Ok (`ECDSA, `SHA512, `Digest to_sign_cs)
                   | _ -> Error (Bad_request, "invalid sign mode")) >>= fun (scheme, hash, data) ->
                  Rresult.R.reword_error (function `Msg m -> Bad_request, m)
-                   (X509.Private_key.sign hash ~scheme key_data.priv data)
+                   (X509.Private_key.sign hash ~scheme priv data)
              end >>| fun signature ->
              Metrics.key_op `Sign;
              Hashtbl.replace cached_operations id (succ key_data.operations);

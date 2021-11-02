@@ -180,7 +180,11 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
-    val decrypt : t -> id:string -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+    (* val encrypt : t -> id:string -> Json.encrypt_mode -> string -> (string, error) result Lwt.t *)
+
+    val decrypt : t -> id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+
+    val encrypt : t -> id:string -> iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
 
     val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 

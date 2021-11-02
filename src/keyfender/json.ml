@@ -177,6 +177,8 @@ type mechanism =
   | RSA_Signature_PSS_SHA512
   | EdDSA_Signature
   | ECDSA_Signature
+  | AES_Encryption_CBC
+  | AES_Decryption_CBC
 [@@deriving yojson, ord]
 
 let mechanism_of_yojson = function
@@ -224,6 +226,7 @@ type key_type =
   | EC_P256
   | EC_P384
   | EC_P521
+  | Generic
 [@@deriving yojson]
 
 let key_type_of_yojson = function
@@ -248,6 +251,7 @@ let type_matches_mechanism typ m =
   | EC_P256 -> m = ECDSA_Signature
   | EC_P384 -> m = ECDSA_Signature
   | EC_P521 -> m = ECDSA_Signature
+  | Generic -> List.mem m [ AES_Encryption_CBC ; AES_Decryption_CBC ]
 
 type rsa_public_key = {
   modulus : string ;
@@ -280,6 +284,7 @@ type decrypt_mode =
   | OAEP_SHA256
   | OAEP_SHA384
   | OAEP_SHA512
+  | AES_CBC
 [@@deriving yojson]
 
 let mechanism_of_decrypt_mode = function
@@ -291,12 +296,34 @@ let mechanism_of_decrypt_mode = function
   | OAEP_SHA256 -> RSA_Decryption_OAEP_SHA256
   | OAEP_SHA384 -> RSA_Decryption_OAEP_SHA384
   | OAEP_SHA512 -> RSA_Decryption_OAEP_SHA512
+  | AES_CBC -> AES_Decryption_CBC
 
 let decrypt_mode_of_yojson = function
   | `String _ as s -> decrypt_mode_of_yojson (`List [s])
   | _ -> Error "Expected JSON string for decrypt mode"
 
-type decrypt_req = { mode : decrypt_mode ; encrypted : string }[@@deriving yojson]
+type decrypt_req = {
+  mode : decrypt_mode;
+  encrypted : string;
+  iv : (string option [@default None])
+}[@@deriving yojson]
+
+type encrypt_mode =
+  | AES_CBC
+[@@deriving yojson]
+
+let mechanism_of_encrypt_mode = function
+  | AES_CBC -> AES_Encryption_CBC
+
+let encrypt_mode_of_yojson = function
+  | `String _ as s -> encrypt_mode_of_yojson (`List [s])
+  | _ -> Error "Expected JSON string for encrypt mode"
+
+type encrypt_req = {
+  mode : encrypt_mode;
+  message : string;
+  iv : (string option [@default None]);
+}[@@deriving yojson]
 
 type sign_mode =
   | PKCS1

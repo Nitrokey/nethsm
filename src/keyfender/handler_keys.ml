@@ -294,7 +294,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (dec : Json.decrypt_req) =
-        Hsm.Key.decrypt hsm_state ~id dec.mode dec.encrypted >>= function
+        Hsm.Key.decrypt hsm_state ~id ~iv:dec.iv dec.mode dec.encrypted >>= function
         | Ok decrypted ->
           let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
           let rd' = { rd with resp_body = `String json } in
@@ -326,6 +326,55 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted rd =
       Wm.continue [ ("application/json", self#decrypt) ] rd
+  end
+
+  class handler_encrypt hsm_state ip = object(self)
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Operator ip
+    inherit !Endpoint.no_cache
+
+    method private encrypt rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      let ok id (dec : Json.encrypt_req) =
+        Hsm.Key.encrypt hsm_state ~id ~iv:dec.iv dec.mode dec.message >>= function
+        | Ok (encrypted, iv) ->
+          let iv = match iv with
+            | Some iv -> [ "iv", `String iv ]
+            | None -> []
+          in
+          let l = ("encrypted", `String encrypted) :: iv in
+          let json = Yojson.Safe.to_string (`Assoc l) in
+          let rd' = { rd with resp_body = `String json } in
+          Wm.continue true rd'
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok id =
+        Json.decode Json.encrypt_req_of_yojson content |>
+        Endpoint.err_to_bad_request (ok id) rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method! resource_exists rd =
+      let ok id =
+        Hsm.Key.exists hsm_state ~id >>= function
+        | Ok does_exist -> Wm.continue does_exist rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method !process_post rd =
+      self#encrypt rd
+
+    method! allowed_methods rd =
+      Wm.continue [`POST ] rd
+
+    method content_types_provided rd =
+      Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
+
+    method content_types_accepted rd =
+      Wm.continue [ ("application/json", self#encrypt) ] rd
   end
 
   class handler_sign hsm_state ip = object(self)
