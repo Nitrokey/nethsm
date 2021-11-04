@@ -113,17 +113,19 @@ build_container_image:
   before_script:
     - mkdir -p /kaniko/.docker
     - >
-      echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",
-      \"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
+      "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
+      tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+
   script:
     - mv api_docs src/container/static/
     - mv api_spec/* src/container/static/api_docs/
     - cp docs/nethsm-api.raml src/container/static/api_docs/
-    - if [ $CI_PIPELINE_SOURCE == "schedule" ] ; then NOPUSH="--no-push" ; fi
-    - >
-      /kaniko/executor --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/src/container/alpine/Dockerfile
-      --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $NOPUSH
+    - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
+    - >-
+      /kaniko/executor --context "${CI_PROJECT_DIR}"
+      --dockerfile ${CI_PROJECT_DIR}/src/container/alpine/Dockerfile
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" $NOPUSH
 
 deploy_container_image:
   only:
@@ -152,7 +154,7 @@ validate_api_spec:
     VALIDATOR: "node tools/api/convert_validate.js"
     API_SPEC: "docs/nethsm-api.raml"
   stage: check
-  image: "node:alpine3.12"
+  image: "node:alpine"
   dependencies: []
   artifacts:
     name: "$CI_JOB_NAME"
@@ -172,8 +174,9 @@ build_api_docs:
       - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     API_SPEC: "docs/nethsm-api.raml"
+    NODE_OPTIONS: "--openssl-legacy-provider"
   stage: build_docs
-  image: "node:alpine3.12"
+  image: "node:alpine"
   dependencies: []
   needs:
     - validate_api_spec
@@ -185,6 +188,5 @@ build_api_docs:
   before_script: []
   script:
     - npm install api-console-cli
-    - npm install amf-client-js@4.7.2 # 4.7.3 is broken
     - ./node_modules/.bin/api-console build -t "RAML 1.0" --app-title "NetHSM API"
         --verbose --strict -o api_docs/ $API_SPEC
