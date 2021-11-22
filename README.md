@@ -142,7 +142,7 @@ Building the full Muen system, either for development under KVM, or for target h
 1. To enter the Docker container, run:
 
        make local-container-enter
-   
+
 2. Once inside the container, run:
 
        make local-container-setup
@@ -151,8 +151,8 @@ Building the full Muen system, either for development under KVM, or for target h
 
        # For QEMU/KVM:
        make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
-       # For Supermicro X11SSH-TF:
-       make -j$(nproc) MODE=muen MUEN_HARDWARE=supermicro-x11ssh-tf build
+       # For Prodrive Hermes:
+       make -j$(nproc) MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 build
 
 Notes:
 

@@ -20,8 +20,7 @@ NET_INTERNAL ?= tap201
 # (actual setting is performed later)
 
 # Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
-# built for. Currently supported: qemu-kvm or supermicro-x11ssh-tf or
-# prodrive-hermes-1.0.
+# built for. Currently supported: qemu-kvm or prodrive-hermes-1.0.
 #
 # TODO: This should be persisted similarly to MODE=, or otherwise detect that
 # it changed?
@@ -334,8 +333,6 @@ MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 
 ifeq ($(MUEN_HARDWARE),qemu-kvm)
 COREBOOT_CONFIG := ../config.nethsm_qemu_q35
-else ifeq ($(MUEN_HARDWARE),supermicro-x11ssh-tf)
-COREBOOT_CONFIG := ../config.nethsm_supermicro_x11_ssh_tf
 else ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
 COREBOOT_CONFIG := ../config.nethsm_prodrive_hermes_1.0
 else
@@ -495,24 +492,6 @@ $(COREBOOT_SRC)/.config: .stamp-prepare
 ifeq ($(USE_CCACHE),1)
 	cd $(COREBOOT_SRC) && \
 	    util/scripts/config --enable CCACHE
-endif
-
-ifneq ($(MUEN_HARDWARE),qemu-kvm)
-# When building for the Supermicro hardware, we need to populate the Coreboot
-# build tree with the Intel ME blob from this repository.
-
-COREBOOT_BLOB_DIR := \
-    $(COREBOOT_SRC)/3rdparty/blobs/mainboard/supermicro/x11-lga1151-series
-
-$(COREBOOT_BLOB_DIR):
-	mkdir -p $@
-
-$(COREBOOT_BLOB_DIR)/%.bin: src/coreboot/blobs/%.bin | $(COREBOOT_BLOB_DIR)
-	cp $< $@
-
-COREBOOT_BLOBS := \
-    $(COREBOOT_BLOB_DIR)/descriptor.bin \
-    $(COREBOOT_BLOB_DIR)/me.bin
 endif
 
 # Coreboot does its own magic and checks out submodules depending on the

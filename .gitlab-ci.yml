@@ -61,13 +61,13 @@ build_muen_qemu_kvm:
     - make fetch-submodules
     - make -j$(nproc) build artifacts
 
-build_muen_supermicro_x11ssh_tf:
+build_muen_prodrive_hermes:
   except:
     variables:
       - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     MODE: muen
-    MUEN_HARDWARE: supermicro-x11ssh-tf
+    MUEN_HARDWARE: prodrive-hermes-1.0
   stage: build_muen
   artifacts:
     name: "$CI_JOB_NAME"
