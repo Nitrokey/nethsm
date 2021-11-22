@@ -72,9 +72,6 @@ func main() {
 	case "platform":
 		log.Printf("Booting subject: S-Platform")
 		sPlatformActions()
-	case "platform_updater":
-		log.Printf("Booting subject: S-Platform-Updater")
-		sPlatformUpdaterActions()
 	case "mock":
 		log.Printf("Mock mode")
 		G.diskDevice = safeGetenv("MOCK_DISK_DEVICE", "/dev/null")
