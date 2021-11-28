@@ -192,11 +192,75 @@ test-keyfender-e2e: $(KEYFENDER)
 	pkill test_server.exe || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
-	sleep 2
+	sleep 1
 	cd src/tests && \
 	    NITROHSM_URL="http://localhost:8080/api" ./provision_test.sh
 	cd src/tests && \
 	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./load_test.sh
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_gen
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_gen
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_gen
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_sign
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_sign
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_sign
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_decrypt
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_decrypt
 	cd src/tests && \
 	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
 ifeq ($(XMODE),test)
