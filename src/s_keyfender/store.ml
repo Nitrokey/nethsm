@@ -20,6 +20,7 @@ module KV (G : Irmin_git.G) (C : Irmin.Contents.S) = struct
 end
 
 (* the following code originates from irmin-mirage-git 2.6.1 *)
+(* modified to accomodate a push_and_pull (reducing memory usage) *)
 module type KV_RO = sig
   type git
 
@@ -179,15 +180,22 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
 
   type store = Batch of batch | Store of RO.t
 
-  and t = {
-    store : store;
+  type key = RO.key
+  type error = RO.error
+
+  type t = {
+    mutable store : store;
+    depth : int option;
+    branch : string option;
+    root : key option;
+    ctx : Mimic.ctx option;
+    headers : Cohttp.Header.t option;
+    mutable git : G.t;
+    uri : string;
     author : unit -> string;
     msg : [ `Set of RO.key | `Remove of RO.key | `Batch ] -> string;
     remote : Irmin.remote;
   }
-
-  type key = RO.key
-  type error = RO.error
 
   let pp_error = RO.pp_error
   let default_author () = "irmin <irmin@mirage.io>"
@@ -201,7 +209,8 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
       ?(msg = default_msg) git uri =
     RO.connect ?depth ?branch ?root ?ctx ?headers git uri >|= fun t ->
     let remote = S.remote ?ctx ?headers uri in
-    { store = Store t; author; msg; remote }
+    { store = Store t; depth ; branch ; root ; ctx ; headers ; git ; uri ;
+      author; msg; remote }
 
   let disconnect t =
     match t.store with Store t -> RO.disconnect t | Batch _ -> Lwt.return_unit
@@ -241,12 +250,28 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
   let info t op = Info.f ~author:(t.author ()) "%s" (t.msg op)
   let path = RO.path
 
+  let pushes = ref 0
+
+  let push_and_pull t store =
+    incr pushes;
+    RO.Sync.push store.RO.t t.remote >>= fun r ->
+    (if !pushes mod 100 = 0 then
+       G.v (Fpath.v "somewhere") >>= function
+       | Ok git ->
+         RO.connect ?depth:t.depth ?branch:t.branch ?root:t.root ?ctx:t.ctx ?headers:t.headers t.git t.uri >|= fun store ->
+         t.store <- Store store;
+         t.git <- git
+       | Error _ -> Lwt.return_unit
+     else
+       Lwt.return_unit) >|= fun () ->
+    write_error r
+
   let set t k v =
     let info = info t (`Set k) in
     match t.store with
     | Store s -> (
         S.set ~info s.t (path k) v >>= function
-        | Ok _ -> RO.Sync.push s.t t.remote >|= write_error
+        | Ok _ -> push_and_pull t s
         | Error e -> Lwt.return (Error (e :> write_error)))
     | Batch b ->
         S.Tree.add b.tree (path k) v >|= fun tree ->
@@ -258,7 +283,7 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
     match t.store with
     | Store s -> (
         S.remove ~info s.t (path k) >>= function
-        | Ok _ -> RO.Sync.push s.t t.remote >|= write_error
+        | Ok _ -> push_and_pull t s
         | Error e -> Lwt.return (Error (e :> write_error)))
     | Batch b ->
         S.Tree.remove b.tree (path k) >|= fun tree ->
@@ -314,7 +339,7 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
     match t.store with
     | Batch _ -> Fmt.failwith "No recursive batches"
     | Store s -> (
-        RO.Sync.push s.t t.remote >>= function
+        push_and_pull t s >>= function
         | Ok _ -> Lwt.return r
-        | Error e -> Lwt.fail_with (Fmt.to_to_string RO.Sync.pp_push_error e))
+        | Error e -> Lwt.fail_with (Fmt.to_to_string pp_write_error e))
 end
