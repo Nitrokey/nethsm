@@ -61,4 +61,5 @@ pin-depends: [
   ["cohttp.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
   ["cohttp-lwt.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
   ["cohttp-mirage.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
+  ["tcpip.6.1.1" "git+https://github.com/roburio/mirage-tcpip.git#6.1"]
 ]
