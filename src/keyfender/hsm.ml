@@ -957,6 +957,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           internal_server_error "Write key" Encrypted_store.pp_write_error
             (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
+    (* maximum amount of keys *)
+    let max_keys = 2000
+
     let add ~id t mechanisms priv =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
@@ -967,7 +970,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-        encode_and_write t id { mechanisms ; priv ; cert = None ; operations = 0 }
+        internal_server_error "List keys" Encrypted_store.pp_error
+          (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
+        if List.length xs <= max_keys then
+          encode_and_write t id { mechanisms ; priv ; cert = None ; operations = 0 }
+        else
+          let msg =
+            "Maximum amount of keys (" ^ string_of_int max_keys ^ ") exceeded."
+          in
+          Lwt.return (Error (Bad_request, msg))
 
     let add_json ~id t mechanisms typ key =
       let b64err msg ctx data =
