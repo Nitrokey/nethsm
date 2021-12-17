@@ -1057,9 +1057,8 @@ let keys_post_pem () =
   | _ -> false
   end
 
-let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048 }|}
-
 let keys_generate () =
+  let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048 }|} in
   "POST on /keys/generate succeeds"
   @? begin
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
@@ -1148,6 +1147,33 @@ let keys_generate_ed25519_fail () =
     end
   | _ -> false
   end
+
+  let keys_generate_generic () =
+    "POST on /keys/generate with Generic succeeds"
+    @? begin
+    let generate_generic = {|{ mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", length: 256 }|} in
+    match admin_post_request ~body:(`String generate_generic) "/keys/generate" with
+    | _, Some (`Created, headers, _, _) ->
+      begin match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> (* /api/v1/keys/<keyid> *)
+        List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+      end
+    | _ -> false
+    end
+
+    let keys_generate_generic_fail () =
+      let generate_generic = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Generic", length: 256 }|} in
+      "POST on /keys/generate with Generic fails (wrong mechanism)"
+      @? begin
+      match admin_post_request ~body:(`String generate_generic) "/keys/generate" with
+      | _, Some (`Bad_request, headers, _, _) ->
+        begin match Cohttp.Header.get headers "location" with
+          | None -> true
+          | Some _ -> false
+        end
+      | _ -> false
+      end
 
 let test_key_pem = {|
 -----BEGIN RSA PRIVATE KEY-----
@@ -1598,6 +1624,128 @@ let operator_keys_key_public_pem_ed25519 () =
   | _ -> false
   end
 
+let generic_key = "secretsecretsecretsecretsecretse"
+let aes_message = "messagemessagemessagemessagemess"
+let aes_cbc_iv = "iviviviviviviviv"
+let aes_cbc_encrypted = "bx4qzXVP7jEUogLTcsaMcOOe1TZFS2zQTwebJNzTS90="
+
+let add_generic state ~id ms key =
+  let json_key = { Keyfender.Json.data = Base64.encode_string key ; 
+    primeP = ""; primeQ = ""; publicExponent = "" } in
+  match Lwt_main.run (Hsm.Key.add_json ~id state ms Generic json_key) with
+  | Ok () -> ()
+  | Error _ -> assert false
+
+let hsm_with_generic_key () =
+  let hsm_state = operational_mock () in
+  add_generic hsm_state Keyfender.Json.(MS.of_list [ AES_Decryption_CBC; AES_Encryption_CBC ]) ~id:"keyID" generic_key;
+  hsm_state
+
+let operator_decrypt_aes_cbc_succeeds () =
+  "POST on /keys/keyID/decrypt succeeds with AES CBC"
+  @? begin
+    let hsm_state = hsm_with_generic_key () in
+    let decrypt_request =
+      Printf.sprintf {|{ mode: "AES_CBC", iv: "%s", encrypted: "%s"}|}
+        (Base64.encode_string aes_cbc_iv) aes_cbc_encrypted
+    in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String decrypt_request) ~hsm_state "/keys/keyID/decrypt" with
+    | _, Some (`OK, _, `String data, _) ->
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "decrypted", `String decrypted ] ->
+          begin match Base64.decode decrypted with
+            | Error _ -> false
+            | Ok m -> String.equal aes_message m
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let operator_decrypt_aes_cbc_no_iv_fails () =
+  "POST on /keys/keyID/decrypt succeeds with AES CBC"
+  @? begin
+    let hsm_state = hsm_with_generic_key () in
+    let decrypt_request =
+      Printf.sprintf {|{ mode: "AES_CBC", encrypted: "%s"}|}
+        aes_cbc_encrypted
+    in
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String decrypt_request) ~hsm_state "/keys/keyID/decrypt" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_encrypt_aes_cbc_succeeds () =
+  "POST on /keys/keyID/decrypt succeeds with AES CBC"
+  @? begin
+    let hsm_state = hsm_with_generic_key () in
+    let encrypt_request =
+      Printf.sprintf {|{ mode: "AES_CBC", iv: "%s", message: "%s"}|}
+        (Base64.encode_string aes_cbc_iv) (Base64.encode_string aes_message)
+    in
+    Printf.eprintf "request: %s" encrypt_request;
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypt_request) ~hsm_state "/keys/keyID/encrypt" with
+    | _, Some (`OK, _, `String data, _) ->
+      Printf.eprintf "response: %s" data;
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "encrypted", `String encrypted; "iv", `String iv ] ->
+          begin match Base64.decode encrypted with
+            | Error _ -> false
+            | Ok _ -> String.equal aes_cbc_encrypted encrypted && String.equal iv (Base64.encode_string aes_cbc_iv)
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let operator_encrypt_aes_cbc_no_iv_succeeds () =
+  "POST on /keys/keyID/decrypt succeeds with AES CBC"
+  @? begin
+    let hsm_state = hsm_with_generic_key () in
+    let encrypt_request =
+      Printf.sprintf {|{ mode: "AES_CBC", message: "%s"}|}
+        (Base64.encode_string aes_message)
+    in
+    Printf.eprintf "request: %s" encrypt_request;
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypt_request) ~hsm_state "/keys/keyID/encrypt" with
+    | _, Some (`OK, _, `String data, _) ->
+      Printf.eprintf "response: %s" data;
+      begin match Yojson.Safe.from_string data with
+        | `Assoc [ "encrypted", `String encrypted_b64; "iv", `String iv ] ->
+          begin match Base64.decode encrypted_b64 with
+            | Error _ -> false
+            | Ok encrypted ->
+              let iv = Base64.decode_exn iv |> Cstruct.of_string in
+              let key = Cstruct.of_string generic_key |> Mirage_crypto.Cipher_block.AES.CBC.of_secret in
+              let encrypted_cs = Cstruct.of_string encrypted in
+              let m = Mirage_crypto.Cipher_block.AES.CBC.decrypt ~key ~iv encrypted_cs |> Cstruct.to_string in
+              String.equal m aes_message
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let keys_key_get_generic () =
+  "GET on /keys/keyID succeeds with Generic key"
+  @? begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_generic_key ()) "/keys/keyID" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let generic_json =
+  let b64 = Base64.encode_string generic_key in
+  Printf.sprintf {| { mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", key: { data: "%s" } } |} b64
+
+let keys_key_put_generic () =
+  "PUT on /keys/keyID succeeds with Generic key"
+  @? begin
+  match admin_put_request ~body:(`String generic_json) "/keys/keyID" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
 let keys_key_cert_get () =
   "GET on /keys/keyID/cert succeeds"
   @? begin
@@ -1893,7 +2041,7 @@ let crypto_rsa_decrypt () =
   List.iter (fun (idx, enc_data, dec_mode, txt) ->
       ("decryption with RSA " ^ txt ^ " succeeds")
       @? begin
-        match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" dec_mode enc_data) with
+        match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~iv:None dec_mode enc_data) with
      | Ok data ->
        let b64_dec = Base64.decode_exn data in
        String.equal b64_dec Cstruct.(to_string (sub enc_test_data 0 idx))
@@ -2001,6 +2149,47 @@ let crypto_ecdsa_sign () =
      | Error _ -> false
       end)
     algos
+
+let crypto_aes_cbc_encrypt () =
+  let mechs = Keyfender.Json.MS.singleton Keyfender.Json.AES_Encryption_CBC in
+  let sizes = [ 128; 192; 256 ] in
+  List.iter (fun size ->
+      let hsm = operational_mock () in
+      let secret = Mirage_crypto_rng.generate (size/8) in
+      add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
+      ("encryption with AES-CBC succeeds")
+      @? begin match Lwt_main.run (Hsm.Key.encrypt hsm ~id:"test" ~iv:None AES_CBC (Base64.encode_string aes_message)) with
+      | Ok (cipher_b64, Some iv_b64) ->
+          let iv = Base64.decode_exn iv_b64 |> Cstruct.of_string in
+          let key = Mirage_crypto.Cipher_block.AES.CBC.of_secret secret in
+          let encrypted_cs = Base64.decode_exn cipher_b64 |> Cstruct.of_string in
+          let m = Mirage_crypto.Cipher_block.AES.CBC.decrypt ~key ~iv encrypted_cs |> Cstruct.to_string in
+          String.equal m aes_message
+      | Ok (_, None)
+      | Error _ -> assert false
+      end)
+    sizes
+
+let crypto_aes_cbc_decrypt () =
+  let mechs = Keyfender.Json.MS.singleton Keyfender.Json.AES_Decryption_CBC in
+  let sizes = [ 128; 192; 256 ] in
+  List.iter (fun size ->
+      let hsm = operational_mock () in
+      let secret = Mirage_crypto_rng.generate (size/8) in
+      add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
+      let iv = Mirage_crypto_rng.generate Mirage_crypto.Cipher_block.AES.CBC.block_size in
+      let key = Mirage_crypto.Cipher_block.AES.CBC.of_secret secret in
+      let encrypted = Mirage_crypto.Cipher_block.AES.CBC.encrypt ~key ~iv (Cstruct.of_string aes_message)
+        |> Cstruct.to_string |> Base64.encode_string
+      in
+      let iv = Some (Cstruct.to_string iv |> Base64.encode_string) in
+      ("decryption with AES-CBC succeeds")
+      @? begin match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~iv AES_CBC encrypted) with
+      | Ok m ->
+          String.equal m (Base64.encode_string aes_message)
+      | Error _ -> assert false
+      end)
+    sizes
 
 (* translate from ounit into boolean *)
 let rec ounit_success =
@@ -2112,6 +2301,8 @@ let () =
     "/keys/generate" >:: keys_generate_ed25519;
     "/keys/generate" >:: keys_generate_ed25519_explicit_keyid;
     "/keys/generate" >:: keys_generate_ed25519_fail;
+    "/keys/generate" >:: keys_generate_generic;
+    "/keys/generate" >:: keys_generate_generic_fail;
     "/keys/keyID" >:: keys_key_get;
     "/keys/keyID" >:: keys_key_get_not_found;
     "/keys/keyID" >:: keys_key_get_invalid_id;
@@ -2134,6 +2325,10 @@ let () =
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_wrong_mech;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_invalid_id;
     "/keys/keyID/decrypt" >:: operator_keys_key_decrypt_fails_not_found;
+    "/keys/keyID/decrypt" >:: operator_decrypt_aes_cbc_succeeds;
+    "/keys/keyID/decrypt" >:: operator_decrypt_aes_cbc_no_iv_fails;
+    "/keys/keyID/encrypt" >:: operator_encrypt_aes_cbc_succeeds;
+    "/keys/keyID/encrypt" >:: operator_encrypt_aes_cbc_no_iv_succeeds;
     "/keys/keyID/sign" >:: operator_keys_key_sign;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails;
     "/keys/keyID/sign" >:: operator_keys_key_sign_fails_bad_data;
@@ -2145,6 +2340,8 @@ let () =
     "/keys/keyID/sign" >:: operator_sign_ed25519_fails;
     "/keys/keyID" >:: keys_key_get_ed25519;
     "/keys/keyID" >:: keys_key_put_ed25519;
+    "/keys/keyID" >:: keys_key_get_generic;
+    "/keys/keyID" >:: keys_key_put_generic;
     "/keys/keyID/public.pem" >:: operator_keys_key_public_pem_ed25519;
     "/keys/keyID/cert" >:: keys_key_cert_get;
     "/keys/keyID/cert" >:: keys_key_cert_get_not_found;
@@ -2170,6 +2367,8 @@ let () =
     "RSA PSS sign" >:: crypto_rsa_pss_sign;
     "ED25519 sign" >:: crypto_ed25519_sign;
     "ECDSA sign" >:: crypto_ecdsa_sign;
+    "AES-CBC encrypt" >:: crypto_aes_cbc_encrypt;
+    "AES-CBC decrypt" >:: crypto_aes_cbc_decrypt;
   ] in
   let suite = "test dispatch" >::: tests in
   let verbose = ref false in
