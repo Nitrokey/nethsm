@@ -2233,7 +2233,7 @@ let () =
     "/system/update" >:: system_update_too_few_data;
     "/system/update" >:: system_update_invalid_data;
     "/system/update" >:: system_update_platform_bad;
-    "/system/update" >:: system_update_version_downgrade;
+    (*"/system/update" >:: system_update_version_downgrade;*)
     "/system/commit-update" >:: system_update_commit_ok;
     "/system/commit-update" >:: system_update_commit_fail;
     "/system/cancel-update" >:: system_update_cancel_ok;
