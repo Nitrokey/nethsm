@@ -4,5 +4,5 @@ CONFIG_TPM_MEASURED_BOOT=y
 CONFIG_PAYLOAD_GRUB2=y
 CONFIG_GRUB2_REVISION=y
 CONFIG_GRUB2_GIT_REPOSITORY="../../../../grub2"
-CONFIG_GRUB2_REVISION_ID="origin/nitrohsm"
+CONFIG_GRUB2_REVISION_ID="origin/nethsm"
 CONFIG_GRUB2_EXTRA_MODULES="xhci usb_keyboard ahci part_gpt part_msdos nativedisk gcry_rsa gcry_sha512 csl pgp sbs sleep"

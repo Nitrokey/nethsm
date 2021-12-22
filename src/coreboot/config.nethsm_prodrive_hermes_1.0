@@ -14,7 +14,7 @@ CONFIG_GRUB2_REVISION=y
 
 # the following seems not to work with current coreboot master ?
 CONFIG_GRUB2_GIT_REPOSITORY="../../../../grub2"
-CONFIG_GRUB2_REVISION_ID="origin/nitrohsm"
+CONFIG_GRUB2_REVISION_ID="origin/nethsm"
 CONFIG_GRUB2_EXTRA_MODULES="xhci usb_keyboard ahci part_gpt part_msdos nativedisk gcry_rsa gcry_sha512 csl pgp sbs sleep"
 
 # currently done using cbfstool

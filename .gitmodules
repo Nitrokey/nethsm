@@ -20,11 +20,11 @@
 [submodule "src/coreboot/coreboot"]
 	path = src/coreboot/coreboot
 	url = ../coreboot.git
-	branch = nitrohsm
+	branch = nethsm
 [submodule "src/coreboot/grub2"]
 	path = src/coreboot/grub2
 	url = ../grub.git
-	branch = nitrohsm
+	branch = nethsm
 [submodule "src/u-root/src/github.com/google/go-tpm"]
 	path = src/u-root/src/github.com/google/go-tpm
 	url = https://github.com/google/go-tpm
