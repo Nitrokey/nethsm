@@ -21,12 +21,12 @@ To perform initial installation on a stock hardware unit, follow these steps:
 
 See [System Console](#sec-sc) for details on how to access the console of the unit.
 
-[builds]: https://git.dotplex.com/nitrokey/nethsm/ci-builds
-[installer]: https://git.dotplex.com/nitrokey/nethsm/nethsm/-/raw/master/tools/nethsm-install.sh
+[builds]: https://git.nitrokey.com/nitrokey/nethsm/ci-builds
+[installer]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/raw/master/tools/nethsm-install.sh
 
 Alternatively, for development purposes, if you have a Debian 10 host system (**not a container**) available to build it with, you can also install the System Software by booting a signed "development" installer based on Debian Live from USB. See the [README.md][usbinstaller] for details.
 
-[usbinstaller]: https://git.dotplex.com/nitrokey/nethsm/nethsm/-/blob/master/src/installer/README.md
+[usbinstaller]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/blob/master/src/installer/README.md
 
 # System Software Update Signing {#sec-ssus}
 

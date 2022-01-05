@@ -6,7 +6,7 @@ ARG GIT_COMMIT=master
 
 RUN cd /home/opam \
   && [ ! -d nethsm ] \
-  && git clone https://$GIT_USER:$GIT_PASSWORD@git.dotplex.com/nitrokey/nethsm/nethsm.git \
+  && git clone https://$GIT_USER:$GIT_PASSWORD@git.nitrokey.com/nitrokey/nethsm/nethsm.git \
   && cd nethsm \
   && git reset --hard $GIT_COMMIT \
   && cd ..

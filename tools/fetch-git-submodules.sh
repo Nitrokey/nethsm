@@ -78,7 +78,7 @@ git submodule update ${DEPTH}
 git -C src/muen/muen submodule init
 # XXX Can't do relative here... sigh...
 git -C src/muen/muen config --local \
-    submodule.components/linux/src.url git@git.dotplex.com:nitrokey/nethsm/linux.git
+    submodule.components/linux/src.url git@git.nitrokey.com:nitrokey/nethsm/linux.git
 git -C src/muen/muen config --local \
     submodule.tools/mugenschedcfg.url https://git.codelabs.ch/muen/mugenschedcfg.git
 git -C src/muen/muen config --local \
