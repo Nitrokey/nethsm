@@ -95,6 +95,14 @@ is_emulated ()
     [ -n "${opt_EMULATE}" ]
 }
 
+REL_PATH=$(dirname ${BASH_SOURCE})
+MKE2FS_CONF=${REL_PATH}/../src/u-root/mke2fs.conf
+
+if [ ! -r "${MKE2FS_CONF}" ]; then
+	  die "Did not find custom ${MKE2FS_CONF} ... aborting install!"
+fi
+
+
 DISK="$1"
 MUEN="$2"
 if is_emulated; then
@@ -188,13 +196,12 @@ if is_emulated; then
     fs_offset=$((${p3_start} * 512))
     # Size in megabytes, rounded down.
     fs_size=$((${p3_size} / 2048))
-    (set -x; mkfs.ext4 -F -m0 -L data -E offset=${fs_offset} \
+    (set -x; MKE2FS_CONFIG=${MKE2FS_CONF} mke2fs -t ext4 -F -m0 -L data -E discard,offset=${fs_offset} \
         ${DISK} ${fs_size}m) \
-        || die "While creating data filesystem: mkfs.ext4 failed"
+        || die "While creating data filesystem: mke2fs failed"
 else
-    (set -x; mkfs.ext4 -F -m0 -L data \
-        ${DISK}3) \
-        || die "While creating data filesystem: mkfs.ext4 failed"
+    (set -x; MKE2FS_CONFIG=${MKE2FS_CONF} mke2fs -t ext4 -E discard -F -m0 -L data ${DISK}3) \
+        || die "While creating data filesystem: mke2fs failed"
 fi
 
 # Clean up.

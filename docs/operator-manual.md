@@ -56,7 +56,7 @@ Disassemble hardware, attach SSD to a computer. Wipe the data partition (assumin
 
     | mkdir -p /tmp/empty /tmp/data/git
     | git init --bare --template=/tmp/empty /tmp/data/git/keyfender-data.git
-    | mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sdb3
+    | MKE2FS_CONFIG=src/u-root/mke2fs.conf mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sdb3
 
 # System Console {#sec-sc}
 
