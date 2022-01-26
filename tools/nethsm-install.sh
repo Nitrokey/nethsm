@@ -108,7 +108,7 @@ fi
 [ -f "${MUEN}" ] || die "Not found: ${MUEN}"
 
 if ! is_emulated; then
-    DEVINFO=$(lsblk -S -o NAME,HCTL,VENDOR,MODEL,REV,TRAN,SIZE,STATE "${DISK}")
+    DEVINFO=$(lsblk -o NAME,HCTL,VENDOR,MODEL,REV,TRAN,SIZE,STATE "${DISK}")
     [ $? -ne 0 ] && die "Could not retrieve block device information"
 else
     truncate -s "${emulate_SIZE}" "${DISK}" \
