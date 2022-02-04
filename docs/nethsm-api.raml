@@ -1161,7 +1161,7 @@ annotationTypes:
             description: Precondition failed (NetHSM was not <i>Operational</i>).
 
     /csr.pem:
-      put:
+      post:
         (role): [ Administrator ]
         (state): [ Operational ]
         description: Get NetHSM certificate signing request e.g. to replace self-signed intital certificate.
