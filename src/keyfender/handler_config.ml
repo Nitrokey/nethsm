@@ -60,7 +60,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
-    inherit !Endpoint.put_json
+    inherit !Endpoint.post_json
     inherit !Endpoint.no_cache
 
     method private of_json json rd =
