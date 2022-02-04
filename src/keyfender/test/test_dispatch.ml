@@ -667,7 +667,7 @@ let subject = {|{
 let post_config_tls_csr_pem () =
   "post tls csr pem file succeeds"
   @? begin
-  match admin_put_request ~body:(`String subject) "/config/tls/csr.pem" with
+  match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
   | _, Some (`OK, _, `String body, _) ->
      begin match X509.Signing_request.decode_pem (Cstruct.of_string body) with
      | Ok _ -> true
