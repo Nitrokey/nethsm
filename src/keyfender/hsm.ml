@@ -1026,35 +1026,43 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Error `Msg m -> Lwt.return (Error (Bad_request, m))
       | Ok priv -> add ~id t mechanisms (X509 priv)
 
+    let generate_x509 typ ~length =
+      let open Rresult in
+        (match typ with
+      | `RSA when 1024 <= length && length <= 8192  -> Ok (Some length, `RSA)
+      | `RSA -> Error (Bad_request, "Length must be between 1024 and 8192.")
+      | rest -> Ok (None, rest))
+      >>| fun (bits, typ) ->
+      X509.Private_key.generate ?bits typ
+
+    let generate_generic ~length =
+           if 128 <= length && length <= 8192 then
+        Ok (Cstruct.to_string @@ Mirage_crypto_rng.generate ((length+7)/8))
+           else
+                Error (Bad_request, "Length must be between 128 and 8192.")
+    
+    let generate_key typ ~length =
+      let open Rresult in
+      match typ with
+      | Json.Generic ->
+        (generate_generic ~length >>| (fun key -> Generic key))
+      | _ ->
+        let x509_type = match typ with
+          | Json.Generic -> assert false 
+          | RSA -> `RSA
+          | Curve25519 -> `ED25519
+          | EC_P224 -> `P224
+          | EC_P256 -> `P256
+          | EC_P384 -> `P384
+          | EC_P521 -> `P521
+        in
+        (generate_x509 x509_type ~length >>| (fun key -> X509 key))
+    
     let generate ~id t typ mechanisms ~length =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
       Lwt.return
-        (match typ with
-         | Json.RSA ->
-           if 1024 <= length && length <= 8192 then
-             Ok (Some length, `RSA)
-           else
-             Error (Bad_request, "Length must be between 1024 and 8192.")
-         | Json.Generic ->
-           if 128 <= length && length <= 8192 then
-             Ok (Some length, `Generic)
-           else
-                Error (Bad_request, "Length must be between 128 and 8192.")
-         | Json.Curve25519 -> Ok (None, `ED25519)
-         | Json.EC_P224 -> Ok (None, `P224)
-         | Json.EC_P256 -> Ok (None, `P256)
-         | Json.EC_P384 -> Ok (None, `P384)
-         | Json.EC_P521 -> Ok (None, `P521)) >>= fun (bits, typ) ->
-        let priv = match typ with
-          | `Generic ->
-              begin match bits with 
-              | Some n -> Generic (Cstruct.to_string @@ Mirage_crypto_rng.generate ((n+7)/8))
-              | None -> assert false
-              end
-          | `ED25519 | `P224 | `P256 | `P384 | `P521 | `RSA as typ ->
-              X509 (X509.Private_key.generate ?bits typ)
-        in
+        (generate_key typ ~length) >>= fun priv ->
         Metrics.key_op `Generate;
         add ~id t mechanisms priv
 
