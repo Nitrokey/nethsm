@@ -591,8 +591,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     unlock t.kv Passphrase passphrase >|= fun state' ->
     t.state <- state'
 
-  let generate_cert () =
-    let priv = X509.Private_key.generate `P256 in
+  let generate_cert priv =
     (* this is before provisioning, our posix time may be not accurate *)
     let valid_from = Ptime.epoch
     and valid_until = Ptime.max
@@ -1921,8 +1920,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         (Config_store.get_opt kv Version) >>= function
       | None ->
         (* uninitialized / unprovisioned device *)
+        let priv = X509.Private_key.generate `P256 in
         let state = Unprovisioned
-        and cert, key = generate_cert ()
+        and cert, key = generate_cert priv
         and chain = []
         in
         let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; res_mbox ; device_id } in
