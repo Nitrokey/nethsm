@@ -676,6 +676,61 @@ let post_config_tls_csr_pem () =
   | _ -> false
   end
 
+let post_config_tls_generate () =
+  let generate_json = {|{ type: "RSA", length: 2048 }|} in
+  let decode_key pem_data = 
+    match X509.Public_key.decode_pem (Cstruct.of_string pem_data) with
+    | Ok v -> v
+    | Error _ -> raise (Failure "decode_key")
+  in
+  let get_public_key ~hsm_state = 
+    match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/tls/public.pem" with
+    | _, Some (`OK, _, `String body, _) -> decode_key body
+    | _ -> raise (Failure "get_public_key")
+  in
+  "post tls generate"
+  @? begin
+  let hsm_state = operational_mock () in
+  try 
+    (* obtain generated key at provision *)
+    let initial_key = get_public_key ~hsm_state in
+    (* call the generate endpoint to generate an RSA key *)
+    match admin_post_request ~hsm_state ~body:(`String generate_json) "/config/tls/generate" with
+    | _, Some (`No_content, _, _, _) -> 
+      (* check that the tls key is different from the initial key *)
+      let new_key = get_public_key ~hsm_state in
+      not (Cstruct.equal
+        (X509.Public_key.fingerprint new_key)
+        (X509.Public_key.fingerprint initial_key))
+    | _ -> false
+  with
+  Failure _ -> false
+  end
+
+let post_config_tls_generate_generic_key () =
+  "post tls generate fail generic key"
+  @? begin
+  let hsm_state = operational_mock () in
+  try 
+    match admin_post_request ~hsm_state ~body:(`String {|{ type: "Generic", length: 2048 }|}) "/config/tls/generate" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  with
+  Failure _ -> false
+  end
+
+let post_config_tls_generate_bad_length () =
+  "post tls generate fail bad length"
+  @? begin
+  let hsm_state = operational_mock () in
+  try 
+    match admin_post_request ~hsm_state ~body:(`String  {|{ type: "RSA", length: 100 }|}) "/config/tls/generate" with
+    | _, Some (`Bad_request, _, _, _) -> true
+    | _ -> false
+  with
+  Failure _ -> false
+  end
+
 let config_network_ok () =
   "GET on /config/network succeeds"
   @? begin
@@ -2257,6 +2312,9 @@ let () =
     "/config/tls/cert.pem" >:: put_config_tls_cert_pem;
     "/config/tls/cert.pem" >:: put_config_tls_cert_pem_fail;
     "/config/tls/csr.pem" >:: post_config_tls_csr_pem;
+    "/config/tls/generate" >:: post_config_tls_generate;
+    "/config/tls/generate" >:: post_config_tls_generate_generic_key;
+    "/config/tls/generate" >:: post_config_tls_generate_bad_length;
     "/config/network" >:: config_network_ok;
     "/config/network" >:: config_network_set_ok;
     "/config/network" >:: config_network_set_fail;
