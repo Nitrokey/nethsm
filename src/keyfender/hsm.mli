@@ -84,6 +84,9 @@ module type S = sig
 
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
+    val tls_generate : t -> X509.Key_type.t -> length:int -> 
+      (unit, error) result Lwt.t
+    
     val network : t -> Json.network Lwt.t
 
     val set_network : t -> Json.network ->

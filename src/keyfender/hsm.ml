@@ -84,6 +84,8 @@ module type S = sig
 
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
+    val tls_generate : t -> X509.Key_type.t -> length:int -> (unit, error) result Lwt.t
+
     val network : t -> Json.network Lwt.t
 
     val set_network : t -> Json.network ->
@@ -470,7 +472,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   type t = {
     mutable state : internal_state ;
     mutable has_changes : string option ;
-    key : X509.Private_key.t ;
+    mutable key : X509.Private_key.t ;
     mutable cert : X509.Certificate.t ;
     mutable chain : X509.Certificate.t list ;
     kv : KV.t ;
@@ -1027,7 +1029,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let generate_x509 typ ~length =
       let open Rresult in
-        (match typ with
+      (match typ with
       | `RSA when 1024 <= length && length <= 8192  -> Ok (Some length, `RSA)
       | `RSA -> Error (Bad_request, "Length must be between 1024 and 8192.")
       | rest -> Ok (None, rest))
@@ -1035,10 +1037,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       X509.Private_key.generate ?bits typ
 
     let generate_generic ~length =
-           if 128 <= length && length <= 8192 then
+      if 128 <= length && length <= 8192 then
         Ok (Cstruct.to_string @@ Mirage_crypto_rng.generate ((length+7)/8))
-           else
-                Error (Bad_request, "Length must be between 128 and 8192.")
+      else
+        Error (Bad_request, "Length must be between 128 and 8192.")
     
     let generate_key typ ~length =
       let open Rresult in
@@ -1511,6 +1513,28 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         (match X509.Signing_request.create dn t.key with
          | Ok csr -> Ok (Cstruct.to_string (X509.Signing_request.encode_pem csr))
          | Error `Msg m -> Error (Bad_request, "while creating CSR: " ^ m))
+
+    let tls_generate t typ ~length = 
+      let open Lwt_result.Infix in
+      (* generate key *)
+      Lwt.return (Key.generate_x509 typ ~length)
+      >>= fun priv ->
+      (* generate self-signed certificate *)
+      let cert, key = generate_cert priv in
+      (* update state *)
+      t.key <- key;
+      t.cert <- cert;
+      t.chain <- [];
+      (* update store *)
+      with_write_lock (fun () ->
+        internal_server_error "Write tls private key" KV.pp_write_error
+          (Config_store.set t.kv Private_key key) 
+        >>= fun () ->
+        internal_server_error "Write tls certificate" KV.pp_write_error
+          (Config_store.set t.kv Certificate (cert, [])))
+      >>= fun () ->
+      (* notify server *)
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
 
     let network t =
       let open Lwt.Infix in
