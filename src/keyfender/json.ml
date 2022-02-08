@@ -361,6 +361,11 @@ type generate_key_req = {
   id : (string [@default ""])
 } [@@deriving yojson]
 
+type tls_generate_key_req = {
+  typ : key_type [@key "type"];
+  length : (int [@default 0]) ;
+} [@@deriving yojson]
+
 let is_alphanum s = Astring.String.for_all (function 'a'..'z'|'A'..'Z'|'0'..'9' -> true | _ -> false) s
 
 let valid_id id =

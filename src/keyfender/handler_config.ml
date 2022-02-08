@@ -78,6 +78,39 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
   end
 
+  class tls_generate hsm_state ip = object
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [`Operational]
+    inherit !Endpoint.role hsm_state `Administrator ip
+    inherit !Endpoint.post_json
+    inherit !Endpoint.no_cache
+
+    method private of_json json rd = 
+      let ok (key : Json.tls_generate_key_req) =
+        let open Lwt.Infix in
+        (match key.typ with
+        | Json.Generic -> Error "Generic"
+        | RSA -> Ok (`RSA)
+        | Curve25519 -> Ok (`ED25519)
+        | EC_P224 -> Ok (`P224)
+        | EC_P256 -> Ok (`P256)
+        | EC_P384 -> Ok (`P384)
+        | EC_P521 -> Ok (`P521))
+        |> function
+        | Error typ -> 
+          Endpoint.respond_error (Bad_request, Fmt.str "Unsupported key type '%s' for TLS" typ) rd
+        | Ok typ ->
+          Hsm.Config.tls_generate hsm_state typ ~length:key.length
+          >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Endpoint.respond_error e rd
+      in
+      Json.to_ocaml Json.tls_generate_key_req_of_yojson json
+      |>
+      Endpoint.err_to_bad_request ok rd
+
+  end
+
   class unlock_passphrase hsm_state ip = object
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]

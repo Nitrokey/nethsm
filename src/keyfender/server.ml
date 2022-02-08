@@ -43,6 +43,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/config/tls/public.pem", fun () -> new Config.tls_public hsm_state ip) ;
         ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state ip) ;
         ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state ip) ;
+        ("/config/tls/generate", fun () -> new Config.tls_generate hsm_state ip) ;
         ("/config/network", fun () -> new Config.network hsm_state ip) ;
         ("/config/logging", fun () -> new Config.logging hsm_state ip) ;
         ("/config/backup-passphrase", fun () -> new Config.backup_passphrase hsm_state ip) ;
