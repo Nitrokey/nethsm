@@ -177,6 +177,7 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
   let (outdir, test_file) = path_to_filename state meth path in
   ignore (Sys.command("mkdir -p " ^ outdir));
 
+  let cmd = Str.global_replace (Str.regexp_string "{Tag}") "munich" cmd in
   let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
   let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
 

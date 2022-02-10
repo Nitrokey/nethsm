@@ -130,6 +130,17 @@ module type S = sig
   end
 
   module User : sig
+
+    module Info : sig 
+      type t
+
+      val name : t -> string
+
+      val role : t -> Json.role
+
+      val tags : t -> Json.TagSet.t
+    end
+
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
@@ -139,7 +150,7 @@ module type S = sig
 
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> id:string -> (string * Json.role, error) result Lwt.t
+    val get : t -> id:string -> (Info.t, error) result Lwt.t
 
     val add : id:string -> t -> role:Json.role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
@@ -148,6 +159,10 @@ module type S = sig
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
+
+    val add_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+
+    val remove_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
     val list_digest : t -> string option Lwt.t
 
@@ -159,13 +174,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key -> Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> Json.MS.t -> string ->
+    val add_pem : id:string -> t -> Json.MS.t -> string -> Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> Json.key_type -> Json.MS.t -> length:int ->
+    val generate : id:string -> t -> Json.key_type -> Json.MS.t -> length:int -> Json.restrictions ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -182,11 +197,17 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
-    val decrypt : t -> id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+    val get_restrictions : t -> id:string -> (Json.restrictions, error) result Lwt.t
 
-    val encrypt : t -> id:string -> iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
+    val add_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+    
+    val remove_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
-    val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
+    val decrypt : t -> id:string -> user_id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+
+    val encrypt : t -> id:string -> user_id:string -> iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
+
+    val sign : t -> id:string -> user_id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 
     val list_digest : t -> string option Lwt.t
 
@@ -675,6 +696,24 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     if check_id_base id then Ok () else Error (Bad_request, "invalid ID")
 
   module User = struct
+
+    module Info = struct 
+      type t = {
+        name : string ;
+        salt : string ;
+        digest : string ;
+        role : Json.role ;
+        tags : Json.TagSet.t ;
+      }[@@deriving yojson]
+
+      let name t = t.name
+
+      let role t = t.role
+
+      let tags t = t.tags
+
+    end
+
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
 
@@ -685,12 +724,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | `Metrics -> "R-Metrics"
       | `Backup -> "R-Backup"
 
-    type user = {
-      name : string ;
-      salt : string ;
-      digest : string ;
-      role : Json.role
-    }[@@deriving yojson]
 
     let read_decode store id =
       let open Lwt.Infix in
@@ -702,7 +735,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | Ok data ->
           Rresult.R.reword_error
             (fun err -> `Json_decode err)
-            (Json.decode user_of_yojson data)
+            (Json.decode Info.of_yojson data)
 
     let pp_find_error ppf = function
       | `Encrypted_store kv -> Encrypted_store.pp_error ppf kv
@@ -710,7 +743,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | `Json_decode msg -> Fmt.pf ppf "json decode failure %s" msg
 
     let write store id user =
-      let user_str = Yojson.Safe.to_string (user_to_yojson user) in
+      let user_str = Yojson.Safe.to_string (Info.to_yojson user) in
       with_write_lock (fun () ->
           internal_server_error "Write user" Encrypted_store.pp_write_error
             (Encrypted_store.set store (Mirage_kv.Key.v id) user_str))
@@ -759,16 +792,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | Some _ -> true)
 
     let get t ~id =
-      let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error "Read user" pp_find_error
-        (read_decode store id >|= fun user ->
-         user.name, user.role)
+        (read_decode store id)
 
     let prepare_user ~name ~passphrase ~role =
       let salt = Rng.generate Crypto.passphrase_salt_len in
       let digest = Crypto.stored_passphrase ~salt (Cstruct.of_string passphrase) in
-      { name ; salt = Cstruct.to_string salt ; digest = Cstruct.to_string digest ; role }
+      { Info.name ;
+        salt = Cstruct.to_string salt ;
+        digest = Cstruct.to_string digest ;
+        role ;
+        tags = Json.TagSet.empty }
 
     let add ~id t ~role ~passphrase ~name =
       let open Lwt_result.Infix in
@@ -813,6 +848,40 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       in
       write store id user' >|= fun () ->
       Access.info (fun m -> m "changed %s (%s) passphrase" id user.name)
+
+    let add_tag t ~id ~tag =
+      let open Lwt_result.Infix in
+      let store = in_store t in
+      internal_server_error "Read user" pp_find_error
+        (read_decode store id) >>= fun user ->
+      if Info.role user = `Operator then
+        if not (Json.TagSet.mem tag user.tags) then 
+          let user' = 
+            { user with tags = Json.TagSet.add tag user.tags} 
+          in
+          write store id user' >|= fun () ->
+          Access.info (fun m -> m "added a tag to %s (%s): %S" id user.name tag);
+          true
+        else
+          Lwt.return_ok false
+      else
+        Lwt.return_error (Bad_request, "tag operations only exist on operator users")
+  
+    let remove_tag t ~id ~tag =
+      let open Lwt_result.Infix in
+      let store = in_store t in
+      internal_server_error "Read user" pp_find_error
+        (read_decode store id) >>= fun user ->
+      if Info.role user = `Operator then
+        if Json.TagSet.mem tag user.tags then
+          let user' = { user with tags = Json.TagSet.remove tag user.tags} in
+          write store id user' >|= fun () ->
+          Access.info (fun m -> m "removed a tag from %s (%s): %S" id user.name tag);
+          true
+        else
+          Lwt.return_ok false
+      else
+        Lwt.return_error (Bad_request, "tag operations only exist on operator users")
 
     let list_digest t =
       let open Lwt.Infix in
@@ -891,6 +960,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       priv : priv ;
       cert : (string * string) option ;
       operations : int ;
+      restrictions : Json.restrictions;
     } [@@deriving yojson]
 
     (* boilerplate for dumping keys whose operations changed *)
@@ -959,7 +1029,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     (* maximum amount of keys *)
     let max_keys = 20000
 
-    let add ~id t mechanisms priv =
+    let add ~id t mechanisms priv restrictions =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
@@ -972,14 +1042,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         internal_server_error "List keys" Encrypted_store.pp_error
           (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
         if List.length xs <= max_keys then
-          encode_and_write t id { mechanisms ; priv ; cert = None ; operations = 0 }
+          encode_and_write t id { 
+            mechanisms ; 
+            priv ; 
+            cert = None ; 
+            operations = 0 ; 
+            restrictions }
         else
           let msg =
             "Maximum amount of keys (" ^ string_of_int max_keys ^ ") exceeded."
           in
           Lwt.return (Error (Bad_request, msg))
 
-    let add_json ~id t mechanisms typ key =
+    let add_json ~id t mechanisms typ key restrictions =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s"
@@ -1020,12 +1095,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           X509.Private_key.of_cstruct (Cstruct.of_string k) typ >>| fun p -> X509 p
       with
       | Error `Msg e -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ~id t mechanisms priv
+      | Ok priv -> add ~id t mechanisms priv restrictions
 
-    let add_pem ~id t mechanisms data =
+    let add_pem ~id t mechanisms data restrictions =
       match X509.Private_key.decode_pem (Cstruct.of_string data) with
       | Error `Msg m -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ~id t mechanisms (X509 priv)
+      | Ok priv -> add ~id t mechanisms (X509 priv) restrictions
 
     let generate_x509 typ ~length =
       let open Rresult in
@@ -1059,13 +1134,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         in
         (generate_x509 x509_type ~length >>| (fun key -> X509 key))
     
-    let generate ~id t typ mechanisms ~length =
+    let generate ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
       Lwt.return (check_id id) >>= fun () ->
       Lwt.return
         (generate_key typ ~length) >>= fun priv ->
         Metrics.key_op `Generate;
-        add ~id t mechanisms priv
+        add ~id t mechanisms priv restrictions
 
     let remove t ~id =
       let open Lwt_result.Infix in
@@ -1123,7 +1198,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         { Json.mechanisms = pkey.mechanisms ;
           typ ;
           operations = pkey.operations ;
-          key }
+          key ;
+          restrictions = pkey.restrictions }
 
     let get_pem t ~id =
       let open Lwt_result.Infix in
@@ -1167,6 +1243,38 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let key' = { key with cert = None } in
         encode_and_write t id key'
 
+    let get_restrictions t ~id =
+      let open Lwt_result.Infix in
+      get_key t id >|= fun key ->
+      key.restrictions
+    
+    let add_restriction_tags t ~id ~tag =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key ->
+      if not (Json.TagSet.mem tag key.restrictions.tags) then 
+        let restrictions' = 
+          { Json.tags = Json.TagSet.add tag key.restrictions.tags } 
+        in
+        encode_and_write t id {key with restrictions = restrictions'} 
+        >|= fun () ->
+        true
+      else
+        Lwt.return_ok false
+
+    let remove_restriction_tags t ~id ~tag =
+      let open Lwt_result.Infix in
+      get_key t id >>= fun key ->
+      if Json.TagSet.mem tag key.restrictions.tags then
+        let restrictions' = { 
+          Json.tags = Json.TagSet.remove tag key.restrictions.tags
+        } 
+        in
+        encode_and_write t id {key with restrictions = restrictions'}
+        >|= fun () ->
+        true
+      else
+        Lwt.return_ok false
+    
     module Oaep_md5 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.MD5)
     module Oaep_sha1 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA1)
     module Oaep_sha224 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA224)
@@ -1174,9 +1282,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA384)
     module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA512)
 
-    let decrypt t ~id ~iv decrypt_mode data =
+    let validate_restrictions t ~user_id key_data =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key_data ->
+      User.get t ~id:user_id >>= fun user_info ->
+      if Json.TagSet.is_empty key_data.restrictions.tags then
+        Lwt.return_ok key_data
+      else if Json.TagSet.disjoint key_data.restrictions.tags (User.Info.tags user_info) then
+        Lwt.return_error (Forbidden, "tags restriction not met")
+      else
+        Lwt.return_ok key_data
+
+    let decrypt t ~id ~user_id ~iv decrypt_mode data =
+      let open Lwt_result.Infix in
+      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift (
         let open Rresult.R.Infix in
@@ -1237,9 +1355,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             else
               Error (Bad_request, "Key mechanisms do not allow requested decryption."))
 
-    let encrypt t ~id ~iv encrypt_mode data =
+    let encrypt t ~id ~user_id ~iv encrypt_mode data =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key_data ->
+      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift (
         let open Rresult.R.Infix in
@@ -1278,9 +1396,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             else
               Error (Bad_request, "Key mechanisms do not allow requested encryption."))
 
-    let sign t ~id sign_mode data =
+    let sign t ~id ~user_id sign_mode data =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key_data ->
+      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       match Base64.decode oneline with
       | Error `Msg msg ->
@@ -1381,7 +1499,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             let admin_k, admin_v =
               let name = "admin" in
               let admin = User.prepare_user ~name ~passphrase:admin ~role:`Administrator in
-              let value = Yojson.Safe.to_string (User.user_to_yojson admin) in
+              let value = Yojson.Safe.to_string (User.Info.to_yojson admin) in
               Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name) value
             in
             internal_server_error "set Administrator user" KV.pp_write_error

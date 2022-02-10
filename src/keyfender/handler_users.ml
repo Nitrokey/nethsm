@@ -64,8 +64,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let ok id =
         Hsm.User.get hsm_state ~id >>= function
         | Error e -> Endpoint.respond_error e rd
-        | Ok (name, role) ->
-          let user = { Json.realName = name ; role } in
+        | Ok info ->
+          let module Info = Hsm.User.Info in
+          let user = {
+            Json.realName = Info.name info ;
+            role = Info.role info }
+          in
           let body = Yojson.Safe.to_string (Json.user_res_to_yojson user) in
           Wm.continue (`String body) rd
       in
@@ -162,5 +166,130 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           Lwt.return not_an_admin
       end >>= fun not_an_operator ->
       Wm.continue (not_an_admin && not_an_operator) rd
+  end
+
+  class handler_tags hsm_state ip = object (self)
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.no_cache
+
+    method private get_json rd =
+      let ok id =
+        Hsm.User.get hsm_state ~id >>= function
+        | Ok info -> 
+          let tags = Hsm.User.Info.tags info in
+          let json =  Json.TagSet.to_yojson tags in
+          Wm.continue (`String (Yojson.Safe.to_string json)) rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+    
+    method! allowed_methods rd =
+      Wm.continue [ `GET ] rd
+
+    method content_types_provided rd =
+      Wm.continue [ ("application/json", self#get_json) ] rd
+
+    method content_types_accepted rd =
+      Wm.continue [] rd
+    
+    method! resource_exists rd =
+      let ok id =
+        Hsm.User.exists hsm_state ~id >>= function
+        | Ok exists when exists = true ->
+          (Hsm.User.get hsm_state ~id >>= function
+          | Ok info ->
+            let role = Hsm.User.Info.role info in
+            Wm.continue (role = `Operator) rd
+          | Error e -> Endpoint.respond_error e rd)
+        | Ok _ -> Wm.continue false rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method! is_authorized = Access.is_authorized hsm_state ip
+
+    method! forbidden rd =
+      (* R-Administrator may GET *)
+      (* /users/:UserID/tags *)
+      Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
+      begin
+        (* R-Operator may GET (all!) users, and POST their own passphrase *)
+        let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+        if Access.get_user rd.Webmachine.Rd.req_headers = id then
+          Access.forbidden hsm_state `Operator rd
+        else
+          Lwt.return not_an_admin
+      end >>= fun not_an_operator ->
+      Wm.continue (not_an_admin && not_an_operator) rd
+
+  end
+
+  class handler_tags_tag hsm_state ip = object (self)
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator ip
+    inherit !Endpoint.no_cache
+
+    method! allowed_methods rd =
+      Wm.continue [ `PUT; `DELETE ] rd
+    
+    method content_types_provided rd =
+      Wm.continue [("application/json", Wm.continue `Empty)] rd
+
+    method content_types_accepted rd =
+      Wm.continue [
+        ("application/json", self#put_resource);
+        ("application/octet-stream", self#put_resource)
+      ] rd
+
+    method! resource_exists rd =
+      let tag_exists info tag = 
+        let exists = Json.TagSet.mem tag (Hsm.User.Info.tags info) in
+        Wm.continue exists rd
+      in
+      let user_exists id =
+        Hsm.User.get hsm_state ~id >>= function
+        | Ok info ->
+          Endpoint.lookup_path_info (tag_exists info) "tag" rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok id =
+        Hsm.User.exists hsm_state ~id >>= function
+        | Ok exists when exists = true -> user_exists id
+        | Ok _ -> Wm.continue false rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method private put_resource rd =
+      let ok ~id tag =
+        Hsm.User.add_tag hsm_state ~id ~tag >>= function
+        | Ok true -> Wm.continue true rd
+        | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok id = 
+        Hsm.User.exists hsm_state ~id >>= function
+        | Ok exists when exists = true -> 
+          Endpoint.lookup_path_info (ok ~id) "tag" rd
+        | Ok _ -> Endpoint.respond_status (`Not_found, "") rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method! delete_resource rd =
+      let ok ~id tag =
+        Hsm.User.remove_tag hsm_state ~id ~tag >>= function
+        | Ok res -> Wm.continue res rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok id =
+        Endpoint.lookup_path_info (ok ~id) "tag" rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+
+    method! is_authorized = Access.is_authorized hsm_state ip
+
   end
 end

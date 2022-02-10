@@ -219,6 +219,27 @@ let mechanisms_of_string m =
     (Ok []) (Astring.String.cuts ~sep:"," m) >>| fun ms ->
   MS.of_list ms
 
+module TagSet = struct
+  include Set.Make(String)
+
+  let to_yojson set = `List (List.map (fun s -> `String s) (elements set))
+
+  let of_yojson = function
+    | `List ms ->
+      List.fold_left (fun acc m ->
+          acc >>= fun acc ->
+          match m with
+          | `String m -> Ok (m :: acc)
+          | _ -> Error "Expected string fields")
+        (Ok []) ms >>| fun ms ->
+      of_list ms
+    | _ -> Error "Expected JSON list for tags"
+end
+
+let tagset_of_string m =
+  (Astring.String.cuts ~sep:"," m) 
+  |> TagSet.of_list
+
 type key_type =
   | RSA
   | Curve25519
@@ -262,15 +283,21 @@ type ec_public_key = {
   data : string ;
 } [@@deriving to_yojson]
 
+type restrictions = {
+  tags : (TagSet.t [@default TagSet.empty]);
+} [@@deriving yojson]
+
 type public_key = {
   mechanisms : MS.t;
   typ : key_type [@key "type"];
   operations : int;
   key : Yojson.Safe.t;
+  restrictions : restrictions;
 } [@@deriving to_yojson]
 
 type private_key_req = {
   mechanisms : MS.t ;
+  restrictions : (restrictions [@default {tags=TagSet.empty}]);
   typ : key_type [@key "type"];
   key : key
 }[@@deriving yojson]
@@ -358,7 +385,8 @@ type generate_key_req = {
   mechanisms : MS.t ;
   typ : key_type [@key "type"];
   length : (int [@default 0]) ;
-  id : (string [@default ""])
+  id : (string [@default ""]) ;
+  restrictions : (restrictions [@default {tags=TagSet.empty}]);
 } [@@deriving yojson]
 
 type tls_generate_key_req = {

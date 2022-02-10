@@ -88,6 +88,10 @@ System Software
 
 : The NetHSM system software, i.e. Muen and all subjects without the _Firmware_.
 
+Tags
+
+: Key access can be restricted to users matching specific _Tags_. Refer to [Tags](#sec-dd-t) for details.
+
 Unlock Key
 
 : An _Unlock Key_ is an ephemeral key required to decrypt the _Domain Key_, gaining access to the encrypted _Authentication Store_ and _Key Store_.
@@ -301,6 +305,16 @@ R-Metrics
 R-Backup
 
 : A user account with this _Role_ has access to the operations required to initiate a system backup only.
+
+## Tags {#sec-dd-t}
+
+To enable a fine-grained access control of key usage operations, Operator user accounts can get assigned a list of _Tags_ granting them access to restricted keys.
+
+_Tags_ are managed by Administrator users:
+
+- Keys can be subject to a restriction list: a set of _Tags_ in which **one** of them need to be matched for the key to be used.
+- Operator users get assigned a set of _Tags_ enabling them the use of the corresponding keys. It can be read but not modified by the user.
+
 
 ## Encryption Architecture {#sec-dd-ea}
 

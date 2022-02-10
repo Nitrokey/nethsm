@@ -131,6 +131,17 @@ module type S = sig
   end
 
   module User : sig
+    module Info : sig 
+      type t
+
+      val name : t -> string
+
+      val role : t -> Json.role
+
+      (* tags are only specified for operators *)
+      val tags : t -> Json.TagSet.t
+    end
+
     val is_authenticated : t -> username:string -> passphrase:string ->
       bool Lwt.t
 
@@ -140,7 +151,7 @@ module type S = sig
 
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val get : t -> id:string -> (string * Json.role, error) result Lwt.t
+    val get : t -> id:string -> (Info.t, error) result Lwt.t
 
     val add : id:string -> t -> role:Json.role -> passphrase:string ->
       name:string -> (unit, error) result Lwt.t
@@ -149,6 +160,10 @@ module type S = sig
 
     val set_passphrase : t -> id:string -> passphrase:string ->
       (unit, error) result Lwt.t
+
+    val add_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+    
+    val remove_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
     val list_digest : t -> string option Lwt.t
 
@@ -160,13 +175,13 @@ module type S = sig
 
     val list : t -> (string list, error) result Lwt.t
 
-    val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key ->
+    val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key -> Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val add_pem : id:string -> t -> Json.MS.t -> string ->
+    val add_pem : id:string -> t -> Json.MS.t -> string -> Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val generate : id:string -> t -> Json.key_type -> Json.MS.t -> length:int ->
+    val generate : id:string -> t -> Json.key_type -> Json.MS.t -> length:int -> Json.restrictions ->
       (unit, error) result Lwt.t
 
     val remove : t -> id:string -> (unit, error) result Lwt.t
@@ -183,13 +198,19 @@ module type S = sig
 
     val remove_cert : t -> id:string -> (unit, error) result Lwt.t
 
+    val get_restrictions : t -> id:string -> (Json.restrictions, error) result Lwt.t
+
+    val add_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+    
+    val remove_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+
     (* val encrypt : t -> id:string -> Json.encrypt_mode -> string -> (string, error) result Lwt.t *)
 
-    val decrypt : t -> id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
+    val decrypt : t -> id:string -> user_id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
 
-    val encrypt : t -> id:string -> iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
+    val encrypt : t -> id:string -> user_id:string ->iv:string option -> Json.encrypt_mode -> string -> (string * string option, error) result Lwt.t
 
-    val sign : t -> id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
+    val sign : t -> id:string -> user_id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 
     val list_digest : t -> string option Lwt.t
 

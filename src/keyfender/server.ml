@@ -51,6 +51,8 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/users", fun () -> new Users.handler_users hsm_state ip) ;
         ("/users/:id/passphrase", fun () -> new Users.handler_passphrase hsm_state ip) ;
         ("/users/:id", fun () -> new Users.handler hsm_state ip) ;
+        ("/users/:id/tags", fun () -> new Users.handler_tags hsm_state ip) ;
+        ("/users/:id/tags/:tag", fun () -> new Users.handler_tags_tag hsm_state ip) ;
         ("/keys", fun () -> new Keys.handler_keys hsm_state ip) ;
         ("/keys/generate", fun () -> new Keys.handler_keys_generate hsm_state ip) ;
         ("/keys/:id", fun () -> new Keys.handler hsm_state ip) ;
@@ -60,6 +62,8 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/keys/:id/encrypt", fun () -> new Keys.handler_encrypt hsm_state ip) ;
         ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state ip) ;
         ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state ip) ;
+        ("/keys/:id/restrictions/tags/:tag", 
+          fun () -> new Keys.handler_restrictions_tags hsm_state ip) ;
         ("/system/info", fun () -> new System.info hsm_state ip) ;
         ("/system/reboot", fun () -> new System.reboot hsm_state ip) ;
         ("/system/shutdown", fun () -> new System.shutdown hsm_state ip) ;

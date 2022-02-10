@@ -44,26 +44,23 @@ let copy t =
   let v = Marshal.to_string t [] in
   Marshal.from_string v 0
 
-let operational_mock = 
+let create_operational_mock mbox =
   Lwt_main.run (
   Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _, m) ->
-    good_platform m >>= fun () ->
+    mbox m >>= fun () ->
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
+    Hsm.User.add_tag state ~id:"operator" ~tag:"berlin" >>= fun _ ->
     Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
     state)
+
+let operational_mock = create_operational_mock good_platform
 
 let operational_mock ?(mbox = good_platform)  () =
   if mbox == good_platform then
     copy operational_mock
   else
-  Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _, m) ->
-    mbox m >>= fun () ->
-    Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
-    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
-    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
-    state)
+    create_operational_mock mbox
 
 let locked_mock =
   Lwt_main.run (
@@ -410,6 +407,7 @@ let operational_mock_with_mbox () =
     Lwt.async (fun () -> let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in go ());
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
+    Hsm.User.add_tag state ~id:"operator" ~tag:"berlin" >>= fun _ ->
     Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
     state)
 
@@ -1106,6 +1104,87 @@ let user_operator_get_invalid_id =
   | _ -> false
   end
 
+let user_operator_tags_get =
+  "GET on /users/operator/tags succeeds"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/operator/tags" with
+  | _, Some (`OK, _, `String data, _) -> String.equal data {|["berlin"]|}
+  | _ -> false
+  end
+
+let user_operator_tags_get_invalid_id =
+  "GET on /users/op/tags returns not found"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/op/tags" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_tags_put =
+  "PUT on /users/operator/tags/frankfurt returns 204 no content"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/frankfurt" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_tags_put_twice =
+  "PUT on /users/operator/tags/berlin returns 304 not modified"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/berlin" with
+  | _, Some (`Not_modified, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_tags_put_invalid_id =
+  "PUT on /users/operator/tags/+=< returns bad request"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/+=<" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_tags_delete =
+  "DELETE on /users/operator/tags/berlin returns no content"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator/tags/berlin" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_tags_delete_not_found =
+  "DELETE on /users/operator/tags/frankfurt returns not found"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator/tags/frankfurt" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_backup_tags_get_not_operator =
+  "GET on /users/backup/tags returns not found"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/backup/tags" with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_backup_tags_put_not_operator =
+  "PUT on /users/backup/tags returns bad request"
+  @? fun () -> 
+  begin
+  match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/backup/tags/frankfurt" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
 let user_version_get_bad_request =
   "GET on /users/.version returns bad request"
   @? fun () -> 
@@ -1224,7 +1303,7 @@ Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
 -----END PRIVATE KEY-----|}
 
 let keys_post_pem =
-  let query = [ ("mechanisms", [ "RSA_Signature_PKCS1" ]) ] in
+  let query = [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ] in
   "POST on /keys succeeds"
   @? fun () -> 
   begin
@@ -1384,9 +1463,11 @@ let test_key =
   | Ok `RSA key -> key
   | _ -> assert false
 
+let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
+
 let hsm_with_key ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions >|= function
   | Ok () -> state
   | Error _ -> assert false)
 
@@ -1412,7 +1493,7 @@ let keys_key_get =
                 List.length a = 2
               | _ -> false)
             xs &&
-          List.length xs = 4
+          List.length xs = 5
         end
       | _ -> false
     end
@@ -1766,7 +1847,8 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
 let hsm_with_ed25519_key () =
   let hsm_state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton EdDSA_Signature) ~id:"keyID" ed25519_priv_pem >|= function
+  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton EdDSA_Signature) ~id:"keyID" ed25519_priv_pem no_restrictions 
+    >|= function
     | Ok () -> hsm_state
     | Error _ -> assert false)
 
@@ -1853,7 +1935,7 @@ let aes_cbc_encrypted = "bx4qzXVP7jEUogLTcsaMcOOe1TZFS2zQTwebJNzTS90="
 let add_generic state ~id ms key =
   let json_key = { Keyfender.Json.data = Base64.encode_string key ; 
     primeP = ""; primeQ = ""; publicExponent = "" } in
-  match Lwt_main.run (Hsm.Key.add_json ~id state ms Generic json_key) with
+  match Lwt_main.run (Hsm.Key.add_json ~id state ms Generic json_key no_restrictions) with
   | Ok () -> ()
   | Error _ -> assert false
 
@@ -1971,6 +2053,68 @@ let keys_key_put_generic =
     match admin_put_request ~body:(`String generic_json) "/keys/keyID" with
     | _, Some (`No_content, _, _, _) -> true
     | _ -> false
+  end
+
+let hsm_with_tags () =
+  let hsm_state = operational_mock () in
+  let ms = Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
+  in
+  let tags = Keyfender.Json.TagSet.singleton "berlin" in
+  Lwt_main.run (Hsm.Key.generate ~id:"keyID" hsm_state RSA ms ~length:1024 {tags}) |> Result.get_ok;
+  hsm_state
+  
+let keys_key_get_with_restrictions =
+  "GET on /keys/keyID with restrictions"
+  @? fun () -> 
+  begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_tags ()) "/keys/keyID" with
+  | _, Some (`OK, _, `String body, _) ->
+    let open Yojson.Safe.Util in
+    body |> Yojson.Safe.from_string 
+    |> member "restrictions" 
+    |> member "tags" 
+    |> convert_each to_string 
+    |> List.exists (String.equal "berlin")
+  | _ -> false
+  | exception Yojson.Safe.Util.Type_error _ -> false
+  end
+
+let keys_key_restrictions_tags_put =
+  "PUT on /keys/keyID/restrictions/tags/frankfurt succeeds"
+  @? fun () -> 
+  begin
+  match admin_put_request ~hsm_state:(hsm_with_tags ()) "/keys/keyID/restrictions/tags/frankfurt" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_restrictions_tags_delete =
+  "DELETE on /keys/keyID/restrictions/tags/berlin succeeds"
+  @? fun () -> 
+  begin
+  match request ~headers:admin_headers ~hsm_state:(hsm_with_tags ()) ~meth:`DELETE "/keys/keyID/restrictions/tags/berlin" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_restrictions_tags_sign_ok =
+  "POST on /keys/keyID/sign with an user matching the tag succeeds"
+  @? fun () -> 
+  begin
+  match request ~headers:operator_headers ~hsm_state:(hsm_with_tags ()) ~meth:`POST ~body:(`String sign_request) "/keys/keyID/sign" with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+  end
+
+let keys_key_restrictions_tags_sign_fail =
+  "POST on /keys/keyID/sign with an user that doesn't have the tag fails"
+  @? fun () -> 
+  begin
+  let hsm_state = hsm_with_tags () in
+  Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator"~tag:"berlin") |> Result.get_ok |> ignore;
+  match request ~headers:operator_headers ~hsm_state ~meth:`POST ~body:(`String sign_request) "/keys/keyID/sign" with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
   end
 
 let keys_key_cert_get =
@@ -2248,7 +2392,7 @@ let rsa2048_pub =
   | _ -> assert false
 
 let add_pem state ~id ms key =
-  match Lwt_main.run (Hsm.Key.add_pem ~id state ms key) with
+  match Lwt_main.run (Hsm.Key.add_pem ~id state ms key no_restrictions) with
   | Ok () -> ()
   | Error _ -> assert false
 
@@ -2288,7 +2432,7 @@ let crypto_rsa_decrypt () =
       in
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
       begin
-          match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~iv:None dec_mode enc_data) with
+          match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~iv:None ~user_id:"operator" dec_mode enc_data) with
       | Ok data ->
         let b64_dec = Base64.decode_exn data in
         String.equal b64_dec Cstruct.(to_string (sub enc_test_data 0 idx))
@@ -2307,7 +2451,7 @@ let crypto_rsa_pkcs1_sign () =
     let hsm = operational_mock () in
     add_pem hsm ~id:"test" Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) rsa2048_priv_pem;
     let signature_hc = "iGIgswYW3f1hGYutuI6T/511p41aBF0gNV1N/MdqG1Wofaj8onUDJd/LD4h7s5s8wsXJ/EoH0zMck2XovWi3TLwCoghH3nL+Dv9b9fn6YMEnYOk4Uv0klFclwvLDmpiW+8An+7WPti2zlSkCkl2diwfA6N1hBRqKpnYYWCxMHxQOXCnXfDu1fxm6+MsUP8YZ5WUtVG6BV9lm+lzktHXBAkXmCYswtUbiol5NRbOH9P1PhG37UylT22ekszC8Ime5K2PSt5+WvlzM2Ry+peCMjSS7fMnsgasnkqLrTnZrZLMD7J6jG6I4Jxq+nPAgj9sXkJ+ozqllab+4mRIJEiaPOg==" in
-    begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.PKCS1 (b64_and_hash `SHA1 sign_test_data)) with
+    begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.PKCS1 (b64_and_hash `SHA1 sign_test_data)) with
      | Ok signature ->
        assert (signature = signature_hc);
        let b64_dec = Base64.decode_exn signature in
@@ -2339,7 +2483,7 @@ let crypto_rsa_pss_sign () =
           Keyfender.Json.MS.empty
       in
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
-      begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" sign_mode (b64_and_hash hash sign_test_data)) with
+      begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" sign_mode (b64_and_hash hash sign_test_data)) with
       | Ok signature ->
         let b64_dec = Base64.decode_exn signature in
         (match X509.Public_key.verify hash ~scheme:`RSA_PSS ~signature:(Cstruct.of_string b64_dec) (`RSA rsa2048_pub) (`Message sign_test_data) with
@@ -2364,7 +2508,7 @@ let crypto_ed25519_sign () =
     let hsm = operational_mock () in
     let mechs = Keyfender.Json.MS.singleton Keyfender.Json.EdDSA_Signature in
     add_pem hsm ~id:"test" mechs ed25519_priv_pem;
-    begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.EdDSA (Base64.encode_exn (Cstruct.to_string sign_test_data))) with
+    begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.EdDSA (Base64.encode_exn (Cstruct.to_string sign_test_data))) with
      | Ok signature ->
        let exp_sig = "MXXfyOqswfWDcXAoE2zU2Cf2VW5GajdqZge8hh3is2uVcHW5bbewE/zlb9hvoUjAqSO7ObIm29D4Krb8CjlpCQ==" in
        assert (exp_sig = signature);
@@ -2390,7 +2534,7 @@ let crypto_ecdsa_sign () =
       let hsm = operational_mock () in
       add_pem hsm ~id:"test" mechs (Cstruct.to_string (X509.Private_key.encode_pem priv));
       let pub = X509.Private_key.public priv in
-      begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" Keyfender.Json.ECDSA (b64_and_hash hash sign_test_data)) with
+      begin match Lwt_main.run (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.ECDSA (b64_and_hash hash sign_test_data)) with
       | Ok signature ->
         assert (sign = signature);
         let b64_dec = Base64.decode_exn signature in
@@ -2410,7 +2554,7 @@ let crypto_aes_cbc_encrypt () =
       let hsm = operational_mock () in
       let secret = Mirage_crypto_rng.generate (size/8) in
       add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
-      begin match Lwt_main.run (Hsm.Key.encrypt hsm ~id:"test" ~iv:None AES_CBC (Base64.encode_string aes_message)) with
+      begin match Lwt_main.run (Hsm.Key.encrypt hsm ~id:"test" ~user_id:"operator" ~iv:None AES_CBC (Base64.encode_string aes_message)) with
       | Ok (cipher_b64, Some iv_b64) ->
           let iv = Base64.decode_exn iv_b64 |> Cstruct.of_string in
           let key = Mirage_crypto.Cipher_block.AES.CBC.of_secret secret in
@@ -2437,7 +2581,7 @@ let crypto_aes_cbc_decrypt () =
         |> Cstruct.to_string |> Base64.encode_string
       in
       let iv = Some (Cstruct.to_string iv |> Base64.encode_string) in
-      begin match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~iv AES_CBC encrypted) with
+      begin match Lwt_main.run (Hsm.Key.decrypt hsm ~id:"test" ~user_id:"operator" ~iv AES_CBC encrypted) with
       | Ok m ->
           String.equal m (Base64.encode_string aes_message)
       | Error _ -> assert false
@@ -2521,6 +2665,15 @@ let () =
                          user_operator_get ;
                          user_operator_get_not_found ;
                          user_operator_get_invalid_id ];
+    "/users/operator/tags", [ user_operator_tags_get ;
+                              user_operator_tags_get_invalid_id ;
+                              user_operator_tags_put ;
+                              user_operator_tags_put_twice ;
+                              user_operator_tags_put_invalid_id ;
+                              user_operator_tags_delete ;
+                              user_operator_tags_delete_not_found ];
+    "/users/backup/tags", [ user_backup_tags_get_not_operator ;
+                            user_backup_tags_put_not_operator ];
     "/users/.version", [ user_version_get_bad_request ;
                          user_version_delete_fails_invalid_id ];
     "/users/admin/passphrase", [ user_passphrase_post; 
@@ -2553,7 +2706,12 @@ let () =
                      keys_key_get_ed25519 ; 
                      keys_key_put_ed25519 ;
                      keys_key_get_generic ;
-                     keys_key_put_generic ];
+                     keys_key_put_generic ;
+                     keys_key_get_with_restrictions];
+    "/keys/keyID/restrictions/tags", [ keys_key_restrictions_tags_put ;
+                                       keys_key_restrictions_tags_delete ;
+                                       keys_key_restrictions_tags_sign_ok ;
+                                       keys_key_restrictions_tags_sign_fail ];
     "/keys/keyID/public.pem", [ admin_keys_key_public_pem ; 
                                 operator_keys_key_public_pem ; 
                                 operator_keys_key_public_pem_not_found ; 

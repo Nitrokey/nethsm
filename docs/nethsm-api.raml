@@ -117,6 +117,10 @@ types:
     type: object
     properties:
       key: ID
+  KeyRestrictions:
+    type: object
+    properties:
+      tags: TagList
   UserList:
     type: array
     items: UserItem
@@ -125,6 +129,10 @@ types:
     type: object
     properties:
       user: ID
+  TagList:
+    type: array
+    items: ID
+    example: [ "berlin" , "frankfurt" ]
   KeyMechanisms:
     type: array
     items: KeyMechanism
@@ -166,11 +174,14 @@ types:
       mechanisms: KeyMechanisms
       # keyMechanisms are constrained by type
       type: KeyType
+      restrictions: KeyRestrictions
       key: KeyPublicData
       operations: integer
     example:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
       type: "RSA"
+      restrictions:
+        tags: [ "berlin" ]
       key:
         modulus: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
         publicExponent: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
@@ -272,6 +283,9 @@ types:
         required: false
       id:
         type: ID
+        required: false
+      restrictions:
+        type: KeyRestrictions
         required: false
     example:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
@@ -716,6 +730,10 @@ annotationTypes:
         required: false
         type: array
         items: KeyMechanism
+      tags:
+        required: false
+        type: array
+        items: ID
     body:
       application/json: PrivateKey
       application/x-pem-file: PemPrivateKey
@@ -954,6 +972,45 @@ annotationTypes:
             description: Precondition failed (NetHSM was not <i>Operational</i>).
           404:
             description: Certificate with this KeyID not found.
+    
+    /restrictions:
+      description: "<b>R-Administrator</b> can set up access restrictions for keys"
+      /tags/{Tag}:
+        description: "Tag-based restriction requires the Operator user to have at least one matching tag to use the key."
+        put:
+          (role): [ Administrator ]
+          (state): [ Operational ]
+          description: Add a tag to the authorized set
+          securedBy: [ basic ]
+          responses:
+            204:
+              description: Successful addition of the tag.
+            400:
+              description: Bad request, tag format is invalid.
+            401:
+              description: Authentication required but none provided.
+            403:
+              description: Access denied.
+            404:
+              description: KeyID not found.
+            412:
+              description: Precondition failed (NetHSM was not <i>Operational</i>).
+        delete:
+          (role): [ Administrator ]
+          (state): [ Operational ]
+          description: Delete a tag from the authorized set
+          securedBy: [ basic ]
+          responses:
+            204:
+              description: Successful deletion of the tag.
+            401:
+              description: Authentication required but none provided.
+            403:
+              description: Access denied.
+            412:
+              description: Precondition failed (NetHSM was not <i>Operational</i>).
+            404:
+              description: Tag or keyID not found.
 
 /users:
   description: "Role: <b>R-Administrator</b> can GET, POST"
@@ -1069,6 +1126,64 @@ annotationTypes:
           description: Precondition failed (NetHSM was not <i>Operational</i>).
         404:
           description: User not found for this user-ID.
+
+/users/{UserID}/tags:
+    get:
+      (role): [ Administrator, Operator ] ## TODO Operator can only get tags for themselves
+      (state): [ Operational ]
+      description: Get the list of tags set to an Operator user.
+      securedBy: [ basic ]
+      responses:
+        200:
+          body:
+            application/json: TagList
+        401:
+          description: Authentication required but none provided.
+        403:
+          description: Access denied.
+        412:
+          description: Precondition failed (NetHSM was not <i>Operational</i>).
+        404:
+          description: User not found for this user-ID.
+
+/users/{UserID}/tags/{Tag}:
+  description: "Tags: <b>R-Administrator</b> can PUT and DELETE the tags for everyone."
+  put:
+    (role): [ Administrator ]
+    (state): [ Operational ]
+    description: Add a tag to the Operator user.
+    securedBy: [ basic ]
+    responses:
+      204:
+        description: Successful addition of the tag.
+      304:
+        description: Tag is already present for this UserID.
+      400:
+        description: Bad request, tag format is invalid or user is not an operator.
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      404:
+        description: UserID not found.
+      412:
+        description: Precondition failed (NetHSM was not <i>Operational</i>).
+  delete:
+    (role): [ Administrator ]
+    (state): [ Operational ]
+    description: Delete a tag from the Operator user
+    securedBy: [ basic ]
+    responses:
+      204:
+        description: Successful deletion of the tag.
+      401:
+        description: Authentication required but none provided.
+      403:
+        description: Access denied.
+      412:
+        description: Precondition failed (NetHSM was not <i>Operational</i>).
+      404:
+        description: Tag or user not found.
 
 /config:
   description: "Role: <b>R-Administrator</b>"

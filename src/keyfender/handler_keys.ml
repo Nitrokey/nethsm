@@ -23,7 +23,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
       | None -> assert false | Some path -> path in
       let ok (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key key.restrictions
+        >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -38,13 +39,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | Some ms -> Json.mechanisms_of_string ms
         | None -> Error "Request is missing mechanisms."
       in
+      let tags =
+        match Uri.get_query_param rd.Webmachine.Rd.uri "tags" with
+        | Some tags -> Json.tagset_of_string tags
+        | None -> Json.TagSet.empty
+      in
       let id = match Cohttp.Header.get rd.req_headers "new_id" with
         | None -> assert false (* this can't happen since we set it ourselves,
                                   and webmachine ensures that it already happened. *)
         | Some path -> path
       in
       let ok mechanisms =
-        Hsm.Key.add_pem hsm_state ~id mechanisms content >>= function
+        Hsm.Key.add_pem hsm_state ~id mechanisms content { tags } >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -92,7 +98,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         | "", None -> assert false (* can never happen, see above *)
         | id, _ -> id
         in
-        Hsm.Key.generate hsm_state ~id key.typ key.mechanisms ~length:key.length >>= function
+        Hsm.Key.generate hsm_state ~id key.typ key.mechanisms ~length:key.length key.restrictions 
+        >>= function
         | Ok () ->
           let cc hdr = Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id) in
           let rd' = Webmachine.Rd.with_resp_headers cc rd in
@@ -149,7 +156,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (key : Json.private_key_req) =
-        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key >>= function
+        Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key key.restrictions 
+        >>= function
         | Ok () -> Wm.continue true rd
         | Error e -> Endpoint.respond_error e rd
       in
@@ -294,7 +302,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (dec : Json.decrypt_req) =
-        Hsm.Key.decrypt hsm_state ~id ~iv:dec.iv dec.mode dec.encrypted >>= function
+        let user_id = Endpoint.Access.get_user rd.Webmachine.Rd.req_headers in
+        Hsm.Key.decrypt hsm_state ~id ~user_id ~iv:dec.iv dec.mode dec.encrypted >>= function
         | Ok decrypted ->
           let json = Yojson.Safe.to_string (`Assoc [ "decrypted", `String decrypted ]) in
           let rd' = { rd with resp_body = `String json } in
@@ -338,7 +347,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (dec : Json.encrypt_req) =
-        Hsm.Key.encrypt hsm_state ~id ~iv:dec.iv dec.mode dec.message >>= function
+        let user_id = Endpoint.Access.get_user rd.Webmachine.Rd.req_headers in
+        Hsm.Key.encrypt hsm_state ~id ~user_id ~iv:dec.iv dec.mode dec.message >>= function
         | Ok (encrypted, iv) ->
           let iv = match iv with
             | Some iv -> [ "iv", `String iv ]
@@ -387,7 +397,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let ok id (sign : Json.sign_req) =
-        Hsm.Key.sign hsm_state ~id sign.mode sign.message >>= function
+        let user_id = Endpoint.Access.get_user rd.Webmachine.Rd.req_headers in
+        Hsm.Key.sign hsm_state ~id ~user_id sign.mode sign.message >>= function
         | Ok signature ->
           let json = Yojson.Safe.to_string (`Assoc [ "signature", `String signature ]) in
           let rd' = { rd with resp_body = `String json } in
@@ -501,5 +512,73 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
       Hsm.Key.digest hsm_state ~id >>= fun digest ->
       Wm.continue digest rd
+  end
+
+  class handler_restrictions_tags hsm_state ip = object (self)
+    inherit Endpoint.base_with_body_length
+    inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
+    inherit !Endpoint.role hsm_state `Administrator ip
+    inherit !Endpoint.no_cache
+
+    method! allowed_methods rd =
+      Wm.continue [ `PUT; `DELETE ] rd
+    
+    method content_types_provided rd =
+      Wm.continue [("application/json", Wm.continue `Empty)] rd
+
+    method content_types_accepted rd =
+      Wm.continue [
+        ("application/json", self#put_resource);
+        ("application/octet-stream", self#put_resource)
+      ] rd
+
+    method! resource_exists rd =
+      let tag_exists (restrictions: Json.restrictions) tag = 
+        let exists = Json.TagSet.mem tag restrictions.tags in
+        Wm.continue exists rd
+      in
+      let key_exists id =
+        Hsm.Key.get_restrictions hsm_state ~id >>= function
+        | Ok restrictions ->
+          Endpoint.lookup_path_info (tag_exists restrictions) "tag" rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok_key_id id =
+        Hsm.Key.exists hsm_state ~id >>= function
+        | Ok exists when exists = true -> key_exists id
+        | Ok _ -> Wm.continue false rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok_key_id "id" rd
+
+    method private put_resource rd =
+      let ok_tag ~id tag =
+        Hsm.Key.add_restriction_tags hsm_state ~id ~tag >>= function
+        | Ok true -> Wm.continue true rd
+        | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok_key_id id = 
+        Hsm.Key.exists hsm_state ~id >>= function
+        | Ok exists when exists = true -> 
+          Endpoint.lookup_path_info (ok_tag ~id) "tag" rd
+        | Ok _ -> Endpoint.respond_status (`Not_found, "key not found") rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      Endpoint.lookup_path_info ok_key_id "id" rd
+
+    method! delete_resource rd =
+      let ok_tag ~id tag =
+        Hsm.Key.remove_restriction_tags hsm_state ~id ~tag >>= function
+        | Ok res -> Wm.continue res rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok_key_id id =
+        Endpoint.lookup_path_info (ok_tag ~id) "tag" rd
+      in
+      Endpoint.lookup_path_info ok_key_id "id" rd
+
+    method! is_authorized = Access.is_authorized hsm_state ip
+
   end
 end

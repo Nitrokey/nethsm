@@ -26,6 +26,12 @@ PUT_admin /v1/users/operator <<EOM
 }
 EOM
 
+PUT_admin /v1/users/operator/tags/frankfurt <<EOM
+EOM
+
+PUT_admin /v1/users/operator/tags/berlin <<EOM
+EOM
+
 # create backup
 PUT_admin /v1/users/backup <<EOM
 {

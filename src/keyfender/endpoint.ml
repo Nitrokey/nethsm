@@ -6,11 +6,18 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   type body = Cohttp_lwt.Body.t
 
-  let respond_error (e, msg) rd =
-    let code = Hsm.error_to_code e in
+  let respond_error_raw (code, msg) rd =
     let cc hdr = Cohttp.Header.replace hdr "content-type" "application/json" in
     let rd' = Webmachine.Rd.with_resp_headers cc rd in
     Wm.respond ~body:(`String (Json.error msg)) code rd'
+
+  let respond_error (e, msg) rd =
+    let code = Hsm.error_to_code e in
+    respond_error_raw (code, msg) rd
+
+  let respond_status (e, msg) rd =
+    let code = Cohttp.Code.code_of_status e in
+    respond_error_raw (code, msg) rd
 
   let err_to_bad_request ok rd = function
     | Error m -> respond_error (Bad_request, m) rd
