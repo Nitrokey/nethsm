@@ -182,6 +182,8 @@ module Make (KV : Mirage_kv.RW) = struct
     | Ok data -> Ok (Some data)
     | Error e -> Error e
 
+  let batch = KV.batch
+  
   let set kv key value =
     let data = to_string key value in
     KV.set kv (key_path key) data

@@ -1521,18 +1521,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       >>= fun priv ->
       (* generate self-signed certificate *)
       let cert, key = generate_cert priv in
+      (* update store *)
+      with_write_lock (fun () ->
+        Config_store.batch t.kv @@ fun kv ->
+        internal_server_error "Write tls private key" KV.pp_write_error
+          (Config_store.set kv Private_key key) 
+        >>= fun () ->
+        internal_server_error "Write tls certificate" KV.pp_write_error
+          (Config_store.set kv Certificate (cert, [])))
+      >>= fun () ->
       (* update state *)
       t.key <- key;
       t.cert <- cert;
       t.chain <- [];
-      (* update store *)
-      with_write_lock (fun () ->
-        internal_server_error "Write tls private key" KV.pp_write_error
-          (Config_store.set t.kv Private_key key) 
-        >>= fun () ->
-        internal_server_error "Write tls certificate" KV.pp_write_error
-          (Config_store.set t.kv Certificate (cert, [])))
-      >>= fun () ->
       (* notify server *)
       Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
 
