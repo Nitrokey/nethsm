@@ -63,6 +63,8 @@ all:
 XMODE := $(shell cat .stamp-mode 2>/dev/null)
 
 DUNE := dune
+OPAM_VERSION := $(shell opam --version)
+OPAM_VERSION_GT_EQ_2_1_0 := $(shell expr ${OPAM_VERSION} \>= 2.1.0)
 
 ifeq ($(XMODE),)
 XMODE := dev
@@ -111,7 +113,9 @@ ifeq ($(XMODE),muen)
 # several downloads.
 	$(MAKE) -C src/coreboot/coreboot crossgcc-i386 CPUS=$(shell nproc)
 endif
+ifneq ($(OPAM_VERSION_GT_EQ_2_1_0), 1)
 	opam install -y depext
+endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 	opam depext --yes --update keyfender conf-jq gmp-freestanding
 ifeq ($(XMODE),test)
