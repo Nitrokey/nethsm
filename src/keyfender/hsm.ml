@@ -573,7 +573,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     >>= function
         | `Version_greater (stored, _t) ->
           (* upgrade code for authentication store *)
-          Lwt.return @@ Error (Internal_server_error, Fmt.strf "%s store too old (%a), no migration code" slot_str Version.pp stored)
+          Lwt.return @@ Error (Internal_server_error, Fmt.str "%s store too old (%a), no migration code" slot_str Version.pp stored)
         | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device id, depending on boot mode *)

@@ -62,7 +62,7 @@ module Make (KV : Mirage_kv.RW) = struct
       let encode_one crt =
         let data = X509.Certificate.encode_der crt in
         let len_buf = Cstruct.create 4 in
-        Cstruct.BE.set_uint32 len_buf 0 (Int32.of_int (Cstruct.len data));
+        Cstruct.BE.set_uint32 len_buf 0 (Int32.of_int (Cstruct.length data));
         Cstruct.(to_string (append len_buf data))
       in
       String.concat "" (List.map encode_one (server :: chain))
@@ -103,7 +103,7 @@ module Make (KV : Mirage_kv.RW) = struct
     | Certificate ->
       begin
         let rec decode data acc =
-          let total = Cstruct.len data in
+          let total = Cstruct.length data in
           if total = 0 then
             Ok (List.rev acc)
           else

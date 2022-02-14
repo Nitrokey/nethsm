@@ -40,7 +40,7 @@ type decrypt_error = [ `Insufficient_data | `Not_authenticated ]
 let decrypt ~key ~adata data =
   (* data is a cstruct (IV + encrypted data + tag)
      IV is iv_size long, tag is block_size, and data of at least one byte *)
-  if Cstruct.len data <= iv_size + GCM.tag_size then
+  if Cstruct.length data <= iv_size + GCM.tag_size then
     Error `Insufficient_data
   else
     let nonce, data' = Cstruct.split data iv_size in
