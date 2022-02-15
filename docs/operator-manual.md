@@ -28,6 +28,14 @@ Alternatively, for development purposes, if you have a Debian 10 host system (**
 
 [usbinstaller]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/blob/master/src/installer/README.md
 
+# System Software Update {#sec-update}
+
+During the build process, the version number from the toplevel CHANGES.md file is used. The version number is MAJOR.MINOR. Downgrades are only allowed in the same MAJOR line.
+
+To release a new version 42.5, add the following to the top of CHANGES.md: "# 42.5 (2022-02-27)"
+
+Add the changes (as a markdown list) before the previous release marker. This will be taken as user-visible changes in the update image.
+
 # System Software Update Signing {#sec-ssus}
 
 **TODO**: Conplete this section, once System Software Update is actually implemented.

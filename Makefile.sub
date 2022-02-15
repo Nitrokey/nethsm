@@ -99,10 +99,15 @@ endif
 #
 # ------------------------------------------------------------------------------
 
-src/keyfender/buildTag:
-	git -C . describe --dirty --tags --always > src/keyfender/buildTag
+SOFTWARE_VERSION := src/keyfender/softwareVersion
 
-.stamp-prepare: src/keyfender/buildTag
+src/keyfender/buildTag:
+	git -C . describe --dirty --tags --always > $@
+
+$(SOFTWARE_VERSION): CHANGES.md
+	grep ^# CHANGES.md | head -1 | cut -d ' ' -f 2 > $@
+
+.stamp-prepare: src/keyfender/buildTag $(SOFTWARE_VERSION)
 ifeq ($(USE_CCACHE),1)
 	mkdir -p $(CCACHE_DIR)
 endif
@@ -136,6 +141,7 @@ prepare: .stamp-prepare
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) src/keyfender/buildTag
+	$(RM) $(SOFTWARE_VERSION)
 	$(RM) .stamp-prepare
 
 # ------------------------------------------------------------------------------
@@ -589,16 +595,15 @@ SIGN_UPDATE_KEY := src/keyfender/test/key.pem
 OBJ_UPDATE_IMG := $(OBJ_DIR)/update.img.bin
 OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
 
-# TODO: Extract from an actual changelog, including a version number?
-$(OBJ_UPDATE_CHANGELOG):
-	echo "dummy changelog" >$@
+$(OBJ_UPDATE_CHANGELOG): CHANGES.md
+	tools/create-changes.sh CHANGES.md > $@
 
 # TODO: Integrate this with the PGP key used for SBS-signing system.img.cpio,
 # and do so in a way that facilitates #58 (use external Smartcard for signing
 # production images).
 $(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG)
 	$(SIGN_UPDATE) \
-	    $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG) 1.0 $(OBJ_SYSTEM_IMG) \
+	    $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG) $(SOFTWARE_VERSION) $(OBJ_SYSTEM_IMG) \
 	    >$@
 
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM) $(OBJ_UPDATE_IMG)

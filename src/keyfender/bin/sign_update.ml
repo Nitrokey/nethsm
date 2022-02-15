@@ -52,7 +52,7 @@ let read_file_chunked filename hash prepend_length output =
   Unix.close fd;
   hash''
 
-let sign key_file changelog_file version image_file output_file =
+let sign key_file changelog_file version_file image_file output_file =
   let key =
     read_file key_file |> Cstruct.of_string |> X509.Private_key.decode_pem |>
     function
@@ -60,6 +60,17 @@ let sign key_file changelog_file version image_file output_file =
     | Ok _ -> invalid_arg "not a RSA key"
     | Error `Msg m -> invalid_arg m
   in
+  let version = read_file version_file |> String.trim in
+  let version_ok =
+    match String.split_on_char '.' version with
+    | [ major ; minor ] ->
+      (match int_of_string_opt major, int_of_string_opt minor with
+       | Some _, Some _ -> true
+       | _ -> false)
+    | _ -> false
+  in
+  if not version_ok then
+    invalid_arg "Version file must contain only a version number: MAJOR.MINOR";
   let update_hash hash bytes = Hash.feed hash (Cstruct.of_bytes bytes) in
   let hash = Hash.empty in
   let hash = read_file_chunked changelog_file hash true update_hash in

@@ -454,7 +454,7 @@ let system_update_from_file_ok () =
    end
 
 let sign_update_ok () =
-  let returncode = Sys.command "../bin/sign_update.exe key.pem changes 2.0 update.bin --output=signed_update.bin" in
+  let returncode = Sys.command "../bin/sign_update.exe key.pem changes version update.bin --output=signed_update.bin" in
   assert (returncode = 0);
   let body = readfile "signed_update.bin" in
   "a request for /system/update with authenticated user returns 200"
