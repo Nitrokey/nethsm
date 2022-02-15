@@ -12,6 +12,7 @@ RUN cd /home/opam \
   && cd ..
 
 RUN cd /home/opam/opam-repository \
+  && git remote set-url origin https://github.com/ocaml/opam-repository.git \
   && git fetch origin master \
   && git reset --hard $(cat /home/opam/nethsm/.opam-repository-commit) \
   && opam update \

@@ -26,6 +26,7 @@ set -xe
 
 # Update local opam-repository to use specified commit
 cd ~/opam-repository
+git remote set-url origin https://github.com/ocaml/opam-repository.git
 git fetch origin master
 git reset --hard ${OPAM_REPOSITORY_COMMIT}
 opam update

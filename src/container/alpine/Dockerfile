@@ -5,6 +5,7 @@ ADD .git/ /tmp/repo
 RUN git clone -s /tmp/repo /home/opam/nethsm
 
 RUN cd /home/opam/opam-repository \
+  && git remote set-url origin https://github.com/ocaml/opam-repository.git \
   && git fetch origin master \
   && git reset --hard $(cat /home/opam/nethsm/.opam-repository-commit) \
   && opam update \
