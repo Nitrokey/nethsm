@@ -26,7 +26,7 @@
   (package keyfender))
 
 (executable
-  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test io-page-unix)
+  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test)
   (modules test_server)
   (name test_server)
   (public_name test_server)
