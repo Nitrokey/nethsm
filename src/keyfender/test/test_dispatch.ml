@@ -248,7 +248,7 @@ let prefix_and_pad s =
 
 let sign_update u =
   let signature = Pss_sha256.sign ~key:update_key (`Message (Cstruct.of_string u)) in
-  let length = Cstruct.len signature in
+  let length = Cstruct.length signature in
   let len_buf = Cstruct.create 3 in
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
