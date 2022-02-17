@@ -83,44 +83,49 @@ let mimic_conf () =
 let merge ctx0 ctx1 = mimic_conf () $ ctx0 $ ctx1
 
 let mimic_tcp_conf =
-  let packages = [ package "git-mirage" ~sublibs:[ "tcp" ] ] in
+  let packages = [ package "git-mirage" ~sublibs:[ "tcp" ] ~min:"3.8.0" ~max:"3.9.0" ] in
   impl @@ object
        inherit base_configurable
-       method ty = stackv4v6 @-> mimic
+       method ty = tcpv4v6 @-> mimic @-> mimic
        method module_name = "Git_mirage_tcp.Make"
        method! packages = Key.pure packages
        method name = "tcp_ctx"
        method! connect _ modname = function
-         | [ stack ] ->
-           Fmt.str {ocaml|Lwt.return (%s.with_stack %s %s.ctx)|ocaml}
-             modname stack modname
+         | [ _tcpv4v6; ctx ] ->
+           Fmt.str {ocaml|%s.connect %s|ocaml}
+             modname ctx
          | _ -> assert false
      end
 
-let mimic_tcp_impl stackv4v6 = mimic_tcp_conf $ stackv4v6
+let mimic_tcp_impl tcpv4v6 happy_eyeballs = mimic_tcp_conf $ tcpv4v6 $ happy_eyeballs
 
-let mimic_dns_conf =
-  let packages = [ package "git-mirage" ~sublibs:[ "dns" ] ] in
+let tcpv4v6_of_stackv4v6 =
   impl @@ object
        inherit base_configurable
-       method ty = random @-> mclock @-> time @-> stackv4v6 @-> mimic @-> mimic
-       method module_name = "Git_mirage_dns.Make"
+       method ty = stackv4v6 @-> tcpv4v6
+       method module_name = "Git_mirage_happy_eyeballs.TCPV4V6"
+       method name = "tcpv4v6_of_stackv4v6"
+       method! connect _ modname = function
+         | [ stackv4v6 ] -> Fmt.str {ocaml|%s.connect %s|ocaml} modname stackv4v6
+         | _ -> assert false
+    end
+
+let mimic_happy_eyeballs_conf =
+  let packages = [ package "git-mirage" ~sublibs:[ "happy-eyeballs" ] ~min:"3.8.0" ~max:"3.9.0" ] in
+  impl @@ object
+       inherit base_configurable
+       method ty = random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> mimic
+       method module_name = "Git_mirage_happy_eyeballs.Make"
        method! packages = Key.pure packages
-       method name = "dns_ctx"
-       method! connect _ modname =
-         function
-         | [ _; _; _; stack; tcp_ctx ] ->
-             Fmt.str
-               {ocaml|let dns_ctx00 = Mimic.merge %s %s.ctx in
-                      let dns_ctx01 = %s.with_dns %s dns_ctx00 in
-                      Lwt.return dns_ctx01|ocaml}
-               tcp_ctx modname
-               modname stack
+       method name = "happy_eyeballs_ctx"
+       method! connect _ modname = function
+         | [ _random; _time; _mclock; _pclock; stackv4v6; ] ->
+           Fmt.str {ocaml|%s.connect %s|ocaml} modname stackv4v6
          | _ -> assert false
      end
 
-let mimic_dns_impl random mclock time stackv4v6 mimic_tcp =
-  mimic_dns_conf $ random $ mclock $ time $ stackv4v6 $ mimic_tcp
+let mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 =
+  mimic_happy_eyeballs_conf $ random $ time $ mclock $ pclock $ stackv4v6
 
 let main =
   let packages = [
@@ -131,7 +136,6 @@ let main =
     package ~min:"3.10.4" "mirage-runtime";
     package ~min:"2.6.0" "irmin-mirage";
     package ~min:"2.6.0" "irmin-git";
-    package ~min:"3.4.0" "git";
     package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
   ] in
@@ -151,13 +155,13 @@ let main =
      network @-> ethernet @-> arpv4 @->
      job)
 
-let mimic stackv4v6 random mclock time =
-  let mtcp = mimic_tcp_impl stackv4v6 in
-  mimic_dns_impl random mclock time stackv4v6 mtcp
+let mimic stackv4v6 time random mclock pclock =
+  let mdns = mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 in
+  mimic_tcp_impl (tcpv4v6_of_stackv4v6 $ stackv4v6) mdns
 
 let () =
   register "keyfender"
     [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
-      internal_stack $ mimic internal_stack default_random default_monotonic_clock default_time $
+      internal_stack $ mimic internal_stack default_time default_random default_monotonic_clock default_posix_clock $
       external_netif $ external_eth $ external_arp
     ]

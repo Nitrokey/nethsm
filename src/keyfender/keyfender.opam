@@ -23,11 +23,11 @@ depends: [
   "logs"
   "lwt"
   "ptime"
-  "cohttp"
+  "cohttp" {= "5.0.0"}
   "rresult"
   "mirage-crypto" {>= "0.8.4"}
   "webmachine" {>= "0.7.0"}
-  "cohttp-lwt"
+  "cohttp-lwt" {= "5.0.0"}
   "yojson"
   "mirage-clock"
   "mirage-random" {>= "2.0.0"}
@@ -47,9 +47,9 @@ depends: [
   "metrics-lwt" {>= "0.2.0"}
   "mirage-time"
   "duration"
-  "conduit-mirage" #{with-test}
-  "cohttp-mirage" #{with-test}
-  "tcpip" {>= "6.0.0"} #{with-test}
+  "conduit-mirage" {= "5.0.0"} #{with-test}
+  "cohttp-mirage" {= "5.0.0"} #{with-test}
+  "tcpip" {>= "7.0.0"} #{with-test}
   "mirage-clock-unix" #{with-test}
   "io-page-unix" #{with-test}
   "mirage-kv-mem" #{with-test}
@@ -57,9 +57,8 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.4.0.0" "git+https://github.com/roburio/ocaml-conduit.git#client-ip4"]
-  ["cohttp.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
-  ["cohttp-lwt.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
-  ["cohttp-mirage.4.0.0" "git+https://github.com/roburio/ocaml-cohttp.git#client-ip4"]
-  ["tcpip.6.1.1" "git+https://github.com/roburio/mirage-tcpip.git#6.1"]
+  ["conduit-mirage.5.0.0" "git+https://github.com/dinosaure/ocaml-conduit.git#client-ip5"]
+  ["cohttp.5.0.0" "git+https://github.com/dinosaure/ocaml-cohttp.git#client-ip5"]
+  ["cohttp-lwt.5.0.0" "git+https://github.com/dinosaure/ocaml-cohttp.git#client-ip5"]
+  ["cohttp-mirage.5.0.0" "git+https://github.com/dinosaure/ocaml-cohttp.git#client-ip5"]
 ]

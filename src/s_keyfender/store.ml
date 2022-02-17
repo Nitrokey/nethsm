@@ -15,7 +15,7 @@ let remote ?(ctx= Mimic.empty) ?headers:_ uri =
   | Error (`Msg err) -> Fmt.invalid_arg "Invalid remote: %s" uri
 
 module KV (G : Irmin_git.G) (C : Irmin.Contents.S) = struct
-  include Irmin_git.KV (G) (Git.Mem.Sync (G) (Fake_http)) (C)
+  include Irmin_git.KV (G) (Git.Mem.Sync (G)) (C)
   let remote ?ctx ?headers uri = E (remote ?ctx ?headers uri)
 end
 
