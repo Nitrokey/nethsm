@@ -134,8 +134,8 @@ let main =
     package "conduit-mirage";
     package "cohttp-mirage";
     package ~min:"3.10.4" "mirage-runtime";
-    package ~min:"2.6.0" "irmin-mirage";
-    package ~min:"2.6.0" "irmin-git";
+    package ~min:"2.6.0" ~max:"3.0.0" "irmin-mirage";
+    package ~min:"2.6.0" ~max:"3.0.0" "irmin-git";
     package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
   ] in
