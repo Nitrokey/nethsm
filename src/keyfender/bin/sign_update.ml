@@ -1,5 +1,4 @@
 module Hash = Mirage_crypto.Hash.SHA256
-module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
 let write_len length =
   let len_buf = Cstruct.create 3 in
@@ -10,10 +9,6 @@ let write_len length =
 
 let prepend_len s =
   write_len (String.length s) ^ s
-
-let sign_update key hash =
-  let signature = Pss_sha256.sign ~key (`Digest hash) in
-  prepend_len (Cstruct.to_string signature)
 
 let read_file filename =
   let filesize = (Unix.stat filename).Unix.st_size in
@@ -29,6 +24,34 @@ let read_file filename =
   read 0;
   Unix.close fd;
   Bytes.to_string buf
+
+let create_tmp_file data =
+  let name = Filename.temp_file "signhash" "bin" in
+  let fd = Unix.openfile name [ Unix.O_WRONLY ; Unix.O_CREAT ] 0 in
+  let l = Bytes.length data in
+  let written = Unix.write fd data 0 l in
+  Unix.close fd;
+  if written = l then
+    name
+  else
+    invalid_arg "couldn't write data (written <> l)"
+
+let openssl_sign key_file hash =
+  let hash_file = create_tmp_file (Cstruct.to_bytes hash) in
+  let sig_file = Filename.temp_file "sig" "bin" in
+  let cmd =
+    Printf.sprintf "openssl pkeyutl -sign -in %s -inkey %s -out %s -pkeyopt digest:sha256 -pkeyopt rsa_padding_mode:pss -pkeyopt rsa_pss_saltlen:digest"
+      hash_file key_file sig_file
+  in
+  let signature =
+    if Sys.command cmd = 0 then
+      read_file sig_file
+    else
+      invalid_arg "openssl returned non-zero exit code"
+  in
+  Sys.remove hash_file;
+  Sys.remove sig_file;
+  signature
 
 let read_file_chunked filename hash prepend_length output =
   let filesize = (Unix.stat filename).Unix.st_size in
@@ -53,13 +76,6 @@ let read_file_chunked filename hash prepend_length output =
   hash''
 
 let sign key_file changelog_file version_file image_file output_file =
-  let key =
-    read_file key_file |> Cstruct.of_string |> X509.Private_key.decode_pem |>
-    function
-    | Ok `RSA key -> key
-    | Ok _ -> invalid_arg "not a RSA key"
-    | Error `Msg m -> invalid_arg m
-  in
   let version = read_file version_file |> String.trim in
   let version_ok =
     match String.split_on_char '.' version with
@@ -94,7 +110,8 @@ let sign key_file changelog_file version_file image_file output_file =
   let hash = read_file_chunked image_file hash false update_hash in
   let hash = Hash.feed hash pad_buf in
   let final_hash = Hash.get hash in
-  let signature = sign_update key final_hash in
+  let signature = openssl_sign key_file final_hash in
+  let signature = prepend_len signature in
   let fd = match output_file with
    | None -> Unix.stdout
    | Some filename ->
@@ -144,5 +161,4 @@ let command =
   Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
-  Mirage_crypto_rng_unix.initialize ();
   match Term.eval command with `Ok () -> exit 0 | _ -> exit 1
