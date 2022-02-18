@@ -1,5 +1,5 @@
 (test
-  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender oUnit)
+  (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender alcotest)
   (modules test_dispatch)
   (deps update.bin ../bin/sign_update.exe key.pem changes version)
   (name test_dispatch)
