@@ -1,6 +1,12 @@
 open Cohttp
 open Lwt.Infix
 
+let () =
+  Printexc.record_backtrace true;
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level (Some Debug);
+  Mirage_crypto_rng_unix.initialize ()
+
 module Mock_clock = struct
   let now_d_ps () = (1000, 0L)
   let current_tz_offset_s () = None
@@ -34,7 +40,23 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
 
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
+let copy t = 
+  let v = Marshal.to_string t [] in
+  Marshal.from_string v 0
+
+let operational_mock = 
+  Lwt_main.run (
+  Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _, m) ->
+    good_platform m >>= fun () ->
+    Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
+    Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
+    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
+    state)
+
 let operational_mock ?(mbox = good_platform)  () =
+  if mbox == good_platform then
+    copy operational_mock
+  else
   Lwt_main.run (
     Kv_mem.connect () >>= Hsm.boot ~device_id:"test dispatch" >>= fun (state, _, m) ->
     mbox m >>= fun () ->
@@ -43,7 +65,7 @@ let operational_mock ?(mbox = good_platform)  () =
     Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
     state)
 
-let locked_mock () =
+let locked_mock =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
@@ -53,6 +75,8 @@ let locked_mock () =
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
     Hsm.boot ~device_id:"test dispatch" kv >|= fun (y, _, _) -> y)
+
+let locked_mock () = copy locked_mock
 
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
@@ -2421,10 +2445,6 @@ let crypto_aes_cbc_decrypt () =
     sizes
     
 let () =
-  Printexc.record_backtrace true;
-  Logs.set_reporter (Logs_fmt.reporter ());
-  Logs.set_level (Some Debug);
-  Mirage_crypto_rng_unix.initialize ();
   let open Alcotest in
   let tests = [
     "/", [ empty ];
