@@ -958,7 +958,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
 
     (* maximum amount of keys *)
-    let max_keys = 2000
+    let max_keys = 20000
 
     let add ~id t mechanisms priv =
       let open Lwt_result.Infix in
