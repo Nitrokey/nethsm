@@ -77,7 +77,8 @@ TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
-DUNE := BISECT_ENABLE=yes OCAMLRUNPARAM=b dune
+DUNE := OCAMLRUNPARAM=b dune
+BISECT := --instrument-with bisect_ppx
 else
 $(error Invalid MODE '$(XMODE)')
 endif
@@ -126,7 +127,7 @@ endif
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
 # generate_raml_tests.exe; we only install these when building with MODE=test.
-	opam install -y bisect_ppx containers ezjsonm yaml
+	opam install -y 'bisect_ppx>=2.5.0' containers ezjsonm yaml
 	opam install -y --deps-only --with-test keyfender
 else
 	opam depext --yes --update mirage solo5-bindings-$(TARGET) mirage-solo5
@@ -157,7 +158,7 @@ S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
 GIT_DAEMON ?= src/git/git-daemon
 
 $(KEYFENDER): .stamp-prepare
-	cd src/keyfender && $(DUNE) build
+	cd src/keyfender && $(DUNE) build $(BISECT)
 
 # XXX We want to use --assume-built here, but that causes OPAM to go off into an
 # XXX infinite loop. So just use --inplace-build, and deal with 'dune build'
@@ -183,7 +184,7 @@ build-keyfender: $(S_KEYFENDER)
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib: $(KEYFENDER)
-	cd src/keyfender && $(DUNE) runtest
+	cd src/keyfender && $(DUNE) runtest $(BISECT)
 ifeq ($(XMODE),test)
 	bisect-ppx-report summary --coverage-path=src/keyfender
 endif

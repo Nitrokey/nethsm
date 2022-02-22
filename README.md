@@ -126,11 +126,11 @@ For initial provisioning, you can run `src/tests/provision_test.sh`. See the oth
 
 ### Test Coverage Reporting
 
-For OCaml there is a PPX (preprocessor) which can collect coverage information called `bisect_ppx`. The keyfender library is instrumented (see `src/keyfender/dune` for details) if the environment `BISECT_ENABLE` is set to `yes`.
+For OCaml there is a PPX (preprocessor) which can collect coverage information called `bisect_ppx`. The keyfender library is instrumented (see `src/keyfender/dune` for details) if dune is called with `--instrument-with bisect_ppx`.
 
 To collect coverage information about the tests:
 
-1. install `bisect_ppx` (`opam install 'bisect_ppx>=2.1.0'`)
+1. install `bisect_ppx` (`opam install 'bisect_ppx>=2.5.0'`)
 2. `export MODE=test` in your shell
 3. `make coverage`
 5. browse to obj/coverage/index.html
