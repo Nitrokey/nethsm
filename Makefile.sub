@@ -348,7 +348,7 @@ else ifeq ($(XMODE),test)
 .PHONY: test-keyfender-api
 test-keyfender-api: $(KEYFENDER)
 	cd src/tests && $(DUNE) exec ./generate_raml_tests.exe
-	cd src/tests && ./run_generated_tests.sh
+	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
 	# For this test we want to consider ALL coverage files under
 	# src/tests/generated
 	bisect-ppx-report summary --coverage-path=src/tests/generated

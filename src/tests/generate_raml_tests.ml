@@ -263,7 +263,7 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
 
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =
-    if path = "/system/shutdown" then "" else
+    if path = "/system/shutdown" then "exit 1" else
     {|NITROHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
   in
   write shutdown_file shutdown_cmd;

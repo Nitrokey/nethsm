@@ -7,3 +7,8 @@
   (name generate_raml_tests)
   (modules generate_raml_tests)
   (libraries generate_raml_tests_lib))
+
+(executable
+  (name run_generated_tests)
+  (modules run_generated_tests)
+  (libraries alcotest bos spawn))
