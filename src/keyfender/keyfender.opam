@@ -19,7 +19,10 @@ depends: [
   "cmdliner" {< "1.1.0"}
   "ocaml" {>= "4.08.0"}
   "dune" {>= "2.7.0"}
-  "ounit" {with-test}
+  "ounit" #{with-test}
+  "alcotest" #{with-test}
+  "bos" #{with-test}
+  "spawn" #{with-test}
   "astring"
   "logs"
   "lwt"
