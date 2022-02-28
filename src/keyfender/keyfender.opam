@@ -63,3 +63,11 @@ pin-depends: [
   ["cohttp-lwt.5.0.0" "git+https://github.com/dinosaure/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
   ["cohttp-mirage.5.0.0" "git+https://github.com/dinosaure/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
 ]
+# These versions of CoHTTP/Conduit integrate a partially worked patch to
+# transfer to the callback the identity of the client (the `inet_addr`) for
+# MirageOS only. We did change cohttp-lwt-unix or cohttp-async for instance.
+# These patches will probably not (according to the Conduit's design) be
+# integrated upstream.
+# These patches are applied on the version 5.0.0 of CoHTTP/Conduit and they
+# are available into the branch client-ip5 into dinosaure/ocaml-cohttp &
+# dinosaure/ocaml-conduit.
