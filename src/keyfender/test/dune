@@ -6,7 +6,7 @@
   (package keyfender))
 
 (test
-  (libraries logs.fmt fmt.tty keyfender mirage-random-test oUnit)
+  (libraries logs.fmt fmt.tty keyfender mirage-random-test alcotest)
   (modules test_crypto)
   (name test_crypto)
   (package keyfender))
