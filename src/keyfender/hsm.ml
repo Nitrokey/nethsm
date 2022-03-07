@@ -172,7 +172,7 @@ module type S = sig
   module Key : sig
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val list : t -> (string list, error) result Lwt.t
+    val list : t -> user_id:string -> (string list, error) result Lwt.t
 
     val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key -> Json.restrictions ->
       (unit, error) result Lwt.t
@@ -909,13 +909,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational keys -> keys.key_store
       | _ -> assert false (* checked by webmachine Handler_keys.service_available *)
 
-    let list t =
-      let open Lwt_result.Infix in
-      let store = key_store t in
-      internal_server_error "List keys" Encrypted_store.pp_error
-        (Encrypted_store.list store Mirage_kv.Key.empty) >|= fun xs ->
-      List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
-
     (* how a key is persisted in the kv store. note that while mirage-crypto
        provides s-expression conversions, these have been removed from the
        trunk version -- it is also not safe to embed s-expressions into json.
@@ -963,6 +956,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       restrictions : Json.restrictions;
     } [@@deriving yojson]
 
+    let validate_restrictions ~user_info (restrictions: Json.restrictions) =
+      if User.Info.role user_info = `Administrator then 
+        Ok () 
+      else
+        if Json.TagSet.is_empty restrictions.tags then
+          Ok ()
+        else if Json.TagSet.disjoint restrictions.tags (User.Info.tags user_info) then
+          Error (Forbidden, "tags restriction not met")
+        else
+          Ok ()
+    
     (* boilerplate for dumping keys whose operations changed *)
     let cached_operations = Hashtbl.create 7
 
@@ -982,6 +986,22 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             in
             Ok { k with operations }
           | Error e -> Error (Internal_server_error, e))
+
+    let list t ~user_id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      User.get t ~id:user_id >>= fun user_info ->
+      internal_server_error "List keys" Encrypted_store.pp_error
+        (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
+      let open Lwt.Infix in
+      Lwt_list.filter_map_s (fun (id, typ) ->
+        if typ = `Value then
+          get_key t id >|= function
+          | Ok t when Result.is_ok (validate_restrictions ~user_info t.restrictions) -> Some id
+          | _ -> None
+        else
+          Lwt.return_none) xs
+      |> Lwt.map Result.ok
 
     let dump_keys t =
       let open Lwt.Infix in
@@ -1285,12 +1305,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let validate_restrictions t ~user_id key_data =
       let open Lwt_result.Infix in
       User.get t ~id:user_id >>= fun user_info ->
-      if Json.TagSet.is_empty key_data.restrictions.tags then
-        Lwt.return_ok key_data
-      else if Json.TagSet.disjoint key_data.restrictions.tags (User.Info.tags user_info) then
-        Lwt.return_error (Forbidden, "tags restriction not met")
-      else
-        Lwt.return_ok key_data
+      Lwt.return
+        (validate_restrictions ~user_info key_data.restrictions
+         |> Result.map (fun () -> key_data))
 
     let decrypt t ~id ~user_id ~iv decrypt_mode data =
       let open Lwt_result.Infix in
