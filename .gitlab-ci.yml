@@ -1,6 +1,10 @@
 default:
   image: "mato/nethsm-builder@sha256:67f01806a00f1b62fc2d1b61ef52d86f22b9d4411b968e2afe7216e0992e775f"
   before_script:
+    - sudo chmod 01777 /cache
+    - mkdir -p /cache/opam/download-cache
+    - rm -rf ~/.opam/download-cache
+    - ln -s /cache/opam/download-cache ~/.opam/download-cache
     - source .gitlab-ci-setup.bash
   tags:
     - docker
@@ -94,6 +98,10 @@ build_container_image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   before_script:
+    - chmod 01777 /cache
+    - mkdir -p /cache/opam/download-cache
+    - mkdir -p /home/opam/.opam
+    - ln -s /cache/opam/download-cache /home/opam/.opam/download-cache
     - mkdir -p /kaniko/.docker
     - >
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
