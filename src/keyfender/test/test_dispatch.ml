@@ -486,6 +486,22 @@ let system_backup_and_restore_ok =
     | _ -> false
   end
 
+let system_backup_post_accept_header =
+  "a request for /system/backup using 'Accept: application/octet-stream' succeeds"
+  @? fun () -> 
+  let backup_passphrase = "backup passphrase" in
+  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
+  | hsm_state, Some (`No_content, _, _, _) ->
+    let headers = 
+      Header.add (auth_header "backup" "test3Passphrase") "Accept" "application/octet-stream"
+    in
+    begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+      | _hsm_state, Some (`OK, _, `Stream _, _) -> true
+      | _ -> false
+    end
+  | _ -> false
+
 let readfile filename =
   let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
   let filesize = (Unix.stat filename).Unix.st_size in
@@ -2667,7 +2683,8 @@ let () =
                                system_update_cancel_ok];
     "/system/update from binary file", [ system_update_from_file_ok ];
     "/system/update signing", [ sign_update_ok ];
-    "/system/backup", [ system_backup_and_restore_ok ];
+    "/system/backup", [ system_backup_and_restore_ok ;
+                        system_backup_post_accept_header ];
     "/unlock", [ unlock_ok ;
                  unlock_failed ;
                  unlock_failed_two ;

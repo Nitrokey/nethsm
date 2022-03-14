@@ -121,14 +121,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Hsm.System.backup hsm_state push >>= function
       | Error e -> Endpoint.respond_error e rd
       | Ok () ->
-        let add_content_type h =
-          Cohttp.Header.replace h "Content-Type" "application/octet-stream"
-        in
-        let rd' = {
-          rd with resp_headers = add_content_type rd.resp_headers ;
-                  resp_body = `Stream stream
-        } in
+        let rd' = { rd with resp_body = `Stream stream } in
         Wm.continue true rd'
+    
+    method! content_types_provided =
+      Wm.continue [ ("application/octet-stream", Wm.continue `Empty) ]
+    
   end
 
   class restore hsm_state = object(self)
