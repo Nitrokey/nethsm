@@ -46,7 +46,11 @@ let raml = CCIO.with_in raml_file CCIO.read_all
 
 let example_of_type yml =
   match Ezjsonm.decode_string yml with
-  | Some t -> Ezjsonm.find raml ["types"; t; "example"]
+  | Some t ->
+    begin  
+    try Ezjsonm.find raml ["types"; t; "example"] with
+    | Not_found -> failwith ("Couldn't find example for type "^t)
+    end
   | None -> failwith "Inline type definitions not allowed"
 
 let write file content =

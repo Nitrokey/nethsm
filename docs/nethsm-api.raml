@@ -113,10 +113,12 @@ types:
   KeyList:
     type: array
     items: KeyItem
+    example: [ { key: "KeyID" }]
   KeyItem:
     type: object
     properties:
       key: ID
+    example: { key: "KeyID" }
   KeyRestrictions:
     type: object
     properties:
@@ -735,8 +737,8 @@ annotationTypes:
         type: array
         items: ID
     body:
-      application/json: PrivateKey
       application/x-pem-file: PemPrivateKey
+      application/json: PrivateKey
     responses:
       200:
         description: Successful import of a private key. The response contains a Location header, e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
@@ -751,7 +753,7 @@ annotationTypes:
       412:
         description: Precondition failed (NetHSM was not <i>Operational</i>).
 
-  /generate:
+/keys/generate:
     description: "Role: <b>R-Administrator</b>"
     post:
       (role): [ Administrator ]
