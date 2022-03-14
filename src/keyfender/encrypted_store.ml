@@ -18,9 +18,15 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   [@@coverage off]
 
   type error =
-    [ Mirage_kv.error | `Kv of KV.error | `Crypto of Crypto.decrypt_error ]
+    [ Mirage_kv.error 
+    | `Kv of KV.error 
+    | `Crypto of Crypto.decrypt_error 
+    | `Invalid_key of KV.key ]
 
-  type write_error = KV.write_error
+  type write_error = 
+    [  Mirage_kv.write_error 
+    | `Kv of KV.write_error 
+    | `Invalid_key of KV.key ]
 
   type version_error = [ error | `Msg of string ]
 
@@ -28,20 +34,35 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
     | `Kv e -> KV.pp_error ppf e
     | `Crypto e -> Crypto.pp_decryption_error ppf e
+    | `Invalid_key k -> Fmt.pf ppf "Invalid key '%a'" Mirage_kv.Key.pp k
 
-  let pp_write_error = KV.pp_write_error
+  let pp_write_error ppf = function
+    | #Mirage_kv.write_error as e -> Mirage_kv.pp_write_error ppf e
+    | `Kv e -> KV.pp_write_error ppf e
+    | `Invalid_key k -> Fmt.pf ppf "Invalid key '%a'" Mirage_kv.Key.pp k
 
   type key = Mirage_kv.Key.t
 
+  (* check that the key is not reserved for internal usage and 
+     run the function *)
+  let with_key_check key fn =
+    if Mirage_kv.Key.equal key Version.filename then 
+      Lwt.return_error (`Invalid_key Version.filename)
+    else
+      fn ()
+  
   let lift_kv_err = function
     | Ok x -> Ok x
     | Error e -> Error (`Kv e)
 
   let prefix t key = Mirage_kv.Key.append t.prefix key
 
-  let exists t key = KV.exists t.kv (prefix t key) >|= lift_kv_err
+  let exists t key = 
+    with_key_check key @@ fun () ->
+    KV.exists t.kv (prefix t key) >|= lift_kv_err
 
   let list t key =
+    with_key_check key @@ fun () ->
     KV.list t.kv (prefix t key) >|= function
     | Ok items ->
       let items_without_version =
@@ -50,15 +71,17 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
       Ok items_without_version
     | Error e -> Error (`Kv e)
 
-  let last_modified t key = KV.last_modified t.kv (prefix t key) >|= lift_kv_err
+  let last_modified t key = 
+    with_key_check key @@ fun () ->
+    KV.last_modified t.kv (prefix t key) >|= lift_kv_err
 
-  let digest t key = KV.digest t.kv (prefix t key) >|= lift_kv_err
+  let digest t key = 
+    with_key_check key @@ fun () ->
+    KV.digest t.kv (prefix t key) >|= lift_kv_err
 
   let batch t ?retries:_ f = f t
 
-  let remove t key = KV.remove t.kv (prefix t key)
-
-  let get t key =
+  let raw_get t key =
     let key' = prefix t key in
     KV.get t.kv key' >|= function
     | Error e -> Error (`Kv e)
@@ -75,18 +98,32 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     let encrypted = Crypto.encrypt R.generate ~key:t.key ~adata data in
     key', Cstruct.to_string encrypted
 
-  let set t key value =
+  let raw_set t key value =
     let key', encrypted = prepare_set t key value in
     KV.set t.kv key' encrypted
 
   let set_version t version =
-    set t Version.filename (Version.to_string version)
+    raw_set t Version.filename (Version.to_string version)
   
   let get_version t =
-    get t Version.filename >>= function
+    raw_get t Version.filename >>= function
     | Ok v -> Lwt.return (Version.of_string v)
     | Error e -> Lwt.return_error e
   
+  let set t key value =
+    with_key_check key @@ fun () -> 
+    raw_set t key value
+    |> Lwt_result.map_err (fun e -> `Kv e)
+  
+  let get t key =
+    with_key_check key @@ fun () -> 
+    raw_get t key
+
+  let remove t key = 
+    with_key_check key @@ fun () -> 
+    KV.remove t.kv (prefix t key)
+    |> Lwt_result.map_err (fun e -> `Kv e)
+
   let prefix slot =
     let p = slot_to_string slot in
     Mirage_kv.Key.v p

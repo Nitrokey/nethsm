@@ -13,6 +13,12 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
         | Mirage_kv.error
         | `Kv of KV.error
         | `Crypto of Crypto.decrypt_error
+        | `Invalid_key of KV.key
+      ]
+    and type write_error = [
+        | Mirage_kv.write_error
+        | `Kv of KV.write_error 
+        | `Invalid_key of KV.key
       ]
 
   type slot = Authentication | Key
@@ -22,7 +28,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
   val slot_to_string : slot -> string
 
   val initialize : Version.t -> slot ->
-    key:Cstruct.t -> KV.t -> (t, write_error) result Lwt.t
+    key:Cstruct.t -> KV.t -> (t, KV.write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
@@ -59,6 +65,6 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
 
   val get_version : t -> (Version.t, version_error) Lwt_result.t
 
-  val set_version : t -> Version.t -> (unit, write_error) Lwt_result.t
+  val set_version : t -> Version.t -> (unit, KV.write_error) Lwt_result.t
 
 end
