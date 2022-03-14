@@ -149,9 +149,10 @@ types:
       mechanisms: [ "RSA_Signature_PSS_SHA256" ]
       type: "RSA"
       key:
-        primeP: "frtz7u89gft89uz"
-        primeQ: "FhJQl11CiY0ifRHXeAqFh4rdSl6"
-        publicExponent: "w367rg90jhj0asdf98gz"
+        primeP: AOnWFZ+JrI/xOXJU04uYCZOiPVUWd6CSbVseEYrYQYxc7dVroePshz29tc+VEOUP5T0O8lXMEkjFAwjW6C9QTAsPyl6jwyOQluMRIkdN4/7BAg3HAMuGd7VmkGyYrnZWW54sLWp1JD6XJG33kF+9OSar9ETPoVyBgK5punfiUFEL
+        primeQ: ANT1kWDdP9hZoFKT49dwdM/S+3ZDnxQa7kZk9p+JKU5RaU9e8pS2GOJljHwkES1FH6CUGeIaUi81tRKe2XZhe/163sEyMcxkaaRbBbTc1v6ZDKILFKKt4eX7LAQfhL/iFlgi6pcyUM8QDrm1QeFgGz11ChM0JuQw1WwkX06lg8iv
+        publicExponent: AQAB
+
   KeyPrivateData:
     type: object
     # this should express:
@@ -159,13 +160,13 @@ types:
     #   keyType = ED25519, ECDSA_* or Generic, data is required
     properties:
       primeP:
-        type: string
+        type: base64
         required: false
       primeQ:
-        type: string
+        type: base64
         required: false
       publicExponent:
-        type: string
+        type: base64
         required: false
       data:
         type: string
@@ -195,10 +196,10 @@ types:
     #   keyType = ED25519 or ECDSA_*, data is required
     properties:
       modulus:
-        type: string
+        type: base64
         required: false
       publicExponent:
-        type: string
+        type: base64
         required: false
       data:
         type: string
@@ -740,10 +741,8 @@ annotationTypes:
       application/x-pem-file: PemPrivateKey
       application/json: PrivateKey
     responses:
-      200:
+      201:
         description: Successful import of a private key. The response contains a Location header, e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
-        body:
-          application/json: KeyItem
       400:
         description: Bad request (specified properties are invalid).
       401:
