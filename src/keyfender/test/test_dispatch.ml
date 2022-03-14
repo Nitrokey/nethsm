@@ -2175,6 +2175,30 @@ let keys_key_cert_get_invalid_id =
     | _ -> false
   end
 
+let keys_key_cert_get_accept_header =
+  Alcotest.test_case "GET on /keys/keyID/cert with an Accept header works as expected" `Quick
+  @@ fun () ->
+  let hsm_state = hsm_with_key () in
+  let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"application/x-pem-file" "data") in
+  let headers_with_accept accept =
+    Header.add operator_headers "Accept" accept
+  in
+  Alcotest.(check bool) "application/* is OK" true (
+    match request ~headers:(headers_with_accept "application/*") ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`OK, _, _,_) -> true
+    |_ ->  false
+  );
+  Alcotest.(check bool) "application/x-pem-file is OK" true (
+    match request ~headers:(headers_with_accept "application/x-pem-file") ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`OK, _, _,_) -> true
+    | _ -> false
+  );
+  Alcotest.(check bool) "application/x-unknown is Not Acceptable" true (
+    match request ~headers:(headers_with_accept "application/x-unknown") ~hsm_state "/keys/keyID/cert" with
+    | _, Some (`Not_acceptable, _, _,_) -> true
+    | _ -> false
+  )
+
 let keys_key_cert_put =
   "PUT on /keys/keyID/cert succeeds"
   @? fun () -> 
@@ -2766,7 +2790,8 @@ let () =
     "/keys/keyID/decrypt and /sign", [ operator_keys_key_sign_and_decrypt ];
     "/keys/keyID/cert", [ keys_key_cert_get ;
                           keys_key_cert_get_not_found ;
-                          keys_key_cert_get_invalid_id ;
+                          keys_key_cert_get_invalid_id  ;
+                          keys_key_cert_get_accept_header ;
                           keys_key_cert_put ;
                           keys_key_cert_put_fails ;
                           keys_key_cert_put_not_found ;

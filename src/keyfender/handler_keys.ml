@@ -505,8 +505,16 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue [`PUT; `GET; `DELETE ] rd
 
     method content_types_provided rd =
-      Wm.continue [ ("text/html", self#get_cert) ] rd
-
+      (* The provided content-type depends on the certificate's content-type. *)
+      let ok id =
+        Hsm.Key.get_cert hsm_state ~id >>= function
+        | Error _ | Ok None  -> 
+          Wm.continue [ "text/html", self#get_cert ] rd
+        | Ok (Some (content_type, _)) -> 
+          Wm.continue [ content_type, self#get_cert ] rd
+      in
+      Endpoint.lookup_path_info ok "id" rd
+    
     method content_types_accepted rd =
       (* Allow all content types provided by the client, which is not intended
          use of webmachine. We send a response immediately instead of returning
