@@ -54,4 +54,11 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
       they are equal [`Kv kv] is returned, if [version] is greater,
       [`Version_greater (stored, t)] is returned. An error otherwise. *)
 
+
+  type version_error = [ error | `Msg of string ]
+
+  val get_version : t -> (Version.t, version_error) Lwt_result.t
+
+  val set_version : t -> Version.t -> (unit, write_error) Lwt_result.t
+
 end
