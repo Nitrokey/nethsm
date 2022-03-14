@@ -690,11 +690,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let `Hex id = Hex.of_cstruct (Mirage_crypto_rng.generate 10) in
     id
 
-  let check_id_base id = not (String.equal id Version.file)
-
-  let check_id id =
-    if check_id_base id then Ok () else Error (Bad_request, "invalid ID")
-
   module User = struct
 
     module Info = struct 
@@ -727,15 +722,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let read_decode store id =
       let open Lwt.Infix in
-      if not (check_id_base id) then
-        Lwt.return (Error (`Msg "invalid ID"))
-      else
-        Encrypted_store.get store (Mirage_kv.Key.v id) >|= function
-        | Error e -> Error (`Encrypted_store e)
-        | Ok data ->
-          Rresult.R.reword_error
-            (fun err -> `Json_decode err)
-            (Json.decode Info.of_yojson data)
+      Encrypted_store.get store (Mirage_kv.Key.v id) >|= function
+      | Error e -> Error (`Encrypted_store e)
+      | Ok data ->
+        Rresult.R.reword_error
+          (fun err -> `Json_decode err)
+          (Json.decode Info.of_yojson data)
 
     let pp_find_error ppf = function
       | `Encrypted_store kv -> Encrypted_store.pp_error ppf kv
@@ -784,7 +776,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let exists t ~id =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = in_store t in
       internal_server_error "Exists user" Encrypted_store.pp_error
        (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
@@ -828,7 +819,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let remove t ~id =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = in_store t in
       with_write_lock (fun () ->
           internal_server_error "Remove user" Encrypted_store.pp_write_error
@@ -941,7 +931,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let exists t ~id =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
       internal_server_error "Exists key" Encrypted_store.pp_error
         (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
@@ -972,7 +961,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let get_key t id =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
       internal_server_error "Read key" Encrypted_store.pp_error
@@ -1051,7 +1039,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let add ~id t mechanisms priv restrictions =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
       internal_server_error "Exist key" Encrypted_store.pp_error
@@ -1156,7 +1143,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     
     let generate ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       Lwt.return
         (generate_key typ ~length) >>= fun priv ->
         Metrics.key_op `Generate;
@@ -1164,7 +1150,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let remove t ~id =
       let open Lwt_result.Infix in
-      Lwt.return (check_id id) >>= fun () ->
       let store = key_store t in
       Hashtbl.remove cached_operations id;
       with_write_lock (fun () ->
