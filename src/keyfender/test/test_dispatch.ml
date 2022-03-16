@@ -389,7 +389,7 @@ let system_update_version_downgrade =
   @? fun () -> 
     let body =
       let data = prefix_and_pad "binary data is here" in
-      let update = "\000\000\018A new system image\000\000\0030.5" ^ data in
+      let update = "\000\000\018A new system image\000\000\004-1.5" ^ data in
       let signature = sign_update update in
       `String (signature ^ update)
     in
@@ -2629,7 +2629,7 @@ let () =
                         system_update_too_few_data ;
                         system_update_invalid_data ;
                         system_update_platform_bad ;
-                        (* system_update_version_downgrade *)];
+                        system_update_version_downgrade ];
     "/system/commit-update", [ system_update_commit_ok ; 
                                system_update_commit_fail ;
                                system_update_cancel_ok];
