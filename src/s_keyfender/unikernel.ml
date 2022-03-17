@@ -9,7 +9,7 @@ module Main
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Update_key: Mirage_kv.RO)
     (Static_assets: Mirage_kv.RO)
-    (Internal_stack: Mirage_stack.V4V6) (_ : sig end)
+    (Internal_stack: Tcpip.Stack.V4V6)
     (Ext_reconfigurable_stack: Reconfigurable_stack.S)
 =
 struct
@@ -20,10 +20,14 @@ struct
   module Conduit_tls = Conduit_mirage.TLS(Conduit)
   module Http = Cohttp_mirage.Server.Make(Conduit_tls)
 
-  module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
-  module Git_store = Store.KV_RW(Irmin_git.Mem)(Hsm_clock)
+  (* module Int_conduit = Conduit_mirage.TCP(Internal_stack) *)
+  (* module Resolver = Resolver_mirage.Make(Rng)(Time)(Mclock)(Pclock)(Internal_stack) *)
+  (* module Client = H2_mirage.Client(Int_conduit.Flow) *)
 
-  module Hsm = Keyfender.Hsm.Make(Rng)(Git_store)(Time)(Mclock)(Hsm_clock)
+  module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
+  module KV_store = Etcd_store.KV_RW(Internal_stack)
+
+  module Hsm = Keyfender.Hsm.Make(Rng)(KV_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
 
   module HsmClock = struct
@@ -126,38 +130,33 @@ struct
 
   module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
 
-  let start console _entropy () () update_key_store assets internal_stack ctx ext_stack () =
-    Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
-    | Error _ -> invalid_arg "Could not create an in-memory git repository."
-    | Ok git ->
-      let store_connect () =
-        let author _ = "keyfender"
-        and msg _ = "a keyfender change"
-        in
-        Git_store.connect git ~depth:1 ~ctx ~author ~msg (Key_gen.remote ())
-      in
-      let sleep e =
-        Log.warn(fun m -> m "Could not connect to remote %s" (Printexc.to_string e));
+  let start console _entropy () () update_key_store assets internal_stack ext_stack () =
+      let sleep err =
+        Log.warn (fun m ->
+            m "Could not connect to remote: %s\nRetrying in 1 second..." err);
         Time.sleep_ns (Duration.of_sec 1)
       in
-      let rec connect_git () =
-        Lwt.catch store_connect
-          (fun e -> if Key_gen.retry () then sleep e >>= connect_git else Lwt.fail e)
+      let rec store_connect () =
+        KV_store.connect internal_stack >>= function
+        | Ok store -> Lwt.return store
+        | Error e ->
+            let err = Fmt.to_to_string KV_store.pp_error e in
+            if Key_gen.retry () then sleep err >>= store_connect
+            else Lwt.fail_with err
       in
-      connect_git () >>= fun store ->
-      Logs.app (fun m -> m "connected to store");
-      (* check whether it is empty - irmin's batch operation requires a non-empty store! *)
+      store_connect () >>= fun store ->
+        Logs.app (fun m -> m "connected to store");
       (let ign = Mirage_kv.Key.v ".gitignore" in
-        Git_store.exists store ign >>= function
+        KV_store.exists store ign >>= function
         | Ok None ->
-          (Git_store.set store ign "" >>= function
+          (KV_store.set store ign "" >>= function
             | Ok () -> Lwt.return_unit
             | Error e ->
-              Log.err (fun m -> m "couldn't write to store %a" Git_store.pp_write_error e);
+              Log.err (fun m -> m "couldn't write to store %a" KV_store.pp_write_error e);
               Lwt.fail_with "store not writable")
         | Ok (Some _) -> Lwt.return_unit
         | Error e ->
-          Log.err (fun m -> m "couldn't read from store %a" Git_store.pp_error e);
+          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
           Lwt.fail_with "store not readable") >>= fun () ->
       (write_platform internal_stack "DEVICE-ID" >>= function
         | Error e ->

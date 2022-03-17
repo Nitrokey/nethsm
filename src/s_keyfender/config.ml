@@ -40,7 +40,7 @@ let platform_port =
    (boolean) flags provided at configuration time (they are not preserved in
    key_gen.ml). TODO report and fix upstream. *)
 let retry =
-  let doc = Key.Arg.info ~doc:"Retry git pull until we succeed." ["retry"] in
+  let doc = Key.Arg.info ~doc:"Retry to connect DB until we succeed." ["retry"] in
   Key.(create "retry" Arg.(opt bool false doc))
 
 let no_platform =
@@ -97,23 +97,6 @@ let external_netif = Key.(if_impl is_solo5
 let external_eth = etif external_netif
 
 let external_arp = arp external_eth
-
-let single_interface =
-  let doc =
-    Key.Arg.info ~doc:"Use the same interface for the internal and the external stacks."
-      ["single-interface"]
-  in
-  Key.(create "single-interface" Arg.(flag doc))
-
-let external_reconfigurable_stack =
-  if_impl (Key.value single_interface)
-    (pre_configured_stack $ internal_stack)
-    (reconfigurable_stack_direct
-    $ default_random
-    $ default_monotonic_clock
-    $ external_netif
-    $ external_eth
-    $ external_arp)
 
 (* git / mimic configuration *)
 type mimic = Mimic
@@ -186,6 +169,23 @@ let mimic_happy_eyeballs_conf =
 let mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 =
   mimic_happy_eyeballs_conf $ random $ time $ mclock $ pclock $ stackv4v6
 
+let single_interface =
+  let doc =
+    Key.Arg.info ~doc:"Use the same interface for the internal and the external stacks."
+      ["single-interface"]
+  in
+  Key.(create "single-interface" Arg.(flag doc))
+
+let external_reconfigurable_stack =
+  if_impl (Key.value single_interface)
+    (pre_configured_stack $ internal_stack)
+    (reconfigurable_stack_direct 
+    $ default_random 
+    $ default_monotonic_clock 
+    $ external_netif 
+    $ external_eth 
+    $ external_arp)
+
 let malloc_metrics_conf =
   impl @@ object
     inherit base_configurable
@@ -206,11 +206,13 @@ let main =
     package "conduit-mirage";
     package "cohttp-mirage";
     package ~min:"3.10.4" "mirage-runtime";
-    package ~min:"2.10.0" ~max:"3.0.0" "irmin-mirage";
-    package ~min:"2.10.0" ~max:"3.0.0" "irmin-git";
     package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
     package "memtrace-mirage";
+    package "h2-lwt";
+    package ~sublibs:["google_types"] "ocaml-protoc-plugin";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#nethsm" "grpc";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#nethsm" "grpc-lwt";
   ] in
   let keys =
     Key.[
@@ -225,17 +227,12 @@ let main =
     ~packages ~keys ~deps:[malloc_metrics_conf]
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
-     stackv4v6 @-> mimic @->
+     stackv4v6 @->
      reconfigurable_stack @->
      job)
-
-let mimic stackv4v6 time random mclock pclock =
-  let mdns = mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 in
-  mimic_tcp_impl (tcpv4v6_of_stackv4v6 $ stackv4v6) mdns
 
 let () =
   register "keyfender"
     [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ update_key_store $ htdocs $
-      internal_stack $ mimic internal_stack default_time default_random default_monotonic_clock default_posix_clock $
-      external_reconfigurable_stack
+      internal_stack $ external_reconfigurable_stack
     ]
