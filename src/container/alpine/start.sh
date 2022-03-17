@@ -2,7 +2,13 @@
 
 : ${UNLOCKPW:=unlockunlock}
 
-KEYFENDER_IP=127.0.0.1
+KEYFENDER_IP="127.0.0.1"
+ETCD_IP="127.0.0.1"
+
+if [ -n "$DEBUG_LOG" ] ; then
+  ETCD_DEBUG_LOG="--log-level debug"
+  KEYFENDER_DEBUG_LOG="--logs=*:debug"
+fi
 
 if [ -e /dev/net/tun -a -e /dev/kvm ] ; then
   tunctl -t tap200 >/dev/null
@@ -17,21 +23,20 @@ if [ -e /dev/net/tun -a -e /dev/kvm ] ; then
     -j DNAT --to-destination 192.168.1.1:443
   iptables -t nat -A POSTROUTING -o tap200 -j SNAT --to-source 192.168.1.100
 
-  GIT_LISTEN="--listen=169.254.169.2"
   KEYFENDER_KVM=1
-  KEYFENDER_IP=192.168.1.1
+  KEYFENDER_IP="192.168.1.1"
+  ETCD_IP="169.254.169.2"
 fi
 
-if [ ! -d /data/keyfender-data.git ] ; then
-  git init --bare /data/keyfender-data.git -b master
-fi
-
-git daemon \
-    $GIT_LISTEN \
-    --base-path=/data \
-    --export-all \
-    --enable=receive-pack \
+etcd \
+    --listen-client-urls "http://$ETCD_IP:2379" \
+    --advertise-client-urls "http://$ETCD_IP:2379" \
+    --data-dir /data \
+    --host-whitelist "$KEYFENDER_IP" \
+    $ETCD_DEBUG_LOG \
+    2>&1 | sed "s/^/[etcd] /" \
     &
+
 if [ $ADMINPW ] ; then
 { sleep 2
   curl -k -X POST https://$KEYFENDER_IP:8443/api/v1/provision \
@@ -43,10 +48,10 @@ if [ $ADMINPW ] ; then
 fi
 
 if [ -z "$KEYFENDER_KVM" ] ; then
-/keyfender.unix
+/keyfender.unix $KEYFENDER_DEBUG_LOG
 else
 /solo5-hvt \
     --net:external=tap200 \
     --net:internal=tap201 \
-    /keyfender.hvt
+    /keyfender.hvt $KEYFENDER_DEBUG_LOG
 fi

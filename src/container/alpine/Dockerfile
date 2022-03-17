@@ -24,14 +24,15 @@ RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make -j$(nproc) build-keyfe
 RUN cd src/s_keyfender \
   && opam exec -- mirage configure -t unix --no-platform=true \
   --http=8080 --https=8443 --single-interface --retry=true \
-  --remote=git://127.0.0.1/keyfender-data.git \
+  --platform=127.0.0.1 \
   && opam exec -- make depend \
   && opam exec -- make build \
   && cp keyfender keyfender.unix
 
 FROM alpine:3.15
 
-RUN apk add --no-cache iptables git-daemon curl gmp
+RUN apk add --no-cache iptables curl gmp \
+  && apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing
 
 VOLUME /data
 
