@@ -295,8 +295,16 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
       ignore (Sys.command("touch " ^ outdir ^ "/body.skip"))
   end
 
+(* we avoid PUT on endpoints where the ID already exists *)
+let endpoint_is_create cmd meth =
+  String.equal meth "put" 
+  && (Astring.String.is_suffix ~affix:"{UserID}" cmd
+    || Astring.String.is_suffix ~affix:"{KeyID}" cmd)
+
 let print_method path (meth, req) =
-  if List.mem meth allowed_methods (* skips descriptions *)
+  if 
+    List.mem meth allowed_methods (* skips descriptions *)
+    && not (endpoint_is_create path meth)
   then begin
     let reqs = make_req_data req meth in
     let responses = make_resp_data req in
