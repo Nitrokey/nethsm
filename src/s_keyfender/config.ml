@@ -52,9 +52,54 @@ let no_platform =
    cannot yet connect the ip stack, but have to manually do that in the
    unikernel (after reading the key from store)
 *)
+type reconfigurable_stack = Reconfigurable_stack
+
+let reconfigurable_stack = typ Reconfigurable_stack
+
+let reconfigurable_stack_direct =
+  impl @@ object
+    inherit base_configurable
+    method ty = random @-> mclock @-> network @-> ethernet @-> arpv4 @-> reconfigurable_stack
+    method module_name = "Reconfigurable_stack.Direct"
+    method name = "reconfigurable_stackd_direct"
+    method! connect _ modname = function
+      | [ _random; _mclock; network; ethernet; arpv4 ] ->
+        Fmt.str "%s.connect %s %s %s" modname network ethernet arpv4
+      | _ -> assert false
+  end
+
+let pre_configured_stack =
+  impl @@ object
+    inherit base_configurable
+    method ty = stackv4v6 @-> reconfigurable_stack
+    method module_name = "Reconfigurable_stack.Fixed"
+    method name = "pre_configured_stack"
+    method! connect _ modname = function
+      | [ stack ] ->
+        Fmt.str "%s.connect %s" modname stack
+      | _ -> assert false
+  end
+
 let external_netif = Key.(if_impl is_solo5 (netif "external") (netif "tap1"))
 let external_eth = etif external_netif
 let external_arp = arp external_eth
+
+let single_interface =
+  let doc =
+    Key.Arg.info ~doc:"Use the same interface for the internal and the external stacks."
+      ["single-interface"]
+  in
+  Key.(create "single-interface" Arg.(flag doc))
+
+let external_reconfigurable_stack =
+  if_impl (Key.value single_interface)
+    (pre_configured_stack $ internal_stack)
+    (reconfigurable_stack_direct 
+    $ default_random 
+    $ default_monotonic_clock 
+    $ external_netif 
+    $ external_eth 
+    $ external_arp)
 
 (* git / mimic configuration *)
 type mimic = Mimic
@@ -165,7 +210,7 @@ let main =
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @->
      stackv4v6 @-> mimic @->
-     network @-> ethernet @-> arpv4 @->
+     reconfigurable_stack @->
      job)
 
 let mimic stackv4v6 time random mclock pclock =
@@ -176,5 +221,5 @@ let () =
   register "keyfender"
     [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
       internal_stack $ mimic internal_stack default_time default_random default_monotonic_clock default_posix_clock $
-      external_netif $ external_eth $ external_arp
+      external_reconfigurable_stack
     ]

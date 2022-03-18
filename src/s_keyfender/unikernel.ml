@@ -9,17 +9,11 @@ module Main
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Static_assets: Mirage_kv.RO)
     (Internal_stack: Mirage_stack.V4V6) (_ : sig end)
-    (External_net: Mirage_net.S) (External_eth: Mirage_protocols.ETHERNET) (External_arp: Mirage_protocols.ARP)
+    (Ext_reconfigurable_stack: Reconfigurable_stack.S)
 =
 struct
   module Time = OS.Time
-  module Ext_ipv4 = Static_ipv4.Make(Rng)(Mclock)(External_eth)(External_arp)
-  module Ext_ipv6 = Ipv6.Make(External_net)(External_eth)(Rng)(Time)(Mclock)
-  module Ext_icmp = Icmpv4.Make(Ext_ipv4)
-  module Ext_ip = Tcpip_stack_direct.IPV4V6(Ext_ipv4)(Ext_ipv6)
-  module Ext_udp = Udp.Make(Ext_ip)(Rng)
-  module Ext_tcp = Tcp.Flow.Make(Ext_ip)(Time)(Mclock)(Rng)
-  module Ext_stack = Tcpip_stack_direct.MakeV4V6(Time)(Rng)(External_net)(External_eth)(External_arp)(Ext_ip)(Ext_icmp)(Ext_udp)(Ext_tcp)
+  module Ext_stack = Ext_reconfigurable_stack.Stack
 
   module Conduit = Conduit_mirage.TCP(Ext_stack)
   module Conduit_tls = Conduit_mirage.TLS(Conduit)
@@ -129,7 +123,7 @@ struct
     | `Timeout -> Format.fprintf ppf "timeout"
     | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
-  let start console _entropy () () assets internal_stack ctx ext_net ext_eth ext_arp () =
+  let start console _entropy () () assets internal_stack ctx ext_stack () =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
@@ -168,25 +162,13 @@ struct
           Lwt.fail_with "failed to retrieve device id from platform"
         | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
       Hsm.boot ~device_id store >>= fun (hsm_state, mvar, res_mvar) ->
-      let setup_stack ?gateway cidr =
-        Ext_ipv4.connect ~cidr ?gateway ext_eth ext_arp >>= fun ipv4 ->
-        Ext_icmp.connect ipv4 >>= fun icmp ->
-        Ext_ipv6.connect ~no_init:true ~handle_ra:false ext_net ext_eth >>= fun ipv6 ->
-        Ext_ip.connect ~ipv4_only:true ~ipv6_only:false ipv4 ipv6 >>= fun ip ->
-        Ext_udp.connect ip >>= fun udp ->
-        Ext_tcp.connect ip >>= fun tcp ->
-        Ext_stack.connect ext_net ext_eth ext_arp ip icmp udp tcp >|= fun ext_stack ->
-        tcp, ext_stack
-      and shutdown_stack tcp stack =
-        Ext_tcp.disconnect tcp >>= fun () ->
-        Ext_stack.disconnect stack
-      and setup_log ext_stack log =
+      let setup_log stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0
         then
           let reporter =
             let port = log.Keyfender.Json.port in
-            Syslog.create console ext_stack ~hostname:"keyfender"
+            Syslog.create console stack ~hostname:"keyfender"
               (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
           in
           Logs.set_reporter reporter
@@ -213,29 +195,30 @@ struct
                        pp_platform_err e)
       in
       let reconfigure_network cidr gateway =
-        setup_stack ?gateway cidr >>= fun (tcp, ext_stack) ->
-        let http = Http.listen ext_stack in
+        Ext_reconfigurable_stack.setup ext_stack ?gateway cidr >>= fun () ->
+        let stack = Ext_reconfigurable_stack.stack ext_stack in
+        let http = Http.listen stack in
         Lwt.async (fun () -> setup_http_listener http);
         Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
         Hsm.Config.log hsm_state >|= fun log ->
-        setup_log ext_stack log;
-        tcp, ext_stack, http
+        setup_log stack log;
+        http
       in
-      let rec handle_cb tcp ext_stack http =
+      let rec handle_cb http =
         Lwt_mvar.take mvar >>= function
         | Hsm.Log log ->
-          setup_log ext_stack log;
-          handle_cb tcp ext_stack http
+          setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
+          handle_cb http
         | Hsm.Shutdown | Hsm.Reboot | Hsm.Reset as cmd ->
-          shutdown_stack tcp ext_stack >>= fun () ->
+          Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
           write_to_platform cmd
         | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
-          handle_cb tcp ext_stack http
+          handle_cb http
         | Hsm.Network (cidr, gateway) ->
-          shutdown_stack tcp ext_stack >>= fun () ->
-          reconfigure_network cidr gateway >>= fun (tcp, ext_stack, http) ->
-          handle_cb tcp ext_stack http
+          Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
+          reconfigure_network cidr gateway >>= fun http ->
+          handle_cb http
         | Hsm.Update (blocks, stream) as cmd ->
           begin
             let additional_data write =
@@ -250,17 +233,17 @@ struct
             | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
             | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
           end >>= fun () ->
-          handle_cb tcp ext_stack http
+          handle_cb http
         | Hsm.Commit_update as cmd ->
           begin
             write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
             | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
             | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
           end >>= fun () ->
-          handle_cb tcp ext_stack http
+          handle_cb http
       in
       Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
       let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
-      reconfigure_network cidr gateway >>= fun (tcp, ext_stack, http) ->
-      handle_cb tcp ext_stack http
+      reconfigure_network cidr gateway >>= fun http ->
+      handle_cb http
 end
