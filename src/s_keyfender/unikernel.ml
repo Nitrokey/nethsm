@@ -129,8 +129,7 @@ struct
     | `Timeout -> Format.fprintf ppf "timeout"
     | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
-  let start console _entropy () () assets internal_stack ctx ext_net ext_eth ext_arp =
-    Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]);
+  let start console _entropy () () assets internal_stack ctx ext_net ext_eth ext_arp () =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->

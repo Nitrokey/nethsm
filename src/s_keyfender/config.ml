@@ -127,6 +127,19 @@ let mimic_happy_eyeballs_conf =
 let mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 =
   mimic_happy_eyeballs_conf $ random $ time $ mclock $ pclock $ stackv4v6
 
+let malloc_metrics_conf =
+  impl @@ object
+    inherit base_configurable
+    method ty = typ ()
+    method module_name = ""
+    method name = "malloc_metrics"
+    method! connect info _ _ =
+      match Key.get (Info.context info) Key.target with
+      | #Mirage_key.mode_solo5 -> "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]))"
+      | _ -> "Lwt.return_unit"
+  end
+  |> abstract
+
 let main =
   let packages = [
     package "keyfender";
@@ -148,7 +161,7 @@ let main =
     ]
   in
   foreign
-    ~packages ~keys
+    ~packages ~keys ~deps:[malloc_metrics_conf]
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @->
      stackv4v6 @-> mimic @->
