@@ -315,9 +315,7 @@ let print_methods (path, methods) =
 
 let rec subpaths (path, meta) =
   let (endpoints, _) = get_endpoints meta in
-  if endpoints = []
-  then [ (path, Ezjsonm.get_dict meta) ]
-  else List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
+  (path, Ezjsonm.get_dict meta) :: List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
 
 (* all paths, start from empty root *)
 let () =
