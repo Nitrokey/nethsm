@@ -1,2 +1,2 @@
-true: package(checkseum.c digestif.c)
+true: package(digestif.c)
 <etcd/**>: include

@@ -1,15 +1,7 @@
-[submodule "src/git"]
-	path = src/git
-	url = https://github.com/git/git.git
-	branch = maint
 [submodule "src/muen"]
 	path = src/muen/muen
 	url = ../muen.git
 	branch = devel
-[submodule "src/zlib"]
-	path = src/zlib
-	url = https://github.com/madler/zlib.git
-	ignore = dirty
 [submodule "src/u-root/src/github.com/u-root/u-root"]
 	path = src/u-root/src/github.com/u-root/u-root
 	url = https://github.com/u-root/u-root.git

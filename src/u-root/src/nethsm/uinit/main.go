@@ -25,9 +25,9 @@ import (
 type globalState struct {
 	// s represents our global Script context.
 	s *Script.Script
-	// UID and GID that the Git server is run as. We use 1 (coventionally,
+	// UID and GID that the etcd server is run as. We use 1 (coventionally,
 	// "daemon").
-	gitUidGid int
+	etcdUidGid int
 	// Current kernel release.
 	kernelRelease        string
 	diskDevice			 string
@@ -44,7 +44,7 @@ type globalState struct {
 // from globalState, as G.variable.
 var G = &globalState{
 	s:                    Script.New(),
-	gitUidGid:            1,
+	etcdUidGid:            1,
 	kernelRelease:        getKernelRelease(),
 	diskDevice:			  "/dev/sda",
 	sysActivePartition:   "/dev/sda1",

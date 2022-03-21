@@ -197,7 +197,7 @@ func platformListener(result chan string) {
 
 		var response []byte = nil
 		var cmdErr error = nil
-		var terminalCommand = false
+		terminalCommand := false
 		switch command {
 		case "DEVICE-ID":
 			response, cmdErr, terminalCommand = doDeviceId()
@@ -301,8 +301,13 @@ func sPlatformActions() {
 		f.Close()
 	}
 
-	G.s.Logf("Starting Git server")
-	G.s.BackgroundExecAsf(G.gitUidGid, "/bin/git daemon --base-path=/data/git --export-all --enable=receive-pack")
+	G.s.Logf("Starting etcd server")
+	G.s.BackgroundExecAsf(G.etcdUidGid, "/bin/etcd"+
+		" --listen-client-urls http://169.254.169.2:2379"+
+		" --advertise-client-urls http://169.254.169.2:2379"+
+		" --data-dir /data/etcd"+
+		// " --log-level debug"+
+		"")
 
 	if err := G.s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)

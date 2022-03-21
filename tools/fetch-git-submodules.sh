@@ -60,9 +60,6 @@
 dev_submodules()
 {
 set -xe
-
-git submodule init src/git
-git submodule update ${DEPTH} src/git
 }
 
 # MODE=muen
@@ -154,13 +151,10 @@ esac
 
 case "${MODE}" in
     any)
-        # Just use Muen, which is the full set, and ignore NO_GIT.
+        # Just use Muen, which is the full set, and ignore NO_ETCD.
         muen_submodules
         ;;
     dev)
-        # Special case, no submodules required.
-        [ -n "${NO_GIT}" ] && exit 0
-
         dev_submodules
         ;;
     muen*)

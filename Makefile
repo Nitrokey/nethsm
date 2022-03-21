@@ -36,9 +36,7 @@ check-mode: .stamp-mode
 
 .PHONY: check-submodules
 
-ifeq ($(MODE),test)
-check-submodules: ;
-else ifneq ($(NO_GIT)$(I_KNOW_WHAT_IM_DOING),)
+ifneq ($(MODE),muen)
 check-submodules: ;
 else
 check-submodules:

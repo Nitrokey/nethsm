@@ -3,9 +3,9 @@
 
 # (MODE is set from top-level Makefile and persisted to .stamp-mode.)
 
-# Set NO_GIT=1 if you are using MODE=dev and do not want to build or run
-# a Git daemon.
-NO_GIT ?=
+# Set NO_ETCD=1 if you are using MODE=dev and do not want to run
+# a etcd daemon.
+NO_ETCD ?=
 
 # Set NET_EXTERNAL=interface to use a non-default interface for the
 # "External" (192.168.1.0/24) network.
@@ -166,7 +166,6 @@ distclean: clean
 KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
 KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
 S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
-GIT_DAEMON ?= src/git/git-daemon
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
 
 $(KEYFENDER): .stamp-prepare
@@ -300,45 +299,28 @@ ifeq ($(XMODE),dev)
 
 RUN_DIR := $(TOP_DIR)/run
 
-ifeq ($(NO_GIT),)
-
-GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
-    NO_GETTEXT=1 NO_PYTHON=1
-
-$(GIT_DAEMON):
-	$(MAKE) -C src/git $(GIT_MAKEFLAGS) all
-
-else
-
-$(GIT_DAEMON): ;
-
-endif
-
 .PHONY: build
-build: $(S_KEYFENDER) $(GIT_DAEMON)
+build: $(S_KEYFENDER)
 
-ifeq ($(NO_GIT),)
+ifeq ($(NO_ETCD),)
 
-$(RUN_DIR)/git/keyfender-data.git:
-	mkdir -p $@
-	git init --bare $@
-
-$(RUN_DIR)/git-daemon.pid: | $(RUN_DIR)/git/keyfender-data.git
-	src/git/bin-wrappers/git daemon \
-	    --listen=169.254.169.2 \
-	    --base-path=$(RUN_DIR)/git \
-	    --export-all \
-	    --enable=receive-pack \
-	    --pid-file=$@ &
+$(RUN_DIR)/etcd.pid:
+	etcd \
+	    --listen-client-urls 'http://169.254.169.2:2379' \
+		--advertise-client-urls 'http://169.254.169.2:2379' \
+		--data-dir $(RUN_DIR)/etcd \
+		--loglevel debug \
+        --log-outputs $(RUN_DIR)/etcd.log \
+	    & ; echo $$! > $@
 
 else
 
-$(RUN_DIR)/git-daemon.pid: ;
+$(RUN_DIR)/etcd.pid: ;
 
 endif
 
 .PHONY: run
-run: build $(RUN_DIR)/git-daemon.pid
+run: build $(RUN_DIR)/etcd.pid
 	solo5-hvt \
 	    --net:external=$(NET_EXTERNAL) \
 	    --net:internal=$(NET_INTERNAL) \
@@ -346,11 +328,10 @@ run: build $(RUN_DIR)/git-daemon.pid
 
 .PHONY: clean
 clean: clean-keyfender
-ifeq ($(NO_GIT),)
-	-test -f $(RUN_DIR)/git-daemon.pid && \
-	    kill $$(cat $(RUN_DIR)/git-daemon.pid) && \
-	    rm $(RUN_DIR)/git-daemon.pid
-	$(MAKE) -C src/git --silent --no-print-directory distclean
+ifeq ($(NO_ETCD),)
+	-test -f $(RUN_DIR)/etcd.pid && \
+	    kill $$(cat $(RUN_DIR)/etcd.pid) && \
+	    rm $(RUN_DIR)/etcd.pid
 endif
 	$(RM) -r $(RUN_DIR)
 
@@ -436,48 +417,20 @@ $(OBJ_DIR):
 	mkdir -p $@
 
 # ------------------------------------------------------------------------------
-ZLIB_DIR := $(TOP_DIR)/src/zlib
-ZLIB_LIBZ := $(ZLIB_DIR)/libz.a
+OBJ_ETCD_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
+INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd
 
-# The symlinks below are so that we can pass $(ZLIB_DIR) directly to Git's
-# build system without a separate "install" step.
-$(ZLIB_DIR)/stamp-configure: $(ZLIB_DIR)/configure $(ZLIB_DIR)/Makefile.in
-	cd $(ZLIB_DIR) && \
-	    CC="$(CCACHE) x86_64-linux-musl-gcc" \
-	    ./configure --static
-	cd $(ZLIB_DIR) && ln -s . include
-	cd $(ZLIB_DIR) && ln -s . lib
-	touch $@
+ETCD_VER := v3.5.2
+ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
 
-$(ZLIB_LIBZ): $(ZLIB_DIR)/stamp-configure
-	$(MAKE) -C $(ZLIB_DIR)
-
-# ------------------------------------------------------------------------------
-OBJ_GIT_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
-OBJ_GIT_LIBEXEC_DIR := $(OBJ_INITRAMFS_DIR)/libexec/git-core
-
-GIT_MAKEFLAGS := NO_PERL=1 NO_OPENSSL=1 NO_CURL=1 NO_EXPAT=1 NO_TCLTK=1 \
-    NO_GETTEXT=1 NO_PYTHON=1 NO_REGEX=NeedsStartEnd \
-    HOST_CPU=x86_64 CC="$(CCACHE) x86_64-linux-musl-gcc" \
-    LDFLAGS=-static ZLIB_PATH=$(ZLIB_DIR) \
-    INSTALL_SYMLINKS=1 \
-    prefix=/ DESTDIR=$(OBJ_INITRAMFS_DIR)
-
-$(GIT_DAEMON): $(ZLIB_LIBZ)
-	$(MAKE) -C src/git $(GIT_MAKEFLAGS) all strip
-
-INSTALL_GIT_DAEMON := $(OBJ_GIT_LIBEXEC_DIR)/git-daemon
-
-$(INSTALL_GIT_DAEMON): $(GIT_DAEMON) | $(OBJ_DIR)
-	$(MAKE) -C src/git $(GIT_MAKEFLAGS) install
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-credential-*
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-cvs*
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-http-backend
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-imap-send
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-remote-testsvn
-	$(RM) $(OBJ_GIT_LIBEXEC_DIR)/git-shell
-	$(RM) $(OBJ_GIT_BIN_DIR)/git-cvsserver
-	$(RM) $(OBJ_GIT_BIN_DIR)/git-shell
+$(INSTALL_ETCD_DAEMON): | $(OBJ_DIR)
+	curl -L $(ETCD_DOWNLOAD_URL)/$(ETCD_VER)/etcd-$(ETCD_VER)-linux-amd64.tar.gz -o /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
+	mkdir -p /tmp/etcd-download
+	tar xzvf /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz -C /tmp/etcd-download --strip-components=1
+	mkdir -p $(OBJ_ETCD_BIN_DIR)
+	cp -a /tmp/etcd-download/etcd $@
+	rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+	rm -rf /tmp/etcd-download
 
 # ------------------------------------------------------------------------------
 E2FSPROGS_DIR := src/e2fsprogs/build
@@ -508,7 +461,6 @@ $(INSTALL_MKE2FS): $(MKE2FS)
 $(INSTALL_MKE2FS_CONF): $(MKE2FS_CONF)
 	mkdir -p $(OBJ_INITRAMFS_DIR)/etc
 	cp $< $@
-
 
 # ------------------------------------------------------------------------------
 UTIL_LINUX_DIR := src/util-linux
@@ -577,21 +529,21 @@ $(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
 		seek=$$((0x$${OFFSET_SWU}/16)) conv=notrunc
 
 # ------------------------------------------------------------------------------
-OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
-$(OBJ_DATA_GIT_DIR)/keyfender-data.git:
+OBJ_DATA_ETCD_DIR := $(OBJ_DATA_DIR)/etcd
+$(OBJ_DATA_ETCD_DIR):
 	mkdir -p $@
-	git init --template none --bare $@
+	chmod 0700 $@
 
-$(OBJ_DATA_DIR): $(OBJ_DATA_GIT_DIR)/keyfender-data.git
+$(OBJ_DATA_DIR): $(OBJ_DATA_ETCD_DIR)
 
 OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
 
-# Given an initialised Git repository in $(OBJ_GIT_DATA_DIR), produce the CPIO
+# Produce the CPIO
 # archive containing the template used to populate an empty /data partition on
 # boot. This is a bit round-about; blame UNIX tools for not letting us specify
 # ownership information in archives speficially.
 #
-# Notably, this ensures that everything under /data/git is owned by the Git
+# Notably, this ensures that everything under /data/etcd is owned by the etcd
 # user (1:1), with the "this data partition is now populated" stamp file being
 # owned by root (0:0).
 $(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
@@ -637,7 +589,7 @@ $(U_ROOT_BUILD_TAG):
 $(U_ROOT_BIN):
 	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
 
-INITRAMFS_DEPS := $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_MKE2FS_CONF) $(INSTALL_SFDISK) \
+INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_MKE2FS_CONF) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)
 
 $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG)
@@ -840,10 +792,7 @@ clean: clean-keyfender
 	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
 # The above does not clean up the checked-out GRUB 2 properly, so do it here
 	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2
-	$(MAKE) -C src/git --silent --no-print-directory distclean
-	$(MAKE) -C src/zlib --silent --no-print-directory distclean
 	$(MAKE) -C src/util-linux --silent --no-print-directory distclean
-	$(RM) $(ZLIB_DIR)/stamp-configure $(ZLIB_DIR)/include $(ZLIB_DIR)/lib
 	$(RM) -r $(E2FSPROGS_DIR)
 	$(RM) $(U_ROOT_BIN)
 	$(RM) -r $(OBJ_DIR) $(RUN_DIR)

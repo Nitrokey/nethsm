@@ -208,6 +208,7 @@ let main =
     package ~min:"3.10.4" "mirage-runtime";
     package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
+    package "digestif";
     package "memtrace-mirage";
     package "h2-lwt";
     package ~sublibs:["google_types"] "ocaml-protoc-plugin";
