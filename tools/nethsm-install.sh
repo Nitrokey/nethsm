@@ -96,7 +96,7 @@ is_emulated ()
 }
 
 REL_PATH=$(dirname ${BASH_SOURCE})
-MKE2FS_CONF=${REL_PATH}/../src/u-root/mke2fs.conf
+MKE2FS_CONF=${REL_PATH}/../src/u-root/etc/mke2fs.conf
 
 if [ ! -r "${MKE2FS_CONF}" ]; then
 	  die "Did not find custom ${MKE2FS_CONF} ... aborting install!"

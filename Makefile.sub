@@ -437,8 +437,8 @@ E2FSPROGS_DIR := src/e2fsprogs/build
 MKE2FS := $(E2FSPROGS_DIR)/misc/mke2fs
 INSTALL_MKE2FS := $(OBJ_INITRAMFS_DIR)/bin/mke2fs
 
-MKE2FS_CONF := $(E2FSPROGS_DIR)/../../u-root/mke2fs.conf
-INSTALL_MKE2FS_CONF := $(OBJ_INITRAMFS_DIR)/etc/mke2fs.conf
+ETC_DIR := $(E2FSPROGS_DIR)/../../u-root/etc
+INSTALL_ETC_DIR := $(OBJ_INITRAMFS_DIR)/etc
 
 $(E2FSPROGS_DIR)/Makefile: src/e2fsprogs/configure
 	mkdir -p $(E2FSPROGS_DIR)
@@ -458,9 +458,8 @@ $(INSTALL_MKE2FS): $(MKE2FS)
 	cp $< $@
 	strip $@
 
-$(INSTALL_MKE2FS_CONF): $(MKE2FS_CONF)
-	mkdir -p $(OBJ_INITRAMFS_DIR)/etc
-	cp $< $@
+$(INSTALL_ETC_DIR): $(ETC_DIR)
+	cp -a $</ $@
 
 # ------------------------------------------------------------------------------
 UTIL_LINUX_DIR := src/util-linux
@@ -589,7 +588,7 @@ $(U_ROOT_BUILD_TAG):
 $(U_ROOT_BIN):
 	GOPATH=$(U_ROOT_GOPATH) go install github.com/u-root/u-root
 
-INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_MKE2FS_CONF) $(INSTALL_SFDISK) \
+INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_ETC_DIR) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)
 
 $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG)
