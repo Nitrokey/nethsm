@@ -670,7 +670,7 @@ MUEN_GEN_CSPEC_EXTRA :=
 else
 # XXX: We cannot currently allocate more than 3GB of memory to the unikernel
 # XXX: due to limitations (chanAddr) of solo5-muen-gencspec.py.
-MUEN_GEN_CSPEC_EXTRA := --ram 5400
+MUEN_GEN_CSPEC_EXTRA := --ram 256
 endif
 
 $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)

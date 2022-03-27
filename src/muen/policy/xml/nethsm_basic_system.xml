@@ -124,6 +124,7 @@
       <bootparams>console=ttyS0 pci=noearly uroot.uinitargs=platform</bootparams>
       <memory>
         <memory logical="initramfs" physical="initramfs" virtualAddress="16#9000_0000#" writable="false" executable="false"/>
+        <memory logical="ram_2" physical="platform|ram_2" virtualAddress="16#0001_0000_0000#" writable="true" executable="true"/>
       </memory>
       <devices>
         <device logical="storage_controller" physical="storage_controller">
