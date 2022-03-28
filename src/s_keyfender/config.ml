@@ -80,8 +80,12 @@ let pre_configured_stack =
       | _ -> assert false
   end
 
-let external_netif = Key.(if_impl is_solo5 (netif "external") (netif "tap1"))
+let external_netif = Key.(if_impl is_solo5 
+  (netif ~group:"external" "external") 
+  (netif ~group:"external" "tap1"))
+
 let external_eth = etif external_netif
+
 let external_arp = arp external_eth
 
 let single_interface =
