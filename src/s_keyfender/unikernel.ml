@@ -146,10 +146,10 @@ struct
       in
       store_connect () >>= fun store ->
         Logs.app (fun m -> m "connected to store");
-      (let ign = Mirage_kv.Key.v ".gitignore" in
-        KV_store.exists store ign >>= function
+      (let ini = Mirage_kv.Key.v ".initialized" in
+        KV_store.exists store ini >>= function
         | Ok None ->
-          (KV_store.set store ign "" >>= function
+          (KV_store.set store ini "" >>= function
             | Ok () -> Lwt.return_unit
             | Error e ->
               Log.err (fun m -> m "couldn't write to store %a" KV_store.pp_write_error e);
