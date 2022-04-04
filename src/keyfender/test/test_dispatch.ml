@@ -1527,7 +1527,7 @@ let keys_key_get_invalid_id2 =
   | _ -> false
   end
 
-let keys_key_put =
+let keys_key_put_json =
   "PUT on /keys/keyID succeeds"
   @? fun () -> 
   begin
@@ -1535,6 +1535,14 @@ let keys_key_put =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
   end
+
+let keys_key_put_pem =
+  "PUT on /keys/keyID succeeds"
+  @? fun () ->
+  let query = [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ] in
+  match admin_put_request  ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys/keyID" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
 
 let keys_key_put_already_there =
   "PUT on /keys/keyID succeeds"
@@ -2713,7 +2721,8 @@ let () =
     "/keys/keyID", [ keys_key_get ; 
                      keys_key_get_not_found ; 
                      keys_key_get_invalid_id ; 
-                     keys_key_put ; 
+                     keys_key_put_json ; 
+                     keys_key_put_pem ;
                      keys_key_put_already_there ; 
                      keys_key_put_invalid_id ; 
                      keys_key_delete ; 
