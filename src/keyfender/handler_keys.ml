@@ -167,6 +167,30 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
           (Json.decode Json.private_key_req_of_yojson content)
       in
       Endpoint.lookup_path_info ok "id" rd
+    
+    method private set_pem rd =
+      let body = rd.Webmachine.Rd.req_body in
+      Cohttp_lwt.Body.to_string body >>= fun content ->
+      let mechanisms =
+        match Uri.get_query_param rd.Webmachine.Rd.uri "mechanisms" with
+        | Some ms -> Json.mechanisms_of_string ms
+        | None -> Error "Request is missing mechanisms."
+      in
+      let tags =
+        match Uri.get_query_param rd.Webmachine.Rd.uri "tags" with
+        | Some tags -> Json.tagset_of_string tags
+        | None -> Json.TagSet.empty
+      in
+      let ok id mechanisms =
+        Hsm.Key.add_pem hsm_state ~id mechanisms content { tags }
+        >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Endpoint.respond_error e rd
+      in
+      let ok_id id =
+        Endpoint.err_to_bad_request (ok id) rd mechanisms
+      in
+      Endpoint.lookup_path_info ok_id "id" rd
 
     method! resource_exists rd =
       let ok id =
@@ -192,7 +216,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method content_types_accepted rd =
       Wm.continue [
-        ("application/json", self#set_json)
+        ("application/json", self#set_json);
+        ("application/x-pem-file", self#set_pem)
       ] rd
 
     method! generate_etag rd =
