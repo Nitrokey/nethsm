@@ -796,8 +796,18 @@ annotationTypes:
       (state): [ Operational ]
       description: Import a private key into NetHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
       securedBy: [ basic ]
+      queryParameters:
+        mechanisms:
+          required: false
+          type: array
+          items: KeyMechanism
+        tags:
+          required: false
+          type: array
+          items: ID
       body:
         application/json: PrivateKey
+        application/x-pem-file: PemPrivateKey
       responses:
         204:
           description: Successful import of a private key.
