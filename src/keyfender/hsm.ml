@@ -482,9 +482,28 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   module Domain_key_store = Domain_key_store.Make(Rng)(KV)
   module Encrypted_store = Encrypted_store.Make(Rng)(KV)
 
+  module User_info = struct 
+    type t = {
+      name : string ;
+      salt : string ;
+      digest : string ;
+      role : Json.role ;
+      tags : Json.TagSet.t ;
+    }[@@deriving yojson]
+
+    let name t = t.name
+
+    let role t = t.role
+
+    let tags t = t.tags
+
+  end
+
+  module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))
+
   type keys = {
     domain_key : Cstruct.t ; (* needed when unlock passphrase changes and likely for unattended boot *)
-    auth_store : Encrypted_store.t ;
+    auth_store : User_store.t ;
     key_store : Encrypted_store.t ;
   }
 
@@ -616,6 +635,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     prepare_keys kv slot credentials >>= fun (domain_key, as_key, ks_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
+    let auth_store = User_store.connect auth_store in
     let keys = { domain_key ; auth_store ; key_store } in
     Operational keys
 
@@ -704,24 +724,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   module User = struct
 
-    module Info = struct
-      type t = {
-        name : string ;
-        salt : string ;
-        digest : string ;
-        role : Json.role ;
-        tags : Json.TagSet.t ;
-      }[@@deriving yojson]
-
-      let name t = t.name
-
-      let role t = t.role
-
-      let tags t = t.tags
-
-    end
-
+    module Info = User_info
     module User_store = Json_store.Make(Encrypted_store)(Info)
+    module Encrypted_store = struct end
 
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
@@ -791,7 +796,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let prepare_user ~name ~passphrase ~role =
       let salt = Rng.generate Crypto.passphrase_salt_len in
       let digest = Crypto.stored_passphrase ~salt (Cstruct.of_string passphrase) in
-      { Info.name ;
+      { User_info.name ;
         salt = Cstruct.to_string salt ;
         digest = Cstruct.to_string digest ;
         role ;
@@ -1507,12 +1512,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error Write
               "Initializing key store" KV.pp_write_error
               (KV.set b k_v_key k_v_value) >>= fun () ->
-            let keys = { domain_key ; auth_store ; key_store } in
+            let keys = { domain_key ; auth_store = User_store.connect auth_store ; key_store } in
             t.state <- Operational keys;
             let admin_k, admin_v =
               let name = "admin" in
               let admin = User.prepare_user ~name ~passphrase:admin ~role:`Administrator in
-              let value = Yojson.Safe.to_string (User.Info.to_yojson admin) in
+              let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
               Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name) value
             in
             internal_server_error Write "set Administrator user" KV.pp_write_error
