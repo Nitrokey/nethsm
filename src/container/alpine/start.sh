@@ -14,7 +14,7 @@ if [ -e /dev/net/tun -a -e /dev/kvm ] ; then
   ip link set dev tap201 up
 
   iptables -t nat -A PREROUTING -i eth0 -p tcp -m tcp --dport 8443 \
-    -j DNAT --to-destination 192.168.1.1:8443
+    -j DNAT --to-destination 192.168.1.1:443
   iptables -t nat -A POSTROUTING -o tap200 -j SNAT --to-source 192.168.1.100
 
   GIT_LISTEN="--listen=169.254.169.2"
@@ -22,10 +22,8 @@ if [ -e /dev/net/tun -a -e /dev/kvm ] ; then
   KEYFENDER_IP=192.168.1.1
 fi
 
-
 if [ ! -d /data/keyfender-data.git ] ; then
-  mkdir /data/keyfender-data.git
-  git init --bare /data/keyfender-data.git
+  git init --bare /data/keyfender-data.git -b master
 fi
 
 git daemon \
@@ -45,7 +43,7 @@ if [ $ADMINPW ] ; then
 fi
 
 if [ -z "$KEYFENDER_KVM" ] ; then
-/keyfender
+/keyfender.unix
 else
 /solo5-hvt \
     --net:external=tap200 \

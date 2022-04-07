@@ -26,7 +26,8 @@ RUN cd src/s_keyfender \
   --http=8080 --https=8443 --single-interface --retry=true \
   --remote=git://127.0.0.1/keyfender-data.git \
   && opam exec -- make depend \
-  && opam exec -- make build
+  && opam exec -- make build \
+  && cp keyfender keyfender.unix
 
 FROM alpine:3.15
 
@@ -43,5 +44,5 @@ ENTRYPOINT /start.sh
 COPY --from=builder \
   /home/opam/.opam/4.13/bin/solo5-hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
-  /home/opam/nethsm/src/s_keyfender/keyfender \
+  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
   /
