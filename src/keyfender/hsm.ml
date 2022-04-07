@@ -946,15 +946,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     } [@@deriving yojson]
 
     let validate_restrictions ~user_info (restrictions: Json.restrictions) =
-      if User.Info.role user_info = `Administrator then 
-        Ok () 
+      if Json.TagSet.is_empty restrictions.tags then
+        Ok ()
+      else if Json.TagSet.disjoint restrictions.tags (User.Info.tags user_info) then
+        Error (Forbidden, "tags restriction not met")
       else
-        if Json.TagSet.is_empty restrictions.tags then
-          Ok ()
-        else if Json.TagSet.disjoint restrictions.tags (User.Info.tags user_info) then
-          Error (Forbidden, "tags restriction not met")
-        else
-          Ok ()
+        Ok ()
     
     (* boilerplate for dumping keys whose operations changed *)
     let cached_operations = Hashtbl.create 7
@@ -982,14 +979,22 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       internal_server_error "List keys" Encrypted_store.pp_error
         (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
       let open Lwt.Infix in
-      Lwt_list.filter_map_s (fun (id, typ) ->
-        if typ = `Value then
-          get_key t id >|= function
-          | Ok t when Result.is_ok (validate_restrictions ~user_info t.restrictions) -> Some id
-          | _ -> None
-        else
-          Lwt.return_none) xs
-      |> Lwt.map Result.ok
+      let is_admin = User.Info.role user_info = `Administrator in
+      let is_usable k =
+        validate_restrictions ~user_info k.restrictions |> Result.is_ok
+      in
+      let filter (id, typ) =
+        (match typ with
+        | `Value -> (
+            let ok = Some id in
+            if is_admin then Lwt.return ok
+            else
+              get_key t id >|= function
+              | Ok k when is_usable k -> ok
+              | _ -> None)
+        | _ -> Lwt.return None)
+      in
+      Lwt_list.filter_map_s filter xs >|= fun l -> Ok l
 
     let dump_keys t =
       let open Lwt.Infix in
@@ -1290,9 +1295,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let validate_restrictions t ~user_id key_data =
       let open Lwt_result.Infix in
       User.get t ~id:user_id >>= fun user_info ->
-      Lwt.return
-        (validate_restrictions ~user_info key_data.restrictions
-         |> Result.map (fun () -> key_data))
+      let validation = if User.Info.role user_info = `Administrator then Ok ()
+        else validate_restrictions ~user_info key_data.restrictions
+      in
+      Result.map (fun () -> key_data) validation |> Lwt.return
 
     let decrypt t ~id ~user_id ~iv decrypt_mode data =
       let open Lwt_result.Infix in
