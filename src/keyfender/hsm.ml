@@ -946,6 +946,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       restrictions : Json.restrictions;
     } [@@deriving yojson]
 
+    module Key_store = Json_store.Make(Encrypted_store)(struct
+      type t = key
+
+      let to_yojson = key_to_yojson
+
+      let of_yojson = key_of_yojson
+    end)
+
     let validate_restrictions ~user_info (restrictions: Json.restrictions) =
       if Json.TagSet.is_empty restrictions.tags then
         Ok ()
@@ -961,24 +969,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
-      internal_server_error Read "Read key" Encrypted_store.pp_error
-        (Encrypted_store.get store key) >>= fun key_raw ->
-      Lwt.return (match Json.decode key_of_yojson key_raw with
-          | Ok k ->
-            let operations =
-              match Hashtbl.find_opt cached_operations id with
-              | None -> k.operations
-              | Some v -> v
-            in
-            Ok { k with operations }
-          | Error e -> Error (Internal_server_error, e))
+      internal_server_error Read "Read key" Key_store.pp_read_error
+        (Key_store.get store key) >>= fun key ->
+      let operations =
+        match Hashtbl.find_opt cached_operations id with
+        | None -> key.operations
+        | Some v -> v
+      in
+      Lwt.return ( Ok { key with operations })
 
     let list t ~filter_by_restrictions ~user_id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      internal_server_error Read "List keys" Encrypted_store.pp_error
-        (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
-        User.get t ~id:user_id >>= fun user_info ->
+      internal_server_error Read "List keys" Key_store.pp_error
+        (Key_store.list store Mirage_kv.Key.empty) >>= fun xs ->
+      User.get t ~id:user_id >>= fun user_info ->
       let open Lwt.Infix in
       let is_admin = User.Info.role user_info = `Administrator in
       let is_usable k =
@@ -1008,7 +1013,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational _ ->
         with_write_lock (fun () ->
             let store = key_store t in
-            KV.batch t.kv (fun b ->
+            Key_store.batch store (fun b ->
                 Hashtbl.fold (fun id _ x ->
                     x >>= function
                     | Error e -> Lwt.return (Error e)
@@ -1020,15 +1025,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                                     msg id);
                         Lwt.return (Ok ())
                       | Ok k ->
-                        let k_v_key, k_v_value =
-                          Encrypted_store.prepare_set store (Mirage_kv.Key.v id)
-                            (Yojson.Safe.to_string (key_to_yojson k))
-                        in
-                        KV.set b k_v_key k_v_value >>= function
+                        let key = Mirage_kv.Key.v id in
+                        Key_store.set b key k >>= function
                         | Ok () -> Lwt.return (Ok ())
                         | Error e ->
                           Log.err (fun m -> m "error %a while writing key %s"
-                                      KV.pp_write_error e id);
+                                      Key_store.pp_write_error e id);
                           Lwt.return (Ok ()))
                   cached_operations (Lwt.return (Ok ())))) >|= function
         | Ok () -> Hashtbl.clear cached_operations
@@ -1036,20 +1038,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let encode_and_write t id key =
       let store = key_store t
-      and value = key_to_yojson key
       and kv_key = Mirage_kv.Key.v id
       in
       Hashtbl.remove cached_operations id;
       with_write_lock (fun () ->
-          internal_server_error Write "Write key" Encrypted_store.pp_write_error
-            (Encrypted_store.set store kv_key (Yojson.Safe.to_string value)))
+          internal_server_error Write "Write key" Key_store.pp_write_error
+          (Key_store.set store kv_key key))
 
     let add ~id t mechanisms priv restrictions =
       let open Lwt_result.Infix in
       let store = key_store t in
       let key = Mirage_kv.Key.v id in
-      internal_server_error Read "Exist key" Encrypted_store.pp_error
-        (Encrypted_store.exists store key) >>= function
+      internal_server_error Read "Exist key" Key_store.pp_error
+        (Key_store.exists store key) >>= function
       | Some _ ->
         Lwt.return (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
@@ -1152,8 +1153,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let store = key_store t in
       Hashtbl.remove cached_operations id;
       with_write_lock (fun () ->
-          internal_server_error Write "Remove key" Encrypted_store.pp_write_error
-            (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
+          internal_server_error Write "Remove key" Key_store.pp_write_error
+            (Key_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
 
     let get_json t ~id =
@@ -1445,14 +1446,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Lwt.return_none
       else
         let store = key_store t in
-        Encrypted_store.digest store Mirage_kv.Key.empty >|= function
+        Key_store.digest store Mirage_kv.Key.empty >|= function
         | Ok digest -> Some (to_hex digest)
         | Error _ -> None
 
     let digest t ~id =
       let open Lwt.Infix in
       let store = key_store t in
-      Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
+      Key_store.digest store (Mirage_kv.Key.v id) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
