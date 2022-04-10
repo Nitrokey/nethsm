@@ -32,3 +32,16 @@ git reset --hard ${OPAM_REPOSITORY_COMMIT}
 opam update
 cd -
 
+# Fetch submodules
+make fetch-submodules
+
+# Setup caches
+sudo chmod 01777 /downloads
+mkdir -p /downloads/opam
+rm -rf ~/.opam/download-cache
+ln -s /downloads/opam ~/.opam/download-cache
+
+if [ ${MODE} == "muen" ]; then
+    mkdir -p /downloads/tarballs
+    ln -s /downloads/tarballs src/coreboot/coreboot/util/crossgcc/
+fi

@@ -1,10 +1,6 @@
 default:
   image: "mato/nethsm-builder@sha256:67f01806a00f1b62fc2d1b61ef52d86f22b9d4411b968e2afe7216e0992e775f"
   before_script:
-    - sudo chmod 01777 /cache
-    - mkdir -p /cache/opam/download-cache
-    - rm -rf ~/.opam/download-cache
-    - ln -s /cache/opam/download-cache ~/.opam/download-cache
     - source .gitlab-ci-setup.bash
   tags:
     - docker
@@ -33,7 +29,6 @@ build_keyfender:
   stage: build_dev
   needs: []
   script:
-    - make fetch-submodules
     - make -j$(nproc) build
 
 test_keyfender:
@@ -45,7 +40,6 @@ test_keyfender:
   stage: test
   needs: []
   script:
-    - make fetch-submodules
     - make -j$(nproc) coverage-summary
 
 build_muen_qemu_kvm:
@@ -64,7 +58,6 @@ build_muen_qemu_kvm:
   needs:
     - build_keyfender
   script:
-    - make fetch-submodules
     - make -j$(nproc) build artifacts
 
 build_muen_prodrive_hermes:
@@ -83,7 +76,6 @@ build_muen_prodrive_hermes:
   needs:
     - build_keyfender
   script:
-    - make fetch-submodules
     - make -j$(nproc) build artifacts
 
 build_container_image:
@@ -98,10 +90,10 @@ build_container_image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   before_script:
-    - chmod 01777 /cache
-    - mkdir -p /cache/opam/download-cache
+    - chmod 01777 /downloads
+    - mkdir -p /downloads/opam
     - mkdir -p /home/opam/.opam
-    - ln -s /cache/opam/download-cache /home/opam/.opam/download-cache
+    - ln -s /downloads/opam /home/opam/.opam/download-cache
     - mkdir -p /kaniko/.docker
     - >
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
@@ -180,4 +172,4 @@ build_api_docs:
   script:
     - npm install api-console-cli
     - ./node_modules/.bin/api-console build -t "RAML 1.0" --app-title "NetHSM API"
-        --verbose --strict -o api_docs/ $API_SPEC
+      --verbose --strict -o api_docs/ $API_SPEC
