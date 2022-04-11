@@ -721,6 +721,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     end
 
+    module User_store = Json_store.Make(Encrypted_store)(Info)
+
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
 
@@ -731,26 +733,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | `Metrics -> "R-Metrics"
       | `Backup -> "R-Backup"
 
-
-    let read_decode store id =
-      let open Lwt.Infix in
-      Encrypted_store.get store (Mirage_kv.Key.v id) >|= function
-      | Error e -> Error (`Encrypted_store e)
-      | Ok data ->
-        Rresult.R.reword_error
-          (fun err -> `Json_decode err)
-          (Json.decode Info.of_yojson data)
-
-    let pp_find_error ppf = function
-      | `Encrypted_store kv -> Encrypted_store.pp_error ppf kv
-      | `Msg msg -> Fmt.string ppf msg
-      | `Json_decode msg -> Fmt.pf ppf "json decode failure %s" msg
+    let read store id =
+      User_store.get store (Mirage_kv.Key.v id)
 
     let write store id user =
-      let user_str = Yojson.Safe.to_string (Info.to_yojson user) in
       with_write_lock (fun () ->
-          internal_server_error Write "Write user" Encrypted_store.pp_write_error
-            (Encrypted_store.set store (Mirage_kv.Key.v id) user_str))
+        internal_server_error Write "Write user" User_store.pp_write_error
+          (User_store.set store (Mirage_kv.Key.v id) user))
 
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
@@ -761,13 +750,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let get_user t id =
       let keys = in_store t in
-      read_decode keys id
+      read keys id
 
     let is_authenticated t ~username ~passphrase =
       let open Lwt.Infix in
       get_user t username >|= function
       | Error e ->
-        Access.warn (fun m -> m "%s unauthenticated: %a" username pp_find_error e);
+        Access.warn (fun m -> m "%s unauthenticated: %a" username User_store.pp_read_error e);
         false
       | Ok user ->
         let pass =
@@ -782,22 +771,22 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       get_user t username >|= function
       | Error e ->
         Access.warn (fun m -> m "%s unauthorized for %a: %a" username
-                        pp_role role pp_find_error e);
+                        pp_role role User_store.pp_read_error e);
         false
       | Ok user -> user.role = role
 
     let exists t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error Read "Exists user" Encrypted_store.pp_error
-       (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
+      internal_server_error Read "Exists user" User_store.pp_error
+       (User_store.exists store (Mirage_kv.Key.v id) >|= function
         | None -> false
         | Some _ -> true)
 
     let get t ~id =
       let store = in_store t in
-      internal_server_error Read "Read user" pp_find_error
-        (read_decode store id)
+      internal_server_error Read "Read user" User_store.pp_read_error
+        (read store id)
 
     let prepare_user ~name ~passphrase ~role =
       let salt = Rng.generate Crypto.passphrase_salt_len in
@@ -811,37 +800,37 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let add ~id t ~role ~passphrase ~name =
       let open Lwt_result.Infix in
       let store = in_store t in
-      Lwt.bind (read_decode store id)
+      Lwt.bind (read store id)
         (function
-          | Error `Encrypted_store `Kv (`Not_found _) ->
+          | Error `Store `Kv (`Not_found _) ->
             let user = prepare_user ~name ~passphrase ~role in
             write store id user >|= fun () ->
             Access.info (fun m -> m "added %s (%s)" name id)
           | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
           | Error _ as e ->
-            internal_server_error Read "Adding user" pp_find_error
+            internal_server_error Read "Adding user" User_store.pp_read_error
               (Lwt.return e))
 
     let list t =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error Read "List users" Encrypted_store.pp_error
-        (Encrypted_store.list store Mirage_kv.Key.empty) >|= fun xs ->
+      internal_server_error Read "List users" User_store.pp_error
+        (User_store.list store Mirage_kv.Key.empty) >|= fun xs ->
       List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
 
     let remove t ~id =
       let open Lwt_result.Infix in
       let store = in_store t in
       with_write_lock (fun () ->
-          internal_server_error Write "Remove user" Encrypted_store.pp_write_error
-            (Encrypted_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
+          internal_server_error Write "Remove user" User_store.pp_write_error
+            (User_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
              Access.info (fun m -> m "removed (%s)" id)))
 
     let set_passphrase t ~id ~passphrase =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error Read "Read user" pp_find_error
-        (read_decode store id) >>= fun user ->
+      internal_server_error Read "Read user" User_store.pp_read_error
+        (read store id) >>= fun user ->
       let salt' = Rng.generate Crypto.passphrase_salt_len in
       let digest' = Crypto.stored_passphrase ~salt:salt' (Cstruct.of_string passphrase) in
       let user' =
@@ -854,8 +843,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let add_tag t ~id ~tag =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error Read "Read user" pp_find_error
-        (read_decode store id) >>= fun user ->
+      internal_server_error Read "Read user" User_store.pp_read_error
+        (read store id) >>= fun user ->
       if Info.role user = `Operator then
         if not (Json.TagSet.mem tag user.tags) then
           let user' =
@@ -872,8 +861,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let remove_tag t ~id ~tag =
       let open Lwt_result.Infix in
       let store = in_store t in
-      internal_server_error Read "Read user" pp_find_error
-        (read_decode store id) >>= fun user ->
+      internal_server_error Read "Read user" User_store.pp_read_error
+        (read store id) >>= fun user ->
       if Info.role user = `Operator then
         if Json.TagSet.mem tag user.tags then
           let user' = { user with tags = Json.TagSet.remove tag user.tags} in
@@ -888,14 +877,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let list_digest t =
       let open Lwt.Infix in
       let store = in_store t in
-      Encrypted_store.digest store Mirage_kv.Key.empty >|= function
+      User_store.digest store Mirage_kv.Key.empty >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let digest t ~id =
       let open Lwt.Infix in
       let store = in_store t in
-      Encrypted_store.digest store (Mirage_kv.Key.v id) >|= function
+      User_store.digest store (Mirage_kv.Key.v id) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
