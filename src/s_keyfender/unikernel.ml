@@ -131,21 +131,21 @@ struct
   module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
 
   let start console _entropy () () update_key_store assets internal_stack ext_stack () =
-      let sleep err =
+      let sleep e =
         Log.warn (fun m ->
-            m "Could not connect to remote: %s\nRetrying in 1 second..." err);
+            m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
         Time.sleep_ns (Duration.of_sec 1)
       in
       let rec store_connect () =
         KV_store.connect internal_stack >>= function
-        | Ok store -> Lwt.return store
-        | Error e ->
+          | Ok store -> Lwt.return store
+          | Error e ->
             let err = Fmt.to_to_string KV_store.pp_error e in
             if Key_gen.retry () then sleep err >>= store_connect
             else Lwt.fail_with err
       in
       store_connect () >>= fun store ->
-        Logs.app (fun m -> m "connected to store");
+      Logs.app (fun m -> m "connected to store");
       (let ini = Mirage_kv.Key.v ".initialized" in
         KV_store.exists store ini >>= function
         | Ok None ->

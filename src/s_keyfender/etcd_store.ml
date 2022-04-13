@@ -7,38 +7,65 @@ let etcd_store_src = Logs.Src.create "etcd_store"
 module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
-  module T = Stack.TCP
-  module C = H2_mirage.Client (T)
+  module TCP = Stack.TCP
+  module Client = H2_mirage.Client (TCP)
 
   let etcd_port = 2379
   let persistent_connection = ref None
 
+  let shutdown_persistent_connection () =
+    match !persistent_connection with
+    | None -> ()
+    | Some connection ->
+      Log.info (fun m -> m "shutting down persistent connection");
+      persistent_connection := None;
+      Lwt.dont_wait (fun () -> Client.shutdown connection) (fun e ->
+        Log.err (fun m -> m "couldn't shutdown connection: %s" (Printexc.to_string e)))
+
   let error_handler e =
+    Log.err (fun m -> m "received H2 error");
     match e with
-    | `Exn e -> raise e
+    | `Exn e -> shutdown_persistent_connection (); raise e
     | `Malformed_response s ->
-        failwith (Format.sprintf "Malformed response: %s" s)
+        failwith (Format.sprintf "malformed response: %s" s)
     | `Invalid_response_body_length r ->
         failwith
-          (Fmt.str "Invalid response body length: %a" H2.Response.pp_hum r)
+          (Fmt.str "invalid response body length: %a" H2.Response.pp_hum r)
     | `Protocol_error (c, s) ->
-        failwith (Fmt.str "Protocol error %a: %s" H2.Error_code.pp_hum c s)
+        failwith (Fmt.str "protocol error %a: %s" H2.Error_code.pp_hum c s)
 
-  let create_connection ~stack =
-    T.create_connection (Stack.tcp stack)
+  let create_flow ~stack =
+    Lwt.pick [
+      (OS.Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
+         Log.err (fun m -> m "TCP connection to etcd timed out");
+         Error `Timeout);
+      TCP.create_connection (Stack.tcp stack)
       (Ipaddr.V4 (Key_gen.platform ()), etcd_port)
-    >>= function
-    | Error e -> failwith (Fmt.str "create TCP connection: %a" T.pp_error e)
-    | Ok flow -> C.create_connection ~error_handler flow
+    ]
+    >|= function
+    | Error e -> failwith (Fmt.str "TCP connection to etcd failed: %a" TCP.pp_error e)
+    | Ok flow -> flow
 
   let connection ~stack =
     match !persistent_connection with
-    | Some connection when C.is_closed connection = false ->
+    | Some connection when not (Client.is_closed connection) ->
         Lwt.return connection
     | _ ->
-        Log.warn (fun m -> m "Reconnecting to etcd...");
-        create_connection ~stack >>= fun connection ->
-        Log.warn (fun m -> m "Connection established.");
+        Log.info (fun m -> m "connecting to etcd...");
+        create_flow ~stack >>= fun flow ->
+        Log.info (fun m -> m "TCP connection to etcd established");
+        Client.create_connection ~error_handler flow >>= fun connection ->
+        let pong, pong_resolve = Lwt.wait () in
+        Client.ping connection (fun () -> Lwt.wakeup_later pong_resolve ());
+        Lwt.pick [
+          (OS.Time.sleep_ns (Duration.of_sec 5) >>= fun () ->
+            let msg = "HTTPS/2 ping timeout" in
+            Log.err (fun m -> m "%s" msg);
+            Client.shutdown connection >>= fun () ->
+            failwith msg);
+          pong
+        ] >>= fun () ->
+        Log.info (fun m -> m "HTTP/2 connection to etcd established");
         persistent_connection := Some connection;
         Lwt.return connection
 
@@ -46,9 +73,20 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     let f s = s >|= decode in
     let handler = Grpc_lwt.Client.Rpc.unary ~f request in
     connection ~stack >>= fun connection ->
-    Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler
-      ~do_request:(C.request connection ~error_handler)
-      ()
+    Log.debug (fun m ->
+      let req_esc = String.escaped request in
+      m "gRPC call service:(%s) rpc:(%s) req:(%s)" service rpc req_esc);
+    Lwt.pick [
+      (OS.Time.sleep_ns (Duration.of_sec 30) >>= fun () ->
+        let msg = "gRPC call timed out" in
+        Log.warn (fun m -> m "%s" msg);
+        shutdown_persistent_connection ();
+        failwith msg
+      );
+      Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler
+        ~do_request:(Client.request connection ~error_handler)
+        ()
+    ]
     >|= function
     | Error e -> failwith (Fmt.to_to_string Grpc__Status.pp e)
     | Ok (Error e, _) ->
@@ -60,7 +98,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       PutRequest.to_proto request |> Ocaml_protoc_plugin.Writer.contents
     in
     let decode = function
-      | None -> failwith "No PutResponse"
+      | None -> failwith "no PutResponse"
       | Some s -> Ocaml_protoc_plugin.Reader.create s |> PutResponse.from_proto
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
@@ -70,7 +108,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       RangeRequest.to_proto request |> Ocaml_protoc_plugin.Writer.contents
     in
     let decode = function
-      | None -> failwith "No RangeResponse"
+      | None -> failwith "no RangeResponse"
       | Some s ->
           Ocaml_protoc_plugin.Reader.create s |> RangeResponse.from_proto
     in
@@ -82,7 +120,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       DeleteRangeRequest.to_proto request |> Ocaml_protoc_plugin.Writer.contents
     in
     let decode = function
-      | None -> failwith "No DeleteRangeResponse"
+      | None -> failwith "no DeleteRangeResponse"
       | Some s ->
           Ocaml_protoc_plugin.Reader.create s |> DeleteRangeResponse.from_proto
     in
@@ -121,7 +159,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     Lwt.catch
       (fun () -> f ())
       (function
-        | Failure s -> Lwt.return (Error (`Etcd_error s)) | exn -> raise exn)
+        | Failure s -> Lwt.return (Error (`Etcd_error s))
+        | exn -> raise exn)
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
 
@@ -205,10 +244,16 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
   let connect stack =
-    let connection = { stack } in
-    exists connection (Key.v ".doesnotexist") >|= function
-    | Ok _ -> Ok connection
-    | Error e -> Error e
+    let store = { stack } in
+    Lwt.pick [
+      (OS.Time.sleep_ns (Duration.of_sec 10) >|= fun () ->
+        Error (`Etcd_error "timeout")
+      );
+      get store (Key.v ".doesnotexist") >|= function
+      | Ok _ | Error (`Not_found _) -> Ok store
+      | Error e -> Error e
+    ]
+
 end
 
 module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
