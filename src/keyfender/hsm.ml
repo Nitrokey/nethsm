@@ -478,33 +478,81 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let version_is_upgrade ~current ~update = fst current <= fst update
 
-  module Config_store = Config_store.Make(KV)
-  module Domain_key_store = Domain_key_store.Make(Rng)(KV)
-  module Encrypted_store = Encrypted_store.Make(Rng)(KV)
+  module Stores = struct
+    module Config_store = Config_store.Make(KV)
+    module Domain_key_store = Domain_key_store.Make(Rng)(KV)
+    module Encrypted_store = Encrypted_store.Make(Rng)(KV)
+  
+    module User_info = struct 
+      type t = {
+        name : string ;
+        salt : string ;
+        digest : string ;
+        role : Json.role ;
+        tags : Json.TagSet.t ;
+      }[@@deriving yojson]
+  
+      let name t = t.name
+  
+      let role t = t.role
+  
+      let tags t = t.tags
+  
+    end
+  
+    module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))
 
-  module User_info = struct 
-    type t = {
-      name : string ;
-      salt : string ;
-      digest : string ;
-      role : Json.role ;
-      tags : Json.TagSet.t ;
-    }[@@deriving yojson]
+    module Key_info = struct
+      (* how a key is persisted in the kv store. note that while mirage-crypto
+        provides s-expression conversions, these have been removed from the
+        trunk version -- it is also not safe to embed s-expressions into json.
+        to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
+        json is not safe as well)!
+      *)
+      type priv =
+        | X509 of X509.Private_key.t
+        | Generic of string
+      let pem_tag = "PEM"
+      let raw_tag = "raw"
 
-    let name t = t.name
+      let priv_to_yojson p =
+        match p with
+        | Generic s -> `Assoc [raw_tag, `String (Base64.encode_string s)]
+        | X509 p -> `Assoc [pem_tag,
+              `String (Cstruct.to_string (X509.Private_key.encode_pem p))]
+      let priv_of_yojson = function
+        | `Assoc [(tag, `String data)] when tag=raw_tag ->
+          begin match Base64.decode data with
+            | Ok s -> Ok (Generic s)
+            | Error `Msg m -> Error m
+          end
+        | `Assoc [(tag, `String data)] when tag=pem_tag ->
+          begin match X509.Private_key.decode_pem (Cstruct.of_string data) with
+            | Ok priv -> Ok (X509 priv)
+            | Error `Msg m -> Error m
+          end
+        | _ -> Error "Expected { <format>: <data> } as private key"
 
-    let role t = t.role
+      type t = {
+        mechanisms : Json.MS.t ;
+        priv : priv ;
+        cert : (string * string) option ;
+        operations : int ;
+        restrictions : Json.restrictions;
+      } [@@deriving yojson]
+    end
 
-    let tags t = t.tags
+    module Key_store = Cached_store.Make(Json_store.Make(Encrypted_store)(Key_info))
 
   end
 
-  module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))
+  open Stores
+  
 
   type keys = {
     domain_key : Cstruct.t ; (* needed when unlock passphrase changes and likely for unattended boot *)
     auth_store : User_store.t ;
-    key_store : Encrypted_store.t ;
+    key_store : Key_store.t ;
   }
 
   let equal_keys a b = Cstruct.equal a.domain_key b.domain_key
@@ -636,6 +684,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
     let auth_store = User_store.connect auth_store in
+    let key_store = Key_store.connect key_store in
     let keys = { domain_key ; auth_store ; key_store } in
     Operational keys
 
@@ -905,59 +954,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Operational keys -> keys.key_store
       | _ -> assert false (* checked by webmachine Handler_keys.service_available *)
 
-    (* how a key is persisted in the kv store. note that while mirage-crypto
-       provides s-expression conversions, these have been removed from the
-       trunk version -- it is also not safe to embed s-expressions into json.
-       to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
-       json is not safe as well)!
-    *)
-    type priv =
-      | X509 of X509.Private_key.t
-      | Generic of string
-    let pem_tag = "PEM"
-    let raw_tag = "raw"
-
-    let priv_to_yojson p =
-      match p with
-      | Generic s -> `Assoc [raw_tag, `String (Base64.encode_string s)]
-      | X509 p -> `Assoc [pem_tag,
-            `String (Cstruct.to_string (X509.Private_key.encode_pem p))]
-    let priv_of_yojson = function
-      | `Assoc [(tag, `String data)] when tag=raw_tag ->
-        begin match Base64.decode data with
-          | Ok s -> Ok (Generic s)
-          | Error `Msg m -> Error m
-        end
-      | `Assoc [(tag, `String data)] when tag=pem_tag ->
-        begin match X509.Private_key.decode_pem (Cstruct.of_string data) with
-          | Ok priv -> Ok (X509 priv)
-          | Error `Msg m -> Error m
-        end
-      | _ -> Error "Expected { <format>: <data> } as private key"
-
     let exists t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
       internal_server_error Read "Exists key" Encrypted_store.pp_error
-        (Encrypted_store.exists store (Mirage_kv.Key.v id) >|= function
+        (Key_store.exists store (Mirage_kv.Key.v id) >|= function
           | None -> false
           | Some _ -> true)
-
-    type key = {
-      mechanisms : Json.MS.t ;
-      priv : priv ;
-      cert : (string * string) option ;
-      operations : int ;
-      restrictions : Json.restrictions;
-    } [@@deriving yojson]
-
-    module Key_store = Json_store.Make(Encrypted_store)(struct
-      type t = key
-
-      let to_yojson = key_to_yojson
-
-      let of_yojson = key_of_yojson
-    end)
 
     let validate_restrictions ~user_info (restrictions: Json.restrictions) =
       if Json.TagSet.is_empty restrictions.tags then
@@ -1070,6 +1073,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           if not (Json.TagSet.is_empty restrictions.tags) then 
             Access.info (fun f -> f "tags (%s): %s" id
               (Json.TagSet.to_yojson restrictions.tags |> Yojson.to_string))
+
+    open Stores.Key_info
 
     let add_json ~id t mechanisms typ key restrictions =
       let b64err msg ctx data =
@@ -1512,7 +1517,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error Write
               "Initializing key store" KV.pp_write_error
               (KV.set b k_v_key k_v_value) >>= fun () ->
-            let keys = { domain_key ; auth_store = User_store.connect auth_store ; key_store } in
+            let keys = { 
+              domain_key ; 
+              auth_store = User_store.connect auth_store ; 
+              key_store = Key_store.connect key_store 
+              } 
+            in
             t.state <- Operational keys;
             let admin_k, admin_v =
               let name = "admin" in
