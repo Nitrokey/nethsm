@@ -1,7 +1,8 @@
 open Lwt.Syntax
 let (let++) v f = Lwt_result.map f v
 
-module Make(KV: Typed_kv.S): sig 
+module Make(KV: Typed_kv.S)(Time: Mirage_time.S)(Monotonic_clock : Mirage_clock.MCLOCK): 
+sig 
   include Typed_kv.S with 
   type value = KV.value and 
   type error = KV.error and 
@@ -27,9 +28,37 @@ end = struct
     kv: KV.t;
     cache: KV.value Cache.t;
     batch: op list ref option;
+    timeout_ns: int64;
+    mutable timeout_deadline_ns: int64;
   }
 
-  let connect kv = {kv; cache = Cache.v 16; batch = None}
+  let get_next_deadline timeout_ns =
+    Int64.add (Monotonic_clock.elapsed_ns ()) timeout_ns
+
+  let timeout_thread t =
+    let rec aux () =
+      let* () =
+        Time.sleep_ns (Int64.sub t.timeout_deadline_ns (Monotonic_clock.elapsed_ns ())) 
+      in
+      if (Monotonic_clock.elapsed_ns () > t.timeout_deadline_ns) then
+      begin
+        t.timeout_deadline_ns <- get_next_deadline t.timeout_ns;
+        Cache.clear t.cache
+      end;
+      aux () 
+    in
+    aux ()
+
+  let connect kv = 
+    let timeout_ns = 1_000_000_000L in
+    let t = { kv; 
+              cache = Cache.v 16; 
+              batch = None;
+              timeout_ns;
+              timeout_deadline_ns = get_next_deadline timeout_ns}
+    in
+    Lwt.async (fun () -> timeout_thread t);
+    t
 
   let disconnect t = KV.disconnect t.kv
 
@@ -46,7 +75,12 @@ end = struct
       let ops = ref [] in
       let+ v = KV.batch t.kv ?retries (fun kv -> 
         ops := []; 
-        fn {kv; cache = t.cache; batch = Some ops}) in 
+        fn {  kv; 
+              cache = t.cache; 
+              batch = Some ops; 
+              timeout_ns = t.timeout_ns; 
+              timeout_deadline_ns = t.timeout_deadline_ns}) 
+      in 
       (* If the batch operation succeeds, the cache is updated. *)
       List.iter (function
         | Remove key -> Cache.remove t.cache key 

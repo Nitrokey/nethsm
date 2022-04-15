@@ -500,7 +500,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   
     end
   
-    module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))
+    module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))(Time)(Monotonic_clock)
 
     module Key_info = struct
       (* how a key is persisted in the kv store. note that while mirage-crypto
@@ -542,7 +542,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       } [@@deriving yojson]
     end
 
-    module Key_store = Cached_store.Make(Json_store.Make(Encrypted_store)(Key_info))
+    module Key_store = Cached_store.Make(Json_store.Make(Encrypted_store)(Key_info))(Time)(Monotonic_clock)
 
   end
 
