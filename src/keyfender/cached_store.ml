@@ -12,6 +12,7 @@ sig
   type settings = {
     refresh_delay_s: int;
     evict_delay_s: int;
+    cache_size: int;
   }
 
   val connect : ?settings:settings -> KV.t -> t
@@ -32,11 +33,13 @@ end = struct
   type settings = {
     refresh_delay_s: int;
     evict_delay_s: int;
+    cache_size: int;
   }
 
   let default_settings = {
     refresh_delay_s = 20;
     evict_delay_s = 30;
+    cache_size = 16;
   }
 
   type creation_time = int64
@@ -50,6 +53,7 @@ end = struct
     | Cache of {
       cache: (KV.value * creation_time) Cache.t;
       settings: settings;
+      async_refresh_request: (key -> unit);
     } 
     | Batch of op list ref
 
@@ -58,11 +62,29 @@ end = struct
     mode: mode;
   }
 
+  let update cache key value = 
+    Cache.replace cache key (value, Monotonic_clock.elapsed_ns ())
+
+  let rec refresh_loop ~kv ~cache stream =
+    let* v = Lwt_stream.get stream in
+    match v with
+    | None -> Lwt.return ()
+    | Some key ->
+      let* result = KV.get kv key in
+      (match result with
+      | Ok value -> update cache key value
+      | Error _ -> Cache.remove cache key);
+      refresh_loop ~kv ~cache stream
+
   let connect ?(settings = default_settings) kv =
+    let async_refresh_stream, async_refresh_request = Lwt_stream.create () in
+    let cache = Cache.v settings.cache_size in
+    Lwt.async (fun () -> refresh_loop ~kv ~cache async_refresh_stream);
     { kv;
       mode = Cache {
-        cache = Cache.v 16;
-        settings
+        cache;
+        settings;
+        async_refresh_request = fun v -> async_refresh_request (Some v);
       }
     }
 
@@ -73,9 +95,6 @@ end = struct
   let last_modified t = KV.last_modified t.kv
 
   let digest t = KV.digest t.kv
-
-  let update cache key value = 
-    Cache.replace cache key (value, Monotonic_clock.elapsed_ns ())
 
   type 'a validation = 
     | Up_to_date of 'a
@@ -112,10 +131,12 @@ end = struct
   let get t id =
     match t.mode with
     | Batch _ -> KV.get t.kv id
-    | Cache {cache; settings} -> 
+    | Cache {cache; settings; async_refresh_request} -> 
       match check ~settings cache id with
       | Up_to_date v -> Lwt.return_ok v
-      | Stale v -> (* TODO: async update *) Lwt.return_ok v
+      | Stale v -> 
+        async_refresh_request id;
+        Lwt.return_ok v
       | Invalid ->
         let++ value = KV.get t.kv id in
         update cache id value;
@@ -124,10 +145,12 @@ end = struct
   let exists t id =
     match t.mode with
     | Batch _ -> KV.exists t.kv id
-    | Cache {cache; settings} -> 
+    | Cache {cache; settings; async_refresh_request} -> 
       match check ~settings cache id with
       | Up_to_date _ -> Lwt.return_ok (Some `Value)
-      | Stale _ -> Lwt.return_ok (Some `Value)
+      | Stale _ -> 
+        async_refresh_request id;
+        Lwt.return_ok (Some `Value)
       | Invalid -> KV.exists t.kv id
 
   (* Mutations have to update the cache *)
