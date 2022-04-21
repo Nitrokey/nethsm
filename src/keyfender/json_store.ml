@@ -13,7 +13,8 @@ module Make(KV: Mirage_kv.RW)(J: Json_encoding): Typed_kv.S
     type value = J.t and
     type t = KV.t and
     type error = KV.error and
-    type write_error = KV.write_error
+    type write_error = KV.write_error and
+    type read_error = [ `Store of KV.error | `Json_decode of string ]
 = struct
 
   include KV

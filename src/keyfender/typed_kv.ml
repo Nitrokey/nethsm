@@ -3,7 +3,7 @@ module type S = sig
 
   type value
 
-  type read_error = [ `Store of error | `Json_decode of string ]
+  type read_error
 
   val pp_read_error : read_error Fmt.t
 
