@@ -724,6 +724,11 @@ annotationTypes:
     (state): [ Operational ]
     description: Get a list of the identifiers of all keys that are currently stored in NetHSM. Separate requests need to be made to request the individual key data.
     securedBy: [ basic ]
+    queryParameters:
+      filter:
+        description: Only return keys that are can be used by the requester, according to restrictions.
+        type: null
+        required: false
     responses:
       200:
         description: Successful request for the list of keys.
