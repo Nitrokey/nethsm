@@ -41,6 +41,11 @@ end = struct
 
   type creation_time = int64
 
+  let s_to_ns s =
+    Int64.mul 
+      (Int64.of_int s)
+      1_000_000_000L
+
   type mode =
     | Cache of {
       cache: (KV.value * creation_time) Cache.t;
@@ -72,6 +77,21 @@ end = struct
   let update cache key value = 
     Cache.replace cache key (value, Monotonic_clock.elapsed_ns ())
 
+  type 'a validation = 
+    | Up_to_date of 'a
+    | Stale of 'a
+    | Invalid
+
+  let check ~settings cache id =
+    let now = Monotonic_clock.elapsed_ns () in
+    let invalid_threshold = Int64.(sub now (s_to_ns settings.evict_delay_s)) in
+    let stale_threshold = Int64.(sub now (s_to_ns settings.refresh_delay_s)) in
+    match Cache.find_opt cache id with
+    | None -> Invalid
+    | Some (_, date) when Int64.compare date invalid_threshold < 0 -> Invalid 
+    | Some (v, date) when Int64.compare date stale_threshold < 0 -> Stale v
+    | Some (v, _) -> Up_to_date v
+
   let batch t ?retries fn =
     match t.mode with
     | Batch _ -> Fmt.failwith "No recursive batches"
@@ -92,10 +112,11 @@ end = struct
   let get t id =
     match t.mode with
     | Batch _ -> KV.get t.kv id
-    | Cache {cache; _} -> 
-      match Cache.find_opt cache id with
-      | Some (v, _) -> Lwt.return_ok v
-      | None ->
+    | Cache {cache; settings} -> 
+      match check ~settings cache id with
+      | Up_to_date v -> Lwt.return_ok v
+      | Stale v -> (* TODO: async update *) Lwt.return_ok v
+      | Invalid ->
         let++ value = KV.get t.kv id in
         update cache id value;
         value
@@ -103,10 +124,11 @@ end = struct
   let exists t id =
     match t.mode with
     | Batch _ -> KV.exists t.kv id
-    | Cache {cache; _} -> 
-      match Cache.mem cache id with
-      | true -> Lwt.return_ok (Some `Value)
-      | false -> KV.exists t.kv id
+    | Cache {cache; settings} -> 
+      match check ~settings cache id with
+      | Up_to_date _ -> Lwt.return_ok (Some `Value)
+      | Stale _ -> Lwt.return_ok (Some `Value)
+      | Invalid -> KV.exists t.kv id
 
   (* Mutations have to update the cache *)
   let set t id value =
