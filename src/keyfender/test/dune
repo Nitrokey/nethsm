@@ -45,3 +45,10 @@
 
 (cram
  (deps ./test_logs.exe))
+
+(executable
+  (libraries logs.fmt fmt.tty lwt.unix alcotest keyfender mirage-clock-unix mirage-kv-mem mirage-random-test)
+  (modules test_cached_store)
+  (name test_cached_store)
+  (public_name test_cached_store)
+  (package keyfender))
