@@ -9,9 +9,15 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role_operator_get hsm_state ip
 
+    method private filter_by_restrictions rd =
+      match Uri.get_query_param rd.Webmachine.Rd.uri "filter" with
+      | None -> false
+      | Some _ -> true
+
     method private get_json rd =
       let user_id = Endpoint.Access.get_user rd.Webmachine.Rd.req_headers in
-      Hsm.Key.list ~user_id hsm_state >>= function
+      let filter_by_restrictions = self#filter_by_restrictions rd in
+      Hsm.Key.list ~filter_by_restrictions ~user_id hsm_state >>= function
       | Error e -> Endpoint.respond_error e rd
       | Ok keys ->
         let items = List.map (fun key -> `Assoc [ "key", `String key ]) keys in
@@ -81,7 +87,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       ] rd
 
     method! generate_etag rd =
-      Hsm.Key.list_digest hsm_state >>= fun digest ->
+      let filter_by_restrictions = self#filter_by_restrictions rd in
+      Hsm.Key.list_digest hsm_state ~filter_by_restrictions >>= fun digest ->
       Wm.continue digest rd
   end
 

@@ -2208,9 +2208,24 @@ let keys_key_restrictions_tags_sign_fail =
   | _ -> false
   end
 
-let keys_get_filtered_by_restrictions =
-  Alcotest.test_case "GET on /keys list is filtered by restrictions" `Quick @@
-  fun () ->
+let keys_get_restrictions_filtered =
+  Alcotest.test_case "GET on /keys?filter list is filtered by restrictions" `Quick @@
+  fun () -> 
+  let hsm_state = hsm_with_tags () in
+  (match request ~headers:operator_headers ~hsm_state "/keys" ~query:[("filter", [])] with
+  | _, Some (`OK, _, `String body, _) -> 
+    Alcotest.(check (neg string)) "when operator has tag: list isn't empty" body "[]"
+  | _ -> 
+    Alcotest.fail "when operator has tag: didn't return OK");
+  Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
+  match request ~headers:operator_headers ~hsm_state "/keys" ~query:[("filter", [])] with
+  | _, Some (`OK, _, `String body, _) -> 
+    Alcotest.(check string) "when operator doesn't have tag: list is empty" body "[]"
+  | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
+
+let keys_get_restrictions_unfiltered =
+  Alcotest.test_case "GET on /keys list is not filtered by restrictions" `Quick @@
+  fun () -> 
   let hsm_state = hsm_with_tags () in
   (match request ~headers:operator_headers ~hsm_state "/keys" with
   | _, Some (`OK, _, `String body, _) ->
@@ -2219,8 +2234,8 @@ let keys_get_filtered_by_restrictions =
     Alcotest.fail "when operator has tag: didn't return OK");
   Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
   match request ~headers:operator_headers ~hsm_state "/keys" with
-  | _, Some (`OK, _, `String body, _) ->
-    Alcotest.(check string) "when operator doesn't have tag: list is empty" body "[]"
+  | _, Some (`OK, _, `String body, _) -> 
+    Alcotest.(check (neg string)) "when operator doesn't have tag: list is also not empty" body "[]"
   | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
 
 let keys_key_cert_get =
@@ -2815,9 +2830,10 @@ let () =
                                  user_passphrase_post_fails_not_found ;
                                  user_passphrase_post_fails_invalid_id ] ;
     "/users/operator/passphrase", [ user_passphrase_operator_post ];
-    "/keys", [ keys_get ;
-               keys_get_filtered_by_restrictions ;
-               keys_post_json ;
+    "/keys", [ keys_get ; 
+               keys_get_restrictions_filtered ;
+               keys_get_restrictions_unfiltered ;
+               keys_post_json ; 
                keys_post_pem ];
     "/keys/generate", [ keys_generate ;
                         keys_generate_invalid_id ;

@@ -172,7 +172,7 @@ module type S = sig
   module Key : sig
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val list : t -> user_id:string -> (string list, error) result Lwt.t
+    val list : t -> filter_by_restrictions:bool -> user_id:string -> (string list, error) result Lwt.t
 
     val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key -> Json.restrictions ->
       (unit, error) result Lwt.t
@@ -209,7 +209,7 @@ module type S = sig
 
     val sign : t -> id:string -> user_id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 
-    val list_digest : t -> string option Lwt.t
+    val list_digest : t -> filter_by_restrictions:bool -> string option Lwt.t
 
     val digest : t -> id:string -> string option Lwt.t
   end
@@ -981,29 +981,35 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             Ok { k with operations }
           | Error e -> Error (Internal_server_error, e))
 
-    let list t ~user_id =
+    let list t ~filter_by_restrictions ~user_id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      User.get t ~id:user_id >>= fun user_info ->
       internal_server_error Read "List keys" Encrypted_store.pp_error
         (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
-      let open Lwt.Infix in
-      let is_admin = User.Info.role user_info = `Administrator in
-      let is_usable k =
-        validate_restrictions ~user_info k.restrictions |> Result.is_ok
-      in
-      let filter (id, typ) =
-        (match typ with
-        | `Value -> (
-            let ok = Some id in
-            if is_admin then Lwt.return ok
-            else
-              get_key t id >|= function
-              | Ok k when is_usable k -> ok
-              | _ -> None)
-        | _ -> Lwt.return None)
-      in
-      Lwt_list.filter_map_s filter xs >|= fun l -> Ok l
+      if not filter_by_restrictions then
+        Lwt.return_ok (
+          List.filter_map (function
+            | (id, `Value) -> Some id
+            | _ -> None) xs)
+      else
+        User.get t ~id:user_id >>= fun user_info ->
+        let open Lwt.Infix in
+        let is_admin = User.Info.role user_info = `Administrator in
+        let is_usable k =
+          validate_restrictions ~user_info k.restrictions |> Result.is_ok
+        in
+        let filter (id, typ) =
+          (match typ with
+          | `Value -> (
+              let ok = Some id in
+              if is_admin then Lwt.return ok
+              else
+                get_key t id >|= function
+                | Ok k when is_usable k -> ok
+                | _ -> None)
+          | _ -> Lwt.return None)
+        in
+        Lwt_list.filter_map_s filter xs >|= fun l -> Ok l
 
     let dump_keys t =
       let open Lwt.Infix in
@@ -1454,12 +1460,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         else
           Lwt.return (Error (Bad_request, "Key mechanisms do not allow requested signing."))
 
-    let list_digest t =
+    let list_digest t ~filter_by_restrictions =
       let open Lwt.Infix in
-      let store = key_store t in
-      Encrypted_store.digest store Mirage_kv.Key.empty >|= function
-      | Ok digest -> Some (to_hex digest)
-      | Error _ -> None
+      if filter_by_restrictions then 
+        Lwt.return_none
+      else
+        let store = key_store t in
+        Encrypted_store.digest store Mirage_kv.Key.empty >|= function
+        | Ok digest -> Some (to_hex digest)
+        | Error _ -> None
 
     let digest t ~id =
       let open Lwt.Infix in

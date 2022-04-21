@@ -173,7 +173,7 @@ module type S = sig
   module Key : sig
     val exists : t -> id:string -> (bool, error) result Lwt.t
 
-    val list : t -> user_id:string -> (string list, error) result Lwt.t
+    val list : t -> filter_by_restrictions:bool -> user_id:string -> (string list, error) result Lwt.t
 
     val add_json : id:string -> t -> Json.MS.t -> Json.key_type -> Json.key -> Json.restrictions ->
       (unit, error) result Lwt.t
@@ -212,7 +212,7 @@ module type S = sig
 
     val sign : t -> id:string -> user_id:string -> Json.sign_mode -> string -> (string, error) result Lwt.t
 
-    val list_digest : t -> string option Lwt.t
+    val list_digest : t -> filter_by_restrictions:bool -> string option Lwt.t
 
     val digest : t -> id:string -> string option Lwt.t
   end
