@@ -1,5 +1,4 @@
-module Make (KV : Typed_kv.S) (Time : Mirage_time.S)
-    (Monotonic_clock : Mirage_clock.MCLOCK) :
+module Make (KV : Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) :
 sig
   include Typed_kv.S with
     type value = KV.value and

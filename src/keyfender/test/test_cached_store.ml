@@ -1,8 +1,3 @@
-
-module Time = struct
-  let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
-end
-
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 
 module Stats_store(Store: Mirage_kv.RW) = struct 
@@ -59,7 +54,7 @@ end
 
 module KV = Mirage_kv_mem.Make(Hsm_clock)
 module Underlying_store = Stats_store(KV)
-module Cached_store = Keyfender.Cached_store.Make(Underlying_store)(Time)(Mclock)
+module Cached_store = Keyfender.Cached_store.Make(Underlying_store)(Mclock)
 
 open Lwt.Syntax
 

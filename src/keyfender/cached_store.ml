@@ -1,7 +1,7 @@
 open Lwt.Syntax
 let (let++) v f = Lwt_result.map f v
 
-module Make(KV: Typed_kv.S)(Time: Mirage_time.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
+module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
 
   module Cache = Cachecache.Lru.Make(struct
     type t = Mirage_kv.Key.t
