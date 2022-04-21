@@ -39,9 +39,11 @@ end = struct
     evict_delay_s = 30;
   }
 
+  type creation_time = int64
+
   type mode =
     | Cache of {
-      cache: KV.value Cache.t;
+      cache: (KV.value * creation_time) Cache.t;
       settings: settings;
     } 
     | Batch of op list ref
@@ -67,6 +69,9 @@ end = struct
 
   let digest t = KV.digest t.kv
 
+  let update cache key value = 
+    Cache.replace cache key (value, Monotonic_clock.elapsed_ns ())
+
   let batch t ?retries fn =
     match t.mode with
     | Batch _ -> Fmt.failwith "No recursive batches"
@@ -80,7 +85,7 @@ end = struct
       (* If the batch operation succeeds, the cache is updated. *)
       List.iter (function
         | Remove key -> Cache.remove cache key
-        | Set (key, value) -> Cache.replace cache key value) !ops;
+        | Set (key, value) -> update cache key value) !ops;
       v
 
   (* Cached operations *)
@@ -89,10 +94,10 @@ end = struct
     | Batch _ -> KV.get t.kv id
     | Cache {cache; _} -> 
       match Cache.find_opt cache id with
-      | Some v -> Lwt.return_ok v
+      | Some (v, _) -> Lwt.return_ok v
       | None ->
         let++ value = KV.get t.kv id in
-        Cache.replace cache id value;
+        update cache id value;
         value
 
   let exists t id =
@@ -107,7 +112,7 @@ end = struct
   let set t id value =
     let++ () = KV.set t.kv id value in
     match t.mode with
-    | Cache {cache; _} -> Cache.replace cache id value
+    | Cache {cache; _} -> update cache id value
     | Batch lst -> lst := (Set (id, value)) :: !lst
 
   let remove t id =
