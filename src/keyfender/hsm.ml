@@ -994,7 +994,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       User.get t ~id:user_id >>= fun user_info ->
       let open Lwt.Infix in
       let is_admin = User.Info.role user_info = `Administrator in
-      let is_usable k =
+      let is_usable (k: Key_info.t) =
         validate_restrictions ~user_info k.restrictions |> Result.is_ok
       in
       let values_id =
