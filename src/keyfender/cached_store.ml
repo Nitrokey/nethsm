@@ -9,7 +9,12 @@ sig
     type write_error = KV.write_error and
     type read_error = KV.read_error
 
-  val connect : KV.t -> t
+  type settings = {
+    refresh_delay_s: int;
+    evict_delay_s: int;
+  }
+
+  val connect : ?settings:settings -> KV.t -> t
 end = struct
 
   module Cache = Cachecache.Lru.Make(struct
@@ -24,16 +29,35 @@ end = struct
 
   type op = Set of (key * value) | Remove of key
 
-  type t = {
-    kv: KV.t;
-    cache: KV.value Cache.t;
-    batch: op list ref option;
+  type settings = {
+    refresh_delay_s: int;
+    evict_delay_s: int;
   }
 
-  let connect kv =
+  let default_settings = {
+    refresh_delay_s = 20;
+    evict_delay_s = 30;
+  }
+
+  type mode =
+    | Cache of {
+      cache: KV.value Cache.t;
+      settings: settings;
+    } 
+    | Batch of op list ref
+
+  type t = {
+    kv: KV.t;
+    mode: mode;
+  }
+
+  let connect ?(settings = default_settings) kv =
     { kv;
-      cache = Cache.v 16;
-      batch = None;}
+      mode = Cache {
+        cache = Cache.v 16;
+        settings
+      }
+    }
 
   let disconnect t = KV.disconnect t.kv
 
@@ -44,47 +68,52 @@ end = struct
   let digest t = KV.digest t.kv
 
   let batch t ?retries fn =
-    match t.batch with
-    | Some _ -> Fmt.failwith "No recursive batches"
-    | None ->
+    match t.mode with
+    | Batch _ -> Fmt.failwith "No recursive batches"
+    | Cache {cache; _} ->
       let ops = ref [] in
       let+ v = KV.batch t.kv ?retries (fun kv ->
         ops := [];
         fn {  kv;
-              cache = t.cache;
-              batch = Some ops })
+              mode = Batch ops; })
       in
       (* If the batch operation succeeds, the cache is updated. *)
       List.iter (function
-        | Remove key -> Cache.remove t.cache key
-        | Set (key, value) -> Cache.replace t.cache key value) !ops;
+        | Remove key -> Cache.remove cache key
+        | Set (key, value) -> Cache.replace cache key value) !ops;
       v
 
   (* Cached operations *)
   let get t id =
-    match Cache.find_opt t.cache id with
-    | Some v -> Lwt.return_ok v
-    | None ->
-      let++ value = KV.get t.kv id in
-      Cache.replace t.cache id value;
-      value
+    match t.mode with
+    | Batch _ -> KV.get t.kv id
+    | Cache {cache; _} -> 
+      match Cache.find_opt cache id with
+      | Some v -> Lwt.return_ok v
+      | None ->
+        let++ value = KV.get t.kv id in
+        Cache.replace cache id value;
+        value
 
   let exists t id =
-    match Cache.mem t.cache id with
-    | true -> Lwt.return_ok (Some `Value)
-    | false -> KV.exists t.kv id
+    match t.mode with
+    | Batch _ -> KV.exists t.kv id
+    | Cache {cache; _} -> 
+      match Cache.mem cache id with
+      | true -> Lwt.return_ok (Some `Value)
+      | false -> KV.exists t.kv id
 
   (* Mutations have to update the cache *)
   let set t id value =
     let++ () = KV.set t.kv id value in
-    match t.batch with
-    | None -> Cache.replace t.cache id value
-    | Some lst -> lst := (Set (id, value)) :: !lst
+    match t.mode with
+    | Cache {cache; _} -> Cache.replace cache id value
+    | Batch lst -> lst := (Set (id, value)) :: !lst
 
   let remove t id =
     let++ () = KV.remove t.kv id in
-    match t.batch with
-    | None -> Cache.remove t.cache id
-    | Some lst -> lst := (Remove id) :: !lst
+    match t.mode with
+    | Cache {cache; _} -> Cache.remove cache id
+    | Batch lst -> lst := (Remove id) :: !lst
 
 end
