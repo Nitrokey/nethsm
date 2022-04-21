@@ -23,6 +23,7 @@ depends: [
   "bos" #{with-test}
   "spawn" #{with-test}
   "astring"
+  "cachecache"
   "logs"
   "lwt"
   "ptime"
