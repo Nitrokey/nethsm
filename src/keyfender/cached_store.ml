@@ -4,10 +4,10 @@ let (let++) v f = Lwt_result.map f v
 module Make(KV: Typed_kv.S)(Time: Mirage_time.S)(Monotonic_clock : Mirage_clock.MCLOCK): 
 sig 
   include Typed_kv.S with 
-  type value = KV.value and 
-  type error = KV.error and 
-  type write_error = KV.write_error and
-  type read_error = KV.read_error
+    type value = KV.value and 
+    type error = KV.error and 
+    type write_error = KV.write_error and
+    type read_error = KV.read_error
 
   val connect : KV.t -> t
 end = struct
