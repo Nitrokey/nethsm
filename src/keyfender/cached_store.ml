@@ -10,8 +10,8 @@ sig
     type read_error = KV.read_error
 
   type settings = {
-    refresh_delay_s: int;
-    evict_delay_s: int;
+    refresh_delay_s: float;
+    evict_delay_s: float;
     cache_size: int;
   }
 
@@ -31,23 +31,21 @@ end = struct
   type op = Set of (key * value) | Remove of key
 
   type settings = {
-    refresh_delay_s: int;
-    evict_delay_s: int;
+    refresh_delay_s: float;
+    evict_delay_s: float;
     cache_size: int;
   }
 
   let default_settings = {
-    refresh_delay_s = 20;
-    evict_delay_s = 30;
+    refresh_delay_s = 20.;
+    evict_delay_s = 30.;
     cache_size = 16;
   }
 
   type creation_time = int64
 
   let s_to_ns s =
-    Int64.mul 
-      (Int64.of_int s)
-      1_000_000_000L
+    Int64.of_float (1_000_000_000. *. s)
 
   type mode =
     | Cache of {

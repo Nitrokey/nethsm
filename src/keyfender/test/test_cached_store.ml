@@ -82,10 +82,10 @@ let expect (store: Underlying_store.t) name ~reads ~writes =
   Alcotest.(check int) (name ^ ": reads") reads store.stats.reads;
   Alcotest.(check int) (name ^ ": writes") writes store.stats.writes
 
-let init_store () =
+let init_store ?settings () =
   let* kv = KV.connect () in
   let underlying_store = Underlying_store.connect kv in
-  let cached_store = Cached_store.connect underlying_store in
+  let cached_store = Cached_store.connect ?settings underlying_store in
   let+ _ = Underlying_store.set underlying_store key0 "value" in
   expect underlying_store "init" ~reads:0 ~writes:1;
   (underlying_store, cached_store)
@@ -150,6 +150,37 @@ let batch_operations_are_cached_on_success =
   expect underlying_store "read is cached" ~reads:0 ~writes:2;
   Alcotest.check read_result "value is correct" (Ok "new value") v
 
+let time_based_eviction_mechanism =
+  Alcotest.test_case "time-based eviction mechanism" `Quick @@ fun () ->
+  Lwt_main.run @@
+  let settings = {Cached_store.refresh_delay_s = 0.1; evict_delay_s = 0.2; cache_size = 16} in
+  let* (underlying_store, cached_store) = init_store ~settings () in
+  (* obtain a value *)
+  let* initial_value = Cached_store.get cached_store key0 in
+  expect underlying_store "first read" ~reads:1 ~writes:1;
+  (* value is updated from the outside *)
+  let* _ = Underlying_store.set underlying_store key0 "new value" in
+  expect underlying_store "write" ~reads:1 ~writes:2;
+  (* after 0.10s, old value is returned but stale, a new cache request is asynchronously dispatched *)
+  let* () = Lwt_unix.sleep 0.10 in
+  let* stale_value = Cached_store.get cached_store key0 in
+  expect underlying_store "stale read, async request" ~reads:1 ~writes:2;
+  (* after 0.15s, new cache request succeed, new value is obtained *)
+  let* () = Lwt_unix.sleep 0.05 in
+  expect underlying_store "async request ok" ~reads:2 ~writes:2;
+  let* new_value = Cached_store.get cached_store key0 in
+  expect underlying_store "cached read" ~reads:2 ~writes:2;
+  (* after 0.35s, new value is expired, a synchronous cache request is performed *)
+  let* _ = Underlying_store.set underlying_store key0 "new new value" in
+  expect underlying_store "cached read" ~reads:2 ~writes:3;
+  let* () = Lwt_unix.sleep 0.20 in
+  let+ new_new_value = Cached_store.get cached_store key0 in
+  expect underlying_store "expired read" ~reads:3 ~writes:3;
+  Alcotest.check read_result "initial value is correct" (Ok "value") initial_value;
+  Alcotest.check read_result "stale value is correct" (Ok "value") stale_value;
+  Alcotest.check read_result "new value is correct" (Ok "new value") new_value;
+  Alcotest.check read_result "new new value is correct" (Ok "new new value") new_new_value
+
 let () =
   Printexc.record_backtrace true;
   Fmt_tty.setup_std_outputs ();
@@ -168,7 +199,9 @@ let () =
     "batch operations", [
       batch_operations_are_cached_on_success;
     ];
-    "time-based eviction mechanism", [];
+    "time-based eviction mechanism", [
+      time_based_eviction_mechanism;
+    ];
   ]
   in
   run ~argv:Sys.argv "cached store" tests
