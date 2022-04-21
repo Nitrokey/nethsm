@@ -52,8 +52,8 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
 
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
-let copy t =
-  let v = Marshal.to_string t [] in
+let copy t = 
+  let v = Marshal.to_string t [Marshal.Closures] in
   Marshal.from_string v 0
 
 let create_operational_mock mbox =
