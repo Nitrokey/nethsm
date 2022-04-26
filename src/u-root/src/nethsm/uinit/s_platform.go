@@ -303,9 +303,12 @@ func sPlatformActions() {
 
 	G.s.Logf("Starting etcd server")
 	G.s.BackgroundExecAsf(G.etcdUidGid, "/bin/etcd"+
-		" --listen-client-urls http://169.254.169.2:2379"+
-		" --advertise-client-urls http://169.254.169.2:2379"+
-		" --data-dir /data/etcd"+
+		" --listen-client-urls=http://169.254.169.2:2379"+
+		" --advertise-client-urls="+
+		" --data-dir=/data/etcd"+
+		" --snapshot-count=5000"+
+		" --auto-compaction-retention=10m"+
+		" --quota-backend-bytes=4294967296"+ // should not be more than RAM
 		// " --log-level debug"+
 		"")
 
