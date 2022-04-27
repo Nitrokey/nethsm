@@ -428,9 +428,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Error e ->
       let operation_message, error_message = 
         match operation with
-        | Write -> "writing to the key-value store", "Could not write to disk. Check hardware."
-        | Read -> "read from the key-value store", "Could not read from disk. Check hardware."
-        | Unlock -> "connecting to the key-value store", "Could not ???"
+        | Write -> "writing to the key-value store", "Could not write to database. Check logs."
+        | Read -> "read from the key-value store", "Could not read from database. Check logs."
+        | Unlock -> "connecting to the key-value store", "Could not connect to database. Check logs."
       in
       Log.err (fun m -> m "Error: %a while %s: %s." pp_err e operation_message context);
       Error (Internal_server_error, error_message)
