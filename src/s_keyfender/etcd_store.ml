@@ -107,7 +107,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     let handler = Grpc_lwt.Client.Rpc.unary ~f request in
     let error_handler, h2_error = callback_promise () in
     let do_request =
-      H2C.request ~flush_headers_immediately:false connection ~error_handler
+      H2C.request ~flush_headers_immediately:true connection ~error_handler
     in
     let grpc_resp =
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()

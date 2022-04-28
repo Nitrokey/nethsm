@@ -32,7 +32,7 @@
 
 open Lwt.Infix
 
-module Make_IO (Flow : Mirage_flow.S) :
+module Make_IO (Flow : Tcpip.Tcp.S) :
   Gluten_lwt.IO with type socket = Flow.flow and type addr = unit = struct
   type socket = Flow.flow
 
@@ -67,13 +67,16 @@ module Make_IO (Flow : Mirage_flow.S) :
   let writev flow iovecs =
     let cstruct_iovecs =
       List.map
-        (fun { Faraday.buffer; off; len } ->
-          Cstruct.of_bigarray ~off ~len buffer)
+        (fun { Faraday.buffer; off; len } -> Cstruct.of_bigarray ~off ~len buffer)
         iovecs
     in
+    let len = Cstruct.lenv cstruct_iovecs in
+    let data = Cstruct.create_unsafe len in
+    let n, _ = Cstruct.fillv cstruct_iovecs data in
+    assert (n = len);
     Lwt.catch
       (fun () ->
-        Flow.writev flow cstruct_iovecs >|= fun x ->
+        Flow.write flow data >|= fun x ->
         match x with
         | Ok () ->
           `Ok (Cstruct.lenv cstruct_iovecs)
@@ -84,4 +87,4 @@ module Make_IO (Flow : Mirage_flow.S) :
       (fun exn -> shutdown flow >>= fun () -> Lwt.fail exn)
 end
 
-module Client (Flow : Mirage_flow.S) = H2_lwt.Client (Gluten_lwt.Client (Make_IO (Flow))) 
+module Client (Flow : Tcpip.Tcp.S) = H2_lwt.Client (Gluten_lwt.Client (Make_IO (Flow)))
