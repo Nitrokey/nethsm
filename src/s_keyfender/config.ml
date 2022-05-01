@@ -211,6 +211,9 @@ let main =
     package "digestif";
     package "memtrace-mirage";
     package "h2-lwt";
+    package ~pin: "git+https://github.com/ansiwen/ocaml-h2.git#nethsm" "h2";
+    package ~pin: "git+https://github.com/ansiwen/ocaml-h2.git#nethsm" "h2-lwt";
+    package "h2-lwt";
     package ~sublibs:["google_types"] "ocaml-protoc-plugin";
     package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#nethsm" "grpc";
     package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#nethsm" "grpc-lwt";

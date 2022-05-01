@@ -8,7 +8,7 @@ module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   module TCP = Stack.TCP
-  module Client = H2_mirage.Client (TCP)
+  module H2C = H2_mirage.Client (TCP)
 
   let etcd_port = 2379
   let persistent_connection = ref None
@@ -19,7 +19,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     | Some connection ->
       Log.info (fun m -> m "shutting down persistent connection");
       persistent_connection := None;
-      Lwt.dont_wait (fun () -> Client.shutdown connection) (fun e ->
+      Lwt.dont_wait (fun () -> H2C.shutdown connection) (fun e ->
         Log.err (fun m -> m "couldn't shutdown connection: %s" (Printexc.to_string e)))
 
   let error_handler e =
@@ -48,20 +48,20 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
 
   let connection ~stack =
     match !persistent_connection with
-    | Some connection when not (Client.is_closed connection) ->
+    | Some connection when not (H2C.is_closed connection) ->
         Lwt.return connection
     | _ ->
         Log.info (fun m -> m "connecting to etcd...");
         create_flow ~stack >>= fun flow ->
         Log.info (fun m -> m "TCP connection to etcd established");
-        Client.create_connection ~error_handler flow >>= fun connection ->
+        H2C.create_connection ~error_handler flow >>= fun connection ->
         let pong, pong_resolve = Lwt.wait () in
-        Client.ping connection (fun () -> Lwt.wakeup_later pong_resolve ());
+        H2C.ping connection (fun () -> Lwt.wakeup_later pong_resolve ());
         Lwt.pick [
           (OS.Time.sleep_ns (Duration.of_sec 5) >>= fun () ->
             let msg = "HTTPS/2 ping timeout" in
             Log.err (fun m -> m "%s" msg);
-            Client.shutdown connection >>= fun () ->
+            H2C.shutdown connection >>= fun () ->
             failwith msg);
           pong
         ] >>= fun () ->
@@ -84,7 +84,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         failwith msg
       );
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler
-        ~do_request:(Client.request connection ~error_handler)
+        ~do_request:(H2C.request connection ~error_handler)
         ()
     ]
     >|= function
