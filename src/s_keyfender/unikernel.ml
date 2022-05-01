@@ -97,7 +97,7 @@ struct
                   else
                     Error (`Parse str)
                 else
-                  read data'
+                  (read[@tailcall]) data'
               | Error e ->
                 T.close flow >|= fun () ->
                 Error (`Read (Fmt.to_to_string T.pp_error e))
@@ -141,7 +141,7 @@ struct
           | Ok store -> Lwt.return store
           | Error e ->
             let err = Fmt.to_to_string KV_store.pp_error e in
-            if Key_gen.retry () then sleep err >>= store_connect
+            if Key_gen.retry () then sleep err >>= fun () -> (store_connect[@tailcall]) ()
             else Lwt.fail_with err
       in
       store_connect () >>= fun store ->
@@ -223,17 +223,17 @@ struct
         Lwt_mvar.take mvar >>= function
         | Hsm.Log log ->
           setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
-          handle_cb http
+          (handle_cb[@tailcall]) http
         | Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset as cmd ->
           Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
           write_to_platform cmd
         | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
-          handle_cb http
+          (handle_cb[@tailcall]) http
         | Hsm.Network (cidr, gateway) ->
           Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
           reconfigure_network cidr gateway >>= fun http ->
-          handle_cb http
+          (handle_cb[@tailcall]) http
         | Hsm.Update (blocks, stream) as cmd ->
           begin
             let additional_data write =
@@ -248,14 +248,14 @@ struct
             | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
             | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
           end >>= fun () ->
-          handle_cb http
+          (handle_cb[@tailcall]) http
         | Hsm.Commit_update as cmd ->
           begin
             write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
             | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
             | Error e -> Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
           end >>= fun () ->
-          handle_cb http
+          (handle_cb[@tailcall]) http
       in
       Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
       let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in

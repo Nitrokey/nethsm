@@ -171,7 +171,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       if i < 0 then Bytes.make 1 '\x00'
       else
         match Bytes.get b i with
-        | '\xff' -> inc b (i - 1)
+        | '\xff' -> (inc[@tailcall]) b (i - 1)
         | c ->
             Bytes.set b i Char.(chr (code c + 1));
             Bytes.sub b 0 (i + 1)
@@ -234,7 +234,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
               let key_no_prefix =
                 String.sub key prefix_len (key_len - prefix_len)
               in
-              acc_keys ((key_no_prefix, `Value) :: acc) t
+              (acc_keys[@tailcall]) ((key_no_prefix, `Value) :: acc) t
         in
         let keys = acc_keys [] resp.kvs in
         Ok keys)
