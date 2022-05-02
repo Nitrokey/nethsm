@@ -229,41 +229,107 @@
     Static scheduling plan is included here directly, no dependency on
     upstream's policy/scheduling/...
   -->
-  <scheduling tickRate="10000">
+  <scheduling tickRate="100000"> <!-- 1 tick = 10us -->
     <majorFrame>
       <cpu id="0">
-        <minorFrame subject="tau0" ticks="5"/>
-        <minorFrame subject="keyfender" ticks="40"/>
-        <minorFrame subject="dbgserver" ticks="5"/>
-        <minorFrame subject="keyfender" ticks="40"/>
-        <minorFrame subject="dbgserver" ticks="5"/>
+        <minorFrame subject="tau0" ticks="1"/>
+        <minorFrame subject="dbgserver" ticks="9"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
       </cpu>
       <cpu id="1">
-        <minorFrame subject="time" ticks="5"/>
-        <minorFrame subject="net_external" ticks="15"/>
-        <minorFrame subject="platform" ticks="15"/>
-        <minorFrame subject="net_external" ticks="15"/>
-        <minorFrame subject="platform" ticks="15"/>
-        <minorFrame subject="net_external" ticks="15"/>
-        <minorFrame subject="platform" ticks="15"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+      </cpu>
+      <cpu id="2">
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+      </cpu>
+      <cpu id="3">
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
       </cpu>
     </majorFrame>
     <majorFrame>
       <cpu id="0">
-         <minorFrame subject="tau0" ticks="5"/>
-         <minorFrame subject="keyfender" ticks="40"/>
-         <minorFrame subject="dbgserver" ticks="5"/>
-         <minorFrame subject="keyfender" ticks="40"/>
-         <minorFrame subject="dbgserver" ticks="5"/>
+        <minorFrame subject="time" ticks="1"/>
+        <minorFrame subject="dbgserver" ticks="9"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame subject="dbgserver" ticks="10"/>
       </cpu>
       <cpu id="1">
-         <minorFrame subject="net_external" ticks="5"/>
-         <minorFrame subject="platform" ticks="15"/>
-         <minorFrame subject="net_external" ticks="15"/>
-         <minorFrame subject="platform" ticks="15"/>
-         <minorFrame subject="net_external" ticks="15"/>
-         <minorFrame subject="platform" ticks="15"/>
-         <minorFrame subject="net_external" ticks="15"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame subject="net_external" ticks="10"/>
+      </cpu>
+      <cpu id="2">
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame subject="keyfender" ticks="10"/>
+      </cpu>
+      <cpu id="3">
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame subject="platform" ticks="10"/>
       </cpu>
     </majorFrame>
   </scheduling>

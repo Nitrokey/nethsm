@@ -23,9 +23,11 @@
 
 
 <hardware>
-  <processor cpuCores="2" speed="3093" vmxTimerRate="5">
+  <processor cpuCores="4" speed="3093" vmxTimerRate="5">
     <cpu apicId="0"/>
     <cpu apicId="2"/>
+    <cpu apicId="4"/>
+    <cpu apicId="6"/>
   </processor>
   <memory>
     <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0000#" size="16#1000#"/>
