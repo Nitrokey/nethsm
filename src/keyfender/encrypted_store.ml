@@ -79,7 +79,8 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     with_key_check key @@ fun () ->
     KV.digest t.kv (prefix t key) >|= lift_kv_err
 
-  let batch t ?retries:_ f = f t
+  let batch t ?retries f =
+    KV.batch ?retries t.kv (fun kv -> f {t with kv})
 
   let raw_get t key =
     let key' = prefix t key in
