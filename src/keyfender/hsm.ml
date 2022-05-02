@@ -986,30 +986,28 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let store = key_store t in
       internal_server_error Read "List keys" Encrypted_store.pp_error
         (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
-      if not filter_by_restrictions then
-        Lwt.return_ok (
-          List.filter_map (function
-            | (id, `Value) -> Some id
-            | _ -> None) xs)
-      else
         User.get t ~id:user_id >>= fun user_info ->
-        let open Lwt.Infix in
-        let is_admin = User.Info.role user_info = `Administrator in
-        let is_usable k =
-          validate_restrictions ~user_info k.restrictions |> Result.is_ok
+      let open Lwt.Infix in
+      let is_admin = User.Info.role user_info = `Administrator in
+      let is_usable k =
+        validate_restrictions ~user_info k.restrictions |> Result.is_ok
+      in
+      let values_id = 
+        List.filter_map (function
+          | (id, `Value) -> Some id
+          | _ -> None) xs
+      in
+      if is_admin || not filter_by_restrictions then
+        (* bypass filter *)
+        Lwt.return_ok values_id
+      else
+        (* keep only usable keys *)
+        let filter id =
+          get_key t id >|= function
+          | Ok k when is_usable k -> Some id
+          | _ -> None
         in
-        let filter (id, typ) =
-          (match typ with
-          | `Value -> (
-              let ok = Some id in
-              if is_admin then Lwt.return ok
-              else
-                get_key t id >|= function
-                | Ok k when is_usable k -> ok
-                | _ -> None)
-          | _ -> Lwt.return None)
-        in
-        Lwt_list.filter_map_s filter xs >|= fun l -> Ok l
+        Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l
 
     let dump_keys t =
       let open Lwt.Infix in
