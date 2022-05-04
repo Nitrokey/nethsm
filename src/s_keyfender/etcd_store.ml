@@ -158,9 +158,12 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let etcd_try f =
     Lwt.catch
       (fun () -> f ())
-      (function
-        | Failure s -> Lwt.return (Error (`Etcd_error s))
-        | exn -> raise exn)
+      (fun e ->
+        let msg = match e with
+          | Failure s -> s
+          | exn -> Printexc.to_string exn
+        in
+        Lwt.return (Error (`Etcd_error msg)))
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
 
