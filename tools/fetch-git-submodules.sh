@@ -148,7 +148,7 @@ case "${NO_SHALLOW}" in
         DEPTH=
         ;;
     *)
-        DEPTH="--depth 50"
+        DEPTH="--depth 200"
         ;;
 esac
 
