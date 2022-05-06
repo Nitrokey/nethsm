@@ -32,7 +32,7 @@ The following aspects of the system design, which have changed over the course o
 
 * [Reset to Factory Defaults](#sec-us-rtfd): NetHSM will not be equipped with a physical "Reset Button". Instead, the user will be required to initiate and _confirm_ a Reset to Factory Defaults by interacting with a local serial console connected to the unit. This feature is not implemented yet.
 * [Encryption Architecture](#sec-dd-ea): The _Device ID_ used as part of [Unattended Boot](#sec-us-ub) is currently hard-coded for development purposes. This will be replaced with a TPM-based solution, the exact details of which are yet to be defined.
-* [Technical Architecture](#sec-dd-ta): **S-TRNG** will be replaced by a TPM-based solution, the exact architecture of which is yet to be defined.
+* [Technical Architecture](#sec-dd-ta): **S-TRNG** is not implemented yet and will be replaced by a TPM-based solution, the exact architecture of which is yet to be defined. For now **S-Storage** and **S-Platform** are combined in a single subject **S-Kitchen-Sink** and should be separated later.
 * [System Firmware](#sec-dd-ta-sf):
     * _Firmware_ integrity shall be protected by the use of Intel Boot Guard on the platform. This feature is not implemented yet.
     * Offline but on-site _Firmware_ update will be provided via **Ext-FirmwareUpdate**. This feature is not implemented yet.
@@ -127,6 +127,8 @@ Provisioned
 Unprovisioned
 
 : An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for [Initial Provisioning](#sec-us-ip) is available.
+
+Note: Other than a NetHSM hardware appliance, resetting a NetHSM testing software container yields to the Locked state.
 
 # User Stories {#sec-us}
 
@@ -365,6 +367,10 @@ The **S-Storage** subject is a minimized Linux which provides persistence to **S
 The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NetHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
+
+**S-DBGserver** (not illustrated) has a simple input interface to query status information, print the current contents of the log buffer, trigger a system shutdown or reboot.
+
+**S-Time** (not illustrated) enables accessing the device's real time clock.
 
 **Note**: Currently **S-TRNG** is not implemented. Also, **S-Storage** and **S-Platform** are combined in a single subject **S-Kitchen-Sink**.
 
