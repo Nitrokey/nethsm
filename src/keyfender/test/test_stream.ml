@@ -17,8 +17,14 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()
   let request = Request.make ~meth ~headers uri in
   Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
 
+let update_key =
+  match X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string) with
+  | Ok `RSA key -> key
+  | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
+  | Error `Msg m -> invalid_arg m
+
 let unprovisioned_mock () =
-  Kv_mem.connect () >>= Hsm.boot ~device_id:"test stream" >|= fun (y, _, _) -> y
+  Kv_mem.connect () >>= Hsm.boot ~device_id:"test stream" update_key >|= fun (y, _, _) -> y
 
 let operational_mock () =
   unprovisioned_mock () >>= fun state ->

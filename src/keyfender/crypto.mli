@@ -4,8 +4,6 @@ val salt_len : int
 val key_len : int
 (** The length of the symmetric key, in bytes. *)
 
-val software_update_key : Mirage_crypto_pk.Rsa.pub
-
 module GCM : Mirage_crypto.Cipher_block.S.GCM
 
 val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t

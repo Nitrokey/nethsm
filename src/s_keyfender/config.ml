@@ -12,6 +12,9 @@ let internal_stack =
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
 let htdocs = generic_kv_ro ~key:htdocs_key "htdocs"
 
+let update_key_store_key = Key.(value @@ kv_ro ~group:"update_key_store" ())
+let update_key_store = generic_kv_ro ~key:update_key_store_key "update_key_store"
+
 let http_port =
   let doc = Key.Arg.info ~doc:"Listening HTTP port." ["http"] in
   Key.(create "http_port" Arg.(opt int 80 doc))
@@ -212,7 +215,7 @@ let main =
   foreign
     ~packages ~keys ~deps:[malloc_metrics_conf]
     "Unikernel.Main"
-    (console @-> random @-> pclock @-> mclock @-> kv_ro @->
+    (console @-> random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
      stackv4v6 @-> mimic @->
      reconfigurable_stack @->
      job)
@@ -223,7 +226,7 @@ let mimic stackv4v6 time random mclock pclock =
 
 let () =
   register "keyfender"
-    [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ htdocs $
+    [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ update_key_store $ htdocs $
       internal_stack $ mimic internal_stack default_time default_random default_monotonic_clock default_posix_clock $
       external_reconfigurable_stack
     ]

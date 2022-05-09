@@ -1,6 +1,8 @@
 (test
   (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender alcotest)
   (modules test_dispatch)
+  (preprocessor_deps public.pem)
+  (preprocess (pps ppx_blob))
   (deps update.bin ../bin/sign_update.exe key.pem changes version)
   (name test_dispatch)
   (package keyfender))
@@ -21,6 +23,8 @@
 (executable
   (libraries logs.fmt fmt.tty keyfender mirage-random-test mirage-clock-unix mirage-kv-mem lwt.unix mirage-crypto-rng.unix)
   (modules test_stream)
+  (preprocessor_deps public.pem)
+  (preprocess (pps ppx_blob))
   (name test_stream)
   (public_name test_stream)
   (package keyfender))
@@ -28,6 +32,8 @@
 (executable
   (libraries logs.fmt fmt.tty mirage-crypto-rng.unix keyfender tcpip.stack-socket conduit-mirage cohttp-mirage mirage-clock-unix mirage-kv-mem mirage-random-test)
   (modules test_server)
+  (preprocessor_deps public.pem)
+  (preprocess (pps ppx_blob))
   (name test_server)
   (public_name test_server)
   (package keyfender))

@@ -35,6 +35,16 @@ MUEN_KEY_DIR ?= keys/test-key
 # tree.
 USE_CCACHE ?=
 
+# Set OUTER_SMARTCARD to PKCS 11 URL to use a smartcard for the inner RSA
+# signature. The OUTER_SMARTCARD_FLAGS will then be applied when signing the
+# image.
+OUTER_SMARTCARD ?=
+OUTER_SMARTCARD_FLAGS ?= -engine pkcs11 -keyform engine
+ifeq ($(OUTER_SMARTCARD),)
+OUTER_PUB_KEY ?= src/keyfender/test/public.pem
+OUTER_PRIV_KEY ?= src/keyfender/test/key.pem
+endif
+
 # ------------------------------------------------------------------------------
 
 TOP_DIR := $(abspath .)
@@ -157,6 +167,7 @@ KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
 KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
 S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
 GIT_DAEMON ?= src/git/git-daemon
+UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
 
 $(KEYFENDER): .stamp-prepare
 	cd src/keyfender && $(DUNE) build $(BISECT)
@@ -168,14 +179,22 @@ $(KEYFENDER_INSTALL): $(KEYFENDER)
 	opam reinstall -y --inplace-build keyfender
 	touch $@
 
+$(UPDATE_KEY):
+ifeq ($(OUTER_SMARTCARD),)
+	cp $(OUTER_PUB_KEY) $@
+else
+	certtool --load-privkey "${OUTER_SMARTCARD}" --pubkey-info --no-text > $@
+endif
+
 .PHONY: clean-keyfender
 clean-keyfender:
 	-opam remove -y keyfender
 	$(RM) $(KEYFENDER_INSTALL)
 	-cd src/keyfender && $(DUNE) clean
 	-cd src/s_keyfender && mirage clean
+	$(RM) $(UPDATE_KEY)
 
-$(S_KEYFENDER): $(KEYFENDER_INSTALL)
+$(S_KEYFENDER): $(KEYFENDER_INSTALL) $(UPDATE_KEY)
 	cd src/s_keyfender && mirage configure -t $(TARGET) --allocation-policy=best-fit $(KEYFENDER_CARGS)
 	cd src/s_keyfender && $(MAKE) depend
 	cd src/s_keyfender && mirage build
@@ -679,7 +698,6 @@ $(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
 	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
 
 SIGN_UPDATE := src/keyfender/_build/default/bin/sign_update.exe
-SIGN_UPDATE_KEY := src/keyfender/test/key.pem
 
 OBJ_UPDATE_IMG := $(OBJ_DIR)/update.img.bin
 OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
@@ -687,11 +705,16 @@ OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
 $(OBJ_UPDATE_CHANGELOG): CHANGES.md
 	tools/create-changes.sh CHANGES.md > $@
 
-# TODO: Integrate this with the PGP key used for SBS-signing system.img.cpio,
-# and do so in a way that facilitates #58 (use external Smartcard for signing
-# production images).
-$(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG)
-	$(SIGN_UPDATE) \
+ifeq ($(OUTER_SMARTCARD),)
+SIGN_UPDATE_KEY := $(OUTER_PRIV_KEY)
+SIGN_UPDATE_FLAGS :=
+else
+SIGN_UPDATE_KEY := $(OUTER_SMARTCARD)
+SIGN_UPDATE_FLAGS := --openssl="$(OUTER_SMARTCARD_FLAGS)"
+endif
+
+$(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(OBJ_UPDATE_CHANGELOG)
+	$(SIGN_UPDATE) $(SIGN_UPDATE_FLAGS) \
 	    $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG) $(SOFTWARE_VERSION) $(OBJ_SYSTEM_IMG) \
 	    >$@
 

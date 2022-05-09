@@ -18,6 +18,12 @@ module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Time)(Mclock)(Hsm_clo
 module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
 let () =
+  let update_key =
+    match X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string) with
+    | Ok `RSA key -> key
+    | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
+    | Error `Msg m -> invalid_arg m
+  in
   Printexc.record_backtrace true;
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
@@ -26,7 +32,7 @@ let () =
   Lwt_main.run
   begin
     Store.connect () >>= fun store ->
-    Hsm.boot ~device_id:"test server" store >>= fun (hsm_state, mvar, _) ->
+    Hsm.boot ~device_id:"test server" update_key store >>= fun (hsm_state, mvar, _) ->
     let any = Ipaddr.V4.Prefix.global in
     Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun tcp ->
     Udpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun udp ->

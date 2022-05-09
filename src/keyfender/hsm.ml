@@ -504,6 +504,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     mutable key : X509.Private_key.t ;
     mutable cert : X509.Certificate.t ;
     mutable chain : X509.Certificate.t list ;
+    software_update_key : Mirage_crypto_pk.Rsa.pub ;
     kv : KV.t ;
     info : Json.info ;
     system_info : Json.system_info ;
@@ -1869,7 +1870,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                    Error (Bad_request, "unexpected end of data"))) >>= fun () ->
              let final_hash = Hash.get hash in
              let signature = Cstruct.of_string signature in
-             if Pss_sha256.verify ~key:Crypto.software_update_key ~signature (`Digest final_hash) then
+             if Pss_sha256.verify ~key:t.software_update_key ~signature (`Digest final_hash) then
                let current = t.system_info.softwareVersion in
                if version_is_upgrade ~current ~update:version' then
                  begin
@@ -2053,7 +2054,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Lwt.return @@ Error (Bad_request, msg)
   end
 
-  let boot ~device_id kv =
+  let boot ~device_id software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string (String.trim [%blob "softwareVersion"]) with
@@ -2084,14 +2085,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert priv
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; res_mbox ; device_id } in
+        let t = { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
           boot_config_store kv device_id >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; kv ; info ; system_info ; mbox ; res_mbox ; device_id }
+          { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"

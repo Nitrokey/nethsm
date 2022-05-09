@@ -1,7 +1,7 @@
 (library
   (name        keyfender)
   (public_name keyfender)
-  (preprocessor_deps update.pem buildTag softwareVersion)
+  (preprocessor_deps buildTag softwareVersion)
   (preprocess (pps ppx_blob ppx_deriving_yojson ppx_deriving.std))
   (instrumentation (backend bisect_ppx --bisect-sigterm))
   (libraries astring logs lwt ptime cohttp rresult mirage-crypto mirage-crypto-pk webmachine cohttp-lwt yojson mirage-clock mirage-random scrypt-kdf mirage-kv tls x509 hex gmap ipaddr metrics metrics-lwt mirage-time duration))

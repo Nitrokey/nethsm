@@ -7,6 +7,7 @@ module Log = (val Logs.src_log https_src : Logs.LOG)
 module Main
     (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
+    (Update_key: Mirage_kv.RO)
     (Static_assets: Mirage_kv.RO)
     (Internal_stack: Mirage_stack.V4V6) (_ : sig end)
     (Ext_reconfigurable_stack: Reconfigurable_stack.S)
@@ -123,7 +124,7 @@ struct
     | `Timeout -> Format.fprintf ppf "timeout"
     | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
-  let start console _entropy () () assets internal_stack ctx ext_stack () =
+  let start console _entropy () () update_key_store assets internal_stack ctx ext_stack () =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
     | Ok git ->
@@ -161,7 +162,20 @@ struct
           Log.err (fun m -> m "couldn't retrieve device id: %a" pp_platform_err e);
           Lwt.fail_with "failed to retrieve device id from platform"
         | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
-      Hsm.boot ~device_id store >>= fun (hsm_state, mvar, res_mvar) ->
+      (Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
+        | Error e ->
+          Log.err (fun m -> m "couldn't retrieve update key: %a" Update_key.pp_error e);
+          Lwt.fail_with "missing update key"
+        | Ok data ->
+          match X509.Public_key.decode_pem (Cstruct.of_string data) with
+          | Ok `RSA key -> Lwt.return key
+          | Ok _ ->
+            Log.err (fun m -> m "No RSA key from manufacturer. Contact manufacturer.");
+            Lwt.fail_with "update key not in RSA format"
+          | Error `Msg m ->
+            Lwt.fail_with ("couldn't decode update key: " ^ m)
+      ) >>= fun update_key ->
+      Hsm.boot ~device_id update_key store >>= fun (hsm_state, mvar, res_mvar) ->
       let setup_log stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0

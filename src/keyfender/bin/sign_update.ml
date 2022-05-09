@@ -36,12 +36,12 @@ let create_tmp_file data =
   else
     invalid_arg "couldn't write data (written <> l)"
 
-let openssl_sign key_file hash =
+let openssl_sign flags key_file hash =
   let hash_file = create_tmp_file (Cstruct.to_bytes hash) in
   let sig_file = Filename.temp_file "sig" "bin" in
   let cmd =
-    Printf.sprintf "openssl pkeyutl -sign -in %s -inkey %s -out %s -pkeyopt digest:sha256 -pkeyopt rsa_padding_mode:pss -pkeyopt rsa_pss_saltlen:digest"
-      hash_file key_file sig_file
+    Printf.sprintf "openssl pkeyutl %s -sign -in %s -inkey %s -out %s -pkeyopt digest:sha256 -pkeyopt rsa_padding_mode:pss -pkeyopt rsa_pss_saltlen:digest"
+      (Option.value ~default:"" flags) hash_file key_file sig_file
   in
   let signature =
     if Sys.command cmd = 0 then
@@ -75,7 +75,7 @@ let read_file_chunked filename hash prepend_length output =
   Unix.close fd;
   hash''
 
-let sign key_file changelog_file version_file image_file output_file =
+let sign flags key_file changelog_file version_file image_file output_file =
   let version = read_file version_file |> String.trim in
   let version_ok =
     match String.split_on_char '.' version with
@@ -110,7 +110,7 @@ let sign key_file changelog_file version_file image_file output_file =
   let hash = read_file_chunked image_file hash false update_hash in
   let hash = Hash.feed hash pad_buf in
   let final_hash = Hash.get hash in
-  let signature = openssl_sign key_file final_hash in
+  let signature = openssl_sign flags key_file final_hash in
   let signature = prepend_len signature in
   let fd = match output_file with
    | None -> Unix.stdout
@@ -134,8 +134,12 @@ let sign key_file changelog_file version_file image_file output_file =
 
 open Cmdliner
 
+let openssl_flags =
+  let doc = "openssl flags" in
+  Arg.(value & opt (some string) None & info [ "openssl" ] ~doc ~docv:"FLAG")
+
 let key =
-  let doc = "private key filename" in
+  let doc = "private key" in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"KEY")
 
 let changelog =
@@ -157,7 +161,7 @@ let output =
 let command =
   let doc = "Sign a NetHSM software image" in
   let man = [ `S "BUGS"; `P "Submit bugs";] in
-  Term.(term_result (const sign $ key $ changelog $ version $ image $ output)),
+  Term.(term_result (const sign $ openssl_flags $ key $ changelog $ version $ image $ output)),
   Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =

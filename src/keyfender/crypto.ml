@@ -10,12 +10,6 @@ let salt_len = 16
 (* key length for AES256 is 32 byte = 256 bit *)
 let key_len = 32
 
-let software_update_key =
-  match X509.Public_key.decode_pem ([%blob "update.pem"] |> Cstruct.of_string) with
-  | Ok `RSA key -> key
-  | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
-  | Error `Msg m -> invalid_arg m
-
 let key_of_passphrase ~salt password =
   Scrypt_kdf.scrypt_kdf
     ~password:(Cstruct.of_string password)
