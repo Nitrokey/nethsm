@@ -131,7 +131,7 @@ module type S = sig
 
   module User : sig
 
-    module Info : sig 
+    module Info : sig
       type t
 
       val name : t -> string
@@ -200,7 +200,7 @@ module type S = sig
     val get_restrictions : t -> id:string -> (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
-    
+
     val remove_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
     val decrypt : t -> id:string -> user_id:string -> iv:string option -> Json.decrypt_mode -> string -> (string, error) result Lwt.t
@@ -420,13 +420,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     Cohttp.Code.code_of_status status
 
   type operation = Write | Read | Unlock
-  
+
   let internal_server_error operation context pp_err f =
     let open Lwt.Infix in
     f >|= function
     | Ok x -> Ok x
     | Error e ->
-      let operation_message, error_message = 
+      let operation_message, error_message =
         match operation with
         | Write -> "writing to the key-value store", "Could not write to database. Check logs."
         | Read -> "read from the key-value store", "Could not read from database. Check logs."
@@ -700,7 +700,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   module User = struct
 
-    module Info = struct 
+    module Info = struct
       type t = {
         name : string ;
         salt : string ;
@@ -853,9 +853,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       internal_server_error Read "Read user" pp_find_error
         (read_decode store id) >>= fun user ->
       if Info.role user = `Operator then
-        if not (Json.TagSet.mem tag user.tags) then 
-          let user' = 
-            { user with tags = Json.TagSet.add tag user.tags} 
+        if not (Json.TagSet.mem tag user.tags) then
+          let user' =
+            { user with tags = Json.TagSet.add tag user.tags}
           in
           write store id user' >|= fun () ->
           Access.info (fun m -> m "added a tag to %s (%s): %S" id user.name tag);
@@ -864,7 +864,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Lwt.return_ok false
       else
         Lwt.return_error (Bad_request, "tag operations only exist on operator users")
-  
+
     let remove_tag t ~id ~tag =
       let open Lwt_result.Infix in
       let store = in_store t in
@@ -960,7 +960,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Error (Forbidden, "tags restriction not met")
       else
         Ok ()
-    
+
     (* boilerplate for dumping keys whose operations changed *)
     let cached_operations = Hashtbl.create 7
 
@@ -1062,11 +1062,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         internal_server_error Read "List keys" Encrypted_store.pp_error
           (Encrypted_store.list store Mirage_kv.Key.empty) >>= fun xs ->
         if List.length xs <= max_keys then
-          encode_and_write t id { 
-            mechanisms ; 
-            priv ; 
-            cert = None ; 
-            operations = 0 ; 
+          encode_and_write t id {
+            mechanisms ;
+            priv ;
+            cert = None ;
+            operations = 0 ;
             restrictions }
         else
           let msg =
@@ -1136,7 +1136,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Ok (Cstruct.to_string @@ Mirage_crypto_rng.generate ((length+7)/8))
       else
         Error (Bad_request, "Length must be between 128 and 8192.")
-    
+
     let generate_key typ ~length =
       let open Rresult in
       match typ with
@@ -1144,7 +1144,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         (generate_generic ~length >>| (fun key -> Generic key))
       | _ ->
         let x509_type = match typ with
-          | Json.Generic -> assert false 
+          | Json.Generic -> assert false
           | RSA -> `RSA
           | Curve25519 -> `ED25519
           | EC_P224 -> `P224
@@ -1153,7 +1153,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | EC_P521 -> `P521
         in
         (generate_x509 x509_type ~length >>| (fun key -> X509 key))
-    
+
     let generate ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
       Lwt.return
@@ -1265,15 +1265,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >|= fun key ->
       key.restrictions
-    
+
     let add_restriction_tags t ~id ~tag =
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
-      if not (Json.TagSet.mem tag key.restrictions.tags) then 
-        let restrictions' = 
-          { Json.tags = Json.TagSet.add tag key.restrictions.tags } 
+      if not (Json.TagSet.mem tag key.restrictions.tags) then
+        let restrictions' =
+          { Json.tags = Json.TagSet.add tag key.restrictions.tags }
         in
-        encode_and_write t id {key with restrictions = restrictions'} 
+        encode_and_write t id {key with restrictions = restrictions'}
         >|= fun () ->
         true
       else
@@ -1283,16 +1283,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
       if Json.TagSet.mem tag key.restrictions.tags then
-        let restrictions' = { 
+        let restrictions' = {
           Json.tags = Json.TagSet.remove tag key.restrictions.tags
-        } 
+        }
         in
         encode_and_write t id {key with restrictions = restrictions'}
         >|= fun () ->
         true
       else
         Lwt.return_ok false
-    
+
     module Oaep_md5 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.MD5)
     module Oaep_sha1 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA1)
     module Oaep_sha224 = Mirage_crypto_pk.Rsa.OAEP(Mirage_crypto.Hash.SHA224)
@@ -1648,7 +1648,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
          | Ok csr -> Ok (Cstruct.to_string (X509.Signing_request.encode_pem csr))
          | Error `Msg m -> Error (Bad_request, "while creating CSR: " ^ m))
 
-    let tls_generate t typ ~length = 
+    let tls_generate t typ ~length =
       let open Lwt_result.Infix in
       (* generate key *)
       Lwt.return (Key.generate_x509 typ ~length)
@@ -1659,7 +1659,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       with_write_lock (fun () ->
         Config_store.batch t.kv @@ fun kv ->
         internal_server_error Write "Write tls private key" KV.pp_write_error
-          (Config_store.set kv Private_key key) 
+          (Config_store.set kv Private_key key)
         >>= fun () ->
         internal_server_error Write "Write tls certificate" KV.pp_write_error
           (Config_store.set kv Certificate (cert, [])))

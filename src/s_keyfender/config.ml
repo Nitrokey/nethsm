@@ -80,8 +80,8 @@ let pre_configured_stack =
       | _ -> assert false
   end
 
-let external_netif = Key.(if_impl is_solo5 
-  (netif ~group:"external" "external") 
+let external_netif = Key.(if_impl is_solo5
+  (netif ~group:"external" "external")
   (netif ~group:"external" "tap1"))
 
 let external_eth = etif external_netif
@@ -98,11 +98,11 @@ let single_interface =
 let external_reconfigurable_stack =
   if_impl (Key.value single_interface)
     (pre_configured_stack $ internal_stack)
-    (reconfigurable_stack_direct 
-    $ default_random 
-    $ default_monotonic_clock 
-    $ external_netif 
-    $ external_eth 
+    (reconfigurable_stack_direct
+    $ default_random
+    $ default_monotonic_clock
+    $ external_netif
+    $ external_eth
     $ external_arp)
 
 (* git / mimic configuration *)

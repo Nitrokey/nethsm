@@ -2,7 +2,7 @@
 let data = Mirage_random_test.generate 32
 let adata = Cstruct.of_string "my additional data"
 
-let (@?) name fn = 
+let (@?) name fn =
   Alcotest.test_case name `Quick
     (fun () -> Alcotest.(check bool) "OK" true (fn ()))
 

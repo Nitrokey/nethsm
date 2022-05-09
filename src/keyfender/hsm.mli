@@ -84,9 +84,9 @@ module type S = sig
 
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
-    val tls_generate : t -> X509.Key_type.t -> length:int -> 
+    val tls_generate : t -> X509.Key_type.t -> length:int ->
       (unit, error) result Lwt.t
-    
+
     val network : t -> Json.network Lwt.t
 
     val set_network : t -> Json.network ->
@@ -131,7 +131,7 @@ module type S = sig
   end
 
   module User : sig
-    module Info : sig 
+    module Info : sig
       type t
 
       val name : t -> string
@@ -162,7 +162,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val add_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
-    
+
     val remove_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
     val list_digest : t -> string option Lwt.t
@@ -201,7 +201,7 @@ module type S = sig
     val get_restrictions : t -> id:string -> (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
-    
+
     val remove_restriction_tags : t -> id:string -> tag:string -> (bool, error) result Lwt.t
 
     (* val encrypt : t -> id:string -> Json.encrypt_mode -> string -> (string, error) result Lwt.t *)

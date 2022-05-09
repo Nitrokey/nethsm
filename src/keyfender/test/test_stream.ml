@@ -29,7 +29,7 @@ let operational_mock () =
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
   Header.init_with "authorization" ("Basic " ^ base64)
-  
+
 let admin_headers = auth_header "admin" "test1"
 
 let system_update hsm_state chunk_size chunks =
@@ -39,7 +39,7 @@ let system_update hsm_state chunk_size chunks =
   let gc_stat' = Gc.stat () in
   (* a string consists of data + header + padding, the latter two are constants each up to 1 word length. *)
   assert (gc_stat'.live_words - gc_stat.live_words < 2 + chunk_size);
-  let generator () = 
+  let generator () =
     incr i;
     Lwt.return @@ match !i with
     | 1 -> Some "\000\002sig\000\018A new system image\000\0032.0"
@@ -58,17 +58,17 @@ let system_update hsm_state chunk_size chunks =
     assert(String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes);
     assert(Hsm.state hsm_state = `Operational);
     assert(chunk_size * chunks > gc_stat.top_heap_words * 8)
-  | _ -> 
+  | _ ->
     Gc.full_major ();
     let gc_stat = Gc.stat () in
     Logs.app (fun m -> m "live words after request %d" gc_stat.live_words);
     assert(chunk_size * chunks > gc_stat.top_heap_words * 8);
     assert false
-  
+
 let rec add_many_users hsm_state = function
   | 0 -> Lwt.return ()
   | i ->
-    let id = string_of_int i in 
+    let id = string_of_int i in
     Hsm.User.add hsm_state ~id ~role:`Operator ~passphrase:"test2" ~name:"operator" >>= fun _ ->
     add_many_users hsm_state (i-1)
 
@@ -82,8 +82,8 @@ let system_backup hsm_state =
   | Some (`No_content, _, _, _) ->
     begin request hsm_state ~meth:`POST ~headers:admin_headers "/system/backup" >>= function
       | Some (`OK, _, `Stream s, _) ->
-        let size = ref 0 in 
-        Lwt_stream.iter (fun chunk -> size := !size + String.length chunk) s >|= fun () -> 
+        let size = ref 0 in
+        Lwt_stream.iter (fun chunk -> size := !size + String.length chunk) s >|= fun () ->
         let gc_stat' = Gc.stat () in
         Logs.app (fun m -> m "top heap words after backup %d" gc_stat'.top_heap_words);
         (* a non-streaming backup would use twice the memory of the actual live data *)
@@ -92,13 +92,13 @@ let system_backup hsm_state =
       | _ -> assert false
     end
   | _ -> assert false
- 
+
 let system_restore chunk_size chunks =
   let i = ref 0 in
   let chunk = String.make chunk_size ' ' in
   let content_type = "application/octet-stream" in
   let query = [ ("backupPassphrase", [ "my passphrase" ]) ; ("systemTime", [ "2019-10-30T11:20:50Z" ]) ] in
-  let generator () = 
+  let generator () =
     incr i;
     Lwt.return @@ match !i with
     | x when x <= chunks -> Some chunk
@@ -110,7 +110,7 @@ let system_restore chunk_size chunks =
   let gc_stat = Gc.stat () in
   Logs.app (fun m -> m "top heap words before restore %d" gc_stat.top_heap_words);
   request hsm_state ~meth:`POST ~content_type ~query ~body "/system/restore" >|= function
-    | Some (`Bad_request, _, _, _) -> 
+    | Some (`Bad_request, _, _, _) ->
       let gc_stat = Gc.stat () in
       Logs.app (fun m -> m "top heap words after restore %d" gc_stat.top_heap_words);
       ()

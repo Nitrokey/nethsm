@@ -33,14 +33,14 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
   let request = Request.make ~meth ~headers uri in
   Logs.info (fun f -> f "[REQ] %s %a" (Cohttp.Code.string_of_method meth) Uri.pp uri);
   let resp = Lwt_main.run @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' ip) ~body ~request in
-  Option.iter (fun (code, _, _, _) -> 
+  Option.iter (fun (code, _, _, _) ->
     Logs.info (fun f -> f "[RESP] %s" (Cohttp.Code.string_of_status code)  );
   ) resp;
   hsm_state', resp
 
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
-let copy t = 
+let copy t =
   let v = Marshal.to_string t [] in
   Marshal.from_string v 0
 
@@ -91,13 +91,13 @@ let admin_post_request ?(hsm_state = operational_mock()) ?(body = `Empty) ?conte
   let headers = admin_headers in
   request ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query path
 
-let (@?) name fn = 
+let (@?) name fn =
   Alcotest.test_case name `Quick
     (fun () -> Alcotest.(check bool) "OK" true (fn ()))
 
 let empty =
   "a request for / will produce no result"
-  @? fun () -> 
+  @? fun () ->
     begin match request "/" with
        | _, None -> true
        | _    -> false
@@ -105,7 +105,7 @@ let empty =
 
 let health_alive_ok =
   "a request for /health/alive will produce a HTTP 200"
-  @? fun () -> 
+  @? fun () ->
     begin match request "/health/alive" with
        | _, Some (`OK, _, _, _) -> true
        | _ -> false
@@ -113,7 +113,7 @@ let health_alive_ok =
 
 let health_ready_ok =
   "a request for /health/ready in operational state will produce an HTTP 200"
-  @? fun () -> 
+  @? fun () ->
     begin match request ~hsm_state:(operational_mock ()) "/health/ready" with
        | _, Some (`OK, _, _, _) -> true
        | _ -> false
@@ -121,7 +121,7 @@ let health_ready_ok =
 
 let health_ready_error_precondition_failed =
   "a request for /health/ready in unprovisioned state will produce an HTTP 412"
-  @? fun () -> 
+  @? fun () ->
     begin match request "/health/ready" with
        | _, Some (`Precondition_failed, _, _, _) -> true
        | _ -> false
@@ -129,7 +129,7 @@ let health_ready_error_precondition_failed =
 
 let health_state_ok =
   "a request for /health/state will produce an HTTP 200 and returns the state as json"
-  @? fun () -> 
+  @? fun () ->
     let hsm_state = operational_mock () in
     begin match request ~hsm_state "/health/state" with
        | _, Some (`OK, _, `String body, _) ->
@@ -139,7 +139,7 @@ let health_state_ok =
 
 let random_ok =
   "a request for /random will produce an HTTP 200 and returns random data"
-  @? fun () -> 
+  @? fun () ->
     let body = `String {| { "length": 10 } |} in
     let hsm_state = operational_mock () in
     let headers = operator_headers in
@@ -150,7 +150,7 @@ let random_ok =
 
 let random_error_bad_length =
   "a request for /random will produce an HTTP 400"
-  @? fun () -> 
+  @? fun () ->
     let body = `String {| { "length": 10000 } |} in
     let hsm_state = operational_mock () in
     let headers = operator_headers in
@@ -167,7 +167,7 @@ let provision_json = {| {
 
 let provision_ok =
   "an initial provision request is successful (state transition to operational, HTTP response 204)"
-  @? fun () -> 
+  @? fun () ->
     let body = `String provision_json in
     begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
@@ -176,7 +176,7 @@ let provision_ok =
 
 let provision_error_malformed_request =
   "an initial provision request with invalid json returns a malformed request with 400"
-  @? fun () -> 
+  @? fun () ->
     let body = `String ("hallo" ^ provision_json) in
     begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`Bad_request, _, _, _) -> Hsm.state hsm_state = `Unprovisioned
@@ -185,7 +185,7 @@ let provision_error_malformed_request =
 
 let provision_error_precondition_failed =
   "an initial provision request is successful, a subsequent provision fails with 412"
-  @? fun () -> 
+  @? fun () ->
     let body = `String provision_json in
     begin match request ~body ~meth:`POST "/provision" with
        | hsm_state, Some (`No_content, _, _, _) ->
@@ -198,7 +198,7 @@ let provision_error_precondition_failed =
 
 let system_info_ok =
   "a request for /system/info with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     begin match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/system/info" with
       | hsm_state, Some (`OK, _, `String body, _) ->
         String.equal body @@ Yojson.Safe.to_string @@ Keyfender.Json.system_info_to_yojson @@ Hsm.System.system_info hsm_state
@@ -207,7 +207,7 @@ let system_info_ok =
 
 let system_info_error_authentication_required =
   "a request for /system/info without authenticated user returns 401"
-  @? fun () -> 
+  @? fun () ->
     begin match request ~hsm_state:(operational_mock ()) "/system/info" with
       | _, Some (`Unauthorized, _, _, _) -> true
       | _ -> false
@@ -215,7 +215,7 @@ let system_info_error_authentication_required =
 
 let system_info_error_precondition_failed =
   "a request for /system/info in unprovisioned state fails with 412"
-  @? fun () -> 
+  @? fun () ->
     begin match request "/system/info" with
       | _, Some (`Precondition_failed, _, _, _) -> true
       | _ -> false
@@ -223,7 +223,7 @@ let system_info_error_precondition_failed =
 
 let system_info_error_forbidden =
   "a request for /system/info with authenticated operator returns 403"
-  @? fun () -> 
+  @? fun () ->
     begin match request ~hsm_state:(operational_mock ()) ~headers:(auth_header "operator" "test2Passphrase") "/system/info" with
       | _, Some (`Forbidden, _, _, _) -> true
       | _ -> false
@@ -231,7 +231,7 @@ let system_info_error_forbidden =
 
 let system_reboot_ok =
   "a request for /system/reboot with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     begin match admin_post_request "/system/reboot" with
       | _, Some (`No_content, _, _, _) -> true
       | _ -> false
@@ -239,7 +239,7 @@ let system_reboot_ok =
 
 let system_shutdown_ok =
   "a request for /system/shutdown with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     begin match admin_post_request "/system/shutdown" with
       | _, Some (`No_content, _, _, _) -> true
       | _ -> false
@@ -247,7 +247,7 @@ let system_shutdown_ok =
 
 let system_reset_ok =
   "a request for /system/reset with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     begin match admin_post_request "/system/reset" with
       | _, Some (`No_content, _, _, _) -> true
       | _ -> false
@@ -301,7 +301,7 @@ let sign_update u =
 
 let system_update_ok =
   "a request for /system/update with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -316,7 +316,7 @@ let system_update_ok =
 
 let system_update_signature_mismatch =
   "a request for /system/update with authenticated user and bad signature returns 400"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -330,7 +330,7 @@ let system_update_signature_mismatch =
 
 let system_update_too_much_data =
   "a request for /system/update with authenticated user and too much data returns 400"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = (prefix_and_pad "binary data is here") ^ "\000" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -344,7 +344,7 @@ let system_update_too_much_data =
 
 let system_update_too_few_data =
   "a request for /system/update with authenticated user and too few data returns 400"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data =
         let d = prefix_and_pad "binary data is here" in
@@ -361,7 +361,7 @@ let system_update_too_few_data =
 
 let system_update_invalid_data =
   "a request for /system/update with invalid data fails."
-  @? fun () -> 
+  @? fun () ->
     let body = `String "\000\000\003signature too long\000\000\018A new system image\000\000\0032.0binary data is here" in
     begin match admin_post_request ~body "/system/update" with
       | hsm_state, Some (`Bad_request, _, `String body, _) ->
@@ -372,7 +372,7 @@ let system_update_invalid_data =
 
 let system_update_platform_bad =
   "a request for /system/update with bad platform."
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -386,7 +386,7 @@ let system_update_platform_bad =
 
 let system_update_version_downgrade =
   "a request for /system/update trying to send an older software fails."
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\004-1.5" ^ data in
@@ -413,7 +413,7 @@ let operational_mock_with_mbox () =
 
 let system_update_commit_ok =
   "a request for /system/commit-update with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -432,7 +432,7 @@ let system_update_commit_ok =
 
 let system_update_commit_fail =
   "a request for /system/commit-update without an image previously uploaded fails."
-  @? fun () -> 
+  @? fun () ->
     begin match admin_post_request "/system/commit-update" with
       | _ , Some (`Precondition_failed, _, _, _) -> true
       | _ -> false
@@ -440,7 +440,7 @@ let system_update_commit_fail =
 
 let system_update_cancel_ok =
   "a request for /system/cancel-update with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     let body =
       let data = prefix_and_pad "binary data is here" in
       let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -458,7 +458,7 @@ let system_update_cancel_ok =
 
 let system_backup_and_restore_ok =
   "a request for /system/restore succeeds"
-@? fun () -> 
+@? fun () ->
     begin
     let backup_passphrase = "backup passphrase" in
     let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
@@ -488,12 +488,12 @@ let system_backup_and_restore_ok =
 
 let system_backup_post_accept_header =
   "a request for /system/backup using 'Accept: application/octet-stream' succeeds"
-  @? fun () -> 
+  @? fun () ->
   let backup_passphrase = "backup passphrase" in
   let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
   match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
-    let headers = 
+    let headers =
       Header.add (auth_header "backup" "test3Passphrase") "Accept" "application/octet-stream"
     in
     begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
@@ -519,7 +519,7 @@ let readfile filename =
 
 let system_update_from_file_ok =
   "a request for /system/update with authenticated user and update read from disk returns 200"
-  @? fun () -> 
+  @? fun () ->
     let body = readfile "update.bin" in
     begin match admin_post_request ~body "/system/update" with
      | hsm_state, Some (`OK, _, `String _, _) ->
@@ -529,7 +529,7 @@ let system_update_from_file_ok =
 
 let sign_update_ok =
   "a request for /system/update with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     let returncode = Sys.command "../bin/sign_update.exe key.pem changes version update.bin --output=signed_update.bin" in
     assert (returncode = 0);
     let body = readfile "signed_update.bin" in
@@ -543,7 +543,7 @@ let unlock_json = {|{ "passphrase": "test1234Passphrase" }|}
 
 let unlock_ok =
   "a request for /unlock unlocks the HSM"
-  @? fun () -> 
+  @? fun () ->
   begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
   | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
@@ -551,7 +551,7 @@ let unlock_ok =
 
 let unlock_failed =
   "a request for /unlock with the wrong passphrase fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let wrong_passphrase = {|{ "passphrase": "wrong" }|} in
     match request ~meth:`POST ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
@@ -561,7 +561,7 @@ let unlock_failed =
 
 let unlock_failed_two =
   "a request for /unlock with the wrong passphrase fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let wrong_passphrase = {|{ "passphrase": "wrongwrongwrong" }|} in
     match request ~meth:`POST ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
@@ -571,8 +571,8 @@ let unlock_failed_two =
 
 let unlock_twice =
   "the first request for /unlock unlocks the HSM, the second fails"
-  @? fun () -> 
-  begin 
+  @? fun () ->
+  begin
     match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ()) "/unlock" with
     | hsm_state, Some (`No_content, _, _, _) ->
       begin
@@ -585,7 +585,7 @@ let unlock_twice =
 
 let lock_ok =
   "a request for /lock locks the HSM"
-  @? fun () -> 
+  @? fun () ->
   begin match admin_post_request ~hsm_state:(operational_mock ()) "/lock" with
     | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Locked
     | _ -> false
@@ -593,7 +593,7 @@ let lock_ok =
 
 let lock_failed =
   "a request for /lock with the wrong passphrase fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = operator_headers in
     let hsm_state = operational_mock() in
@@ -606,7 +606,7 @@ let lock_failed =
 
 let change_unlock_passphrase =
   "change unlock passphrase succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let passphrase = {|{ "passphrase" : "new passphrase" }|} in
     match admin_put_request ~body:(`String passphrase) "/config/unlock-passphrase" with
@@ -621,7 +621,7 @@ let change_unlock_passphrase =
 
 let change_unlock_passphrase_empty =
   "change to empty unlock passphrase fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let passphrase = {|{ "passphrase" : "" }|} in
     match admin_put_request ~body:(`String passphrase) "/config/unlock-passphrase" with
@@ -631,7 +631,7 @@ let change_unlock_passphrase_empty =
 
 let get_unattended_boot_ok =
   "GET /config/unattended-boot succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     match request ~headers ~hsm_state:(operational_mock ()) "/config/unattended-boot" with
@@ -641,7 +641,7 @@ let get_unattended_boot_ok =
 
 let unattended_boot_succeeds =
   "unattended boot succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let store, hsm_state =
       Lwt_main.run (
@@ -658,7 +658,7 @@ let unattended_boot_succeeds =
 
 let unattended_boot_failed_wrong_device_id =
   "unattended boot failed (wrong device ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let store, hsm_state =
       Lwt_main.run (
@@ -675,7 +675,7 @@ let unattended_boot_failed_wrong_device_id =
 
 let unattended_boot_failed =
   "unattended boot fails to unlock"
-  @? fun () -> 
+  @? fun () ->
   begin
     let store, hsm_state =
       Lwt_main.run (
@@ -696,7 +696,7 @@ let unattended_boot_failed =
 
 let get_config_tls_public_pem =
   "get tls public pem file succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   let headers = admin_headers in
     match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/public.pem" with
@@ -706,7 +706,7 @@ let get_config_tls_public_pem =
 
 let get_config_tls_cert_pem =
   "get tls cert pem file succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
@@ -716,7 +716,7 @@ let get_config_tls_cert_pem =
 
 let put_config_tls_cert_pem =
   "put tls cert pem file succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/tls/cert.pem" with
@@ -736,7 +736,7 @@ let put_config_tls_cert_pem =
 
 let put_config_tls_cert_pem_fail =
   "post tls cert pem file fail"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     let content_type = "application/x-pem-file" in
@@ -758,7 +758,7 @@ let subject = {|{
 
 let post_config_tls_csr_pem =
   "post tls csr pem file succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
     | _, Some (`OK, _, `String body, _) ->
@@ -771,12 +771,12 @@ let post_config_tls_csr_pem =
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
-  let decode_key pem_data = 
+  let decode_key pem_data =
     match X509.Public_key.decode_pem (Cstruct.of_string pem_data) with
     | Ok v -> v
     | Error _ -> raise (Failure "decode_key")
   in
-  let get_public_key ~hsm_state = 
+  let get_public_key ~hsm_state =
     match request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/tls/public.pem" with
     | _, Some (`OK, _, `String body, _) -> decode_key body
     | _ -> raise (Failure "get_public_key")
@@ -785,12 +785,12 @@ let post_config_tls_generate =
   @? fun () ->
   begin
     let hsm_state = operational_mock () in
-    try 
+    try
       (* obtain generated key at provision *)
       let initial_key = get_public_key ~hsm_state in
       (* call the generate endpoint to generate an RSA key *)
       match admin_post_request ~hsm_state ~body:(`String generate_json) "/config/tls/generate" with
-      | _, Some (`No_content, _, _, _) -> 
+      | _, Some (`No_content, _, _, _) ->
         (* check that the tls key is different from the initial key *)
         let new_key = get_public_key ~hsm_state in
         not (Cstruct.equal
@@ -803,10 +803,10 @@ let post_config_tls_generate =
 
 let post_config_tls_generate_generic_key =
   "post tls generate fail generic key"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = operational_mock () in
-    try 
+    try
       match admin_post_request ~hsm_state ~body:(`String {|{ type: "Generic", length: 2048 }|}) "/config/tls/generate" with
       | _, Some (`Bad_request, _, _, _) -> true
       | _ -> false
@@ -819,7 +819,7 @@ let post_config_tls_generate_bad_length =
   @? fun () ->
   begin
     let hsm_state = operational_mock () in
-    try 
+    try
       match admin_post_request ~hsm_state ~body:(`String  {|{ type: "RSA", length: 100 }|}) "/config/tls/generate" with
       | _, Some (`Bad_request, _, _, _) -> true
       | _ -> false
@@ -829,7 +829,7 @@ let post_config_tls_generate_bad_length =
 
 let config_network_ok =
   "GET on /config/network succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/network" with
@@ -840,7 +840,7 @@ let config_network_ok =
 
 let config_network_set_ok =
   "PUT on /config/network succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_network = {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
     match admin_put_request ~body:(`String new_network) "/config/network" with
@@ -854,7 +854,7 @@ let config_network_set_ok =
 
 let config_network_set_fail =
   "PUT with invalid IP address on /config/network fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_network = {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|} in
     match admin_put_request ~body:(`String new_network) "/config/network" with
@@ -864,7 +864,7 @@ let config_network_set_fail =
 
 let config_logging_ok =
   "GET on /config/logging succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = admin_headers in
     match request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers "/config/logging" with
@@ -875,7 +875,7 @@ let config_logging_ok =
 
 let config_logging_set_ok =
   "PUT on /config/logging succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"error"}|} in
     match admin_put_request ~body:(`String new_logging) "/config/logging" with
@@ -889,7 +889,7 @@ let config_logging_set_ok =
 
 let config_logging_set_fail =
   "PUT with invalid logLevel on /config/logging fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"nonexisting"}|} in
     match admin_put_request ~body:(`String new_logging) "/config/logging" with
@@ -899,7 +899,7 @@ let config_logging_set_fail =
 
 let config_time_ok =
   "GET on /config/time succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/config/time" with
     | _, Some (`OK, _, `String body, _) ->
@@ -913,7 +913,7 @@ let config_time_ok =
 
 let config_time_set_ok =
   "PUT on /config/time succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_time = {|{time: "1970-01-01T00:00:00-00:00"}|} in
     match admin_put_request ~body:(`String new_time) "/config/time" with
@@ -932,7 +932,7 @@ let config_time_set_ok =
 
 let config_time_set_fail =
   "PUT with invalid timestamp on /config/time fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_time = {|{time: "1234"}|} in
     match admin_put_request ~body:(`String new_time) "/config/time" with
@@ -942,7 +942,7 @@ let config_time_set_fail =
 
 let set_backup_passphrase =
   "set backup passphrase succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
   match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
@@ -952,7 +952,7 @@ let set_backup_passphrase =
 
 let set_backup_passphrase_empty =
   "set empty backup passphrase fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let passphrase = {|{ "passphrase" : "" }|} in
     match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
@@ -967,7 +967,7 @@ let invalid_config_version =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
-         Hsm.boot ~device_id:"test dispatch" data) 
+         Hsm.boot ~device_id:"test dispatch" data)
        |> ignore) ;
   Alcotest.check_raises "no version breaks HSM" (Invalid_argument "broken NetHSM")
     (fun () ->
@@ -989,7 +989,7 @@ let config_version_but_no_salt =
 
 let users_get =
   "GET on /users/ succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users" with
   | _, Some (`OK, _, `String data, _) ->
@@ -1002,13 +1002,13 @@ let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "V
 
 let users_post =
   "POST on /users/ succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_post_request ~body:(`String operator_json) "/users" with
   | _, Some (`Created, headers, _, _) ->
         begin match Cohttp.Header.get headers "location" with
         | None -> false
-        | Some loc -> 
+        | Some loc ->
            let prefix = "/api/v1/users/" in
            String.equal (String.sub loc 0 (String.length prefix)) prefix
         end
@@ -1017,7 +1017,7 @@ let users_post =
 
 let user_operator_add =
   "PUT on /users/op succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
   | _, Some (`Created, headers, _, _) ->
@@ -1031,7 +1031,7 @@ let user_operator_add =
 let user_operator_add_empty_passphrase =
   let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "" } |} in
   "PUT on /users/op succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1040,7 +1040,7 @@ let user_operator_add_empty_passphrase =
 
 let user_operator_add_invalid_id =
   "PUT on /users/op fails (invalid id)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String operator_json) "/users//" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1049,7 +1049,7 @@ let user_operator_add_invalid_id =
 
 let user_operator_delete =
   "DELETE on /users/operator succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator" with
   | _, Some (`No_content, _, _, _) -> true
@@ -1058,7 +1058,7 @@ let user_operator_delete =
 
 let user_operator_delete_not_found =
   "DELETE on /users/operator fails (not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator2" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1067,7 +1067,7 @@ let user_operator_delete_not_found =
 
 let user_operator_delete_invalid_id =
   "DELETE on /users/operator fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users//" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1076,7 +1076,7 @@ let user_operator_delete_invalid_id =
 
 let user_operator_delete_fails =
   "DELETE on /users/operator fails (requires administrator privileges)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = auth_header "operator" "test2Passphrase" in
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers "/users/operator" with
@@ -1086,7 +1086,7 @@ let user_operator_delete_fails =
 
 let user_op_delete_fails =
   "DELETE on /users/op fails (user does not exist)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1095,7 +1095,7 @@ let user_op_delete_fails =
 
 let user_operator_get =
   "GET on /users/operator succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/operator" with
   | _, Some (`OK, _, `String data, _) -> String.equal data {|{"realName":"operator","role":"Operator"}|}
@@ -1104,7 +1104,7 @@ let user_operator_get =
 
 let user_operator_get_not_found =
   "GET on /users/op returns not found"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1113,7 +1113,7 @@ let user_operator_get_not_found =
 
 let user_operator_get_invalid_id =
   "GET on /users// returns bad request"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users//" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1122,7 +1122,7 @@ let user_operator_get_invalid_id =
 
 let user_operator_tags_get =
   "GET on /users/operator/tags succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/operator/tags" with
   | _, Some (`OK, _, `String data, _) -> String.equal data {|["berlin"]|}
@@ -1131,7 +1131,7 @@ let user_operator_tags_get =
 
 let user_operator_tags_get_invalid_id =
   "GET on /users/op/tags returns not found"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/op/tags" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1140,7 +1140,7 @@ let user_operator_tags_get_invalid_id =
 
 let user_operator_tags_put =
   "PUT on /users/operator/tags/frankfurt returns 204 no content"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/frankfurt" with
   | _, Some (`No_content, _, _, _) -> true
@@ -1149,7 +1149,7 @@ let user_operator_tags_put =
 
 let user_operator_tags_put_twice =
   "PUT on /users/operator/tags/berlin returns 304 not modified"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/berlin" with
   | _, Some (`Not_modified, _, _, _) -> true
@@ -1158,7 +1158,7 @@ let user_operator_tags_put_twice =
 
 let user_operator_tags_put_invalid_id =
   "PUT on /users/operator/tags/+=< returns bad request"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/operator/tags/+=<" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1167,7 +1167,7 @@ let user_operator_tags_put_invalid_id =
 
 let user_operator_tags_delete =
   "DELETE on /users/operator/tags/berlin returns no content"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator/tags/berlin" with
   | _, Some (`No_content, _, _, _) -> true
@@ -1176,7 +1176,7 @@ let user_operator_tags_delete =
 
 let user_operator_tags_delete_not_found =
   "DELETE on /users/operator/tags/frankfurt returns not found"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator/tags/frankfurt" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1185,7 +1185,7 @@ let user_operator_tags_delete_not_found =
 
 let user_backup_tags_get_not_operator =
   "GET on /users/backup/tags returns not found"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/backup/tags" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1194,7 +1194,7 @@ let user_backup_tags_get_not_operator =
 
 let user_backup_tags_put_not_operator =
   "PUT on /users/backup/tags returns bad request"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers "/users/backup/tags/frankfurt" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1203,7 +1203,7 @@ let user_backup_tags_put_not_operator =
 
 let user_version_get_bad_request =
   "GET on /users/.version returns bad request"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users/.version" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1212,7 +1212,7 @@ let user_version_get_bad_request =
 
 let user_version_delete_fails_invalid_id =
   "DELETE on /users/.version fails"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/.version" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1221,7 +1221,7 @@ let user_version_delete_fails_invalid_id =
 
 let user_passphrase_post =
   "POST on /users/admin/passphrase succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_passphrase = "my super new passphrase" in
     match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users/admin/passphrase" with
@@ -1242,7 +1242,7 @@ let user_passphrase_post =
 
 let user_passphrase_operator_post =
   "POST on /users/operator/passphrase succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = auth_header "operator" "test2Passphrase" in
     let new_passphrase = "my super new passphrase" in
@@ -1253,7 +1253,7 @@ let user_passphrase_operator_post =
 
 let user_passphrase_administrator_post =
   "POST on /users/admin/passphrase fails as operator"
-  @? fun () -> 
+  @? fun () ->
   begin
     let headers = auth_header "operator" "test2Passphrase" in
     let new_passphrase = "my super new passphrase" in
@@ -1264,7 +1264,7 @@ let user_passphrase_administrator_post =
 
 let user_passphrase_post_fails_not_found =
   "POST on /users/foobar/passphrase fails (not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_passphrase = "my super new passphrase" in
     match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users/foobar/passphrase" with
@@ -1274,7 +1274,7 @@ let user_passphrase_post_fails_not_found =
 
 let user_passphrase_post_fails_invalid_id =
   "POST on /users//passphrase fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let new_passphrase = "my super new passphrase" in
     match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users//passphrase" with
@@ -1284,7 +1284,7 @@ let user_passphrase_post_fails_invalid_id =
 
 let keys_get =
   "GET on /keys succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin match request ~headers:admin_headers ~hsm_state:(operational_mock ()) "/keys" with
   | _, Some (`OK, _, `String body, _) -> String.equal body "[]"
   | _ -> false
@@ -1294,7 +1294,7 @@ let key_json = {| { mechanisms: [ "RSA_Signature_PKCS1" ], type: "RSA", key: { p
 
 let keys_post_json =
   "POST on /keys succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_post_request ~body:(`String key_json) "/keys" with
   | _, Some (`Created, _, _, _) -> true
@@ -1321,7 +1321,7 @@ Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
 let keys_post_pem =
   let query = [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ] in
   "POST on /keys succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys" with
     | _, Some (`Created, _, _, _) -> true
@@ -1331,7 +1331,7 @@ let keys_post_pem =
 let keys_generate =
   let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048 }|} in
   "POST on /keys/generate succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_json) "/keys/generate" with
     | _, Some (`Created, headers, _, _) ->
@@ -1345,7 +1345,7 @@ let keys_generate =
 let keys_generate_invalid_id =
   let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "&*&*&*" }|} in
   "POST on /keys/generate with invalid ID fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_json) "/keys/generate" with
     | _, Some (`Bad_request, _, `String reply, _) ->
@@ -1357,7 +1357,7 @@ let keys_generate_invalid_id =
 let keys_generate_invalid_id_length =
   let generate_json = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|} in
   "POST on /keys/generate with invalid ID fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_json) "/keys/generate" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1367,7 +1367,7 @@ let keys_generate_invalid_id_length =
 let keys_generate_invalid_mech =
   let generate_json = {|{ mechanisms: [ "EdDSA_Signature" ], type: "RSA", length: 2048, id: "1234" }|} in
   "POST on /keys/generate with invalid mechanism fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_json) "/keys/generate" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1377,7 +1377,7 @@ let keys_generate_invalid_mech =
 let keys_generate_no_mech =
   let generate_json = {|{ mechanisms: [ ], type: "RSA", length: 2048, id: "1234" }|} in
   "POST on /keys/generate with no mechanism fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_json) "/keys/generate" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1386,7 +1386,7 @@ let keys_generate_no_mech =
 
 let keys_generate_ed25519 =
   "POST on /keys/generate with ED25519 succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519" }|} in
     match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
@@ -1401,7 +1401,7 @@ let keys_generate_ed25519 =
 
 let keys_generate_ed25519_explicit_keyid =
   "POST on /keys/generate with ED25519 succeeds (with explicit key ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
   let generate_ed25519 = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", "id": "mynewkey" }|} in
     match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
@@ -1416,7 +1416,7 @@ let keys_generate_ed25519_explicit_keyid =
 let keys_generate_ed25519_fail =
   let generate_ed25519 = {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "Curve25519" }|} in
   "POST on /keys/generate with ED25519 fails (wrong mechanism)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_ed25519) "/keys/generate" with
     | _, Some (`Bad_request, headers, _, _) ->
@@ -1429,7 +1429,7 @@ let keys_generate_ed25519_fail =
 
 let keys_generate_generic =
   "POST on /keys/generate with Generic succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let generate_generic = {|{ mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", length: 256 }|} in
     match admin_post_request ~body:(`String generate_generic) "/keys/generate" with
@@ -1445,7 +1445,7 @@ let keys_generate_generic =
 let keys_generate_generic_fail =
   let generate_generic = {|{ mechanisms: [ "EdDSA_Signature" ], type: "Generic", length: 256 }|} in
   "POST on /keys/generate with Generic fails (wrong mechanism)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String generate_generic) "/keys/generate" with
     | _, Some (`Bad_request, headers, _, _) ->
@@ -1489,7 +1489,7 @@ let hsm_with_key ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS
 
 let keys_key_get =
   "GET on /keys/keyID succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
   | _, Some (`OK, _, `String data, _) ->
@@ -1518,7 +1518,7 @@ let keys_key_get =
 
 let keys_key_get_not_found =
   "GET on /keys/keyID fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2" with
   | _, Some (`Not_found, _, _, _) -> true
@@ -1527,7 +1527,7 @@ let keys_key_get_not_found =
 
 let keys_key_get_invalid_id =
   "GET on /keys/keyID fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys//" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1536,7 +1536,7 @@ let keys_key_get_invalid_id =
 
 let keys_key_get_invalid_id2 =
   "GET on /keys/keyID fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/--" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1545,7 +1545,7 @@ let keys_key_get_invalid_id2 =
 
 let keys_key_put_json =
   "PUT on /keys/keyID succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String key_json) "/keys/keyID" with
   | _, Some (`No_content, _, _, _) -> true
@@ -1562,7 +1562,7 @@ let keys_key_put_pem =
 
 let keys_key_put_already_there =
   "PUT on /keys/keyID succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~hsm_state:(hsm_with_key ()) ~body:(`String key_json) "/keys/keyID" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1571,7 +1571,7 @@ let keys_key_put_already_there =
 
 let keys_key_put_invalid_id =
   "PUT on /keys/keyID fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String key_json) "/keys//" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -1580,7 +1580,7 @@ let keys_key_put_invalid_id =
 
 let keys_key_delete =
   "DELETE on /keys/keyID succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID" with
   | _, Some (`No_content, _, _, _) -> true
@@ -1589,7 +1589,7 @@ let keys_key_delete =
 
 let keys_key_delete_not_found =
   "DELETE on /keys/keyID fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2" with
     | _, Some (`Not_found, _, _, _) -> true
@@ -1598,7 +1598,7 @@ let keys_key_delete_not_found =
 
 let keys_key_delete_invalid_id =
   "DELETE on /keys/keyID fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys//" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1607,7 +1607,7 @@ let keys_key_delete_invalid_id =
 
 let admin_keys_key_public_pem =
   "GET on /keys/keyID/public.pem succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID/public.pem" with
     | _, Some (`OK, _, _, _) -> true
@@ -1616,7 +1616,7 @@ let admin_keys_key_public_pem =
 
 let operator_keys_key_public_pem =
   "GET on /keys/keyID/public.pem succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID/public.pem" with
     | _, Some (`OK, _, _, _) -> true
@@ -1625,7 +1625,7 @@ let operator_keys_key_public_pem =
 
 let operator_keys_key_public_pem_not_found =
   "GET on /keys/keyID/public.pem fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys/keyID2/public.pem" with
     | _, Some (`Not_found, _, _, _) -> true
@@ -1634,7 +1634,7 @@ let operator_keys_key_public_pem_not_found =
 
 let operator_keys_key_public_pem_invalid_id =
   "GET on /keys/keyID/public.pem fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:operator_headers ~hsm_state:(hsm_with_key ()) "/keys//public.pem" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1643,7 +1643,7 @@ let operator_keys_key_public_pem_invalid_id =
 
 let admin_keys_key_csr_pem =
   "POST on /keys/keyID/csr.pem succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_post_request ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
     | _, Some (`OK, headers, _, _) ->
@@ -1656,7 +1656,7 @@ let admin_keys_key_csr_pem =
 
 let operator_keys_key_csr_pem =
   "POST on /keys/keyID/csr.pem succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
     | _, Some (`OK, _, _, _) -> true
@@ -1665,7 +1665,7 @@ let operator_keys_key_csr_pem =
 
 let operator_keys_key_csr_pem_not_found =
   "POST on /keys/keyID/csr.pem fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID2/csr.pem" with
     | _, Some (`Not_found, _, _, _) -> true
@@ -1674,7 +1674,7 @@ let operator_keys_key_csr_pem_not_found =
 
 let operator_keys_key_csr_pem_invalid_id =
   "POST on /keys/keyID/csr.pem fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys//csr.pem" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1695,7 +1695,7 @@ let encrypted =
 
 let operator_keys_key_decrypt =
   "POST on /keys/keyID/decrypt succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys/keyID/decrypt" with
     | _, Some (`OK, _, `String data, _) ->
@@ -1712,7 +1712,7 @@ let operator_keys_key_decrypt =
 
 let operator_keys_key_decrypt_fails =
   "POST on /keys/keyID/decrypt fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
@@ -1722,7 +1722,7 @@ let operator_keys_key_decrypt_fails =
 
 let operator_keys_key_decrypt_fails_wrong_mech =
   "POST on /keys/keyID/decrypt fails (wrong mechanism)"
-@? fun () -> 
+@? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Decryption_RAW) () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state "/keys/keyID/decrypt" with
@@ -1732,7 +1732,7 @@ let operator_keys_key_decrypt_fails_wrong_mech =
 
 let operator_keys_key_decrypt_fails_invalid_id =
   "POST on /keys/keyID/decrypt fails (invalid ID)"
-@? fun () -> 
+@? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys//decrypt" with
     | _, Some (`Bad_request, _, _, _) -> true
@@ -1741,7 +1741,7 @@ let operator_keys_key_decrypt_fails_invalid_id =
 
 let operator_keys_key_decrypt_fails_not_found =
   "POST on /keys/keyID/decrypt fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String encrypted) ~hsm_state:(hsm_with_key ()) "/keys/keyID2/decrypt" with
     | _, Some (`Not_found, _, _, _) -> true
@@ -1754,7 +1754,7 @@ let sign_request =
 
 let operator_keys_key_sign =
   "POST on /keys/keyID/sign succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
@@ -1776,7 +1776,7 @@ let operator_keys_key_sign =
 
 let operator_keys_key_sign_fails =
   "POST on /keys/keyID/sign fails"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID/sign" with
@@ -1786,7 +1786,7 @@ let operator_keys_key_sign_fails =
 
 let operator_keys_key_sign_fails_bad_data =
   "POST on /keys/keyID/sign fails (msg too short)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PSS_SHA256) () in
     let sign_request =
@@ -1799,7 +1799,7 @@ let operator_keys_key_sign_fails_bad_data =
 
 let operator_keys_key_sign_fails_wrong_mech =
   "POST on /keys/keyID/sign fails (wrong mechanism)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let mechanisms = Keyfender.Json.(MS.singleton RSA_Signature_PSS_MD5) in
     let hsm_state = hsm_with_key ~mechanisms () in
@@ -1810,7 +1810,7 @@ let operator_keys_key_sign_fails_wrong_mech =
 
 let operator_keys_key_sign_fails_invalid_id =
   "POST on /keys/keyID/sign fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys//sign" with
@@ -1820,7 +1820,7 @@ let operator_keys_key_sign_fails_invalid_id =
 
 let operator_keys_key_sign_fails_not_found =
   "POST on /keys/keyID/sign fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key ~mechanisms:Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) () in
     match request ~meth:`POST ~headers:operator_headers ~body:(`String sign_request) ~hsm_state "/keys/keyID2/sign" with
@@ -1830,7 +1830,7 @@ let operator_keys_key_sign_fails_not_found =
 
 let operator_keys_key_sign_and_decrypt =
   "POST on /keys/keyID/decrypt succeeds with sign and decrypt key"
-  @? fun () -> 
+  @? fun () ->
   begin
   let mechanisms = Keyfender.Json.(MS.add RSA_Decryption_PKCS1 (MS.singleton RSA_Signature_PKCS1)) in
   let hsm_state = hsm_with_key ~mechanisms () in
@@ -1871,7 +1871,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
 let hsm_with_ed25519_key () =
   let hsm_state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton EdDSA_Signature) ~id:"keyID" ed25519_priv_pem no_restrictions 
+  Lwt_main.run (Hsm.Key.add_pem hsm_state Keyfender.Json.(MS.singleton EdDSA_Signature) ~id:"keyID" ed25519_priv_pem no_restrictions
     >|= function
     | Ok () -> hsm_state
     | Error _ -> assert false)
@@ -1884,7 +1884,7 @@ let ed25519_pub = Mirage_crypto_ec.Ed25519.pub_of_priv ed25519_priv
 
 let operator_sign_ed25519_succeeds =
   "POST on /keys/keyID/sign succeeds with ed25519 sign key"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_ed25519_key () in
     let sign_request =
@@ -1908,7 +1908,7 @@ let operator_sign_ed25519_succeeds =
 
 let operator_sign_ed25519_fails =
   "POST on /keys/keyID/sign fails with ed25519 sign key (bad mode)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_ed25519_key () in
     let sign_request =
@@ -1922,7 +1922,7 @@ let operator_sign_ed25519_fails =
 
 let keys_key_get_ed25519 =
   "GET on /keys/keyID succeeds with ED25519 key"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_ed25519_key ()) "/keys/keyID" with
     | _, Some (`OK, _, _, _) -> true
@@ -1935,7 +1935,7 @@ let ed25519_json =
 
 let keys_key_put_ed25519 =
   "PUT on /keys/keyID succeeds with ED25519 key"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~body:(`String ed25519_json) "/keys/keyID" with
     | _, Some (`No_content, _, _, _) -> true
@@ -1944,7 +1944,7 @@ let keys_key_put_ed25519 =
 
 let operator_keys_key_public_pem_ed25519 =
   "GET on /keys/keyID/public.pem succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:operator_headers ~hsm_state:(hsm_with_ed25519_key ()) "/keys/keyID/public.pem" with
     | _, Some (`OK, _, `String body, _) -> String.equal body (Cstruct.to_string (X509.Public_key.encode_pem (`ED25519 ed25519_pub)))
@@ -1957,7 +1957,7 @@ let aes_cbc_iv = "iviviviviviviviv"
 let aes_cbc_encrypted = "bx4qzXVP7jEUogLTcsaMcOOe1TZFS2zQTwebJNzTS90="
 
 let add_generic state ~id ms key =
-  let json_key = { Keyfender.Json.data = Base64.encode_string key ; 
+  let json_key = { Keyfender.Json.data = Base64.encode_string key ;
     primeP = ""; primeQ = ""; publicExponent = "" } in
   match Lwt_main.run (Hsm.Key.add_json ~id state ms Generic json_key no_restrictions) with
   | Ok () -> ()
@@ -1970,7 +1970,7 @@ let hsm_with_generic_key () =
 
 let operator_decrypt_aes_cbc_succeeds =
   "POST on /keys/keyID/decrypt succeeds with AES CBC"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_generic_key () in
     let decrypt_request =
@@ -1992,7 +1992,7 @@ let operator_decrypt_aes_cbc_succeeds =
 
 let operator_decrypt_aes_cbc_no_iv_fails =
   "POST on /keys/keyID/decrypt succeeds with AES CBC"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_generic_key () in
     let decrypt_request =
@@ -2006,7 +2006,7 @@ let operator_decrypt_aes_cbc_no_iv_fails =
 
 let operator_encrypt_aes_cbc_succeeds =
   "POST on /keys/keyID/decrypt succeeds with AES CBC"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_generic_key () in
     let encrypt_request =
@@ -2030,7 +2030,7 @@ let operator_encrypt_aes_cbc_succeeds =
 
 let operator_encrypt_aes_cbc_no_iv_succeeds =
   "POST on /keys/keyID/decrypt succeeds with AES CBC"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_generic_key () in
     let encrypt_request =
@@ -2059,7 +2059,7 @@ let operator_encrypt_aes_cbc_no_iv_succeeds =
 
 let keys_key_get_generic =
   "GET on /keys/keyID succeeds with Generic key"
-  @? fun () -> 
+  @? fun () ->
   begin
     match request ~headers:admin_headers ~hsm_state:(hsm_with_generic_key ()) "/keys/keyID" with
     | _, Some (`OK, _, _, _) -> true
@@ -2072,7 +2072,7 @@ let generic_json =
 
 let keys_key_put_generic =
   "PUT on /keys/keyID succeeds with Generic key"
-  @? fun () -> 
+  @? fun () ->
   begin
     match admin_put_request ~body:(`String generic_json) "/keys/keyID" with
     | _, Some (`No_content, _, _, _) -> true
@@ -2086,18 +2086,18 @@ let hsm_with_tags () =
   let tags = Keyfender.Json.TagSet.singleton "berlin" in
   Lwt_main.run (Hsm.Key.generate ~id:"keyID" hsm_state RSA ms ~length:1024 {tags}) |> Result.get_ok;
   hsm_state
-  
+
 let keys_key_get_with_restrictions =
   "GET on /keys/keyID with restrictions"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_tags ()) "/keys/keyID" with
   | _, Some (`OK, _, `String body, _) ->
     let open Yojson.Safe.Util in
-    body |> Yojson.Safe.from_string 
-    |> member "restrictions" 
-    |> member "tags" 
-    |> convert_each to_string 
+    body |> Yojson.Safe.from_string
+    |> member "restrictions"
+    |> member "tags"
+    |> convert_each to_string
     |> List.exists (String.equal "berlin")
   | _ -> false
   | exception Yojson.Safe.Util.Type_error _ -> false
@@ -2105,7 +2105,7 @@ let keys_key_get_with_restrictions =
 
 let keys_key_restrictions_tags_put =
   "PUT on /keys/keyID/restrictions/tags/frankfurt succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match admin_put_request ~hsm_state:(hsm_with_tags ()) "/keys/keyID/restrictions/tags/frankfurt" with
   | _, Some (`No_content, _, _, _) -> true
@@ -2114,7 +2114,7 @@ let keys_key_restrictions_tags_put =
 
 let keys_key_restrictions_tags_delete =
   "DELETE on /keys/keyID/restrictions/tags/berlin succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_tags ()) ~meth:`DELETE "/keys/keyID/restrictions/tags/berlin" with
   | _, Some (`No_content, _, _, _) -> true
@@ -2123,7 +2123,7 @@ let keys_key_restrictions_tags_delete =
 
 let keys_key_restrictions_tags_sign_ok =
   "POST on /keys/keyID/sign with an user matching the tag succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:operator_headers ~hsm_state:(hsm_with_tags ()) ~meth:`POST ~body:(`String sign_request) "/keys/keyID/sign" with
   | _, Some (`OK, _, _, _) -> true
@@ -2132,7 +2132,7 @@ let keys_key_restrictions_tags_sign_ok =
 
 let keys_key_restrictions_tags_sign_fail =
   "POST on /keys/keyID/sign with an user that doesn't have the tag fails"
-  @? fun () -> 
+  @? fun () ->
   begin
   let hsm_state = hsm_with_tags () in
   Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
@@ -2143,22 +2143,22 @@ let keys_key_restrictions_tags_sign_fail =
 
 let keys_get_filtered_by_restrictions =
   Alcotest.test_case "GET on /keys list is filtered by restrictions" `Quick @@
-  fun () -> 
+  fun () ->
   let hsm_state = hsm_with_tags () in
   (match request ~headers:operator_headers ~hsm_state "/keys" with
-  | _, Some (`OK, _, `String body, _) -> 
+  | _, Some (`OK, _, `String body, _) ->
     Alcotest.(check (neg string)) "when operator has tag: list isn't empty" body "[]"
-  | _ -> 
+  | _ ->
     Alcotest.fail "when operator has tag: didn't return OK");
   Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
   match request ~headers:operator_headers ~hsm_state "/keys" with
-  | _, Some (`OK, _, `String body, _) -> 
+  | _, Some (`OK, _, `String body, _) ->
     Alcotest.(check string) "when operator doesn't have tag: list is empty" body "[]"
   | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
 
 let keys_key_cert_get =
   "GET on /keys/keyID/cert succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data") in
@@ -2173,7 +2173,7 @@ let keys_key_cert_get =
 
 let keys_key_cert_get_not_found =
   "GET on /keys/keyID/cert fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match request ~headers:operator_headers ~hsm_state "/keys/keyID2/cert" with
@@ -2183,7 +2183,7 @@ let keys_key_cert_get_not_found =
 
 let keys_key_cert_get_invalid_id =
   "GET on /keys/keyID/cert fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match request ~headers:operator_headers ~hsm_state "/keys//cert" with
@@ -2217,7 +2217,7 @@ let keys_key_cert_get_accept_header =
 
 let keys_key_cert_put =
   "PUT on /keys/keyID/cert succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID/cert" with
@@ -2227,7 +2227,7 @@ let keys_key_cert_put =
 
 let keys_key_cert_put_fails =
   "PUT on /keys/keyID/cert fails (wrong content type)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match admin_put_request ~content_type:"text/html" ~body:(`String "data") ~hsm_state "/keys/keyID/cert" with
@@ -2237,7 +2237,7 @@ let keys_key_cert_put_fails =
 
 let keys_key_cert_put_not_found =
   "PUT on /keys/keyID/cert fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID2/cert" with
@@ -2247,7 +2247,7 @@ let keys_key_cert_put_not_found =
 
 let keys_key_cert_put_invalid_id =
   "PUT on /keys/keyID/cert fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match admin_put_request ~body:(`String "data") ~hsm_state "/keys//cert" with
@@ -2257,7 +2257,7 @@ let keys_key_cert_put_invalid_id =
 
 let keys_key_cert_delete =
   "DELETE on /keys/keyID/cert succeeds"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"text/plain" "data") in
@@ -2268,7 +2268,7 @@ let keys_key_cert_delete =
 
 let keys_key_cert_delete_not_found =
   "DELETE on /keys/keyID/cert fails (ID not found)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID2/cert" with
@@ -2278,7 +2278,7 @@ let keys_key_cert_delete_not_found =
 
 let keys_key_cert_delete_invalid_id =
   "DELETE on /keys/keyID/cert fails (invalid ID)"
-  @? fun () -> 
+  @? fun () ->
   begin
     let hsm_state = hsm_with_key () in
     match request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys//cert" with
@@ -2288,7 +2288,7 @@ let keys_key_cert_delete_invalid_id =
 
 let keys_key_version_get_fails =
   "GET on /keys/.version fails"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/.version" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -2297,7 +2297,7 @@ let keys_key_version_get_fails =
 
 let keys_key_version_delete_fails =
   "DELETE on /keys/.version fails"
-  @? fun () -> 
+  @? fun () ->
   begin
   match request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/.version" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -2306,7 +2306,7 @@ let keys_key_version_delete_fails =
 
 let keys_key_version_cert_get_fails =
   "GET on /keys/.version/cert fails"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = hsm_with_key () in
     let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data") in
@@ -2317,7 +2317,7 @@ let keys_key_version_cert_get_fails =
 
 let keys_key_version_cert_put_fails =
   "PUT on /keys/.version/cert fails"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = hsm_with_key () in
     match admin_put_request ~body:(`String "data") ~hsm_state "/keys/.version/cert" with
@@ -2327,7 +2327,7 @@ let keys_key_version_cert_put_fails =
 
 let keys_key_version_cert_delete_fails =
   "DELETE on /keys/.version/cert fails"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = hsm_with_key () in
     let _ = Lwt_main.run (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data") in
@@ -2341,7 +2341,7 @@ let unlock_rate_limit = 10
 let rate_limit_for_unlock =
   let path = "/unlock" in
   "rate limit for unlock"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = locked_mock () in
     for _ = 1 to unlock_rate_limit do
@@ -2357,7 +2357,7 @@ let rate_limit = 10
 let rate_limit_for_get =
   let path = "/system/info" in
   "rate limit for get"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = operational_mock () in
     let headers = auth_header "not a valid user" "no valid password" in
@@ -2376,7 +2376,7 @@ let rate_limit_for_get =
 let reset_rate_limit_after_successful_login =
   let path = "/system/info" in
   "rate limit is reset after successful login"
-  @? fun () -> 
+  @? fun () ->
     begin
     let hsm_state = operational_mock () in
     let headers = auth_header "not a valid user" "no valid password" in
@@ -2410,7 +2410,7 @@ let reset_rate_limit_after_successful_login =
 
 let auth_decode_invalid_base64 =
   "a request for /system/info with wrong base64 in user authentication returns 401"
-  @? fun () -> 
+  @? fun () ->
     let auth_header user pass =
       let base64 = "wrong" ^ Base64.encode_string (user ^ ":" ^ pass) in
       Header.init_with "authorization" ("Basic " ^ base64)
@@ -2483,7 +2483,7 @@ let crypto_rsa_decrypt () =
     ] in
   List.map (fun (idx, enc_data, dec_mode, txt) ->
     ("decryption with RSA " ^ txt ^ " succeeds")
-    @? fun () -> 
+    @? fun () ->
       let hsm = operational_mock () in
       let mechs =
         List.fold_right Keyfender.Json.MS.add
@@ -2510,7 +2510,7 @@ let b64_and_hash h d =
 
 let crypto_rsa_pkcs1_sign () =
   "signing with RSA PKCS1 succeeds"
-  @? fun () -> 
+  @? fun () ->
     let hsm = operational_mock () in
     add_pem hsm ~id:"test" Keyfender.Json.(MS.singleton RSA_Signature_PKCS1) rsa2048_priv_pem;
     let signature_hc = "iGIgswYW3f1hGYutuI6T/511p41aBF0gNV1N/MdqG1Wofaj8onUDJd/LD4h7s5s8wsXJ/EoH0zMck2XovWi3TLwCoghH3nL+Dv9b9fn6YMEnYOk4Uv0klFclwvLDmpiW+8An+7WPti2zlSkCkl2diwfA6N1hBRqKpnYYWCxMHxQOXCnXfDu1fxm6+MsUP8YZ5WUtVG6BV9lm+lzktHXBAkXmCYswtUbiol5NRbOH9P1PhG37UylT22ekszC8Ime5K2PSt5+WvlzM2Ry+peCMjSS7fMnsgasnkqLrTnZrZLMD7J6jG6I4Jxq+nPAgj9sXkJ+ozqllab+4mRIJEiaPOg==" in
@@ -2536,7 +2536,7 @@ let crypto_rsa_pss_sign () =
     ] in
   List.map (fun (hash, sign_mode, txt) ->
     ("signing with RSA " ^ txt ^ " succeeds")
-    @? fun () -> 
+    @? fun () ->
       let hsm = operational_mock () in
       let mechs =
         List.fold_right Keyfender.Json.MS.add
@@ -2567,7 +2567,7 @@ let ed25519_pub =
 
 let crypto_ed25519_sign () =
   "signing with ED25519 succeeds"
-  @? fun () -> 
+  @? fun () ->
     let hsm = operational_mock () in
     let mechs = Keyfender.Json.MS.singleton Keyfender.Json.EdDSA_Signature in
     add_pem hsm ~id:"test" mechs ed25519_priv_pem;
@@ -2593,7 +2593,7 @@ let crypto_ecdsa_sign () =
   ] in
   List.map (fun (hash, priv, sign, txt) ->
     ("signing with ECDSA " ^ txt ^ " succeeds")
-    @? fun () -> 
+    @? fun () ->
       let hsm = operational_mock () in
       add_pem hsm ~id:"test" mechs (Cstruct.to_string (X509.Private_key.encode_pem priv));
       let pub = X509.Private_key.public priv in
@@ -2613,7 +2613,7 @@ let crypto_aes_cbc_encrypt () =
   let sizes = [ 128; 192; 256 ] in
   List.map (fun size ->
     ("encryption with AES-CBC succeeds")
-    @? fun () -> 
+    @? fun () ->
       let hsm = operational_mock () in
       let secret = Mirage_crypto_rng.generate (size/8) in
       add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
@@ -2634,7 +2634,7 @@ let crypto_aes_cbc_decrypt () =
   let sizes = [ 128; 192; 256 ] in
   List.map (fun size ->
     ("decryption with AES-CBC succeeds")
-    @? fun () -> 
+    @? fun () ->
       let hsm = operational_mock () in
       let secret = Mirage_crypto_rng.generate (size/8) in
       add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
@@ -2650,21 +2650,21 @@ let crypto_aes_cbc_decrypt () =
       | Error _ -> assert false
       end)
     sizes
-    
+
 let () =
   let open Alcotest in
   let tests = [
     "/", [ empty ];
     "/health/alive", [ health_alive_ok ];
-    "/health/ready", [ health_ready_ok ; 
+    "/health/ready", [ health_ready_ok ;
                        health_ready_error_precondition_failed ];
     "/health/state", [ health_state_ok ];
-    "/random", [ random_ok ; 
+    "/random", [ random_ok ;
                   random_error_bad_length ];
     "/provision", [ provision_ok ;
                      provision_error_malformed_request ;
                      provision_error_precondition_failed];
-    "/system/info", [ system_info_ok ; 
+    "/system/info", [ system_info_ok ;
                       system_info_error_authentication_required;
                       system_info_error_precondition_failed ;
                       system_info_error_forbidden ];
@@ -2678,7 +2678,7 @@ let () =
                         system_update_invalid_data ;
                         system_update_platform_bad ;
                         system_update_version_downgrade ];
-    "/system/commit-update", [ system_update_commit_ok ; 
+    "/system/commit-update", [ system_update_commit_ok ;
                                system_update_commit_fail ;
                                system_update_cancel_ok];
     "/system/update from binary file", [ system_update_from_file_ok ];
@@ -2689,31 +2689,31 @@ let () =
                  unlock_failed ;
                  unlock_failed_two ;
                  unlock_twice ];
-    "/lock", [ lock_ok ; 
+    "/lock", [ lock_ok ;
                lock_failed ];
-    "/config/unattended_boot", [ get_unattended_boot_ok ; 
-                                 unattended_boot_succeeds ; 
-                                 unattended_boot_failed_wrong_device_id ; 
+    "/config/unattended_boot", [ get_unattended_boot_ok ;
+                                 unattended_boot_succeeds ;
+                                 unattended_boot_failed_wrong_device_id ;
                                  unattended_boot_failed ];
-    "/config/unlock-passphrase", [ change_unlock_passphrase ; 
+    "/config/unlock-passphrase", [ change_unlock_passphrase ;
                                    change_unlock_passphrase_empty ];
     "/config/tls/public.pem", [ get_config_tls_public_pem ];
-    "/config/tls/cert.pem", [ get_config_tls_cert_pem ; 
-                              put_config_tls_cert_pem ; 
+    "/config/tls/cert.pem", [ get_config_tls_cert_pem ;
+                              put_config_tls_cert_pem ;
                               put_config_tls_cert_pem_fail ];
     "/config/tls/generate", [ post_config_tls_generate ;
                               post_config_tls_generate_generic_key ;
                               post_config_tls_generate_bad_length ];
-    "/config/network", [ config_network_ok ; 
-                         config_network_set_ok ; 
+    "/config/network", [ config_network_ok ;
+                         config_network_set_ok ;
                          config_network_set_fail ];
-    "/config/logging", [ config_logging_ok ; 
-                         config_logging_set_ok ; 
+    "/config/logging", [ config_logging_ok ;
+                         config_logging_set_ok ;
                          config_logging_set_fail ];
-    "/config/time", [ config_time_ok ; 
-                      config_time_set_ok ; 
+    "/config/time", [ config_time_ok ;
+                      config_time_set_ok ;
                       config_time_set_fail ];
-    "/config/backup-passphrase", [ set_backup_passphrase ; 
+    "/config/backup-passphrase", [ set_backup_passphrase ;
                                    set_backup_passphrase_empty ];
     "invalid config version", [ invalid_config_version ];
     "config version but no unlock salt", [ config_version_but_no_salt ];
@@ -2740,16 +2740,16 @@ let () =
                             user_backup_tags_put_not_operator ];
     "/users/.version", [ user_version_get_bad_request ;
                          user_version_delete_fails_invalid_id ];
-    "/users/admin/passphrase", [ user_passphrase_post; 
+    "/users/admin/passphrase", [ user_passphrase_post;
                                  user_passphrase_administrator_post ;
                                  user_passphrase_post_fails_not_found ;
                                  user_passphrase_post_fails_invalid_id ] ;
     "/users/operator/passphrase", [ user_passphrase_operator_post ];
-    "/keys", [ keys_get ; 
+    "/keys", [ keys_get ;
                keys_get_filtered_by_restrictions ;
-               keys_post_json ; 
+               keys_post_json ;
                keys_post_pem ];
-    "/keys/generate", [ keys_generate ; 
+    "/keys/generate", [ keys_generate ;
                         keys_generate_invalid_id ;
                         keys_generate_invalid_id_length ;
                         keys_generate_invalid_mech ;
@@ -2759,17 +2759,17 @@ let () =
                         keys_generate_ed25519_fail ;
                         keys_generate_generic ;
                         keys_generate_generic_fail ];
-    "/keys/keyID", [ keys_key_get ; 
-                     keys_key_get_not_found ; 
-                     keys_key_get_invalid_id ; 
-                     keys_key_put_json ; 
+    "/keys/keyID", [ keys_key_get ;
+                     keys_key_get_not_found ;
+                     keys_key_get_invalid_id ;
+                     keys_key_put_json ;
                      keys_key_put_pem ;
-                     keys_key_put_already_there ; 
-                     keys_key_put_invalid_id ; 
-                     keys_key_delete ; 
-                     keys_key_delete_not_found ; 
-                     keys_key_delete_invalid_id ; 
-                     keys_key_get_ed25519 ; 
+                     keys_key_put_already_there ;
+                     keys_key_put_invalid_id ;
+                     keys_key_delete ;
+                     keys_key_delete_not_found ;
+                     keys_key_delete_invalid_id ;
+                     keys_key_get_ed25519 ;
                      keys_key_put_ed25519 ;
                      keys_key_get_generic ;
                      keys_key_put_generic ;
@@ -2778,25 +2778,25 @@ let () =
                                        keys_key_restrictions_tags_delete ;
                                        keys_key_restrictions_tags_sign_ok ;
                                        keys_key_restrictions_tags_sign_fail ];
-    "/keys/keyID/public.pem", [ admin_keys_key_public_pem ; 
-                                operator_keys_key_public_pem ; 
-                                operator_keys_key_public_pem_not_found ; 
+    "/keys/keyID/public.pem", [ admin_keys_key_public_pem ;
+                                operator_keys_key_public_pem ;
+                                operator_keys_key_public_pem_not_found ;
                                 operator_keys_key_public_pem_invalid_id ;
                                 operator_keys_key_public_pem_ed25519];
-    "/keys/keyID/csr.pem", [ admin_keys_key_csr_pem; 
+    "/keys/keyID/csr.pem", [ admin_keys_key_csr_pem;
                              operator_keys_key_csr_pem ;
                              operator_keys_key_csr_pem_not_found ;
                              operator_keys_key_csr_pem_invalid_id ];
-    "/keys/keyID/decrypt", [ operator_keys_key_decrypt ; 
-                             operator_keys_key_decrypt_fails ; 
-                             operator_keys_key_decrypt_fails_wrong_mech ; 
-                             operator_keys_key_decrypt_fails_invalid_id ; 
-                             operator_keys_key_decrypt_fails_not_found ; 
-                             operator_decrypt_aes_cbc_succeeds ; 
-                             operator_decrypt_aes_cbc_no_iv_fails ; 
-                             operator_encrypt_aes_cbc_succeeds ; 
+    "/keys/keyID/decrypt", [ operator_keys_key_decrypt ;
+                             operator_keys_key_decrypt_fails ;
+                             operator_keys_key_decrypt_fails_wrong_mech ;
+                             operator_keys_key_decrypt_fails_invalid_id ;
+                             operator_keys_key_decrypt_fails_not_found ;
+                             operator_decrypt_aes_cbc_succeeds ;
+                             operator_decrypt_aes_cbc_no_iv_fails ;
+                             operator_encrypt_aes_cbc_succeeds ;
                              operator_encrypt_aes_cbc_no_iv_succeeds ];
-    "/keys/keyID/sign", [ operator_keys_key_sign ; 
+    "/keys/keyID/sign", [ operator_keys_key_sign ;
                           operator_keys_key_sign_fails ;
                           operator_keys_key_sign_fails_bad_data ;
                           operator_keys_key_sign_fails_wrong_mech ;
@@ -2818,7 +2818,7 @@ let () =
                           keys_key_cert_delete_invalid_id ];
     "/keys/version", [ keys_key_version_get_fails ;
                        keys_key_version_delete_fails ];
-    "/keys/version/cert", [ keys_key_version_cert_get_fails ; 
+    "/keys/version/cert", [ keys_key_version_cert_get_fails ;
                             keys_key_version_cert_put_fails ;
                             keys_key_version_cert_delete_fails ];
     "rate limit", [ rate_limit_for_get ;
