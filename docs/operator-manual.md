@@ -40,9 +40,9 @@ Add the changes (as a markdown list) before the previous release marker. This wi
 
 **TODO**: Conplete this section, once System Software Update is actually implemented.
 
-A _System Software_ update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is named "update.pem", and located in src/keyfender of this repository. It must be a PEM encoded RSA public key.
+A _System Software_ update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is passed to the keyfender library during `Hsm.boot`. By default, the unikernel copies `src/keyfender/test/public.pem` (private part is `src/keyfender/test/key.pem`) to `src/s_keyfender/update_key_store/key.pem`, which is embedded into the unikernel at build time. It must be a PEM encoded RSA public key. If the Makefile variable `OUTER_SMARTCARD` is set (to a PKCS11 URL), the public key is extracted from the SmartCard to be embedded into the unikernel. In addition, the SmartCard is used for signing the update image (using `bin/sign_update.exe`).
 
-To add the outer signature to a software update image the keyfender library provides "bin/sign-update.exe". Please read the output of "sign-update.exe --help" for instructions how to use it. The output file can be uploaded to a NetHSM (/system/update endpoint).
+To add the outer signature to a software update image the keyfender library provides `bin/sign-update.exe`. Please read the output of `sign-update.exe --help` for instructions how to use it. The output file can be uploaded to a NetHSM (/system/update endpoint). The signature is created by `openssl pkeyutl`.
 
 # Rate Limiting {#sec-rl}
 
