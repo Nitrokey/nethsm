@@ -243,16 +243,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
   let exists t k =
     let key = bytes_of_key k in
-    let range_end = end_of_prefix key in
-    let request = RangeRequest.make ~key ~range_end ~keys_only:true () in
+    let request = RangeRequest.make ~key ~count_only:true () in
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
-        match resp.kvs with
-        | [] -> Ok None
-        | l ->
-            if List.exists (fun e -> Bytes.equal e.KeyValue.key key) l then
-              Ok (Some `Value)
-            else Ok (Some `Dictionary))
+        if resp.count > 0 then Ok (Some `Value) else Ok None)
 
   let get t k =
     let key = bytes_of_key k in
