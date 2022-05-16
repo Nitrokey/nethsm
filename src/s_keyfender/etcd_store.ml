@@ -114,11 +114,11 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     in
     Lwt.pick
       [
-        ( OS.Time.sleep_ns (Duration.of_sec 120) >|= fun () ->
+        (* ( OS.Time.sleep_ns (Duration.of_sec 120) >|= fun () ->
           let msg = "gRPC call timed out" in
           Log.warn (fun m -> m "%s" msg);
           shutdown_persistent_connection ();
-          failwith msg );
+          failwith msg ); *)
         ( h2_error >|= fun e ->
           let e_str = error_to_string e in
           Log.err (fun m ->
