@@ -101,9 +101,10 @@ endif
 # ------------------------------------------------------------------------------
 
 SOFTWARE_VERSION := src/keyfender/softwareVersion
+BUILD_TAG := $(strip $(shell git -C . describe --dirty --tags --always))
 
 src/keyfender/buildTag:
-	git -C . describe --dirty --tags --always > $@
+	echo $BUILD_TAG > $@
 
 $(SOFTWARE_VERSION): CHANGES.md
 	grep ^# CHANGES.md | head -1 | cut -d ' ' -f 2 > $@
@@ -584,6 +585,7 @@ OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_GOPATH := $(TOP_DIR)/src/u-root
 U_ROOT_BIN := $(U_ROOT_GOPATH)/bin/u-root
 U_ROOT_UINIT := nethsm/uinit
+U_ROOT_BUILD_TAG := $(U_ROOT_GOPATH)/src/$(U_ROOT_UINIT)/build_tag.go
 # XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
 U_ROOT_PKGS := github.com/u-root/u-root/cmds/core/init \
     github.com/u-root/u-root/cmds/core/cpio \
@@ -596,6 +598,9 @@ U_ROOT_PKGS := github.com/u-root/u-root/cmds/core/init \
     github.com/u-root/u-root/cmds/core/umount \
     $(U_ROOT_UINIT)
 
+$(U_ROOT_BUILD_TAG):
+	echo -n "package main\n\nconst buildTag = \"$(BUILD_TAG)\"\n" >$@
+
 # Rather than using "export GOPATH" and thus potentially polluting the
 # environment of *all* Makefiles called from this Makefile, ensure it is set
 # explicitly and only for those recipes/commands that require it.
@@ -605,7 +610,7 @@ $(U_ROOT_BIN):
 INITRAMFS_DEPS := $(INSTALL_GIT_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_MKE2FS_CONF) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)
 
-$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS)
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG)
 	GOPATH=$(U_ROOT_GOPATH) $(U_ROOT_BIN) -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
 	    -defaultsh="" \

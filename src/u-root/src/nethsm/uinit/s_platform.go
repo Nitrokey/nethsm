@@ -283,14 +283,22 @@ func sPlatformActions() {
 		return
 	}
 
-	// If /data/initialised-v1 does NOT exist, assume /data is empty and
+	// If /data/initialised-<buildTag> does NOT exist, assume /data is empty and
 	// populate it from the template CPIO archive included in the initramfs.
-	if _, err := os.Stat("/data/initialised-v1"); os.IsNotExist(err) {
+	const initFile = "/data/initialised-" + buildTag
+	if _, err := os.Stat(initFile); os.IsNotExist(err) {
+		_ = os.RemoveAll("/data/./")
 		log.Printf("Populating /data")
 		if err := extractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
 			log.Printf("Error extracting /data template: %v", err)
 			return
 		}
+		f, err := os.OpenFile(initFile, os.O_RDONLY|os.O_CREATE, 0644)
+		if err != nil {
+			log.Printf("Error creating %s: %v", initFile, err)
+			return
+		}
+		f.Close()
 	}
 
 	G.s.Logf("Starting Git server")
