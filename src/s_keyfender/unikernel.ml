@@ -223,7 +223,7 @@ struct
         | Hsm.Log log ->
           setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
           handle_cb http
-        | Hsm.Shutdown | Hsm.Reboot | Hsm.Reset as cmd ->
+        | Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset as cmd ->
           Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
           write_to_platform cmd
         | Hsm.Tls certificates ->

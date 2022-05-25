@@ -29,7 +29,7 @@ module type S = sig
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
-    | Reset
+    | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
 
@@ -114,7 +114,7 @@ module type S = sig
 
     val shutdown : t -> unit Lwt.t
 
-    val reset : t -> unit Lwt.t
+    val factory_reset : t -> unit Lwt.t
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 
@@ -447,7 +447,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
-    | Reset
+    | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
 
@@ -459,7 +459,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Tls _ -> "TLS_CERTIFICATE"
     | Shutdown -> "SHUTDOWN"
     | Reboot -> "REBOOT"
-    | Reset -> "RESET"
+    | Factory_reset -> "FACTORY-RESET"
     | Update _ -> "UPDATE"
     | Commit_update -> "COMMIT-UPDATE"
 
@@ -1774,7 +1774,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Key.dump_keys t >>= fun () ->
       Lwt_mvar.put t.mbox Shutdown
 
-    let reset t = Lwt_mvar.put t.mbox Reset
+    let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
     let put_back stream chunk = if chunk = "" then stream else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
 

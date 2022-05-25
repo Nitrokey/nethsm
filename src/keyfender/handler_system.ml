@@ -48,7 +48,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Wm.continue true rd
   end
 
-  class reset hsm_state ip = object
+  class factory_reset hsm_state ip = object
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
     inherit !Endpoint.role hsm_state `Administrator ip
@@ -56,7 +56,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     inherit !Endpoint.no_cache
 
     method! process_post rd =
-      Hsm.System.reset hsm_state >>= fun () ->
+      Hsm.System.factory_reset hsm_state >>= fun () ->
       Wm.continue true rd
   end
 

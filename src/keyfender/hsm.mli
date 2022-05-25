@@ -29,7 +29,7 @@ module type S = sig
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
-    | Reset
+    | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
 
@@ -115,7 +115,7 @@ module type S = sig
 
     val shutdown : t -> unit Lwt.t
 
-    val reset : t -> unit Lwt.t
+    val factory_reset : t -> unit Lwt.t
 
     val update : t -> string Lwt_stream.t -> (string, error) result Lwt.t
 

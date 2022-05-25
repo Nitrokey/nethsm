@@ -213,8 +213,8 @@ func platformListener(result chan string) {
 			log.Printf("[%s] Requested REBOOT.", remoteAddr)
 			response = okResponse("")
 			terminalCommand = true
-		case "RESET":
-			log.Printf("[%s] Requested RESET.", remoteAddr)
+		case "FACTORY-RESET":
+			log.Printf("[%s] Requested FACTORY-RESET.", remoteAddr)
 			response = okResponse("")
 			terminalCommand = true
 		default:
@@ -334,7 +334,7 @@ func sPlatformActions() {
 		log.Printf("System will reboot now.")
 		time.Sleep(2 * time.Second)
 		triggerMuenEvent("reboot")
-	case "RESET":
+	case "FACTORY-RESET":
 		G.s.Logf("Formatting data partition.")
 		G.s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data /dev/sda3")
 

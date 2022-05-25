@@ -251,10 +251,10 @@ let system_shutdown_ok =
       | _ -> false
    end
 
-let system_reset_ok =
-  "a request for /system/reset with authenticated user returns 200"
-  @? fun () ->
-    begin match admin_post_request "/system/reset" with
+let system_factory_reset_ok =
+  "a request for /system/factory-reset with authenticated user returns 200"
+  @? fun () -> 
+    begin match admin_post_request "/system/factory-reset" with
       | _, Some (`No_content, _, _, _) -> true
       | _ -> false
    end
@@ -2752,7 +2752,7 @@ let () =
                       system_info_error_forbidden ];
     "/system/reboot", [ system_reboot_ok ];
     "/system/shutdown", [ system_shutdown_ok ];
-    "/system/reset", [ system_reset_ok ];
+    "/system/factory-reset", [ system_factory_reset_ok ];
     "/system/update", [ system_update_ok ;
                         system_update_signature_mismatch ;
                         system_update_too_much_data ;

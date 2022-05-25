@@ -67,7 +67,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/system/info", fun () -> new System.info hsm_state ip) ;
         ("/system/reboot", fun () -> new System.reboot hsm_state ip) ;
         ("/system/shutdown", fun () -> new System.shutdown hsm_state ip) ;
-        ("/system/reset", fun () -> new System.reset hsm_state ip) ;
+        ("/system/factory-reset", fun () -> new System.factory_reset hsm_state ip) ;
         ("/system/update", fun () -> new System.update hsm_state ip) ;
         ("/system/commit-update", fun () -> new System.commit_update hsm_state ip) ;
         ("/system/cancel-update", fun () -> new System.cancel_update hsm_state ip) ;

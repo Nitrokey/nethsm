@@ -39,7 +39,7 @@ func mockActions() {
 	go platformListener(c)
 	request := <-c
 	log.Printf("platformListener returned: %s", request)
-	if request == "RESET" {
+	if request == "FACTORY-RESET" {
 		log.Printf("Deleting Device ID from TPM.")
 		err := tpmDeleteDeviceId(G.tpmDevice)
 		if err != nil {
