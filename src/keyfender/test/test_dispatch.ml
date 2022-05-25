@@ -57,7 +57,8 @@ let create_operational_mock mbox =
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
     Hsm.User.add_tag state ~id:"operator" ~tag:"berlin" >>= fun _ ->
-    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >|= fun _ ->
+    Hsm.User.add state ~id:"backup" ~role:`Backup ~passphrase:"test3Passphrase" ~name:"backup" >>= fun _ ->
+    Hsm.User.add state ~id:"operator2" ~role:`Operator ~passphrase:"test4Passphrase" ~name:"operator2" >|= fun _ ->
     state)
 
 let operational_mock = create_operational_mock good_platform
@@ -1032,7 +1033,7 @@ let users_get =
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users" with
   | _, Some (`OK, _, `String data, _) ->
-   let expected ={|[{"user":"admin"},{"user":"backup"},{"user":"operator"}]|} in
+   let expected ={|[{"user":"admin"},{"user":"backup"},{"user":"operator"},{"user":"operator2"}]|} in
    String.equal data expected
   | _ -> false
   end
@@ -1109,7 +1110,7 @@ let user_operator_delete_not_found =
   "DELETE on /users/operator fails (not found)"
   @? fun () ->
   begin
-  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/operator2" with
+  match request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers:admin_headers "/users/op" with
   | _, Some (`Not_found, _, _, _) -> true
   | _ -> false
   end
@@ -1178,6 +1179,16 @@ let user_operator_get_invalid_id2 =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
+
+let user_operator_get_forbidden =
+  "GET on /users/operator2/ returns forbidden"
+  @? fun () ->
+  begin
+  match request ~hsm_state:(operational_mock ()) ~headers:operator_headers "/users/operator2/" with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+  end
+
 
 let user_operator_tags_get =
   "GET on /users/operator/tags succeeds"
@@ -2835,7 +2846,8 @@ let () =
                          user_operator_get ;
                          user_operator_get_not_found ;
                          user_operator_get_invalid_id ;
-                         user_operator_get_invalid_id2 ];
+                         user_operator_get_invalid_id2 ;
+                         user_operator_get_forbidden ];
     "/users/operator/tags", [ user_operator_tags_get ;
                               user_operator_tags_get_invalid_id ;
                               user_operator_tags_put ;
