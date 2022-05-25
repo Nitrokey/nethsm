@@ -1330,7 +1330,12 @@ let keys_post_pem =
   @? fun () ->
   begin
     match admin_post_request ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys" with
-    | _, Some (`Created, _, _, _) -> true
+    | _, Some (`Created, headers, _, _) -> 
+      begin match Cohttp.Header.get headers "location" with 
+      | None -> false 
+      | Some loc when String.contains loc '?' -> false (* the query string shouldn't be included *)
+      | Some _ -> true
+      end
     | _ -> false
   end
 
