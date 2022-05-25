@@ -52,7 +52,10 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       in
       let ok mechanisms =
         Hsm.Key.add_pem hsm_state ~id mechanisms content { tags } >>= function
-        | Ok () -> Wm.continue true rd
+        | Ok () ->
+          let cc hdr = Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id) in
+          let rd' = Webmachine.Rd.with_resp_headers cc rd in
+          Wm.continue true rd'
         | Error e -> Endpoint.respond_error e rd
       in
       Endpoint.err_to_bad_request ok rd mechanisms
