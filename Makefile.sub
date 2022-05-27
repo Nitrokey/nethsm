@@ -521,7 +521,7 @@ COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
 OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
 CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
 
-$(COREBOOT_SRC)/.config: .stamp-prepare
+$(COREBOOT_SRC)/.config: .stamp-prepare $(COREBOOT_SRC)/$(COREBOOT_CONFIG)
 	cd $(COREBOOT_SRC) && \
 	    make defconfig KBUILD_DEFCONFIG=$(COREBOOT_CONFIG)
 ifeq ($(USE_CCACHE),1)
