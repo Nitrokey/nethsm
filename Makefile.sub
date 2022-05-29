@@ -520,6 +520,8 @@ COREBOOT_SRC := src/coreboot/coreboot
 COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
 OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
 CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
+OBJ_BIOS_SWU := $(OBJ_DIR)/bios.swu
+BIOS_BASE_SWU := src/coreboot/blobs/hermes_bios_base.swu
 
 $(COREBOOT_SRC)/.config: .stamp-prepare $(COREBOOT_SRC)/$(COREBOOT_CONFIG)
 	cd $(COREBOOT_SRC) && \
@@ -545,6 +547,15 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREB
 	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
 	$(CBFSTOOL) $@ add \
 	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
+
+$(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
+	OFFSET_ROM=$(shell strings -o -t x $(OBJ_COREBOOT_ROM) | \
+		grep -F __FMAP__ | head -1 | sed 's/ .*//'); \
+	OFFSET_SWU=$(shell strings -o -t x $(BIOS_BASE_SWU) | \
+		grep -F __FMAP__ | head -1 | sed 's/ .*//' ); \
+	cp $(BIOS_BASE_SWU) $@ ; \
+	dd if=$(OBJ_COREBOOT_ROM) of=$@ bs=16 skip=$$((0x$${OFFSET_ROM}/16)) \
+		seek=$$((0x$${OFFSET_SWU}/16)) conv=notrunc
 
 # ------------------------------------------------------------------------------
 OBJ_DATA_GIT_DIR := $(OBJ_DATA_DIR)/git
@@ -685,6 +696,10 @@ $(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(SIGN_UPDATE_KEY) $(OBJ_UPD
 	    >$@
 
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_COREBOOT_ROM) $(OBJ_UPDATE_IMG)
+
+ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ARTIFACTS += $(OBJ_BIOS_SWU)
+endif
 
 .PHONY: build
 build: $(ARTIFACTS)
