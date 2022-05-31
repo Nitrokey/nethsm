@@ -2111,6 +2111,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         dump ()
       in
       Lwt.async dump_key_ops;
+      let discard_old_rate_limits () =
+        let rec discard () =
+          Time.sleep_ns (Duration.of_min 1) >>= fun () ->
+          Rate_limit.discard_old_entries (now ());
+          discard ()
+        in
+        discard ()
+      in
+      Lwt.async discard_old_rate_limits;
       t, t.mbox, t.res_mbox
     | Error `Msg msg ->
       Log.err (fun m -> m "error booting %s" msg);
