@@ -65,7 +65,8 @@ end
     | Unconfigured -> Fmt.invalid_arg "Cannot disconnect an unconfigured stack."
     | Ready { tcp; stack } ->
       let* () = Tcp.disconnect tcp in
-      Stack.disconnect stack
+      let+ () = Stack.disconnect stack in
+      state := Unconfigured
 
   let stack (_, state) =
     match !state with
