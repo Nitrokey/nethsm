@@ -1069,7 +1069,7 @@ let user_operator_add =
 
 let user_operator_add_empty_passphrase =
   let operator_json = {| { realName: "Jane User", role: "Operator", passphrase: "" } |} in
-  "PUT on /users/op succeeds"
+  "PUT on /users/op fails (empty passphrase)"
   @? fun () ->
   begin
   match admin_put_request ~body:(`String operator_json) "/users/op" with
@@ -1078,10 +1078,20 @@ let user_operator_add_empty_passphrase =
   end
 
 let user_operator_add_invalid_id =
-  "PUT on /users/op fails (invalid id)"
+  "PUT on /users// fails (invalid id)"
   @? fun () ->
   begin
   match admin_put_request ~body:(`String operator_json) "/users//" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_add_invalid_id2 =
+  "PUT on /users/<long id>/ fails (ID too long)"
+  @? fun () ->
+  begin
+  let id = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" in
+  match admin_put_request ~body:(`String operator_json) ("/users/" ^ id ^ "/") with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
@@ -1155,6 +1165,16 @@ let user_operator_get_invalid_id =
   @? fun () ->
   begin
   match request ~hsm_state:(operational_mock ()) ~headers:admin_headers "/users//" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+  end
+
+let user_operator_get_invalid_id2 =
+  "GET on /users/<LONG ID>/ returns bad request"
+  @? fun () ->
+  begin
+  let id = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" in
+  match request ~hsm_state:(operational_mock ()) ~headers:admin_headers ("/users/" ^ id ^ "/") with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
   end
@@ -2806,6 +2826,7 @@ let () =
     "/users/operator", [ user_operator_add ;
                          user_operator_add_empty_passphrase ;
                          user_operator_add_invalid_id ;
+                         user_operator_add_invalid_id2 ;
                          user_operator_delete ;
                          user_operator_delete_not_found ;
                          user_operator_delete_invalid_id ;
@@ -2813,7 +2834,8 @@ let () =
                          user_op_delete_fails ;
                          user_operator_get ;
                          user_operator_get_not_found ;
-                         user_operator_get_invalid_id ];
+                         user_operator_get_invalid_id ;
+                         user_operator_get_invalid_id2 ];
     "/users/operator/tags", [ user_operator_tags_get ;
                               user_operator_tags_get_invalid_id ;
                               user_operator_tags_put ;
