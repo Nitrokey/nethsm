@@ -1,14 +1,14 @@
 open Lwt.Syntax
 
-(* 
-  A reconfigurable stack is a network stack whose IP is decided at runtime. 
-  As such, `connect` only prepare the stack's state, but it can only be considered 
+(*
+  A reconfigurable stack is a network stack whose IP is decided at runtime.
+  As such, `connect` only prepare the stack's state, but it can only be considered
   ready when `setup` is called. *)
 module type S = sig
   type t
 
   val setup : t -> ?gateway:Ipaddr.V4.t -> Ipaddr.V4.Prefix.t -> unit Lwt.t
-  
+
   val disconnect : t -> unit Lwt.t
 
   module Stack : Tcpip.Stack.V4V6
@@ -16,13 +16,13 @@ module type S = sig
   val stack : t -> Stack.t
 end
 
-module Direct (Rng: Mirage_random.S) (Mclock: Mirage_clock.MCLOCK) (Net: Mirage_net.S) (Eth: Mirage_protocols.ETHERNET) (Arp: Mirage_protocols.ARP): sig 
+module Direct (Rng: Mirage_random.S) (Mclock: Mirage_clock.MCLOCK) (Net: Mirage_net.S) (Eth: Mirage_protocols.ETHERNET) (Arp: Mirage_protocols.ARP): sig
   include S
-    
+
   val connect : Net.t -> Eth.t -> Arp.t -> t Lwt.t
 
 end
-= struct 
+= struct
   module Time = OS.Time
   module Ipv4 = Static_ipv4.Make(Rng)(Mclock)(Eth)(Arp)
   module Ipv6 = Ipv6.Make(Net)(Eth)(Rng)(Time)(Mclock)
@@ -38,8 +38,8 @@ end
 
   type network = {net: net; eth: eth; arp: arp}
 
-  type state = 
-    | Unconfigured 
+  type state =
+    | Unconfigured
     | Ready of { tcp: Tcp.t; stack: Stack.t }
 
   type t = network * state ref
@@ -59,21 +59,21 @@ end
       let* tcp = Tcp.connect ip in
       let+ stack = Stack.connect net eth arp ip icmp udp tcp in
       state := Ready {tcp; stack}
-  
+
   let disconnect (_, state) =
     match !state with
     | Unconfigured -> Fmt.invalid_arg "Cannot disconnect an unconfigured stack."
     | Ready { tcp; stack } ->
       let* () = Tcp.disconnect tcp in
       Stack.disconnect stack
-  
-  let stack (_, state) = 
+
+  let stack (_, state) =
     match !state with
     | Unconfigured -> Fmt.invalid_arg "Stack is not configured."
     | Ready { stack; _} -> stack
 end
 
-module Fixed(Stack: Tcpip.Stack.V4V6): sig 
+module Fixed(Stack: Tcpip.Stack.V4V6): sig
   include S with module Stack = Stack
 
   val connect : Stack.t -> t Lwt.t
@@ -83,7 +83,7 @@ end = struct
 
   let connect = Lwt.return
 
-  let disconnect _ = 
+  let disconnect _ =
     Logs.warn (fun f -> f "This stack is not configurable.");
     Lwt.return_unit
 
