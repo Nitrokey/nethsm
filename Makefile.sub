@@ -101,10 +101,10 @@ endif
 # ------------------------------------------------------------------------------
 
 SOFTWARE_VERSION := src/keyfender/softwareVersion
-BUILD_TAG := $(strip $(shell git -C . describe --dirty --tags --always))
+BUILD_TAG := $(strip $(shell git -C . describe --tags --always))
 
 src/keyfender/buildTag:
-	echo $BUILD_TAG > $@
+	echo $(BUILD_TAG) > $@
 
 $(SOFTWARE_VERSION): CHANGES.md
 	grep ^# CHANGES.md | head -1 | cut -d ' ' -f 2 > $@
