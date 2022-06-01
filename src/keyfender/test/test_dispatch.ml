@@ -2712,6 +2712,7 @@ let () =
     "/config/tls/cert.pem", [ get_config_tls_cert_pem ;
                               put_config_tls_cert_pem ;
                               put_config_tls_cert_pem_fail ];
+    "/config/tls/csr", [ post_config_tls_csr_pem ];
     "/config/tls/generate", [ post_config_tls_generate ;
                               post_config_tls_generate_generic_key ;
                               post_config_tls_generate_bad_length ];
