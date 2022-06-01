@@ -27,12 +27,12 @@ let decode parse data =
 
 type subject_req = {
     commonName : string ;
-    countryName : string ;
-    localityName : string ;
-    stateOrProvinceName : string ;
-    organizationName : string ;
-    organizationalUnitName : string ;
-    emailAddress : string ;
+    countryName : (string [@default ""]) ;
+    localityName : (string [@default ""]) ;
+    stateOrProvinceName : (string [@default ""]) ;
+    organizationName : (string [@default ""]) ;
+    organizationalUnitName : (string [@default ""]) ;
+    emailAddress : (string [@default ""]) ;
 } [@@deriving yojson]
 
 let decode_subject json =

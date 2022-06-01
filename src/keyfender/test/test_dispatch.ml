@@ -762,6 +762,8 @@ let subject = {|{
     "emailAddress": "info@nitrokey.com"
   }|}
 
+let common_name_only = {|{ "commonName": "nethsm.local" }|}
+
 let post_config_tls_csr_pem =
   "post tls csr pem file succeeds"
   @? fun () ->
@@ -772,6 +774,37 @@ let post_config_tls_csr_pem =
       | Ok _ -> true
       | Error _ -> false
       end
+    | _ -> false
+  end
+
+let post_config_tls_csr_pem2 =
+  "post tls csr pem with only commonName succeeds"
+  @? fun () ->
+  begin
+    match admin_post_request ~body:(`String common_name_only) "/config/tls/csr.pem" with
+    | _, Some (`OK, _, `String body, _) ->
+      begin match X509.Signing_request.decode_pem (Cstruct.of_string body) with
+      | Ok _ -> true
+      | Error _ -> false
+      end
+    | _ -> false
+  end
+
+let bad_subject = {|{
+    "countryName": "DE",
+    "stateOrProvinceName": "",
+    "localityName": "Berlin",
+    "organizationName": "Nitrokey",
+    "organizationalUnitName": "",
+    "emailAddress": "info@nitrokey.com"
+  }|}
+
+let post_config_tls_csr_pem_fails =
+  "post tls csr pem without commonName fails"
+  @? fun () ->
+  begin
+    match admin_post_request ~body:(`String bad_subject) "/config/tls/csr.pem" with
+    | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
 
@@ -1657,10 +1690,15 @@ let admin_keys_key_csr_pem =
   @? fun () ->
   begin
     match admin_post_request ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
-    | _, Some (`OK, headers, _, _) ->
+    | _, Some (`OK, headers, `String body, _) ->
       begin match Cohttp.Header.get headers "content-type" with
         | None -> false
-        | Some ct -> String.equal ct "application/x-pem-file"
+        | Some ct ->
+          String.equal ct "application/x-pem-file" &&
+          begin match X509.Signing_request.decode_pem (Cstruct.of_string body) with
+            | Ok _ -> true
+            | Error _ -> false
+          end
       end
     | _ -> false
   end
@@ -1671,6 +1709,24 @@ let operator_keys_key_csr_pem =
   begin
     match request ~meth:`POST ~headers:operator_headers ~body:(`String subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
     | _, Some (`OK, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_csr_pem_common_name_only =
+  "POST on /keys/keyID/csr.pem succeeds with only common name"
+  @? fun () ->
+  begin
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String common_name_only) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
+    | _, Some (`OK, _, _, _) -> true
+    | _ -> false
+  end
+
+let operator_keys_key_csr_pem_no_common_name =
+  "POST on /keys/keyID/csr.pem fails (no common name)"
+  @? fun () ->
+  begin
+    match request ~meth:`POST ~headers:operator_headers ~body:(`String bad_subject) ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem" with
+    | _, Some (`Bad_request, _, _, _) -> true
     | _ -> false
   end
 
@@ -2712,7 +2768,9 @@ let () =
     "/config/tls/cert.pem", [ get_config_tls_cert_pem ;
                               put_config_tls_cert_pem ;
                               put_config_tls_cert_pem_fail ];
-    "/config/tls/csr", [ post_config_tls_csr_pem ];
+    "/config/tls/csr", [ post_config_tls_csr_pem ;
+                         post_config_tls_csr_pem2 ;
+                         post_config_tls_csr_pem_fails ];
     "/config/tls/generate", [ post_config_tls_generate ;
                               post_config_tls_generate_generic_key ;
                               post_config_tls_generate_bad_length ];
@@ -2797,6 +2855,8 @@ let () =
                                 operator_keys_key_public_pem_ed25519];
     "/keys/keyID/csr.pem", [ admin_keys_key_csr_pem;
                              operator_keys_key_csr_pem ;
+                             operator_keys_key_csr_pem_common_name_only ;
+                             operator_keys_key_csr_pem_no_common_name ;
                              operator_keys_key_csr_pem_not_found ;
                              operator_keys_key_csr_pem_invalid_id ];
     "/keys/keyID/decrypt", [ operator_keys_key_decrypt ;

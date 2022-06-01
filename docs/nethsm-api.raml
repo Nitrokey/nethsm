@@ -207,13 +207,26 @@ types:
   DistinguishedName:
     type: object
     properties:
-      countryName : string # 2 letter code
-      stateOrProvinceName : string # full name
-      localityName : string # city
-      organizationName : string # company
-      organizationalUnitName : string # section
-      commonName : string # fully qualified host name
-      emailAddress : string
+      countryName:
+        type: string # 2 letter code
+        required: false
+      stateOrProvinceName:
+        type: string # full name
+        required: false
+      localityName:
+        type: string # city
+        required: false
+      organizationName:
+        type: string # company
+        required: false
+      organizationalUnitName:
+        type: string # section
+        required: false
+      commonName:
+        type: string # fully qualified host name
+      emailAddress:
+        type: string
+        required: false
     example:
       countryName : "DE"
       stateOrProvinceName : ""
