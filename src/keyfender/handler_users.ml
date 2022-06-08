@@ -58,7 +58,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
   class handler hsm_state ip = object(self)
     inherit Endpoint.base_with_body_length
     inherit !Endpoint.input_state_validated hsm_state [ `Operational ]
-    inherit !Endpoint.role_operator_get hsm_state ip
+    inherit !Endpoint.role_operator_get_self hsm_state ip
 
     method private get_json rd =
       let ok id =

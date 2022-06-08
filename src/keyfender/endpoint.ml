@@ -105,6 +105,24 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | not_an_admin -> Wm.continue not_an_admin rd
   end
 
+  class role_operator_get_self hsm_state ip = object
+    method is_authorized : (Wm.auth, body) Wm.op =
+      Access.is_authorized hsm_state ip
+
+    method forbidden : (bool, body) Wm.op = fun rd ->
+      Access.forbidden hsm_state `Administrator rd >>= function
+      | true when rd.meth = `GET -> (* no admin - only get allowed for operator on self *)
+        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+        if not_an_operator then
+          Wm.continue not_an_operator rd
+        else 
+          let user = Access.get_user rd.Webmachine.Rd.req_headers in
+          lookup_path_info (fun id -> 
+            Wm.continue (id <> user) rd) "id" rd
+        
+      | not_an_admin -> Wm.continue not_an_admin rd
+  end
+
   class input_state_validated hsm_state allowed_input_states = object
     method service_available : (bool, body) Wm.op =
       if List.exists (Access.is_in_state hsm_state) allowed_input_states
