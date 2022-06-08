@@ -122,7 +122,9 @@ types:
   KeyRestrictions:
     type: object
     properties:
-      tags: TagList
+      tags: 
+        type: TagList
+        required: false
   UserList:
     type: array
     items: UserItem
