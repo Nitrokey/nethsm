@@ -26,19 +26,19 @@ let update_key =
 let unprovisioned_mock () =
   Kv_mem.connect () >>= Hsm.boot ~device_id:"test stream" update_key >|= fun (y, _, _) -> y
 
-let operational_mock () =
+(* let operational_mock () =
   unprovisioned_mock () >>= fun state ->
   Hsm.provision state ~unlock:"unlock" ~admin:"test1" Ptime.epoch >>= fun _ ->
   Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2" ~name:"operator" >|= fun _ ->
-  state
+  state *)
 
-let auth_header user pass =
+(* let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
-  Header.init_with "authorization" ("Basic " ^ base64)
+  Header.init_with "authorization" ("Basic " ^ base64) *)
 
-let admin_headers = auth_header "admin" "test1"
+(* let admin_headers = auth_header "admin" "test1" *)
 
-let system_update hsm_state chunk_size chunks =
+(* let system_update hsm_state chunk_size chunks =
   let i = ref 0 in
   let gc_stat = Gc.stat () in
   let chunk = String.make chunk_size ' ' in
@@ -69,16 +69,16 @@ let system_update hsm_state chunk_size chunks =
     let gc_stat = Gc.stat () in
     Logs.app (fun m -> m "live words after request %d" gc_stat.live_words);
     assert(chunk_size * chunks > gc_stat.top_heap_words * 8);
-    assert false
+    assert false *)
 
-let rec add_many_users hsm_state = function
+(* let rec add_many_users hsm_state = function
   | 0 -> Lwt.return ()
   | i ->
     let id = string_of_int i in
     Hsm.User.add hsm_state ~id ~role:`Operator ~passphrase:"test2" ~name:"operator" >>= fun _ ->
-    add_many_users hsm_state (i-1)
+    add_many_users hsm_state (i-1) *)
 
-let system_backup hsm_state =
+(* let system_backup hsm_state =
   add_many_users hsm_state 10000 >>= fun () ->
   let gc_stat = Gc.stat () in
   Logs.app (fun m -> m "top heap words after adding 10000 users %d" gc_stat.top_heap_words);
@@ -97,7 +97,7 @@ let system_backup hsm_state =
         Printf.printf "received backup of size %d\n" !size
       | _ -> assert false
     end
-  | _ -> assert false
+  | _ -> assert false *)
 
 let system_restore chunk_size chunks =
   let i = ref 0 in
