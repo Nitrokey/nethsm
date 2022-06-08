@@ -2870,6 +2870,7 @@ let () =
     "/keys/keyID", [ keys_key_get ;
                      keys_key_get_not_found ;
                      keys_key_get_invalid_id ;
+                     keys_key_get_invalid_id2 ;
                      keys_key_put_json ;
                      keys_key_put_pem ;
                      keys_key_put_already_there ;
