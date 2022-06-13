@@ -1021,6 +1021,8 @@ annotationTypes:
           responses:
             204:
               description: Successful addition of the tag.
+            304:
+              description: Tag is already present for this key.
             400:
               description: Bad request, tag format is invalid.
             401:
