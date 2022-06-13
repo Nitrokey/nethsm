@@ -39,6 +39,8 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       Endpoint.err_to_bad_request ok rd
 
     method private set_pem rd =
+      let cc hdr = Cohttp.Header.remove hdr "location" in
+      let rd = Webmachine.Rd.with_resp_headers cc rd in
       let body = rd.Webmachine.Rd.req_body in
       Cohttp_lwt.Body.to_string body >>= fun content ->
       let mechanisms =
