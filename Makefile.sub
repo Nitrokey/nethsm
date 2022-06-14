@@ -81,7 +81,7 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
-KEYFENDER_CARGS ?= --no-platform=true
+KEYFENDER_CARGS ?= --no-platform=true --memtrace=1234
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true

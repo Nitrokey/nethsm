@@ -124,6 +124,8 @@ struct
     | `Timeout -> Format.fprintf ppf "timeout"
     | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
+  module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
+
   let start console _entropy () () update_key_store assets internal_stack ctx ext_stack () =
     Irmin_git.Mem.v (Fpath.v "somewhere") >>= function
     | Error _ -> invalid_arg "Could not create an in-memory git repository."
@@ -259,5 +261,25 @@ struct
       Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
       let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
       reconfigure_network cidr gateway >>= fun http ->
+      (match Key_gen.memtrace () with
+       | None -> ()
+       | Some port ->
+         Ext_reconfigurable_stack.Stack.TCP.listen
+           Ext_reconfigurable_stack.(Stack.tcp (stack ext_stack))
+           ~port
+           (fun f ->
+              (* only allow a single tracing client *)
+              match Memtrace.Memprof_tracer.active_tracer () with
+              | Some _ ->
+                Logs.warn (fun m -> m "tracing already active");
+                Ext_reconfigurable_stack.Stack.TCP.close f
+              | None ->
+                Logs.info (fun m -> m "starting tracing");
+                let tracer = Memtrace.start_tracing ~context:None ~sampling_rate:1e-4 f in
+                Lwt.async (fun () ->
+                    Ext_reconfigurable_stack.Stack.TCP.read f >|= fun _ ->
+                    Logs.warn (fun m -> m "tracing read returned, closing");
+                    Memtrace.stop_tracing tracer);
+                Lwt.return_unit));
       handle_cb http
 end

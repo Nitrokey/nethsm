@@ -50,6 +50,13 @@ let no_platform =
   in
   Key.(create "no-platform" Arg.(opt bool false doc))
 
+let memtrace =
+  let doc =
+    Key.Arg.info ~doc:"Enable memtrace listener on specified port."
+      ["memtrace"]
+  in
+  Key.(create "memtrace" Arg.(opt (some int) None doc))
+
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
    cannot yet connect the ip stack, but have to manually do that in the
@@ -203,13 +210,15 @@ let main =
     package ~min:"2.10.0" ~max:"3.0.0" "irmin-git";
     package ~min:"0.3.0" ~sublibs:["mirage"] "logs-syslog";
     package "metrics-lwt";
+    package "memtrace-mirage";
   ] in
   let keys =
     Key.[
       abstract http_port; abstract https_port;
       abstract remote;
       abstract retry ;
-      abstract no_platform ; abstract platform ; abstract platform_port
+      abstract no_platform ; abstract platform ; abstract platform_port ;
+      abstract memtrace ;
     ]
   in
   foreign
