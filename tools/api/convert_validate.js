@@ -6,6 +6,38 @@ const in_path = '/dev/stdin'
 const out_path = 'gen_nethsm_api_oas20.json'
 const out_path_resolved = 'gen_nethsm_api_oas20_resolved.json'
 
+// Fixes https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/issues/184
+// JSON API scheme does not contain produces attribute for endpoints
+function fixup_produces(oasjson) {
+  let oas = JSON.parse(oasjson);
+
+  // Iterate on endpoints
+  Object.keys(oas.paths).map((path) => {
+    let endpoint = oas.paths[path]
+
+    for (let meth of ["get", "post"]) {
+      let responses = endpoint[meth]?.responses["200"]
+
+      if (responses != undefined && responses["x-amf-mediaType"]) {
+        let mediatypes = [ responses["x-amf-mediaType"] ]
+  
+        if (responses["x-amf-responsePayloads"]) {
+          responses["x-amf-responsePayloads"].map(({mediaType}) => mediatypes.push(mediaType))
+        }
+  
+        if (mediatypes.length == 1 && mediatypes[0] == 'application/json') {
+          // OK: this is the default media type
+        } else {
+          // add a produces field
+          endpoint[meth]["produces"] = mediatypes
+        }
+      }
+    }
+  })
+
+  return JSON.stringify(oas, null, 2);
+}
+
 async function main () {
   let failed = false
   try {
@@ -32,6 +64,7 @@ async function main () {
     oasjson = oasjson.replace(/{host}/g, "nethsmdemo.nitrokey.com",)
     oasjson = oasjson.replace(/{version}/g, "v1")
     oasjson = oasjson.replace(/"name": "generated"/g, '"name": "body"')
+    oasjson = fixup_produces(oasjson)
 
     // parse generated OAS
     model = await oas.parse(oasjson)
