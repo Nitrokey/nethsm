@@ -87,6 +87,7 @@ TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
+KEYFENDER_CARGS ?= --no-platform=true --single-interface
 DUNE := OCAMLRUNPARAM=b dune
 BISECT := --instrument-with bisect_ppx
 else
@@ -158,7 +159,11 @@ distclean: clean
 
 KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
 KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
+ifeq "$(TARGET)" "unix"
+S_KEYFENDER := src/s_keyfender/keyfender
+else
 S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
+endif
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
 
 $(KEYFENDER): .stamp-prepare
@@ -340,7 +345,7 @@ else ifeq ($(XMODE),test)
 # ------------------------------------------------------------------------------
 
 .PHONY: test-keyfender-api
-test-keyfender-api: $(KEYFENDER)
+test-keyfender-api: $(KEYFENDER) $(S_KEYFENDER)
 	cd src/tests && $(DUNE) exec ./generate_raml_tests.exe
 	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
 	# For this test we want to consider ALL coverage files under
