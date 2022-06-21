@@ -345,7 +345,7 @@ else ifeq ($(XMODE),test)
 # ------------------------------------------------------------------------------
 
 .PHONY: test-keyfender-api
-test-keyfender-api: $(KEYFENDER) $(S_KEYFENDER)
+test-keyfender-api: $(S_KEYFENDER)
 	cd src/tests && $(DUNE) exec ./generate_raml_tests.exe
 	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
 	# For this test we want to consider ALL coverage files under

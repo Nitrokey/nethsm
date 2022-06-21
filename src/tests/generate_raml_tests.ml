@@ -4,11 +4,11 @@
 *)
 
 let host = "localhost"
-let port = "8080"
+let port = "8443"
 let prefix = "api/v1"
 let keyid = "myKey1"
 let userid = "operator"
-let cmd path meth = Printf.sprintf "curl http://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
+let cmd path meth = Printf.sprintf "curl --insecure https://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let raml_file = "../../docs/nethsm-api.raml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
@@ -88,7 +88,7 @@ let passphrase = function
 
 let prepare_setup _meth _path _cmd (state, role, _req) =
   (* 1. prepare server state *)
-  let provision = "NITROHSM_URL=\"http://localhost:8080/api\" ../../provision_test.sh"
+  let provision = "NITROHSM_URL=\"https://localhost:8443/api\" ../../provision_test.sh"
   in
   let lock =
     let header = auth_header (passphrase "Administrator") in
