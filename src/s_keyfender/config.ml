@@ -213,8 +213,8 @@ let main =
     package ~sublibs:["google_types"] "ocaml-protoc-plugin";
     package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#9f15ae9d21123a740332228945670fd67a6b4272" "h2";
     package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#9f15ae9d21123a740332228945670fd67a6b4272" "h2-lwt";
-    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#9d3417991a1af71e18156ff9847e03539c218533" "grpc";
-    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#9d3417991a1af71e18156ff9847e03539c218533" "grpc-lwt";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73" "grpc";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73" "grpc-lwt";
   ] in
   let keys =
     Key.[
