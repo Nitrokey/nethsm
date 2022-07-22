@@ -8,7 +8,7 @@ module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   module TCP = Stack.TCP
-  module H2C = H2_mirage.Client (TCP)
+  module H2C = H2_lwt.Client(Gluten_mirage.Client (TCP))
 
   let etcd_port = 2379
   let persistent_connection = ref None
@@ -50,7 +50,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     >|= function
     | Error e ->
         failwith (Fmt.str "TCP connection to etcd failed: %a" TCP.pp_error e)
-    | Ok flow -> flow
+    | Ok conn -> Gluten_mirage.Buffered_flow.create conn
 
   let connection ~stack =
     match !persistent_connection with

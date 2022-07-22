@@ -1,5 +1,5 @@
 (*----------------------------------------------------------------------------
- *  Copyright (c) 2019 António Nuno Monteiro
+ *  Copyright (c) 2019-2020 António Nuno Monteiro
  *
  *  All rights reserved.
  *
@@ -30,61 +30,16 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
 
-open Lwt.Infix
+module Buffered_flow : sig
+  type 'a t = { flow : 'a; mutable buf : Cstruct.t }
 
-module Make_IO (Flow : Tcpip.Tcp.S) :
-  Gluten_lwt.IO with type socket = Flow.flow and type addr = unit = struct
-  type socket = Flow.flow
-
-  type addr = unit
-
-  let shutdown flow = Flow.close flow
-
-  let shutdown_receive flow = Lwt.async (fun () -> shutdown flow)
-
-  let shutdown_send flow = Lwt.async (fun () -> shutdown flow)
-
-  let close = shutdown
-
-  let read flow bigstring ~off ~len:_ =
-    Lwt.catch
-      (fun () ->
-        Flow.read flow >|= function
-        | Ok (`Data buf) ->
-          Bigstringaf.blit
-            buf.buffer
-            ~src_off:buf.off
-            bigstring
-            ~dst_off:off
-            ~len:buf.len;
-          `Ok buf.len
-        | Ok `Eof ->
-          `Eof
-        | Error error ->
-          failwith (Format.asprintf "%a" Flow.pp_error error))
-      (fun exn -> shutdown flow >>= fun () -> Lwt.fail exn)
-
-  let writev flow iovecs =
-    let cstruct_iovecs =
-      List.map
-        (fun { Faraday.buffer; off; len } -> Cstruct.of_bigarray ~off ~len buffer)
-        iovecs
-    in
-    let len = Cstruct.lenv cstruct_iovecs in
-    let data = Cstruct.create_unsafe len in
-    let n, _ = Cstruct.fillv cstruct_iovecs data in
-    assert (n = len);
-    Lwt.catch
-      (fun () ->
-        Flow.write flow data >|= fun x ->
-        match x with
-        | Ok () ->
-          `Ok (Cstruct.lenv cstruct_iovecs)
-        | Error `Closed ->
-          `Closed
-        | Error other_error ->
-          raise (Failure (Format.asprintf "%a" Flow.pp_write_error other_error)))
-      (fun exn -> shutdown flow >>= fun () -> Lwt.fail exn)
+  val create : 'a -> 'a t
 end
 
-module Client (Flow : Tcpip.Tcp.S) = H2_lwt.Client (Gluten_lwt.Client (Make_IO (Flow)))
+(* module Server (Flow : Mirage_flow.S) :
+   Gluten_lwt.Server
+     with type socket = Flow.flow Buffered_flow.t
+      and type addr = unit *)
+
+module Client (Flow : Mirage_flow.S) :
+  Gluten_lwt.Client with type socket = Flow.flow Buffered_flow.t
