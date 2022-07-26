@@ -90,6 +90,8 @@ TARGET := unix
 KEYFENDER_CARGS ?= --no-platform=true --single-interface
 DUNE := OCAMLRUNPARAM=b dune
 BISECT := --instrument-with bisect_ppx
+OPAMVAR_coverage := true
+export OPAMVAR_coverage
 else
 $(error Invalid MODE '$(XMODE)')
 endif

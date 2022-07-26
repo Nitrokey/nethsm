@@ -11,8 +11,8 @@ homepage: "dummy"
 bug-reports: "dummy"
 build: [
   ["dune" "subst"] {pinned}
-  ["dune" "build" "-p" name "-j" jobs]
-  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+  ["dune" "build" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}]
+  ["dune" "runtest" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}] {with-test}
 ]
 
 depends: [
