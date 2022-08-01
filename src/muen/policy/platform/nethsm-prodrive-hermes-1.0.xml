@@ -8,13 +8,13 @@
  </config>
  <mappings>
   <aliases>
-   <alias name="serial_device_1" physical="communication_controller_2">
+   <alias name="serial_device_1" physical="communication_controller_1">
     <resource name="mem1" physical="mem1"/>
    </alias>
    <alias name="nic_1" physical="ethernet_controller_1"/>
    <alias name="storage_controller" physical="sata_controller_1"/>
    <alias name="lpc_controller" physical="isa_bridge_1"/>
-   <alias name="spi_controller" physical="0c80_1"/>
+   <alias name="spi_controller" physical="serial_bus_controller_1"/>
   </aliases>
   <classes>
    <class name="additional_nics">
@@ -28,7 +28,7 @@
   </device>
  </kernelDiagnostics-->
  <kernelDiagnostics type="hsuart">
-  <device physical="communication_controller_2">
+  <device physical="communication_controller_1">
    <memory physical="mem1"/>
   </device>
  </kernelDiagnostics>

@@ -1,25 +1,23 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!-- ==========================================
      Generated with mugenhwcfg (commit v0.6)
-     Linux kernel version: 5.10.0-8-amd64
-     Distribution: Debian GNU/Linux 11 (bullseye)
+     Linux kernel version: 5.16.0-4-amd64
+     Distribution: Debian GNU/Linux bookworm/sid
      Product information:
-       Vendor: Prodrive
+       Vendor: Prodrive Techonologies B.V.
        Name: Hermes CFL
-       Product Version: 1.0
+       Product Version: HSI 3
      Board information:
-       Vendor: Prodrive
+       Vendor: Prodrive Techonologies B.V.
        Name: Hermes CFL
-       Version: 1.0
+       Version: HSI 3
      BIOS information:
        Vendor: coreboot
-       Version: 6001-1970-1503.03
-       Date: 03/18/2021
-     Log:
-       * WARNING *: Unable to resolve device class 0c80. Please update pci.ids (-u) and
-       try again
-       * WARNING *: LXML library not found, could not format XML document.
+       Version: 4.15-2-g679642c1
+       Date: 01/19/2022
      ========================================== -->
+
+
 <hardware>
   <processor cpuCores="4" speed="3504" vmxTimerRate="7">
     <cpu apicId="0"/>
@@ -28,38 +26,11 @@
     <cpu apicId="6"/>
   </processor>
   <memory>
+    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0000#" size="16#1000#"/>
     <memoryBlock allocatable="false" name="System RAM" physicalAddress="16#1000#" size="16#0009_f000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#89ae_0000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#89be_2000#" size="16#1000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#89be_6000#" size="16#2000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#89be_9000#" size="16#1000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#0001_6e38_7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6e39_9000#" size="16#0002_4000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6e3c_0000#" size="16#7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6e3c_8000#" size="16#007e_2000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6eba_c000#" size="16#a000#"/>
-    <memoryBlock allocatable="false" name="ACPI Non-volatile Storage" physicalAddress="16#0002_6ebb_6000#" size="16#8000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6ebb_e000#" size="16#0053_6000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f0f_4000#" size="16#6000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f0f_a000#" size="16#0001_e000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f11_d000#" size="16#7000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f1c_8000#" size="16#0007_f000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f24_7000#" size="16#2000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f24_9000#" size="16#a000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f25_3000#" size="16#0001_d000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f27_1000#" size="16#4000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f27_a000#" size="16#7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f28_1000#" size="16#5000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f28_6000#" size="16#7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f28_d000#" size="16#0001_0000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f2c_7000#" size="16#0001_8000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f2d_f000#" size="16#9000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f2e_8000#" size="16#1000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0002_6f2f_7000#" size="16#7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f2f_e000#" size="16#2000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f30_6000#" size="16#9000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f31_0000#" size="16#0002_3000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0002_6f33_5000#" size="16#004c_b000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#89b0_1000#"/>
+    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#89c0_1000#" size="16#003f_f000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#0001_6e80_0000#"/>
     <reservedMemory name="rmrr1" physicalAddress="16#8b00_0000#" size="16#0480_0000#"/>
   </memory>
   <devices pciConfigAddress="16#e000_0000#">
@@ -112,6 +83,9 @@
         <identification classcode="16#0380#" deviceId="16#3e96#" revisionId="16#00#" vendorId="16#8086#"/>
         <iommuGroup id="1"/>
       </pci>
+      <irq name="irq1" number="19">
+        <msi name="msi1"/>
+      </irq>
       <memory caching="UC" name="mem1" physicalAddress="16#a500_0000#" size="16#0100_0000#"/>
       <memory caching="UC" name="mem2" physicalAddress="16#9000_0000#" size="16#1000_0000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e001_0000#" size="16#1000#"/>
@@ -124,7 +98,10 @@
         <identification classcode="16#0880#" deviceId="16#1911#" revisionId="16#00#" vendorId="16#8086#"/>
         <iommuGroup id="2"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_4000#" size="16#1000#"/>
+      <irq name="irq1" number="11">
+        <msi name="msi1"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_8000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e004_0000#" size="16#1000#"/>
     </device>
     <device name="signal_processing_controller_1">
@@ -133,7 +110,10 @@
         <identification classcode="16#1180#" deviceId="16#a379#" revisionId="16#10#" vendorId="16#8086#"/>
         <iommuGroup id="3"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_5000#" size="16#1000#"/>
+      <irq name="irq1" number="23">
+        <msi name="msi1"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_9000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e009_0000#" size="16#1000#"/>
     </device>
     <device name="usb_controller_1">
@@ -142,7 +122,7 @@
         <identification classcode="16#0c03#" deviceId="16#a36d#" revisionId="16#10#" vendorId="16#8086#"/>
         <iommuGroup id="4"/>
       </pci>
-      <irq name="irq1" number="22">  <!-- Dummy IRQ number, does not match HW -->
+      <irq name="irq1" number="16">
         <msi name="msi1"/>
         <msi name="msi2"/>
         <msi name="msi3"/>
@@ -152,7 +132,7 @@
         <msi name="msi7"/>
         <msi name="msi8"/>
       </irq>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd0_0000#" size="16#0001_0000#"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe0_0000#" size="16#0001_0000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00a_0000#" size="16#1000#"/>
     </device>
     <device name="ram_memory_1">
@@ -161,77 +141,84 @@
         <identification classcode="16#0500#" deviceId="16#a36f#" revisionId="16#10#" vendorId="16#8086#"/>
         <iommuGroup id="4"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_0000#" size="16#2000#"/>
-      <memory caching="UC" name="mem2" physicalAddress="16#8fd1_6000#" size="16#1000#"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_4000#" size="16#2000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#8fe1_a000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00a_2000#" size="16#1000#"/>
-    </device>
-    <device name="communication_controller_1">
-      <description>Intel Corporation Cannon Lake PCH HECI Controller</description>
-      <pci bus="16#00#" device="16#16#" function="0">
-        <identification classcode="16#0780#" deviceId="16#a360#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="5"/>
-      </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_7000#" size="16#1000#"/>
-      <memory caching="UC" name="mmconf" physicalAddress="16#e00b_0000#" size="16#1000#"/>
     </device>
     <device name="sata_controller_1">
       <description>Intel Corporation Cannon Lake PCH SATA AHCI Controller</description>
       <pci bus="16#00#" device="16#17#" function="0">
         <identification classcode="16#0106#" deviceId="16#a352#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="6"/>
+        <iommuGroup id="5"/>
       </pci>
-      <irq name="irq1" number="16">  <!-- Dummy IRQ number, does not match HW -->
+      <irq name="irq1" number="16">
         <msi name="msi1"/>
       </irq>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_2000#" size="16#2000#"/>
-      <memory caching="UC" name="mem2" physicalAddress="16#8fd1_d000#" size="16#1000#"/>
-      <memory caching="UC" name="mem3" physicalAddress="16#8fd1_c000#" size="16#1000#"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_6000#" size="16#2000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#8fe2_0000#" size="16#1000#"/>
+      <memory caching="UC" name="mem3" physicalAddress="16#8fe1_f000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00b_8000#" size="16#1000#"/>
       <ioPort end="16#1067#" name="ioport1" start="16#1060#"/>
       <ioPort end="16#106b#" name="ioport2" start="16#1068#"/>
       <ioPort end="16#105f#" name="ioport3" start="16#1040#"/>
     </device>
-    <device name="communication_controller_2">
+    <device name="communication_controller_1">
       <description>Intel Corporation Cannon Lake PCH Serial IO UART Host Controller</description>
       <pci bus="16#00#" device="16#1e#" function="0">
         <identification classcode="16#0780#" deviceId="16#a328#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="13"/>
+        <iommuGroup id="12"/>
       </pci>
+      <irq name="irq1" number="31"/>
       <memory caching="UC" name="mem1" physicalAddress="16#fe03_2000#" size="16#1000#"/>
-      <memory caching="UC" name="mem2" physicalAddress="16#8fd1_9000#" size="16#1000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#8fe1_c000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_0000#" size="16#1000#"/>
     </device>
-    <device name="communication_controller_3">
+    <device name="communication_controller_2">
       <pci bus="16#00#" device="16#1e#" function="1">
         <identification classcode="16#0780#" deviceId="16#a329#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="13"/>
+        <iommuGroup id="12"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_a000#" size="16#1000#"/>
+      <irq name="irq1" number="32"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_d000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_1000#" size="16#1000#"/>
     </device>
     <device name="isa_bridge_1">
       <description>Intel Corporation Cannon Point-LP LPC Controller</description>
       <pci bus="16#00#" device="16#1f#" function="0">
         <identification classcode="16#0601#" deviceId="16#a309#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="14"/>
+        <iommuGroup id="13"/>
       </pci>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_8000#" size="16#1000#"/>
+    </device>
+    <device name="audio_device_1">
+      <description>Intel Corporation Cannon Lake PCH cAVS</description>
+      <pci bus="16#00#" device="16#1f#" function="3">
+        <identification classcode="16#0403#" deviceId="16#a348#" revisionId="16#10#" vendorId="16#8086#"/>
+        <iommuGroup id="13"/>
+      </pci>
+      <irq name="irq1" number="21">
+        <msi name="msi1"/>
+      </irq>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_0000#" size="16#4000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#8fd0_0000#" size="16#0010_0000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#e00f_b000#" size="16#1000#"/>
     </device>
     <device name="smbus_1">
       <description>Intel Corporation Cannon Lake PCH SMBus Controller</description>
       <pci bus="16#00#" device="16#1f#" function="4">
         <identification classcode="16#0c05#" deviceId="16#a323#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="14"/>
+        <iommuGroup id="13"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#8fd1_e000#" size="16#1000#"/>
+      <irq name="irq1" number="22"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe2_1000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_c000#" size="16#1000#"/>
       <ioPort end="16#efbf#" name="ioport1" start="16#efa0#"/>
     </device>
-    <device name="0c80_1">
+    <device name="serial_bus_controller_1">
       <description>Intel Corporation Cannon Lake PCH SPI Controller</description>
       <pci bus="16#00#" device="16#1f#" function="5">
         <identification classcode="16#0c80#" deviceId="16#a324#" revisionId="16#10#" vendorId="16#8086#"/>
-        <iommuGroup id="14"/>
+        <iommuGroup id="13"/>
       </pci>
       <memory caching="UC" name="mem1" physicalAddress="16#fe01_0000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_d000#" size="16#1000#"/>
@@ -240,7 +227,7 @@
       <description>Intel Corporation I211 Gigabit Network Connection</description>
       <pci bus="16#01#" device="16#00#" function="0">
         <identification classcode="16#0200#" deviceId="16#1539#" revisionId="16#03#" vendorId="16#8086#"/>
-        <iommuGroup id="15"/>
+        <iommuGroup id="14"/>
       </pci>
       <irq name="irq1" number="16">
         <msi name="msi1"/>
@@ -248,7 +235,7 @@
         <msi name="msi3"/>
         <msi name="msi4"/>
         <msi name="msi5"/>
-      </irq>      
+      </irq>
       <memory caching="UC" name="mem1" physicalAddress="16#8f80_0000#" size="16#0002_0000#"/>
       <memory caching="UC" name="mem2" physicalAddress="16#8f82_0000#" size="16#4000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e010_0000#" size="16#1000#"/>
@@ -258,7 +245,7 @@
       <description>Intel Corporation I211 Gigabit Network Connection</description>
       <pci bus="16#02#" device="16#00#" function="0">
         <identification classcode="16#0200#" deviceId="16#1539#" revisionId="16#03#" vendorId="16#8086#"/>
-        <iommuGroup id="16"/>
+        <iommuGroup id="15"/>
       </pci>
       <irq name="irq1" number="17">
         <msi name="msi1"/>
@@ -276,7 +263,7 @@
       <description>Intel Corporation I211 Gigabit Network Connection</description>
       <pci bus="16#03#" device="16#00#" function="0">
         <identification classcode="16#0200#" deviceId="16#1539#" revisionId="16#03#" vendorId="16#8086#"/>
-        <iommuGroup id="17"/>
+        <iommuGroup id="16"/>
       </pci>
       <irq name="irq1" number="18">
         <msi name="msi1"/>
@@ -294,7 +281,7 @@
       <description>Intel Corporation I211 Gigabit Network Connection</description>
       <pci bus="16#04#" device="16#00#" function="0">
         <identification classcode="16#0200#" deviceId="16#1539#" revisionId="16#03#" vendorId="16#8086#"/>
-        <iommuGroup id="18"/>
+        <iommuGroup id="17"/>
       </pci>
       <irq name="irq1" number="19">
         <msi name="msi1"/>
@@ -302,7 +289,7 @@
         <msi name="msi3"/>
         <msi name="msi4"/>
         <msi name="msi5"/>
-      </irq>      
+      </irq>
       <memory caching="UC" name="mem1" physicalAddress="16#8fb0_0000#" size="16#0002_0000#"/>
       <memory caching="UC" name="mem2" physicalAddress="16#8fb2_0000#" size="16#4000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e040_0000#" size="16#1000#"/>
@@ -312,7 +299,7 @@
       <description>Intel Corporation I210 Gigabit Backplane Connection</description>
       <pci bus="16#05#" device="16#00#" function="0">
         <identification classcode="16#0200#" deviceId="16#157c#" revisionId="16#03#" vendorId="16#8086#"/>
-        <iommuGroup id="19"/>
+        <iommuGroup id="18"/>
       </pci>
       <irq name="irq1" number="17">
         <msi name="msi1"/>
