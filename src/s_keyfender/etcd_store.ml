@@ -8,7 +8,7 @@ module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   module TCP = Stack.TCP
-  module H2C = H2_lwt.Client(Gluten_mirage.Client (TCP))
+  module H2C = H2_lwt.Client (Gluten_mirage.Client (TCP))
 
   let etcd_port = 2379
   let persistent_connection = ref None
@@ -52,43 +52,52 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         failwith (Fmt.str "TCP connection to etcd failed: %a" TCP.pp_error e)
     | Ok conn -> Gluten_mirage.Buffered_flow.create conn
 
-  let connection ~stack =
+  let connection_mtx = Lwt_mutex.create ()
+
+  let create_connection ~stack =
+    Lwt_mutex.with_lock connection_mtx (fun () ->
+        match !persistent_connection with
+        | Some connection when not (H2C.is_closed connection) ->
+            Lwt.return connection
+        | _ ->
+            Log.info (fun m -> m "connecting to etcd...");
+            create_flow ~stack >>= fun flow ->
+            Log.info (fun m -> m "TCP connection to etcd established");
+            let error_handler, h2_error = callback_promise () in
+            Lwt.pick
+              [
+                H2C.create_connection ~error_handler flow;
+                ( h2_error >|= fun e ->
+                  let msg = error_to_string e in
+                  Log.err (fun m ->
+                      m "received HTTP/2 connection-level error: %s" msg);
+                  failwith msg );
+                ( OS.Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
+                  let msg = "HTTPS/2 connect timeout" in
+                  Log.err (fun m -> m "%s" msg);
+                  failwith msg );
+              ]
+            >>= fun connection ->
+            let pong_resolve, pong = callback_promise () in
+            H2C.ping connection pong_resolve;
+            Lwt.pick
+              [
+                ( OS.Time.sleep_ns (Duration.of_sec 5) >>= fun () ->
+                  let msg = "HTTPS/2 ping timeout" in
+                  Log.err (fun m -> m "%s" msg);
+                  H2C.shutdown connection >|= fun () -> failwith msg );
+                pong;
+              ]
+            >>= fun () ->
+            Log.info (fun m -> m "HTTP/2 connection to etcd established");
+            persistent_connection := Some connection;
+            Lwt.return connection)
+
+  let get_connection ~stack =
     match !persistent_connection with
     | Some connection when not (H2C.is_closed connection) ->
         Lwt.return connection
-    | _ ->
-        Log.info (fun m -> m "connecting to etcd...");
-        create_flow ~stack >>= fun flow ->
-        Log.info (fun m -> m "TCP connection to etcd established");
-        let error_handler, h2_error = callback_promise () in
-        Lwt.pick
-          [
-            H2C.create_connection ~error_handler flow;
-            ( h2_error >|= fun e ->
-              let msg = error_to_string e in
-              Log.err (fun m ->
-                  m "received HTTP/2 connection-level error: %s" msg);
-              failwith msg );
-            ( OS.Time.sleep_ns (Duration.of_sec 5) >|= fun () ->
-              let msg = "HTTPS/2 connect timeout" in
-              Log.err (fun m -> m "%s" msg);
-              failwith msg );
-          ]
-        >>= fun connection ->
-        let pong_resolve, pong = callback_promise () in
-        H2C.ping connection pong_resolve;
-        Lwt.pick
-          [
-            ( OS.Time.sleep_ns (Duration.of_sec 5) >>= fun () ->
-              let msg = "HTTPS/2 ping timeout" in
-              Log.err (fun m -> m "%s" msg);
-              H2C.shutdown connection >|= fun () -> failwith msg );
-            pong;
-          ]
-        >>= fun () ->
-        Log.info (fun m -> m "HTTP/2 connection to etcd established");
-        persistent_connection := Some connection;
-        Lwt.return connection
+    | _ -> create_connection ~stack
 
   let next_req_id =
     let id = ref 0 in
@@ -99,7 +108,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let do_grpc ~stack ~service ~rpc ~request ~decode =
     let req_id = next_req_id () in
     let f s = s >|= decode in
-    connection ~stack >>= fun connection ->
+    get_connection ~stack >>= fun connection ->
     Log.debug (fun m ->
         let req_esc = String.escaped request in
         m "gRPC call [%d] service:(%s) rpc:(%s) req:(%s)" req_id service rpc
@@ -107,7 +116,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     let handler = Grpc_lwt.Client.Rpc.unary ~f request in
     let error_handler, h2_error = callback_promise () in
     let do_request =
-      H2C.request ~flush_headers_immediately:true connection ~error_handler
+      H2C.request ~flush_headers_immediately:false connection ~error_handler
     in
     let grpc_resp =
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
@@ -115,10 +124,10 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     Lwt.pick
       [
         (* ( OS.Time.sleep_ns (Duration.of_sec 120) >|= fun () ->
-          let msg = "gRPC call timed out" in
-          Log.warn (fun m -> m "%s" msg);
-          shutdown_persistent_connection ();
-          failwith msg ); *)
+           let msg = "gRPC call timed out" in
+           Log.warn (fun m -> m "%s" msg);
+           shutdown_persistent_connection ();
+           failwith msg ); *)
         ( h2_error >|= fun e ->
           let e_str = error_to_string e in
           Log.err (fun m ->
