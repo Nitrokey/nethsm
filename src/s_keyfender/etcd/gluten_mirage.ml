@@ -82,7 +82,7 @@ module Make_IO (Flow : Mirage_flow.S) :
             Bigstringaf.blit buf.buffer ~src_off:buf.off bigstring ~dst_off:off
               ~len:buf.len;
             `Ok buf.len
-        | Ok `Eof -> `Eof
+        | Ok `Eof -> failwith "FLOW_EOF"
         | Error error -> failwith (Format.asprintf "%a" Flow.pp_error error))
       (fun exn -> shutdown sock >>= fun () -> Lwt.fail exn)
 
@@ -102,7 +102,7 @@ module Make_IO (Flow : Mirage_flow.S) :
         Flow.write sock.flow data >|= fun x ->
         match x with
         | Ok () -> `Ok data_len
-        | Error `Closed -> `Closed
+        (* | Error `Closed -> `Closed *)
         | Error other_error ->
             raise
               (Failure (Format.asprintf "%a" Flow.pp_write_error other_error)))
