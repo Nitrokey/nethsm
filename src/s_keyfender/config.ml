@@ -211,8 +211,8 @@ let main =
     package "digestif";
     package "memtrace-mirage";
     package ~sublibs:["google_types"] "ocaml-protoc-plugin";
-    package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#9f15ae9d21123a740332228945670fd67a6b4272" "h2";
-    package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#9f15ae9d21123a740332228945670fd67a6b4272" "h2-lwt";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7" "h2";
+    package ~pin:"git+https://github.com/ansiwen/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7" "h2-lwt";
     package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73" "grpc";
     package ~pin:"git+https://github.com/ansiwen/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73" "grpc-lwt";
   ] in
