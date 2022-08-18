@@ -98,49 +98,6 @@ let external_eth = etif external_netif
 
 let external_arp = arp external_eth
 
-(* git / mimic configuration *)
-type mimic = Mimic
-
-let mimic = typ Mimic
-
-let mimic_count =
-  let v = ref (-1) in
-  fun () -> incr v ; !v
-
-let mimic_conf () =
-  let packages = [ package "mimic" ] in
-  impl @@ object
-       inherit base_configurable
-       method ty = mimic @-> mimic @-> mimic
-       method module_name = "Mimic.Merge"
-       method! packages = Key.pure packages
-       method name = Fmt.str "merge_ctx%02d" (mimic_count ())
-       method! connect _ _modname =
-         function
-         | [ a; b ] -> Fmt.str "Lwt.return (Mimic.merge %s %s)" a b
-         | [ x ] -> Fmt.str "%s.ctx" x
-         | _ -> Fmt.str "Lwt.return Mimic.empty"
-     end
-
-let merge ctx0 ctx1 = mimic_conf () $ ctx0 $ ctx1
-
-let mimic_tcp_conf =
-  let packages = [ package "git-mirage" ~sublibs:[ "tcp" ] ~min:"3.8.0" ~max:"3.9.0" ] in
-  impl @@ object
-       inherit base_configurable
-       method ty = tcpv4v6 @-> mimic @-> mimic
-       method module_name = "Git_mirage_tcp.Make"
-       method! packages = Key.pure packages
-       method name = "tcp_ctx"
-       method! connect _ modname = function
-         | [ _tcpv4v6; ctx ] ->
-           Fmt.str {ocaml|%s.connect %s|ocaml}
-             modname ctx
-         | _ -> assert false
-     end
-
-let mimic_tcp_impl tcpv4v6 happy_eyeballs = mimic_tcp_conf $ tcpv4v6 $ happy_eyeballs
-
 let tcpv4v6_of_stackv4v6 =
   impl @@ object
        inherit base_configurable
@@ -151,23 +108,6 @@ let tcpv4v6_of_stackv4v6 =
          | [ stackv4v6 ] -> Fmt.str {ocaml|%s.connect %s|ocaml} modname stackv4v6
          | _ -> assert false
     end
-
-let mimic_happy_eyeballs_conf =
-  let packages = [ package "git-mirage" ~sublibs:[ "happy-eyeballs" ] ~min:"3.8.0" ~max:"3.9.0" ] in
-  impl @@ object
-       inherit base_configurable
-       method ty = random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> mimic
-       method module_name = "Git_mirage_happy_eyeballs.Make"
-       method! packages = Key.pure packages
-       method name = "happy_eyeballs_ctx"
-       method! connect _ modname = function
-         | [ _random; _time; _mclock; _pclock; stackv4v6; ] ->
-           Fmt.str {ocaml|%s.connect %s|ocaml} modname stackv4v6
-         | _ -> assert false
-     end
-
-let mimic_happy_eyeballs_impl random time mclock pclock stackv4v6 =
-  mimic_happy_eyeballs_conf $ random $ time $ mclock $ pclock $ stackv4v6
 
 let single_interface =
   let doc =
