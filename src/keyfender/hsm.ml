@@ -586,7 +586,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     internal_server_error Read "Prepare keys" Config_store.pp_error
       (Config_store.get kv (get_salt_key slot)) >>= fun salt ->
     let unlock_key = Crypto.key_of_passphrase ~salt credentials in
-    Lwt_result.map_err (function `Msg m -> Forbidden, m)
+    Lwt_result.map_error (function `Msg m -> Forbidden, m)
       (Domain_key_store.get kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len

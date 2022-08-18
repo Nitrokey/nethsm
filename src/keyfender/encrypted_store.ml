@@ -113,7 +113,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   let set t key value =
     with_key_check key @@ fun () -> 
     raw_set t key value
-    |> Lwt_result.map_err (fun e -> `Kv e)
+    |> Lwt_result.map_error (fun e -> `Kv e)
   
   let get t key =
     with_key_check key @@ fun () -> 
@@ -122,7 +122,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   let remove t key = 
     with_key_check key @@ fun () -> 
     KV.remove t.kv (prefix t key)
-    |> Lwt_result.map_err (fun e -> `Kv e)
+    |> Lwt_result.map_error (fun e -> `Kv e)
 
   let prefix slot =
     let p = slot_to_string slot in

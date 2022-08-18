@@ -16,7 +16,7 @@ module type S = sig
   val stack : t -> Stack.t
 end
 
-module Direct (Rng: Mirage_random.S) (Mclock: Mirage_clock.MCLOCK) (Net: Mirage_net.S) (Eth: Mirage_protocols.ETHERNET) (Arp: Mirage_protocols.ARP): sig
+module Direct (Rng: Mirage_random.S) (Mclock: Mirage_clock.MCLOCK) (Net: Mirage_net.S) (Eth: Ethernet.S) (Arp: Arp.S): sig
   include S
 
   val connect : Net.t -> Eth.t -> Arp.t -> t Lwt.t
