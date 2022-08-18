@@ -142,7 +142,7 @@ let malloc_metrics_conf =
 let main =
   let packages = [
     package "keyfender";
-    package ~sublibs:["stack-direct";"tcp";"udp";"icmpv4";"ipv6";"ipv4"] "tcpip";
+    package ~min:"7.1.2" ~sublibs:["stack-direct";"tcp";"udp";"icmpv4";"ipv6";"ipv4"] "tcpip";
     package "conduit-mirage";
     package "cohttp-mirage";
     package ~min:"3.10.4" "mirage-runtime";
