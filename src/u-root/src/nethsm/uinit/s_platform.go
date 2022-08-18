@@ -293,7 +293,7 @@ func sPlatformActions() {
 			log.Printf("Error extracting /data template: %v", err)
 			return
 		}
-		f, err := os.OpenFile(initFile, os.O_RDONLY|os.O_CREATE, 0644)
+		f, err := os.OpenFile(initFile, os.O_RDONLY|os.O_CREATE, 0o644)
 		if err != nil {
 			log.Printf("Error creating %s: %v", initFile, err)
 			return
@@ -307,8 +307,13 @@ func sPlatformActions() {
 		" --advertise-client-urls="+
 		" --data-dir=/data/etcd"+
 		" --snapshot-count=5000"+
-		" --auto-compaction-retention=10m"+
+		" --auto-compaction-retention=1h"+
 		" --quota-backend-bytes=4294967296"+ // should not be more than RAM
+		" --initial-cluster-state=new"+
+		" --v2-deprecation=gone"+
+		" --enable-v2=false"+
+		" --proxy=off"+
+		" --force-new-cluster=true"+
 		// " --log-level debug"+
 		"")
 
