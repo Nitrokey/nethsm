@@ -420,7 +420,7 @@ $(OBJ_DIR):
 OBJ_ETCD_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
 INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd
 
-ETCD_VER := v3.5.2
+ETCD_VER := v3.5.4
 ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
 
 $(INSTALL_ETCD_DAEMON): | $(OBJ_DIR)
