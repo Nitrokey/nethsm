@@ -54,7 +54,13 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         Fmt.str "protocol error %a: %s" H2.Error_code.pp_hum c s
 
   let timeout sec msg =
-    OS.Time.sleep_ns (Duration.of_sec sec) >>= fun () ->
+    let rec loop sec =
+      if sec = 0 then Lwt.return_unit
+      else
+        OS.Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
+        (loop [@tailcall]) (sec - 1)
+    in
+    loop sec >>= fun () ->
     Log.err (fun m -> m "%s" msg);
     shutdown_persistent_connection ();
     Lwt.return msg
