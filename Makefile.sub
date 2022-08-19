@@ -655,6 +655,7 @@ OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
 
 $(OBJ_UPDATE_CHANGELOG): CHANGES.md
 	tools/create-changes.sh CHANGES.md > $@
+	echo "($(BUILD_TAG))" >> $@
 
 ifeq ($(OUTER_SMARTCARD),)
 SIGN_UPDATE_KEY := $(OUTER_PRIV_KEY)

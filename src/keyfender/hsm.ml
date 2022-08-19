@@ -227,6 +227,9 @@ let lwt_error_to_msg ~pp_error thing =
 let hsm_src = Logs.Src.create "hsm" ~doc:"HSM log"
 module Log = (val Logs.src_log hsm_src : Logs.LOG)
 
+let build_tag = String.trim [%blob "buildTag"]
+let software_version = String.trim [%blob "softwareVersion"]
+
 module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) = struct
   module Metrics = struct
     let db = Hashtbl.create 13
@@ -2053,7 +2056,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   let boot ~device_id software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
-      match version_of_string (String.trim [%blob "softwareVersion"]) with
+      match version_of_string software_version with
       | Ok v -> v
       | Error (_, msg) ->
         invalid_arg ("Invalid softwareVersion, broken NetHSM " ^ msg)
@@ -2063,7 +2066,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Json.firmwareVersion = "N/A" ;
       softwareVersion ;
       hardwareVersion = "N/A";
-      buildTag = String.trim [%blob "buildTag"]
+      buildTag = build_tag
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()

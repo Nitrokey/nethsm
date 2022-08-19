@@ -1,6 +1,7 @@
-# 0.9 (2021-12-14)
+# 0.9
 
-* Initial deployment
+* Alpha version
+* Don't use for production
 
 # 0.1 (2019-09-16)
 

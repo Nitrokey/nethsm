@@ -1,5 +1,4 @@
 module type S = sig
-
   module Metrics : sig
     val http_status : Cohttp.Code.status_code -> unit
     val http_response_time : float -> unit
@@ -223,3 +222,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   val boot : device_id:string -> Mirage_crypto_pk.Rsa.pub -> KV.t -> (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
 end
+
+val build_tag : string
+val software_version : string

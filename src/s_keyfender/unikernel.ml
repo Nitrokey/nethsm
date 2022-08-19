@@ -1,5 +1,12 @@
 open Lwt.Infix
 
+let _print_banner =
+  let msg = Format.sprintf "Starting NetHSM S-Keyfender - version %s (%s)"
+    Keyfender.Hsm.software_version Keyfender.Hsm.build_tag
+  in
+  let sep = String.make ((String.length msg) + 2) '-' in
+  Format.printf "+%s+\n| %s |\n+%s+@." sep msg sep
+
 (* Logging *)
 let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)

@@ -25,6 +25,9 @@ Makefile: ;
 	@$(RM) .stamp-prepare
 
 .PHONY: check-mode
+ifneq ($(I_KNOW_WHAT_IM_DOING),)
+check-mode: ;
+else
 check-mode: .stamp-mode
 	@if test "`cat $<`" != "$(MODE)"; then \
 	  echo "Error: MODE is set to '`cat $<`', but '$(MODE)' was requested" 1>&2; \
@@ -33,6 +36,7 @@ check-mode: .stamp-mode
 	else \
 	  true; \
 	fi
+endif
 
 .PHONY: check-submodules
 
