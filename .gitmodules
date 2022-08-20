@@ -13,6 +13,7 @@
 	path = src/coreboot/coreboot
 	url = ../coreboot.git
 	branch = nethsm
+	ignore = dirty
 [submodule "src/coreboot/grub2"]
 	path = src/coreboot/grub2
 	url = ../grub.git
