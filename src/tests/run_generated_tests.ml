@@ -114,9 +114,11 @@ module KeyfenderUnikernel : BACKEND = struct
   let finish { etcd_pid } = 
     Unix.kill etcd_pid 15
 
+  let env = Astring.String.Map.singleton "ETCDCTL_API" "3"
+  
   let start () = 
     let open Bos.OS in
-    Cmd.run @@ Bos.Cmd.(v "etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
+    Cmd.run ~env @@ Bos.Cmd.(v "etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
     UnixApp.start 
     ~process:"../../../s_keyfender/main.native"
     ~args:[|
