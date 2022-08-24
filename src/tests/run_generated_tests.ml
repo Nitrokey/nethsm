@@ -91,7 +91,7 @@ end
 module KeyfenderUnikernel : BACKEND = struct
 
   type ctx = {
-    git_daemon_pid: int;
+    etcd_pid: int;
   }
 
   type t = UnixApp.t
@@ -99,40 +99,29 @@ module KeyfenderUnikernel : BACKEND = struct
   let init () = 
     let open Bos.OS in
     let run_dir = Fpath.v "../../run" in
-    let git_dir = Fpath.(run_dir / "git") in
-    Dir.create git_dir |> Result.get_ok |> ignore;
-    Cmd.run @@ Bos.Cmd.(v "git" % "init" % "--bare" % p Fpath.(git_dir / "keyfender-data.git")) |> Result.get_ok;
-    let git_daemon_pid = Unix.create_process "git" [|
-      "git";
-      "daemon"; 
-      "--reuseaddr";
-      "--listen=127.0.0.1"; 
-      "--base-path=" ^ (Fpath.to_string git_dir);
-      "--export-all";
-      "--enable=receive-pack" 
+    let etcd_dir = Fpath.(run_dir / "default.etcd") in
+    Dir.create etcd_dir |> Result.get_ok |> ignore;
+    let etcd_pid = Unix.create_process "etcd" [|
+      "etcd";
+      "--data-dir";
+      Fpath.to_string etcd_dir;
       |] Unix.stdin Unix.stdout Unix.stderr
     in
     {
-      git_daemon_pid
+      etcd_pid
     }
-  
 
-  let finish { git_daemon_pid } = 
-    Unix.kill git_daemon_pid 15
+  let finish { etcd_pid } = 
+    Unix.kill etcd_pid 15
 
   let start () = 
     let open Bos.OS in
-    let run_dir = Fpath.v "../../../../run" in
-    let git_dir = Fpath.(run_dir / "git") in
-    Dir.create git_dir |> Result.get_ok |> ignore;
-    Dir.current () |> Result.get_ok |> Fmt.pr "PATH: %a\n" Fpath.pp;
-    Dir.delete ~recurse:true Fpath.(git_dir / "keyfender-data.git") |> Result.get_ok |> ignore;
-    Cmd.run @@ Bos.Cmd.(v "git" % "init" % "--bare" % p Fpath.(git_dir / "keyfender-data.git")) |> Result.get_ok;
+    Cmd.run @@ Bos.Cmd.(v "etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
     UnixApp.start 
     ~process:"../../../s_keyfender/main.native"
     ~args:[|
       "main.native"; 
-      "--remote=git://127.0.0.1/keyfender-data.git";
+      "--platform=127.0.0.1";
       "--http=8080";
       "--https=8443"|]
     ~message:"listening on 8080/TCP for HTTP"
