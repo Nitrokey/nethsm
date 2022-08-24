@@ -64,7 +64,7 @@ module UnixApp  = struct
     {thread; server_pid; server_process}
 
   let stop {server_pid; thread; server_process} =
-    Unix.kill server_pid 15;
+    Unix.kill server_pid Sys.sigterm;
     Unix.close_process_full server_process |> ignore;
     Thread.join thread
 
@@ -92,6 +92,8 @@ module KeyfenderUnikernel : BACKEND = struct
 
   type ctx = {
     etcd_pid: int;
+    etcd_process: (in_channel * out_channel * in_channel);
+    log_thread: Thread.t;
   }
 
   type t = UnixApp.t
@@ -101,18 +103,29 @@ module KeyfenderUnikernel : BACKEND = struct
     let run_dir = Fpath.v "../../run" in
     let etcd_dir = Fpath.(run_dir / "default.etcd") in
     Dir.create etcd_dir |> Result.get_ok |> ignore;
-    let etcd_pid = Unix.create_process "etcd" [|
-      "etcd";
-      "--data-dir";
-      Fpath.to_string etcd_dir;
-      |] Unix.stdin Unix.stdout Unix.stderr
+
+    let etcd_process = Unix.open_process_args_full 
+      "/usr/bin/etcd" [|
+        "etcd";
+        "--log-level"; "debug";
+        "--data-dir";
+        Fpath.to_string etcd_dir;
+      |]
+      (Unix.environment ())
     in
+    let etcd_pid = Unix.process_full_pid etcd_process in
+    let (_, _, proc_stderr) = etcd_process in
+    let th = Thread.create UnixApp.tail proc_stderr in
     {
-      etcd_pid
+      etcd_pid;
+      log_thread = th;
+      etcd_process;
     }
 
-  let finish { etcd_pid } = 
-    Unix.kill etcd_pid 15
+  let finish { etcd_pid; etcd_process; log_thread } =
+    Unix.kill etcd_pid Sys.sigterm;
+    Unix.close_process_full etcd_process |> ignore;
+    Thread.join log_thread
 
   let env = Astring.String.Map.singleton "ETCDCTL_API" "3"
   
