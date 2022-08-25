@@ -1,19 +1,14 @@
-FROM ocaml/opam:alpine-3.15-ocaml-4.13-flambda AS builder
+ARG ocaml_version=ocaml-4.14-flambda
+ARG distro_version=alpine
+FROM ocaml/opam:${distro_version}-${ocaml_version} AS builder
 
 ADD .git/ /tmp/repo
 
 RUN git clone -s /tmp/repo /home/opam/nethsm
 
-RUN cd /home/opam/opam-repository \
-  && git remote set-url origin https://github.com/ocaml/opam-repository.git \
-  && git fetch origin master \
-  && git reset --hard $(cat /home/opam/nethsm/.opam-repository-commit) \
-  && opam update \
-  && cd -
-
 WORKDIR /home/opam/nethsm
 
-RUN opam exec -- make fetch-submodules
+RUN opam exec -- make -j$(nproc) local-container-setup
 
 RUN opam exec -- make -j$(nproc) build-keyfender
 
@@ -43,7 +38,7 @@ COPY src/container/alpine/start.sh /
 ENTRYPOINT /start.sh
 
 COPY --from=builder \
-  /home/opam/.opam/4.13/bin/solo5-hvt \
+  /home/opam/.opam/4.14/bin/solo5-hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.unix \
   /

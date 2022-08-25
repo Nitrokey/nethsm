@@ -55,6 +55,7 @@ let example_of_type yml =
 
 let write file content =
   let oc = open_out file in
+  Printf.fprintf oc "#!/bin/sh\n";
   Printf.fprintf oc "%s" content;
   close_out oc
 

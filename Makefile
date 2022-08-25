@@ -38,34 +38,6 @@ check-mode: .stamp-mode
 	fi
 endif
 
-.PHONY: check-submodules
-
-ifneq ($(MODE),muen)
-check-submodules: ;
-else
-check-submodules:
-	@if test -z "$$(git submodule --quiet foreach echo .)"; then \
-	  echo "Error: Git submodules not present." 1>&2; \
-	  echo "Error: Please run 'make fetch-submodules' in this tree." 1>&2; \
-	  if test -f "/.dockerenv"; then \
-	    echo "Error: Note that you are in a container, this should be run ON THE HOST." 1>&2; \
-	  fi; \
-	  false; \
-	else \
-	  true; \
-	fi
-endif
-
-.PHONY: fetch-submodules
-fetch-submodules:
-	MODE=$(MODE) NO_GIT=$(NO_GIT) NO_SHALLOW=$(NO_SHALLOW) \
-	     tools/fetch-git-submodules.sh
-
-.PHONY: deinit-submodules
-deinit-submodules:
-	git submodule deinit --all --force
-	@echo "Note: If it's still broken, try 'rm -rf .git/modules'."
-
 .PHONY: distclean
 distclean:
 	$(MAKE) -f Makefile.sub distclean
@@ -80,7 +52,7 @@ HAVE_KVM_GROUP := --group-add=$(KVM_GID)
 endif
 endif
 
-DOCKER_IMAGE_NAME ?= mato/nethsm-builder
+DOCKER_IMAGE_NAME ?= registry.git.nitrokey.com/nitrokey/nethsm/nethsm/builder
 .PHONY: local-container-enter
 local-container-enter:
 	docker run --rm -ti \
@@ -98,12 +70,10 @@ local-container-setup:
 ifneq ($(HOST_UID),1000)
 	sudo chown -R $(HOST_UID) /home/opam
 endif
-	cd /home/opam/opam-repository && \
-	    git fetch origin master
-	cd /home/opam/opam-repository && \
-	    git reset --hard $$(cat $(abspath .)/.opam-repository-commit)
+	git -C /home/opam/opam-repository fetch origin --depth=1 $$(cat $(abspath .)/.opam-repository-commit)
+	git -C /home/opam/opam-repository reset --hard FETCH_HEAD
 	opam update
 
 # This rule passes through any target not defined above to Makefile.sub.
-%:: check-mode check-submodules
+%:: check-mode
 	$(MAKE) -f Makefile.sub $@

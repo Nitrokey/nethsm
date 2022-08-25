@@ -45,7 +45,7 @@ OUTPUT="$2"
 MUEN_IMAGE_CSL="$3"
 
 GPG_SIGN="$(dirname $0)/gpg-sign-detached.sh"
-SBS_CREATE="$(dirname $0)/../src/muen/muen/tools/sbs/bin/sbs_create"
+SBS_CREATE="/nethsm-tools/muen/tools/sbs/bin/sbs_create"
 
 # Create Muen system image
 TMPDIR=$(mktemp -d)

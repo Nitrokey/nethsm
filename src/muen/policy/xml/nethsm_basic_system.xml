@@ -11,6 +11,7 @@
     <boolean name="dbgserver_sink_pcspkr" value="false"/>
     <boolean name="dbgserver_sink_shmem" value="false"/>
     <boolean name="pciconf_emulation_enabled" value="false"/>
+    <boolean name="ahci_drv_active" value="false"/>
     <string name="logchannel_size" value="16#0002_0000#"/>
   </config>
   <include href="common_expressions.xml"/>

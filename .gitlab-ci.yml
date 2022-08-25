@@ -1,7 +1,32 @@
+variables:
+  BUILDER_TAG: latest
+
+.dependency_paths:
+  builder: &builder_dep_paths
+    - src/container/builder/**
+    - .opam-repository-commit
+  coreboot: &coreboot_dep_paths
+    - src/coreboot/**
+    - keys/**
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - changes:
+        paths: *builder_dep_paths
+      variables:
+        BUILDER_TAG: ${CI_COMMIT_SHORT_SHA}
+    - when: always
+
 default:
-  image: "mato/nethsm-builder@sha256:67f01806a00f1b62fc2d1b61ef52d86f22b9d4411b968e2afe7216e0992e775f"
+  image: "${CI_REGISTRY_IMAGE}/builder:${BUILDER_TAG}"
   before_script:
-    - source .gitlab-ci-setup.bash
+    - git config --global --add safe.directory ${CI_PROJECT_DIR}
+    - sudo chmod 01777 /downloads
+    - mkdir -p /downloads/opam
+    - rm -rf ~/.opam/download-cache
+    - ln -s /downloads/opam ~/.opam/download-cache
   tags:
     - docker
   interruptible: true
@@ -12,76 +37,146 @@ default:
       - stuck_or_timeout_failure
 
 stages:
+  - prepare
+  - build
+  - build_muen
+  - build_coreboot
+  - deploy
   - check
-  - test
-  - build_dev
   - build_docs
   - build_container
-  - build_muen
-  - deploy
 
-build_keyfender:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+build_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: ($BUILDER_TAG != "latest" && $CI_COMMIT_BRANCH != "master")
+  stage: prepare
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  before_script:
+    - chmod 01777 /downloads
+    - mkdir -p /kaniko/.docker
+    - >
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
+      "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
+      tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+  script:
+    - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}/src/container/builder"
+      --destination "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}"
+      --cache=true
+      --cache-copy-layers=true
+      --skip-unused-stages=true
+      --cleanup
+      --build-arg GITLAB_TOKEN=${GITLAB_TOKEN}
+      --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      $NOPUSH
+
+deploy_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
+  stage: deploy
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  dependencies: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - >
+      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} 2>/dev/null ;
+      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
+      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
+
+build_dev:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != "master"
   variables:
     MODE: dev
-  stage: build_dev
-  needs: []
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
   script:
     - make -j$(nproc) build
 
 test_keyfender:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
   variables:
     MODE: test
-  stage: test
-  needs: []
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
   script:
     - make -j$(nproc) coverage-summary
 
 build_muen_qemu_kvm:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
+      changes:
+        paths: *coreboot_dep_paths
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
+
   variables:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
   stage: build_muen
+  needs:
+    - job: build_builder_image
+      optional: true
+    - build_dev
   artifacts:
     name: "$CI_JOB_NAME"
     expire_in: 1 week
     paths:
       - obj/artifacts/
-  needs:
-    - build_keyfender
   script:
     - make -j$(nproc) build artifacts
 
 build_muen_prodrive_hermes:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
+      changes:
+        paths: *coreboot_dep_paths
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
   variables:
     MODE: muen
     MUEN_HARDWARE: prodrive-hermes-1.0
   stage: build_muen
+  needs:
+    - job: build_builder_image
+      optional: true
+    - build_dev
   artifacts:
     name: "$CI_JOB_NAME"
     expire_in: 1 week
     paths:
       - obj/artifacts/
-  needs:
-    - build_keyfender
   script:
     - make -j$(nproc) build artifacts
 
 build_container_image:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != "master"
   needs:
     - validate_api_spec
     - build_api_docs
@@ -99,7 +194,6 @@ build_container_image:
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-
   script:
     - mv api_docs src/container/static/
     - mv api_spec/* src/container/static/api_docs/
@@ -111,16 +205,18 @@ build_container_image:
       --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" $NOPUSH
 
 deploy_container_image:
-  only:
-    - master
-  except:
-    - schedules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
   variables:
     IMAGE_NAME: "nitrokey/nethsm"
     IMAGE_TAG: "testing"
     REGISTRY: "docker.io"
   stage: deploy
-  image: $CI_REGISTRY_IMAGE/skopeo
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
   dependencies: []
   before_script:
     - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
@@ -130,13 +226,14 @@ deploy_container_image:
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
 validate_api_spec:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != "master"
   variables:
     VALIDATOR: "node tools/api/convert_validate.js"
     API_SPEC: "docs/nethsm-api.raml"
   stage: check
+  needs: []
   image: "node:alpine"
   dependencies: []
   artifacts:
@@ -152,9 +249,9 @@ validate_api_spec:
     - cp gen_nethsm_api_* api_spec/
 
 build_api_docs:
-  except:
-    variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != "master"
   variables:
     API_SPEC: "docs/nethsm-api.raml"
     NODE_OPTIONS: "--openssl-legacy-provider"
