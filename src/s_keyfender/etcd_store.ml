@@ -357,9 +357,8 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let range_end = end_of_prefix key in
     let request = DeleteRangeRequest.make ~key ~range_end () in
     etcd_try (fun () ->
-        Etcd.delete_range t.stack ~request >|= fun resp ->
-        if resp.DeleteRangeResponse.deleted > 0 then Ok ()
-        else Error (`Not_found k))
+        Etcd.delete_range t.stack ~request >|= fun _ ->
+        Ok ())
 
   let batch t ?retries:(_ = 42) f = f t
 end
