@@ -1,0 +1,51 @@
+commit 2a296ba41761b7e385806608e835383a9ea72b79
+Author: Adrian-Ken Rueegsegger <ken@codelabs.ch>
+Date:   Mon Mar 22 18:38:55 2021 +0100
+
+    Gracefully handle too small tailroom
+    
+    Apparently, the tailroom specified via needed_tailroom is *not*
+    guaranteed. Thus, copy skb and extend tailroom if necessary.
+    
+    [1] - See comment in include/linux/netdevice.h
+
+diff --git a/writer.c b/writer.c
+index 4680cd3..1e90bb1 100644
+--- a/writer.c
++++ b/writer.c
+@@ -270,15 +270,26 @@ int muennet_xmit(struct sk_buff *skb, struct net_device *dev)
+ 		}
+ 	} else if (dev_info->flags & ETH_DEV) {
+ 		max_data_size -= sizeof(struct eth_hdr);
+-		if (skb_tailroom(skb) < sizeof(struct eth_hdr)) {
+-			netdev_warn(dev_info->dev,
+-				    "Oversized packet dropped (size = %u, tail = %u, MTU = %u)\n",
+-				    skb_data_len, skb_tailroom(skb),
+-				    dev_info->mtu);
+-			dev_info->stats.tx_dropped++;
+-			spin_unlock_irqrestore(&dev_info->writer_lock, flags);
+-			dev_kfree_skb(skb);
+-			return NET_XMIT_SUCCESS;
++		if (unlikely(skb_tailroom(skb) < sizeof(struct eth_hdr))) {
++			struct sk_buff *nskb;
++
++			nskb = skb_copy_expand(skb, 0,
++					       sizeof(struct eth_hdr),
++					       GFP_ATOMIC);
++			if (likely(nskb)) {
++				dev_kfree_skb(skb);
++				skb = nskb;
++			} else {
++				netdev_warn(dev_info->dev,
++					    "Oversized packet dropped (size = %u, tail = %u, MTU = %u)\n",
++					    skb_data_len, skb_tailroom(skb),
++					    dev_info->mtu);
++				dev_info->stats.tx_dropped++;
++				spin_unlock_irqrestore(&dev_info->writer_lock,
++						       flags);
++				dev_kfree_skb(skb);
++				return NET_XMIT_SUCCESS;
++			}
+ 		}
+ 	}
+ 

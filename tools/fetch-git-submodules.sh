@@ -97,6 +97,11 @@ git -C src/muen/muen submodule update components/tau0-static
 # Rest of Muen's submodules
 git -C src/muen/muen submodule update ${DEPTH}
 
+# patch muennet until it's fixed upstream
+cd src/muen/muen/components/linux/modules/muennet
+patch <../../../../../muennet-tailroom.patch
+cd -
+
 # Coreboot submodules
 git submodule update ${DEPTH} src/coreboot/coreboot
 git -C src/coreboot/coreboot submodule init

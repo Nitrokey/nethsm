@@ -2,6 +2,7 @@
 	path = src/muen/muen
 	url = ../muen.git
 	branch = devel
+	ignore = dirty
 [submodule "src/u-root/src/github.com/u-root/u-root"]
 	path = src/u-root/src/github.com/u-root/u-root
 	url = https://github.com/u-root/u-root.git
