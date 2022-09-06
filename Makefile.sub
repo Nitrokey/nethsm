@@ -146,6 +146,26 @@ endif
 .PHONY: prepare
 prepare: .stamp-prepare
 
+ETCD_VER := v3.5.4
+ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
+
+define download-etcd =
+	curl -L $(ETCD_DOWNLOAD_URL)/$(ETCD_VER)/etcd-$(ETCD_VER)-linux-amd64.tar.gz -o /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
+	mkdir -p /tmp/etcd-download
+	tar xzvf /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz -C /tmp/etcd-download --strip-components=1
+endef
+
+define delete-etcd-download =
+	rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+	rm -rf /tmp/etcd-download
+endef
+
+.PHONY: install-etcd
+install-etcd:
+	$(download-etcd)
+	cp -a /tmp/etcd-download/etcd /tmp/etcd-download/etcdctl /usr/bin
+	$(delete-etcd-download)
+
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) src/keyfender/buildTag
@@ -420,17 +440,11 @@ $(OBJ_DIR):
 OBJ_ETCD_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
 INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd
 
-ETCD_VER := v3.5.4
-ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
-
 $(INSTALL_ETCD_DAEMON): | $(OBJ_DIR)
-	curl -L $(ETCD_DOWNLOAD_URL)/$(ETCD_VER)/etcd-$(ETCD_VER)-linux-amd64.tar.gz -o /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
-	mkdir -p /tmp/etcd-download
-	tar xzvf /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz -C /tmp/etcd-download --strip-components=1
+	$(download-etcd)
 	mkdir -p $(OBJ_ETCD_BIN_DIR)
 	cp -a /tmp/etcd-download/etcd $@
-	rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
-	rm -rf /tmp/etcd-download
+	$(remove-etcd-download)
 
 # ------------------------------------------------------------------------------
 MKE2FS := /nethsm-tools/bin/mke2fs
