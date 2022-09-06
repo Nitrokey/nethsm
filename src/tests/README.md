@@ -1,26 +1,26 @@
 ## End to end testing
 
 This directory contains shell scripts for end-to-end testing of a NetHSM, and
-an OCaml program which generates tests from the RAML specification (in
-../../docs/nethsm-api.raml).
+an OCaml program which generates tests from the OpenAPI specification (in
+../../docs/nethsm-api.json).
 
 The test generation works on each endpoint individually. For each endpoint,
 HTTP requests and expected results are generated. Depending on the required
 authentication and HSM state, respective positive (expected to succeed) and
 negative (expected to fail) test cases are generated. The request is an
 invocation of curl, where headers and body are checked against the examples from
-RAML (if they exist and are not dynamic). Some endpoints are skipped (see the
-"let skip_endpoints = " list in generate_raml_tests.ml), and for some endpoints
-the body comparison is skipped (see the "let skip_body_endpoints = " list in
-generate_raml_tests.ml). Only the HTTP response code is checked (not any further
-HTTP headers).
+the OpenAPI spec (if they exist and are not dynamic). Some endpoints are skipped
+(see the "let skip_endpoints = " list in generate_api_tests.ml), and for some 
+endpoints the body comparison is skipped (see the "let skip_body_endpoints = " 
+list in generate_api_tests.ml). Only the HTTP response code is checked (not any 
+further HTTP headers).
 
-From the RAML, the following information is used:
+From the OpenAPI spec, the following information is used:
 - The list of endpoints
 - The desired state of the HSM (each endpoint has a "(state)" attribute)
 - The required authentication (each endpoint has a "(role)" attribute)
 - The positive HTTP response code (2xx)
-- Example data (in the RAML type definitions)
+- Example data (in the OpenAPI type definitions)
 
 For each endpoint, all three HTTP methods (GET / PUT / POST) are tested. Also,
 the HSM in each state is tested (Unprovisioned, Locked, Operational) - where the
@@ -37,7 +37,7 @@ transmitted, another request with malformed json is executed (expecting a 400
 response).
 
 What is not tested / verified are negative HTTP response codes or lack thereof
-in RAML.
+in the OpenAPI spec.
 
 All generated tests are shell scripts (that invoke curl), which are invoked by
 ./run_generated_tests.sh. They expect an unprovisioned NetHSM which is
@@ -48,7 +48,7 @@ provisioned with users and keys via shell scripts, and in the end shutdown.
 The OCaml files producing the tests:
 - dune
 - dune-project
-- generate_raml_tests.ml
+- generate_api_tests.ml
 
 Some shell scripts are usable on their own, others are used by the generated
 tests.
