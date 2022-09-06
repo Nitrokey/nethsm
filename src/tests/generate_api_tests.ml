@@ -1,6 +1,6 @@
 (*
   To call:
-    dune exec ./generate_raml_tests.exe
+    dune exec ./generate_api_tests.exe
 *)
 
 let host = "localhost"
@@ -105,7 +105,7 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
   | "Locked" -> provision ^ "\n" ^ lock
   | "Operational" -> provision
   | s ->
-    Printf.printf "Error: Unknown prerequisite state in raml: %s\n" s;
+    Printf.printf "Error: Unknown prerequisite state in OpenAPI spec: %s\n" s;
     assert false
   in
   (* 2. prepare role *)
