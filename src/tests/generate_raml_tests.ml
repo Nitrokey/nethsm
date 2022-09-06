@@ -9,7 +9,7 @@ let prefix = "api/v1"
 let keyid = "myKey1"
 let userid = "operator"
 let cmd path meth = Printf.sprintf "curl --insecure https://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
-let raml_file = "../../docs/nethsm-api.raml"
+let api_file = "../../docs/nethsm-api.json"
 let allowed_methods = ["get" ; "put" ; "post"]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
 let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"; "/config/tls/cert.pem"]
@@ -40,18 +40,24 @@ let get_endpoints meta =
 let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
-let raml = CCIO.with_in raml_file CCIO.read_all
-  |> Yaml.of_string
-  |> Stdlib.Result.get_ok
+let api = CCIO.with_in api_file CCIO.read_all
+  |> Ezjsonm.from_string
 
-let example_of_type yml =
-  match Ezjsonm.decode_string yml with
-  | Some t ->
-    begin  
-    try Ezjsonm.find raml ["types"; t; "example"] with
-    | Not_found -> failwith ("Couldn't find example for type "^t)
+(* refs are in the form #/components/schemas/PemCert, so basically a path *)
+let json_ref_resolve ref =
+  assert (ref.[0] = '#' && ref.[1] = '/');
+  let path = List.tl (String.split_on_char '/' ref) in
+  Ezjsonm.find api path
+
+let example_of_type json =
+  match Ezjsonm.find_opt json ["schema"; "$ref"] with
+  | Some (`String ref) ->
+    begin
+    let type_json = json_ref_resolve ref in
+    try Ezjsonm.find type_json ["example"] with
+    | Not_found -> failwith ("Couldn't find example for type " ^ ref)
     end
-  | None -> failwith "Inline type definitions not allowed"
+  | _ -> failwith "Inline type definitions not allowed"
 
 let write file content =
   let oc = open_out file in
@@ -117,18 +123,18 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
   prepare_state ^ "\n" ^ prepare_role
 
 let req_states req =
-  Ezjsonm.get_strings @@ Ezjsonm.find req ["(state)"]
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["x-annotation-state"]
 
 let req_roles req =
-  Ezjsonm.get_strings @@ Ezjsonm.find req ["(role)"]
+  Ezjsonm.get_strings @@ Ezjsonm.find req ["x-annotation-role"]
 
 let make_post_data req =
-  match Ezjsonm.get_dict @@ Ezjsonm.find req ["body"] with
+  match Ezjsonm.get_dict @@ Ezjsonm.find req ["requestBody"; "content"] with
   | exception Not_found -> [""]
   | mediatypes ->
-    let f (mediatype, yml) =
+    let f (mediatype, json) =
       let header = "-H \"Content-Type: " ^ mediatype ^ "\" " in
-      let example = example_of_type yml in
+      let example = example_of_type json in
       header ^ "--data " ^ escape @@ Ezjsonm.value_to_string example
     in
     List.map f mediatypes
@@ -322,12 +328,11 @@ let print_methods (path, methods) =
   end
   else Printf.printf "(skipped endpoint)\n"
 
-let rec subpaths (path, meta) =
-  let (endpoints, _) = get_endpoints meta in
-  (path, Ezjsonm.get_dict meta) :: List.concat_map (fun (subpath, m) -> subpaths (path ^ subpath, m)) endpoints
+let endpoints api =
+  let endpoints = Ezjsonm.(find api [ "paths" ]  |> get_dict)in
+  List.map (fun (path, m) -> (path, Ezjsonm.get_dict m)) endpoints
 
-(* all paths, start from empty root *)
 let () =
-  let paths = subpaths ("", raml) in
+  let paths = endpoints api in
   (*let paths = [List.nth paths 1] in*)
   List.iter print_methods paths;

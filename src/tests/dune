@@ -1,7 +1,7 @@
 (library
   (name generate_raml_tests_lib)
   (modules )
-  (libraries base64 ezjsonm yaml containers cohttp astring))
+  (libraries base64 ezjsonm str containers cohttp astring))
 
 (executable
   (name generate_raml_tests)
