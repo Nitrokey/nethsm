@@ -105,7 +105,7 @@ module KeyfenderUnikernel : BACKEND = struct
     Dir.create etcd_dir |> Result.get_ok |> ignore;
 
     let etcd_process = Unix.open_process_args_full 
-      "/usr/bin/etcd" [|
+      "../../etcd-download/etcd" [|
         "etcd";
         "--log-level"; "debug";
         "--data-dir";
@@ -131,7 +131,7 @@ module KeyfenderUnikernel : BACKEND = struct
   
   let start () = 
     let open Bos.OS in
-    Cmd.run ~env @@ Bos.Cmd.(v "etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
+    Cmd.run ~env @@ Bos.Cmd.(v "../../../../etcd-download/etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
     UnixApp.start 
     ~process:"../../../s_keyfender/main.native"
     ~args:[|
@@ -139,7 +139,7 @@ module KeyfenderUnikernel : BACKEND = struct
       "--platform=127.0.0.1";
       "--http=8080";
       "--https=8443"|]
-    ~message:"listening on 8080/TCP for HTTP"
+    ~message:"listening on 8443/TCP for HTTPS"
     ()
 
   let stop t = UnixApp.stop t
