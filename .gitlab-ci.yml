@@ -5,13 +5,16 @@ variables:
   builder: &builder_dep_paths
     - src/container/builder/**
     - .opam-repository-commit
+    - .gitlab-ci.yml
   coreboot: &coreboot_dep_paths
     - src/coreboot/**
     - keys/**
+    - .gitlab-ci.yml
+    - Makefile*
 
 workflow:
   rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_COMMIT_BRANCH != "master" && $CI_PIPELINE_SOURCE == "push"
       when: never
     - changes:
         paths: *builder_dep_paths
@@ -68,9 +71,7 @@ build_builder_image:
       --context "${CI_PROJECT_DIR}/src/container/builder"
       --destination "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}"
       --cache=true
-      --cache-copy-layers=true
       --skip-unused-stages=true
-      --cleanup
       --build-arg GITLAB_TOKEN=${GITLAB_TOKEN}
       --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       $NOPUSH
