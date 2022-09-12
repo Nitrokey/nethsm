@@ -71,6 +71,7 @@ build_builder_image:
       --context "${CI_PROJECT_DIR}/src/container/builder"
       --destination "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}"
       --cache=true
+      --cache-repo "${CI_REGISTRY_IMAGE}/builder/cache"
       --skip-unused-stages=true
       --build-arg GITLAB_TOKEN=${GITLAB_TOKEN}
       --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
