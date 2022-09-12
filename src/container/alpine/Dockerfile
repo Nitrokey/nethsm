@@ -2,26 +2,24 @@ ARG ocaml_version=ocaml-4.14-flambda
 ARG distro_version=alpine
 FROM ocaml/opam:${distro_version}-${ocaml_version} AS builder
 
+RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam
+
 ADD .git/ /tmp/repo
 
 RUN git clone -s /tmp/repo /home/opam/nethsm
 
 WORKDIR /home/opam/nethsm
 
-RUN opam exec -- make -j$(nproc) local-container-setup
-
-RUN opam exec -- make -j$(nproc) build-keyfender
-
 COPY src/container/static src/s_keyfender/htdocs
 
-RUN rm src/s_keyfender/keyfender.hvt && opam exec -- make -j$(nproc) build-keyfender
+RUN opam exec -- make -j$(nproc) local-container-setup build-keyfender
 
 RUN cd src/s_keyfender \
-  && opam exec -- mirage configure -t unix --no-platform=true \
+  && opam exec -- mirage configure --no-depext -t unix --no-platform=true \
   --http=8080 --https=8443 --single-interface --retry=true \
   --platform=127.0.0.1 \
-  && opam exec -- make depend \
-  && opam exec -- make build \
+  && opam exec -- make -j$(nproc) depend \
+  && opam exec -- make -j$(nproc) build \
   && cp keyfender keyfender.unix
 
 FROM alpine:3.15

@@ -88,8 +88,7 @@ KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
 KEYFENDER_CARGS ?= --no-platform=true --single-interface
-DUNE := OCAMLRUNPARAM=b dune
-BISECT := --instrument-with bisect_ppx
+DUNE := DUNE_INSTRUMENT_WITH=bisect_ppx OCAMLRUNPARAM=b dune
 OPAMVAR_coverage := true
 export OPAMVAR_coverage
 else
@@ -126,20 +125,14 @@ $(SOFTWARE_VERSION): CHANGES.md
 ifeq ($(USE_CCACHE),1)
 	mkdir -p $(CCACHE_DIR)
 endif
-ifneq ($(OPAM_VERSION_GT_EQ_2_1_0), 1)
-	opam install -y depext
-endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
-	opam depext --yes --update keyfender conf-jq gmp-freestanding
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
 # generate_raml_tests.exe; we only install these when building with MODE=test.
-	opam install -y 'mirage>=3.10.4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
-	opam install -y --deps-only --with-test keyfender
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
 else
-	opam depext --yes --update mirage solo5-bindings-$(TARGET) mirage-solo5
-	opam install -y 'mirage>=3.10.4' solo5-bindings-$(TARGET) mirage-solo5
-	opam install -y --deps-only keyfender
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4'
+#solo5-bindings-$(TARGET) mirage-solo5
 endif
 	touch $@
 
@@ -177,16 +170,14 @@ S_KEYFENDER := src/s_keyfender/keyfender
 else
 S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
 endif
+S_KEYFENDER_PREP := src/s_keyfender/_build/default/stamp-prep
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
 
 $(KEYFENDER): .stamp-prepare
-	cd src/keyfender && $(DUNE) build $(BISECT)
+	cd src/keyfender && $(DUNE) build --release
 
-# XXX We want to use --assume-built here, but that causes OPAM to go off into an
-# XXX infinite loop. So just use --inplace-build, and deal with 'dune build'
-# XXX being run twice.
 $(KEYFENDER_INSTALL): $(KEYFENDER)
-	opam reinstall -y --inplace-build keyfender
+	opam reinstall -y --assume-built keyfender
 	touch $@
 
 $(UPDATE_KEY):
@@ -204,17 +195,20 @@ clean-keyfender:
 	-cd src/s_keyfender && mirage clean
 	$(RM) $(UPDATE_KEY)
 
-$(S_KEYFENDER): $(KEYFENDER_INSTALL) $(UPDATE_KEY)
-	cd src/s_keyfender && mirage configure -t $(TARGET) --allocation-policy=best-fit $(KEYFENDER_CARGS)
+$(S_KEYFENDER_PREP): .stamp-prepare
+	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) --allocation-policy=best-fit $(KEYFENDER_CARGS)
 	cd src/s_keyfender && $(MAKE) depend
-	cd src/s_keyfender && mirage build
+	touch $@
+
+$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
+	cd src/s_keyfender && make build
 
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib: $(KEYFENDER)
-	cd src/keyfender && $(DUNE) runtest $(BISECT)
+	cd src/keyfender && $(DUNE) runtest
 ifeq ($(XMODE),test)
 	bisect-ppx-report summary --coverage-path=src/keyfender
 endif

@@ -158,10 +158,11 @@ RUN cd /tmp \
 ARG OPAM_REPOSITORY_COMMIT
 RUN opam init -a --disable-sandboxing --bare \
         git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT} \
-        && OPAMJOBS=$(nproc) opam switch create default ocaml-variants.4.14.0+options ocaml-options-only-flambda \
+        && OPAMJOBS=$(nproc) opam switch create 4.14 ocaml-variants.4.14.0+options ocaml-options-only-flambda
+
+RUN eval $(opam env) \
         && opam update \
-        && opam install -y opam-depext \
-        && opam upgrade
+        && OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
 
 # Setup environment
 ENV LANG C.UTF-8
