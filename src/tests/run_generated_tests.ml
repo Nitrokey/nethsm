@@ -107,7 +107,7 @@ module KeyfenderUnikernel : BACKEND = struct
     let etcd_process = Unix.open_process_args_full 
       "../../etcd-download/etcd" [|
         "etcd";
-        "--log-level"; "debug";
+        "--log-level=warn";
         "--data-dir";
         Fpath.to_string etcd_dir;
       |]
