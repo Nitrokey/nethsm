@@ -145,7 +145,7 @@ build_muen_qemu_kvm:
     paths:
       - obj/artifacts/
   script:
-    - make -j$(nproc) build artifacts
+    - make -j$(nproc) artifacts
 
 build_muen_prodrive_hermes:
   rules:
@@ -172,7 +172,7 @@ build_muen_prodrive_hermes:
     paths:
       - obj/artifacts/
   script:
-    - make -j$(nproc) build artifacts
+    - make -j$(nproc) artifacts
 
 build_container_image:
   rules:
