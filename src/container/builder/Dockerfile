@@ -15,10 +15,6 @@ FROM ${distro_version} AS base
 LABEL maintainer "Sven Anderson <sven@anderson.de>"
 LABEL description "This image provides the build environment for the NetHSM project"
 
-# (Not yet)
-# ENV CC ccache gcc
-# ENV CXX ccache g++
-
 # Muen: Required packages
 ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-dev \
         bison bzip2 ca-certificates ccache cpio curl file flex git-core gnupg gnuplot \
@@ -163,6 +159,12 @@ RUN opam init -a --disable-sandboxing --bare \
 RUN eval $(opam env) \
         && opam update \
         && OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
+
+ARG COMMIT_ID
+RUN sudo /bin/sh -c "echo ${COMMIT_ID} > /.builder_id"
+
+LABEL opam_repo_commit ${OPAM_REPOSITORY_COMMIT}
+LABEL builder_id ${COMMIT_ID}
 
 # Setup environment
 ENV LANG C.UTF-8

@@ -2,11 +2,10 @@ ARG ocaml_version=ocaml-4.14-flambda
 ARG distro_version=alpine
 FROM ocaml/opam:${distro_version}-${ocaml_version} AS builder
 
-RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam
-
 ADD .git/ /tmp/repo
 
-RUN git clone -s /tmp/repo /home/opam/nethsm
+RUN sudo ln /usr/bin/opam-2.1 /usr/local/bin/opam \
+  && git clone -s /tmp/repo /home/opam/nethsm
 
 WORKDIR /home/opam/nethsm
 
@@ -25,9 +24,9 @@ RUN cp -a src/container/static/ src/s_keyfender/htdocs \
   && cp -a /tmp/swagger-ui/dist/* src/s_keyfender/htdocs/api_docs/ \
   && rm -r /tmp/swagger-ui*
 
-RUN opam exec -- make -j$(nproc) local-container-setup build-keyfender
+RUN OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) local-container-setup build-keyfender
 
-RUN cd src/s_keyfender \
+RUN export OPAMJOBS=$(nproc) && cd src/s_keyfender \
   && opam exec -- mirage configure --no-depext -t unix --no-platform=true \
   --http=8080 --https=8443 --single-interface --retry=true \
   --platform=127.0.0.1 \

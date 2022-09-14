@@ -1,5 +1,7 @@
 variables:
   BUILDER_TAG: latest
+  USE_CCACHE: 1
+  CCACHE_DIR: /downloads/ccache
 
 .dependency_paths:
   builder: &builder_dep_paths
@@ -58,6 +60,9 @@ build_builder_image:
     entrypoint: [""]
   before_script:
     - chmod 01777 /downloads
+    - "[ -d /downloads/opam/ ] || mkdir -m 0777 /downloads/opam"
+    - mkdir -m 0777 -p /home/opam/.opam
+    - ln -s /downloads/opam /home/opam/.opam/download-cache
     - mkdir -p /kaniko/.docker
     - >
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
@@ -74,6 +79,9 @@ build_builder_image:
       --skip-unused-stages=true
       --build-arg GITLAB_TOKEN=${GITLAB_TOKEN}
       --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --build-arg COMMIT_ID=${CI_COMMIT_SHORT_SHA}
+      --push-retry 5
+      --image-fs-extract-retry 5
       $NOPUSH
 
 deploy_builder_image:
@@ -105,7 +113,7 @@ build_dev:
     - job: build_builder_image
       optional: true
   script:
-    - make -j$(nproc) build
+    - opam exec -- make -j$(nproc) build
 
 test_keyfender:
   rules:
@@ -117,7 +125,7 @@ test_keyfender:
     - job: build_builder_image
       optional: true
   script:
-    - make -j$(nproc) coverage-summary
+    - opam exec -- make -j$(nproc) coverage-summary
 
 build_muen_qemu_kvm:
   rules:
@@ -130,7 +138,6 @@ build_muen_qemu_kvm:
       variables:
         WITH_COREBOOT: "1"
     - if: $CI_COMMIT_BRANCH != "master"
-
   variables:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
@@ -145,7 +152,7 @@ build_muen_qemu_kvm:
     paths:
       - obj/artifacts/
   script:
-    - make -j$(nproc) artifacts
+    - opam exec -- make -j$(nproc) artifacts
 
 build_muen_prodrive_hermes:
   rules:
@@ -172,7 +179,7 @@ build_muen_prodrive_hermes:
     paths:
       - obj/artifacts/
   script:
-    - make -j$(nproc) artifacts
+    - opam exec -- make -j$(nproc) artifacts
 
 build_container_image:
   rules:
@@ -185,8 +192,8 @@ build_container_image:
     entrypoint: [""]
   before_script:
     - chmod 01777 /downloads
-    - mkdir -p /downloads/opam
-    - mkdir -p /home/opam/.opam
+    - "[ -d /downloads/opam/ ] || mkdir -m 0777 /downloads/opam"
+    - mkdir -m 0777 -p /home/opam/.opam
     - ln -s /downloads/opam /home/opam/.opam/download-cache
     - mkdir -p /kaniko/.docker
     - >
@@ -197,8 +204,12 @@ build_container_image:
     - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
     - >-
       /kaniko/executor --context "${CI_PROJECT_DIR}"
+      --single-snapshot
+      --snapshotMode=time
       --dockerfile ${CI_PROJECT_DIR}/src/container/alpine/Dockerfile
       --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" $NOPUSH
+      --push-retry 5
+      --image-fs-extract-retry 5
 
 deploy_container_image:
   rules:

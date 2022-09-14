@@ -31,8 +31,6 @@ MUEN_HARDWARE ?= qemu-kvm
 MUEN_KEY_DIR ?= keys/test-key
 
 # Set USE_CCACHE=1 if you would like to use ccache to speed up the build.
-# Note that this automatically sets CCACHE_DIR to a sub-directory of the build
-# tree.
 USE_CCACHE ?=
 
 # Set OUTER_SMARTCARD to PKCS 11 URL to use a smartcard for the inner RSA
@@ -48,6 +46,8 @@ endif
 # ------------------------------------------------------------------------------
 
 TOP_DIR := $(abspath .)
+
+PATH_ORIG := ${PATH}
 
 .SUFFIXES:
 
@@ -73,6 +73,7 @@ all:
 XMODE := $(shell cat .stamp-mode 2>/dev/null)
 
 DUNE := dune
+DUNE_ARGS := --release
 OPAM_VERSION := $(shell opam --version)
 OPAM_VERSION_GT_EQ_2_1_0 := $(shell expr ${OPAM_VERSION} \>= 2.1.0)
 
@@ -88,20 +89,21 @@ KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
 KEYFENDER_CARGS ?= --no-platform=true --single-interface
-DUNE := DUNE_INSTRUMENT_WITH=bisect_ppx OCAMLRUNPARAM=b dune
+DUNE := OCAMLRUNPARAM=b dune
+DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
 OPAMVAR_coverage := true
 export OPAMVAR_coverage
 else
 $(error Invalid MODE '$(XMODE)')
 endif
 
-ifeq ($(USE_CCACHE),)
-CCACHE :=
-else
+ifneq ($(USE_CCACHE),)
+$(info Enabling ccache)
 CCACHE := ccache
-CCACHE_DIR := $(TOP_DIR)/cache/ccache
-export CCACHE_DIR
-ifneq ($(shell $(CC) -xc -c - -o /dev/null --ccache-skip </dev/null 2>&1),)
+CCACHE_PATH := /usr/lib/ccache/bin:/usr/lib/ccache:
+PATH := $(CCACHE_PATH)$(PATH_ORIG)
+export PATH
+ifneq ($(shell PATH=$(PATH) gcc -xc -c - -o /dev/null --ccache-skip </dev/null 2>&1),)
 $(error USE_CCACHE was requested but /usr/lib/ccache is not first on $$PATH)
 endif
 endif
@@ -122,7 +124,7 @@ $(SOFTWARE_VERSION): CHANGES.md
 	grep ^# CHANGES.md | head -1 | cut -d ' ' -f 2 > $@
 
 .stamp-prepare: src/keyfender/buildTag $(SOFTWARE_VERSION)
-ifeq ($(USE_CCACHE),1)
+ifneq ($(CCACHE_DIR),)
 	mkdir -p $(CCACHE_DIR)
 endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
@@ -175,7 +177,7 @@ S_KEYFENDER_PREP := src/s_keyfender/_build/default/stamp-prep
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
 
 $(KEYFENDER): .stamp-prepare
-	cd src/keyfender && $(DUNE) build --release
+	cd src/keyfender && $(DUNE) build $(DUNE_ARGS)
 
 $(KEYFENDER_INSTALL): $(KEYFENDER)
 	opam reinstall -y --assume-built keyfender
@@ -202,14 +204,14 @@ $(S_KEYFENDER_PREP): .stamp-prepare
 	touch $@
 
 $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
-	cd src/s_keyfender && make build
+	cd src/s_keyfender && $(MAKE) build
 
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib: $(KEYFENDER)
-	cd src/keyfender && $(DUNE) runtest
+	cd src/keyfender && $(DUNE) runtest $(DUNE_ARGS)
 ifeq ($(XMODE),test)
 	bisect-ppx-report summary --coverage-path=src/keyfender
 endif
@@ -600,7 +602,7 @@ $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRA
 	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
 	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
-		PATH=/opt/gnat/bin:$${PATH} \
+		PATH=$(CCACHE_PATH)/opt/gnat/bin:$(PATH_ORIG) \
 	    pack
 
 OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
