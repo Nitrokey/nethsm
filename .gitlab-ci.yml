@@ -46,7 +46,6 @@ stages:
   - build_coreboot
   - deploy
   - check
-  - build_docs
   - build_container
 
 build_builder_image:
@@ -179,9 +178,7 @@ build_container_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH != "master"
-  needs:
-    - validate_api_spec
-    - build_api_docs
+  needs: []
   stage: build_container
   image:
     name: gcr.io/kaniko-project/executor:debug
@@ -197,8 +194,6 @@ build_container_image:
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
   script:
-    - mv api_docs src/container/static/
-    - mv api_spec/* src/container/static/api_docs/
     - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
     - >-
       /kaniko/executor --context "${CI_PROJECT_DIR}"
@@ -237,12 +232,6 @@ validate_api_spec:
   needs: []
   image: "alpine"
   dependencies: []
-  artifacts:
-    name: "$CI_JOB_NAME"
-    expire_in: 1 week
-    paths:
-      - api_spec/
-    when: always
   services:
     - name: swaggerapi/swagger-validator-v2
       alias: swagger-validator
@@ -255,27 +244,3 @@ validate_api_spec:
       --data-binary @$API_SPEC
       --output $API_SPEC_DEBUG'
     - grep "^{}$" nethsm-api-debug.log
-    - mkdir api_spec
-    - cp $CI_PROJECT_DIR/docs/nethsm-api.json api_spec/
-
-build_api_docs:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != "master"
-  variables:
-    API_SPEC: "docs/nethsm-api.json"
-  stage: build_docs
-  image: "alpine"
-  dependencies: []
-  needs:
-    - validate_api_spec
-  artifacts:
-    name: "$CI_JOB_NAME"
-    expire_in: 1 week
-    paths:
-      - api_docs/
-  before_script: []
-  script:
-    - wget https://github.com/swagger-api/swagger-ui/archive/master.zip
-    - unzip master.zip -j swagger-ui-master/dist/* -d api_docs/
-    - 'sed -i "s/url: \"https:\/\/petstore.swagger.io\/v2\/swagger.json\",/url: \".\/nethsm-api.json\",/g" api_docs/swagger-initializer.js'
