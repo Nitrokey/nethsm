@@ -226,7 +226,7 @@ validate_api_spec:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH != "master"
   variables:
-    API_SPEC: "docs/nethsm-api.json"
+    API_SPEC: "docs/nethsm-api.yaml"
     API_SPEC_DEBUG: "nethsm-api-debug.log"
   stage: check
   needs: []
@@ -240,7 +240,7 @@ validate_api_spec:
     - apk add curl
     - 'curl --request POST http://swagger-validator:8080/validator/debug
       --header "Accept: application/json"
-      --header "Content-Type: application/json"
+      --header "Content-Type: application/yaml"
       --data-binary @$API_SPEC
       --output $API_SPEC_DEBUG'
     - grep "^{}$" nethsm-api-debug.log

@@ -9,7 +9,7 @@ let prefix = "api/v1"
 let keyid = "myKey1"
 let userid = "operator"
 let cmd path meth = Printf.sprintf "curl --insecure https://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
-let api_file = "../../docs/nethsm-api.json"
+let api_file = "../../docs/nethsm-api.yaml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
 let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"; "/config/tls/cert.pem"]
@@ -41,7 +41,8 @@ let get_meth meth meta = (* e.g. met is "get", "put", "post" *)
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
 let api = CCIO.with_in api_file CCIO.read_all
-  |> Ezjsonm.from_string
+  |> Yaml.of_string
+  |> Stdlib.Result.get_ok
 
 (* refs are in the form #/components/schemas/PemCert, so basically a path *)
 let json_ref_resolve ref =

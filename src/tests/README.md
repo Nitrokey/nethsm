@@ -2,7 +2,7 @@
 
 This directory contains shell scripts for end-to-end testing of a NetHSM, and
 an OCaml program which generates tests from the OpenAPI specification (in
-../../docs/nethsm-api.json).
+../../docs/nethsm-api.yaml).
 
 The test generation works on each endpoint individually. For each endpoint,
 HTTP requests and expected results are generated. Depending on the required
