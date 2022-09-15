@@ -10,18 +10,20 @@ RUN git clone -s /tmp/repo /home/opam/nethsm
 
 WORKDIR /home/opam/nethsm
 
-COPY src/container/static src/s_keyfender/htdocs
-COPY docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/api_spec/nethsm-api.yaml
-RUN sudo chown -R opam:opam src/s_keyfender/htdocs
-
-RUN wget https://github.com/swagger-api/swagger-ui/archive/master.zip
-RUN unzip master.zip -j swagger-ui-master/dist/* -d src/s_keyfender/htdocs/api_docs/
-# Sets NetHSM API specification file
-RUN sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/api_spec\/nethsm-api.yaml"\,/g' \
-  src/s_keyfender/htdocs/api_docs/swagger-initializer.js
-# Removes the SwaggerUI top bar
-RUN sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' \
-  src/s_keyfender/htdocs/api_docs/swagger-initializer.js
+RUN cp -a src/container/static/ src/s_keyfender/htdocs \
+  && mkdir -p src/s_keyfender/htdocs/api_docs \
+  && cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/ \
+  && curl -sSL "https://github.com/swagger-api/swagger-ui/archive/master.tar.gz" -o /tmp/swagger-ui.tar.gz \
+  && mkdir -p /tmp/swagger-ui \
+  && tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz \
+  # Sets NetHSM API specification file
+  && sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/nethsm-api.yaml"\,/g' \
+  /tmp/swagger-ui/dist/swagger-initializer.js \
+  # Removes the SwaggerUI top bar
+  && sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' \
+  /tmp/swagger-ui/dist/swagger-initializer.js \
+  && cp -a /tmp/swagger-ui/dist/* src/s_keyfender/htdocs/api_docs/ \
+  && rm -r /tmp/swagger-ui*
 
 RUN opam exec -- make -j$(nproc) local-container-setup build-keyfender
 
