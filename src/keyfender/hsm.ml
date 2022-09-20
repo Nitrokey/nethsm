@@ -774,8 +774,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   module User = struct
 
     module Info = User_info
-    module User_store = Json_store.Make(Encrypted_store)(Info)
-    module Encrypted_store = struct end
 
     let user_src = Logs.Src.create "hsm.user" ~doc:"HSM user log"
     module Access = (val Logs.src_log user_src : Logs.LOG)
