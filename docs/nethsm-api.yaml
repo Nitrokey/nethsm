@@ -491,6 +491,45 @@ paths:
         required: true
         schema:
           type: string
+  /keys/{KeyID}/encrypt:
+    post:
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncryptData'
+        '400':
+          description: Bad Request, e.g. invalid mechanism.
+        '401':
+          description: Authentication required but none provided.
+        '403':
+          description: Access denied.
+        '404':
+          description: Key for KeyID not found.
+        '412':
+          description: Precondition failed (NetHSM was not <i>Operational</i>).
+      description: Encrypt a message with the secret key.
+      operationId: POST_keys-KeyID-encrypt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncryptRequestData'
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Operator
+      x-annotation-state:
+        - Operational
+    parameters:
+      - name: KeyID
+        in: path
+        required: true
+        schema:
+          type: string
   /keys/{KeyID}/sign:
     post:
       responses:
