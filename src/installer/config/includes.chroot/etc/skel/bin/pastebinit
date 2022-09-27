@@ -1,3 +1,0 @@
-#!/bin/sh
-# Shut up useless deprecation warnings
-exec python3 -W ignore::DeprecationWarning /usr/bin/pastebinit "$@"

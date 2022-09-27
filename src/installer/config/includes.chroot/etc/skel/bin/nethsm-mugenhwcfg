@@ -1,7 +1,0 @@
-#!/bin/sh
-
-# Use this script to run mugenhwcfg on the NetHSM hardware.
-
-sudo modprobe msr || exit 1
-
-cd /home/src/mugenhwcfg && sudo ./mugenhwcfg.py

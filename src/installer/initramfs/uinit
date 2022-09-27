@@ -1,0 +1,89 @@
+#!/bbin/elvish
+
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/scsi/scsi_common.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/scsi/scsi_mod.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/ata/libata.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/ata/libahci.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/ata/ahci.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/crypto/crct10dif_common.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/arch/x86/crypto/crct10dif-pclmul.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/crypto/crct10dif_generic.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/lib/crc-t10dif.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/block/t10-pi.ko
+insmod /lib/modules/5.16.0-4-amd64/kernel/drivers/scsi/sd_mod.ko
+
+var file = system.img.cpio
+
+var partitions = '
+label: gpt
+size=256M, type="ChromeOS kernel", name="system1"
+size=256M, type="ChromeOS kernel", name="system2"
+name="data"
+'
+
+var sep = "--------------------------------------------------"
+
+var reset = $false
+
+for i $args {
+  if (eq $i "factory-reset") {
+    set reset = $true
+    break
+  }
+}
+
+echo '
+
+**************************************
+* Nitrokey NetHSM Software Installer *
+**************************************
+
+'
+
+if $reset {
+  echo "Executing factory reset."
+} else {
+  echo "Executing software update."
+}
+
+echo $sep
+echo "Software version to be installed:"
+cat /update.changelog
+echo
+sleep 5
+
+if $reset {
+  echo $sep
+  echo "Partitioning hard disk"
+  echo $partitions | sfdisk /dev/sda
+  sync
+}
+
+echo $sep
+echo "Writing to first system partition"
+dd if=$file of=/dev/sda1 ibs=1M obs=1M
+
+if $reset {
+  echo $sep
+  echo "Writing to second system partition"
+  dd if=$file of=/dev/sda2 ibs=1M obs=1M
+
+  echo $sep
+  echo "Formatting data partition"
+  mke2fs -t ext4 -E discard -F -m0 -L data /dev/sda3
+  sync
+  sync
+
+  echo $sep
+  echo "Successfully installed:"
+  cat /update.changelog
+  echo
+  echo
+}
+
+echo $sep
+echo "Done. Shutting down in 30 seconds..."
+sleep 30
+
+echo "Shutting down..."
+poweroff

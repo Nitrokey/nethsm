@@ -7,4 +7,7 @@
 /src/container/static/Index.js.map filter=lfs diff=lfs merge=lfs -text
 /src/coreboot/blobs/hermes_bios_base.swu filter=lfs diff=lfs merge=lfs -text
 /src/coreboot/firmware-blobs/me.bin filter=lfs diff=lfs merge=lfs -text
+/src/installer/initramfs/lib/modules/5.16.0-4-amd64/kernel/drivers/ata/libata.ko filter=lfs diff=lfs merge=lfs -text
+/src/installer/initramfs/lib/modules/5.16.0-4-amd64/kernel/drivers/scsi/scsi_mod.ko filter=lfs diff=lfs merge=lfs -text
+/src/installer/root/boot/vmlinuz filter=lfs diff=lfs merge=lfs -text
 **/modules/**/*.ko filter=lfs diff=lfs merge=lfs -text
