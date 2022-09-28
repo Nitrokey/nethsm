@@ -484,6 +484,8 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREB
 	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
 	$(CBFSTOOL) $@ add \
 	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
+	$(CBFSTOOL) $@ add \
+	    -f src/coreboot/blobs/ascii.pf2 -n etc/ascii.pf2 -t raw
 
 $(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
 	OFFSET_ROM=$(shell strings -o -t x $(OBJ_COREBOOT_ROM) | \
@@ -642,8 +644,9 @@ INSTALLER_DIR := $(TOP_DIR)/src/installer
 
 INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
 
-$(OBJ_INSTALLER_ROOT): $(INSTALLER_DIR)/root
-	cp -a $< $@
+$(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_DIR)/root/**/*)
+	rm -rf $@
+	cp -a $(INSTALLER_DIR)/root $@
 	sed -i s/__BUILD_TAG__/$(BUILD_TAG)/ $@/boot/grub/grub.cfg
 
 $(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT)
