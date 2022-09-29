@@ -154,11 +154,14 @@ RUN cd /tmp \
 ARG OPAM_REPOSITORY_COMMIT
 RUN opam init -a --disable-sandboxing --bare \
         git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT} \
-        && OPAMJOBS=$(nproc) opam switch create 4.14 ocaml-variants.4.14.0+options ocaml-options-only-flambda
-
-RUN eval $(opam env) \
+        && rm -rf /home/opam/.opam/download-cache \
+        && if [ -d /downloads ] ; then mkdir -p /downloads/opam \
+        &&   ln -s /downloads/opam /home/opam/.opam/download-cache ; fi \
+        && OPAMJOBS=$(nproc) opam switch create 4.14 ocaml-variants.4.14.0+options ocaml-options-only-flambda \
+        && eval $(opam env) \
         && opam update \
-        && OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
+        && OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml \
+        && if [ -h /home/opam/.opam/download-cache ] ; then rm /home/opam/.opam/download-cache ; fi
 
 ARG COMMIT_ID
 RUN sudo /bin/sh -c "echo ${COMMIT_ID} > /.builder_id"

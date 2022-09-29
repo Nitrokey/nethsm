@@ -53,6 +53,8 @@ stages:
 build_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        NOPUSH: "--no-push"
     - if: ($BUILDER_TAG != "latest" && $CI_COMMIT_BRANCH != "master")
   stage: prepare
   image:
@@ -61,15 +63,12 @@ build_builder_image:
   before_script:
     - chmod 01777 /downloads
     - "[ -d /downloads/opam/ ] || mkdir -m 0777 /downloads/opam"
-    - mkdir -m 0777 -p /home/opam/.opam
-    - ln -s /downloads/opam /home/opam/.opam/download-cache
     - mkdir -p /kaniko/.docker
     - >
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
   script:
-    - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
     - >-
       /kaniko/executor
       --context "${CI_PROJECT_DIR}/src/container/builder"
@@ -82,7 +81,7 @@ build_builder_image:
       --build-arg COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --push-retry 5
       --image-fs-extract-retry 5
-      $NOPUSH
+      ${NOPUSH}
 
 deploy_builder_image:
   rules:
@@ -184,6 +183,8 @@ build_muen_prodrive_hermes:
 build_container_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        NOPUSH: "--no-push"
     - if: $CI_COMMIT_BRANCH != "master"
   needs: []
   stage: build_container
@@ -201,13 +202,12 @@ build_container_image:
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
   script:
-    - if [ ${CI_PIPELINE_SOURCE} == "schedule" ] ; then NOPUSH="--no-push" ; fi
     - >-
       /kaniko/executor --context "${CI_PROJECT_DIR}"
       --single-snapshot
       --snapshotMode=time
       --dockerfile ${CI_PROJECT_DIR}/src/container/alpine/Dockerfile
-      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" $NOPUSH
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" ${NOPUSH}
       --push-retry 5
       --image-fs-extract-retry 5
 
