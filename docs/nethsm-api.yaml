@@ -530,6 +530,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyAESKey
     parameters:
       - name: KeyID
         in: path
@@ -1935,7 +1936,8 @@ components:
     EncryptRequestData:
       example:
         mode: AES_CBC
-        message: nhrfotu32409ru0rgert45z54z099u23r03498uhtr==
+        message: nhrfotu32409ru0rgert45z54z099u23r03498uhtrq=
+        iv: aYlwUI4A9zL9tjs4dMAq+A==
       type: object
       properties:
         mode:
@@ -1949,8 +1951,8 @@ components:
         - message
     EncryptData:
       example:
-        encrypted: IBCS8Sc4NkG/O+kqInz7mq/+Pr+5eJUJ/QpfwMp7pPjLn02U7ggyUrxJfN97MChHGekvGEK4Q1LCJ2juHTgjxJ94/QoEAN0dWZ7x3NxjlUgw7yBm7ylldVvToum3lWOVo3wPm5ozSGxpslrqgz2Rid9+uH5ytV8//CrkMOlqlUoj0DWMYbp/sUbYDGwG8lcfvKua67AxT3X/exSKCAwBuxPBr2p3DCTHepdmZCyexL809ZvBRopOQ41ve9X1jXqKzihrCPeoCwEok06EGYhPt3/EKFoer401S0MYtz5J1BvO1cv7ITDOYUCG4Ze8aXEjtnt6MMRx4jY7IqssYO8GrA==
-        iv: MTIzNDU2Nzg5MDEyMzQ1Ng==
+        encrypted: HQsTMBVvk19G9wrVQXPT0sDfjIglsJyZJl+VNWVSc0s=
+        iv: aYlwUI4A9zL9tjs4dMAq+A==
       type: object
       properties:
         encrypted:

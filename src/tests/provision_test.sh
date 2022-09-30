@@ -66,5 +66,16 @@ PUT_admin /v1/keys/MyRSAKey <<EOM
   }
 }
 EOM
+
+# put an encrypt key
+PUT_admin /v1/keys/MyAESKey <<EOM
+{
+  mechanisms: ["AES_Encryption_CBC"],
+  type: "Generic",
+  key: {
+    data: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh"
+  }
+}
+EOM
 echo "Setup complete."
 
