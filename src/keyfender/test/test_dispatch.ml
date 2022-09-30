@@ -7,6 +7,67 @@ let () =
   Logs.set_level (Some Debug);
   Mirage_crypto_rng_unix.initialize ()
 
+(* stop execution on none *)
+let (let*) v f =
+  match v with
+  | None -> ()
+  | Some v -> f v
+
+module Expect = struct
+
+  let status_fmt f s =
+    Fmt.string f (Cohttp.Code.string_of_status s)
+
+  let status =
+    Alcotest.testable (Fmt.option status_fmt) (Option.equal ( = ))
+
+  let status_of_response = Option.map (fun (a, _, _, _) -> a)
+
+  let body_type_fmt f = function
+    | `String -> Fmt.string f "`String"
+    | `Stream -> Fmt.string f "`Stream"
+    | `Strings -> Fmt.string f "`Strings"
+    | `Empty -> Fmt.string f "`Empty"
+
+  let body_type =
+    Alcotest.testable (Fmt.option body_type_fmt) (Option.equal ( = ))
+
+  let body_type_of_response = Option.map (function
+      | (_, _, `Stream _, _) -> `Stream
+      | (_, _, `String _, _) -> `String
+      | (_, _, `Strings _, _) -> `Strings
+      | (_, _, `Empty, _) -> `Empty)
+
+  let code c (hsm, response) =
+    Alcotest.(check status) 
+    "Response code"  
+    (Some c)
+    (status_of_response response);
+    match response with
+    | Some (s, _, _, _) when s = c -> Some hsm
+    | _ -> None
+  
+  let no_content v = code `No_content v 
+
+  let not_found v = code `Not_found v
+
+  let ok v = code `OK v
+    
+  let stream (hsm, response) =
+    Alcotest.(check status) 
+      "Response code"
+      (Some `OK)
+      (status_of_response response);
+    Alcotest.(check body_type) 
+      "Response body type"
+      (Some `Stream)
+      (body_type_of_response response);
+    match response with
+    | Some (`OK, _, `Stream s, _) -> Some (hsm, s)
+    | _ -> None
+
+end
+
 module Mock_clock = struct
   let _now = ref (1000, 0L)
   let now_d_ps () = !_now
@@ -94,6 +155,38 @@ let locked_mock () =
   let t = copy locked_mock in
   Hsm.reset_rate_limit ();
   t
+
+
+let test_key_pem = {|
+-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQCwMWUcsAEksFrhssoZK09w9iTMe77qJrks542+InrqD8qj31gw
+Wagnrd/x9RAvqxkmLqkiuTYOQq7ly5Vrswvwub0TleCtvhnDWg1mZQ5obSBZ8BbS
+o6K8oI/pjLaVgshx8e3Dx73ekDtlQNEmYiXB4Zlhv5VZnGC+nhcw0KHj2wIDAQAB
+AoGAKNvrlNGEElwLV1e84kVW8N1D/1+bEHXWb4FrL3KTioALACGlM+E2y6zYyCWK
+kWNeO6qKcpD85iW0pXmmtwkYdWHFsG6fthZCsPUdVchoYDQQmCjZLNk+l4jnV66p
+KowVbScx/oWDgIFw/dajFR+bDybuTjCr8QJ10LuelzRwueECQQDqBswdI669i0sW
+eBMRnGD7uFYR8/pyExIkQJ+WgyYEKG+Q8rJbAVDJdhbqATtSXJb9g43aVh5ecnd9
+9tR4IBgJAkEAwLx5ddawRbTJdPdG5jDDjY5716U5g1U8mgrBn6yX3cMgLsyMf2ZP
+gQKQaKbSdRWgxIc0bkGpkMHbKbSTrcYtwwJBAJs5SPdm7IciNfrAR/2dWKJ9oPEl
+f49cYOMUzgVaFcQaQe3FXFGKbNhDcG1jxcIaUbfzIwqXpmsEx4cQSdsnhmkCQQCw
+wWjGuBBKrSUAXvKnktsUjDJpLz7Sgi4ku26dCETyfMub/71t7R9Gmlpjj3J9LEuX
+UMO1xgRDHHXpBpFVEeXPAkA1JUjkAwT934dsaE5UJKw6UbSuO/aJtC3zzwlJxJ/+
+q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
+-----END RSA PRIVATE KEY-----
+|}
+
+let test_key =
+  match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
+  | Ok `RSA key -> key
+  | _ -> assert false
+
+let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
+
+let hsm_with_key ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
+  let state = operational_mock () in
+  Lwt_main.run (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions >|= function
+  | Ok () -> state
+  | Error _ -> assert false)
 
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
@@ -506,6 +599,51 @@ let system_backup_and_restore_ok =
     | _ -> false
   end
 
+let system_backup_and_restore_operational =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational"
+    `Quick
+  @@ fun () ->
+  let backup_passphrase = "backup passphrase" in
+  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let hsm_state = hsm_with_key () in
+  let* hsm_state = 
+    admin_put_request ~hsm_state ~body:(`String passphrase) "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let headers = auth_header "backup" "test3Passphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup"
+    |> Expect.stream
+  in
+  let content_type = "application/octet-stream" in
+  let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
+  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  (* backup is done, let's remove a key and try to restore it *)
+  let* hsm_state =
+    request ~meth:`DELETE ~hsm_state ~headers:admin_headers "/keys/keyID"
+    |> Expect.no_content
+  in
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/keyID"
+    |> Expect.not_found
+  in
+  let* hsm_state =
+    request ~meth:`POST ~hsm_state ~content_type ~query ~body:(`String data) "/system/restore"
+    |> Expect.no_content
+  in
+  assert (Hsm.state hsm_state = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let* hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> Expect.no_content
+  in
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/keyID"
+    |> Expect.ok
+  in
+  ()
+  
 let system_backup_post_accept_header =
   "a request for /system/backup using 'Accept: application/octet-stream' succeeds"
   @? fun () ->
@@ -1544,37 +1682,6 @@ let keys_generate_generic_fail =
       end
     | _ -> false
   end
-
-let test_key_pem = {|
------BEGIN RSA PRIVATE KEY-----
-MIICXQIBAAKBgQCwMWUcsAEksFrhssoZK09w9iTMe77qJrks542+InrqD8qj31gw
-Wagnrd/x9RAvqxkmLqkiuTYOQq7ly5Vrswvwub0TleCtvhnDWg1mZQ5obSBZ8BbS
-o6K8oI/pjLaVgshx8e3Dx73ekDtlQNEmYiXB4Zlhv5VZnGC+nhcw0KHj2wIDAQAB
-AoGAKNvrlNGEElwLV1e84kVW8N1D/1+bEHXWb4FrL3KTioALACGlM+E2y6zYyCWK
-kWNeO6qKcpD85iW0pXmmtwkYdWHFsG6fthZCsPUdVchoYDQQmCjZLNk+l4jnV66p
-KowVbScx/oWDgIFw/dajFR+bDybuTjCr8QJ10LuelzRwueECQQDqBswdI669i0sW
-eBMRnGD7uFYR8/pyExIkQJ+WgyYEKG+Q8rJbAVDJdhbqATtSXJb9g43aVh5ecnd9
-9tR4IBgJAkEAwLx5ddawRbTJdPdG5jDDjY5716U5g1U8mgrBn6yX3cMgLsyMf2ZP
-gQKQaKbSdRWgxIc0bkGpkMHbKbSTrcYtwwJBAJs5SPdm7IciNfrAR/2dWKJ9oPEl
-f49cYOMUzgVaFcQaQe3FXFGKbNhDcG1jxcIaUbfzIwqXpmsEx4cQSdsnhmkCQQCw
-wWjGuBBKrSUAXvKnktsUjDJpLz7Sgi4ku26dCETyfMub/71t7R9Gmlpjj3J9LEuX
-UMO1xgRDHHXpBpFVEeXPAkA1JUjkAwT934dsaE5UJKw6UbSuO/aJtC3zzwlJxJ/+
-q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
------END RSA PRIVATE KEY-----
-|}
-
-let test_key =
-  match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
-  | Ok `RSA key -> key
-  | _ -> assert false
-
-let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
-
-let hsm_with_key ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
-  let state = operational_mock () in
-  Lwt_main.run (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions >|= function
-  | Ok () -> state
-  | Error _ -> assert false)
 
 let keys_key_get =
   "GET on /keys/keyID succeeds"
@@ -2879,6 +2986,7 @@ let () =
     "/system/update from binary file", [ system_update_from_file_ok ];
     "/system/update signing", [ sign_update_ok ];
     "/system/backup", [ system_backup_and_restore_ok ;
+                        system_backup_and_restore_operational ;
                         system_backup_post_accept_header ];
     "/unlock", [ unlock_ok ;
                  unlock_failed ;
