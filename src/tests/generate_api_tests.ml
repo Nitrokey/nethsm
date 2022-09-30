@@ -6,8 +6,6 @@
 let host = "localhost"
 let port = "8443"
 let prefix = "api/v1"
-let keyid = "myKey1"
-let userid = "operator"
 let cmd path meth = Printf.sprintf "curl --insecure https://%s:%s/%s%s -X %s " host port prefix path (String.uppercase_ascii meth)
 let api_file = "../../docs/nethsm-api.yaml"
 let allowed_methods = ["get" ; "put" ; "post"]
@@ -128,6 +126,22 @@ let req_states req =
 let req_roles req =
   Ezjsonm.get_strings @@ Ezjsonm.find req ["x-annotation-role"]
 
+let subst_prefix = "x-test-value-"
+
+let subst_prefix_len = String.length subst_prefix
+
+let req_substs req =
+  Ezjsonm.get_dict req
+  |> List.filter_map (fun (k, v) -> 
+    if Astring.String.is_prefix ~affix:subst_prefix k then
+      let match' = 
+        String.sub k subst_prefix_len (String.length k - subst_prefix_len) 
+      in
+      match v with
+      | `String s -> Some (match',  s)
+      |_ -> None
+    else None)
+
 let make_post_data req =
   match Ezjsonm.get_dict @@ Ezjsonm.find req ["requestBody"; "content"] with
   | exception Not_found -> [""]
@@ -139,7 +153,24 @@ let make_post_data req =
     in
     List.map f mediatypes
 
+(* Extracted metadata a specific endpoint *)
+type req_data = {
+  states: string list; (* HSM accepted states *)
+  role: string option; (* role to use *)
+  auth_header: string; (* command to add authentication headers for that role *)
+  substs: (string * string) list; (* substitutions to use *)
+}
+
+type test = {
+  test_res: [`Pos | `Neg];
+  state: string;
+  role: string option;
+  auth_header: string;
+  substs: (string * string) list;
+}
+
 let make_req_data req meth =
+  let substs = req_substs req in
   let roles = req_roles req in
   let role, auth_header = match roles with
   | ["Public"] -> None, ""
@@ -154,16 +185,16 @@ let make_req_data req meth =
   in
   let states = req_states req in
   let states_and_data_for_mediatype = match meth with
-  | "get" -> [(states, role, auth_header)]
+  | "get" -> [{states; role; auth_header; substs}]
   | "post"
-  | "put" -> List.map (fun d -> (states, role, auth_header ^ d)) (make_post_data req)
+  | "put" -> List.map (fun d -> {states; role; auth_header = auth_header ^ d; substs}) (make_post_data req)
   | m -> Printf.printf "Error: Method %s not allowed\n" m; assert false
   in
-  let unroll_states (states, role, data) =
+  let unroll_states {states; role; auth_header; substs} =
     let other_states = List.filter (fun x -> not @@ List.mem x states) all_states in
     List.append
-      (List.map (fun s -> (`Neg, s, role, data)) other_states)
-      (List.map (fun s -> (`Pos, s, role, data)) states)
+      (List.map (fun s -> {test_res = `Neg; state = s; role; auth_header; substs}) other_states)
+      (List.map (fun s -> {test_res = `Pos; state = s; role; auth_header; substs}) states)
   in
   List.concat_map unroll_states states_and_data_for_mediatype
 
@@ -184,35 +215,44 @@ let make_resp_data raml_meth =
   let codes_and_examples = List.concat_map get_example response_codes in
   codes_and_examples
 
-let tests_for_states meth path cmd (response_code, response_body) (test_res, state, role, req) =
+let has_match cmd match' =
+  let regex = Str.regexp_string ("{" ^ match' ^ "}") in
+  Str.string_match regex cmd 0 
+
+let match_replace_by cmd (match', replace) =
+  let regex = Str.regexp_string ("{" ^ match' ^ "}") in
+  Str.global_replace regex replace cmd
+
+let check_cmd_is_ready cmd =
+  let regex = Str.regexp (".*{\\(.*\\)}.*") in
+  let match' = Str.string_match regex cmd 0 in
+  if match' then
+    failwith 
+      ("Request path has an unsubstituted field: {"^ (Str.matched_group 1 cmd)^"}")
+
+let tests_for_states meth path cmd (response_code, response_body) 
+                            {test_res; state; role; auth_header = req; substs} =
   let (outdir, test_file) = path_to_filename state meth path in
   ignore (Sys.command("mkdir -p " ^ outdir));
 
-  let cmd = Str.global_replace (Str.regexp_string "{Tag}") "munich" cmd in
-  let cmd' = Str.global_replace (Str.regexp_string "{KeyID}") keyid cmd in
-  let cmd'' = Str.global_replace (Str.regexp_string "{UserID}") userid cmd' in
+  let cmd' = List.fold_left match_replace_by cmd substs in
+  check_cmd_is_ready cmd' |> ignore;
 
   (* for negative test cases (state tests), add an error code prefix *)
   let resp_code = if test_res = `Neg then "412_" else "" in
-  let test_cmd = Printf.sprintf "%s %s  -D %sheaders.out -o body.out \n\n" cmd'' req resp_code in
+  let test_cmd = Printf.sprintf "%s %s  -D %sheaders.out -o body.out \n\n" cmd' req resp_code in
 
   if test_res = `Pos then
   begin
-    (* if keyid was set, prepare a wrong one *)
-    if cmd <> cmd' then
-      begin
-        let wrong_key = Str.global_replace (Str.regexp_string "{KeyID}") "bogus" cmd in
-        let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_key_headers.out -o /dev/null \n\n" wrong_key req in
-        write_cmd (outdir ^ "/404_wrong_key_cmd.sh") wrong_key_cmd
-      end;
-
-    (* if userid was set, prepare a wrong one *)
-    if cmd' <> cmd'' then
-      begin
-        let wrong_user = Str.global_replace (Str.regexp_string "{UserID}") "bogus" cmd in
-        let wrong_user_cmd = Printf.sprintf "%s %s  -D 404_wrong_user_headers.out -o /dev/null \n\n" wrong_user req in
-        write_cmd (outdir ^ "/404_wrong_user_cmd.sh") wrong_user_cmd
-      end;
+    (* tests for wrong IDs (in {KeyID}, {UserID}, {Tag}) *)
+    List.iter (fun (match', _) -> 
+      if has_match cmd match' then
+        begin
+          let wrong_key = match_replace_by cmd (match', "bogus") in
+          let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_%s_headers.out -o /dev/null \n\n" wrong_key req match' in
+          write_cmd (outdir ^ "/404_wrong_" ^ match' ^ "_cmd.sh") wrong_key_cmd
+        end 
+      ) substs;
 
     (* if request contains --data json, prepare a wrong example *)
     let args = Str.split (Str.regexp "--data") req in
@@ -222,7 +262,7 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
         let headers = List.hd args in
         let wrong_json = "{}}}" in
         let wrong_req = Printf.sprintf " %s--data %s " headers (escape wrong_json) in
-        let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd'' wrong_req in
+        let wrong_json_cmd = Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n" cmd' wrong_req in
         write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd;
       end;
 
@@ -243,22 +283,22 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
         let wrong_auth = Str.global_replace (Str.regexp_string current_auth) someone_else req in
         if req <> wrong_auth then
           begin
-            let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'' wrong_auth in
+            let wrong_auth_cmd = Printf.sprintf "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd' wrong_auth in
             write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd;
           end;
         let no_auth = Str.global_replace (Str.regexp_string current_auth) "" req in
         if req <> no_auth then
           begin
-            let no_auth_cmd = Printf.sprintf "%s %s  -D 401_no_auth_headers.out -o /dev/null \n\n" cmd'' no_auth in
+            let no_auth_cmd = Printf.sprintf "%s %s  -D 401_no_auth_headers.out -o /dev/null \n\n" cmd' no_auth in
             write_cmd (outdir ^ "/401_no_auth_cmd.sh") no_auth_cmd;
           end;
     end;
 
     let other_method = "PATCH" in
-    let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd'' in
+    let wrong_meth = Str.global_replace (Str.regexp_string {|GET|}) other_method cmd' in
     let wrong_meth' = Str.global_replace (Str.regexp_string {|PUT|}) other_method wrong_meth in
     let wrong_meth'' = Str.global_replace (Str.regexp_string {|POST|}) other_method wrong_meth' in
-    if cmd'' <> wrong_meth'' then
+    if cmd' <> wrong_meth'' then
       begin
         let wrong_meth_cmd = Printf.sprintf "%s %s  -D 501_wrong_meth_headers.out -o /dev/null \n\n" wrong_meth'' req in
         write_cmd (outdir ^ "/501_wrong_meth_cmd.sh") wrong_meth_cmd;
@@ -302,16 +342,9 @@ let tests_for_states meth path cmd (response_code, response_body) (test_res, sta
       ignore (Sys.command("touch " ^ outdir ^ "/body.skip"))
   end
 
-(* we avoid PUT on endpoints where the ID already exists *)
-let endpoint_is_create cmd meth =
-  String.equal meth "put" 
-  && (Astring.String.is_suffix ~affix:"{UserID}" cmd
-    || Astring.String.is_suffix ~affix:"{KeyID}" cmd)
-
 let print_method path (meth, req) =
   if 
     List.mem meth allowed_methods (* skips descriptions *)
-    && not (endpoint_is_create path meth)
   then begin
     let reqs = make_req_data req meth in
     let responses = make_resp_data req in

@@ -312,6 +312,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     put:
       responses:
         '204':
@@ -330,12 +331,12 @@ paths:
       operationId: PUT_keys-KeyID
       requestBody:
         content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PrivateKey'
           application/x-pem-file:
             schema:
               $ref: '#/components/schemas/PemPrivateKey'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivateKey'
         required: true
       parameters:
         - name: mechanisms
@@ -356,6 +357,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyNewKey
     delete:
       responses:
         '204':
@@ -376,6 +378,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
@@ -408,6 +411,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
@@ -446,6 +450,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
@@ -485,6 +490,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
@@ -563,6 +569,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
@@ -595,6 +602,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     put:
       responses:
         '201':
@@ -627,6 +635,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     delete:
       responses:
         '204':
@@ -647,12 +656,14 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
     parameters:
       - name: KeyID
         in: path
         required: true
         schema:
           type: string
+        x-test-value: MyRSAKey
   /keys/{KeyID}/restrictions/tags/{Tag}:
     put:
       responses:
@@ -678,6 +689,8 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
+      x-test-value-Tag: MyNewTag
     delete:
       responses:
         '204':
@@ -698,6 +711,8 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-KeyID: MyRSAKey
+      x-test-value-Tag: MyTag
     parameters:
       - name: Tag
         in: path
@@ -784,6 +799,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
     put:
       responses:
         '201':
@@ -812,6 +828,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: newOperator
     delete:
       responses:
         '204':
@@ -832,6 +849,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
     parameters:
       - name: UserID
         in: path
@@ -868,6 +886,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
     parameters:
       - name: UserID
         in: path
@@ -900,6 +919,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
     parameters:
       - name: UserID
         in: path
@@ -931,6 +951,8 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
+      x-test-value-Tag: munich
     delete:
       responses:
         '204':
@@ -951,6 +973,8 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+      x-test-value-UserID: operator
+      x-test-value-Tag: berlin
     parameters:
       - name: UserID
         in: path
