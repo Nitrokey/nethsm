@@ -1655,10 +1655,12 @@ paths:
         '400':
           description: Bad request - restore did not apply.
         '412':
-          description: Precondition failed (NetHSM was not *Unprovisioned*).
+          description: |
+            Precondition failed (NetHSM was not *Unprovisioned* or 
+            *Operational*).
       description: |
-        Restore the key store from a backup file.
-        Only available in *Unprovisioned* state.
+        Restore the key store and user store from a backup file. If NetHSM is 
+        *Unprovisioned*, then the configuration is restored.
       requestBody:
         content:
           application/octet-stream:
@@ -1673,7 +1675,7 @@ paths:
             $ref: '#/components/schemas/Passphrase'
         - name: systemTime
           in: query
-          required: true
+          required: false # required only when unprovisioned ?
           schema:
             type: string
             format: date-time
@@ -1681,6 +1683,7 @@ paths:
         - Public
       x-annotation-state:
         - Unprovisioned
+        - Operational
 components:
   schemas:
     Passphrase:

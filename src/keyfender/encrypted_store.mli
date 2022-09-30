@@ -67,4 +67,8 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
 
   val set_version : t -> Version.t -> (unit, KV.write_error) Lwt_result.t
 
+  val slot_of_key : KV.key -> slot option
+  (** [slot_of_key key] returns the slot in which the key resides, or None if 
+      it's not part of the encrypted store. [key] should be a key of the 
+      underlying store. *)
 end

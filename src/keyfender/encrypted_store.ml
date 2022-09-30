@@ -164,4 +164,15 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
         | `Smaller -> Error (`Version_smaller (version, v)))
 
   let disconnect _t = Lwt.return_unit
+
+  let slot_auth = slot_to_string Authentication
+
+  let slot_key = slot_to_string Key
+
+  let slot_of_key key =
+    match Mirage_kv.Key.segments key with
+    | prefix :: _ when String.equal prefix slot_auth -> Some Authentication
+    | prefix :: _ when String.equal prefix slot_key -> Some Key
+    | _ -> None
+
 end

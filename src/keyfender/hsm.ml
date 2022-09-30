@@ -1990,21 +1990,31 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | Ok kv' -> Ok (kv', stream')
           | Error e -> Error e
 
-    let get_query_parameters uri =
+
+    let get_timestamp_opt uri =
       match Uri.get_query_param uri "systemTime" with
-      | None -> Error (Bad_request, "Request is missing system time.")
+      | None -> Ok None
       | Some timestamp -> match Json.decode_time timestamp with
         | Error e -> Error (Bad_request, "Request parse error: " ^ e ^ ".")
-        | Ok timestamp ->
-          match Uri.get_query_param uri "backupPassphrase" with
-          | None -> Error (Bad_request, "Request is missing backup passphrase.")
-          | Some backup_passphrase -> Ok (timestamp, backup_passphrase)
+        | Ok timestamp -> Ok (Some timestamp)
+    
+    let get_query_parameters ~timestamp_optional uri =
+      match get_timestamp_opt uri with
+      | Error e -> Error e
+      | Ok None when timestamp_optional = false -> 
+        Error (Bad_request, "Request is missing system time")
+      | Ok timestamp_opt ->
+        match Uri.get_query_param uri "backupPassphrase" with
+        | None -> Error (Bad_request, "Request is missing backup passphrase.")
+        | Some backup_passphrase -> Ok (timestamp_opt, backup_passphrase)
 
     let restore t uri stream =
       let open Lwt.Infix in
       let (>>==) = Lwt_result.bind in
       let `Raw start_ts = Clock.now_raw () in
-      Lwt.return @@ get_query_parameters uri >>== fun (new_time, backup_passphrase) ->
+      let is_unprovisioned = t.state = Unprovisioned in
+      Lwt.return @@ get_query_parameters ~timestamp_optional:is_unprovisioned uri 
+      >>== fun (new_time, backup_passphrase) ->
       decode_value stream >>== fun (backup_salt, stream') ->
       decode_value stream' >>== fun (version, stream'') ->
       let backup_key =
@@ -2020,6 +2030,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok version ->
         match Version.of_string (Cstruct.to_string version) with
         | Ok v when Version.compare backup_version v = `Equal ->
+          
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   begin
@@ -2034,6 +2045,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                     in
                     next stream'' >>== fun () ->
                     let `Raw stop_ts = Clock.now_raw () in
+                    match new_time with
+                    | None -> Lwt.return_ok () 
+                    | Some new_time ->
                     let elapsed = Ptime.diff stop_ts start_ts in
                     match Ptime.add_span new_time elapsed with
                     | Some ts -> set_time_offset b ts

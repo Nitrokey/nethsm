@@ -131,7 +131,7 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
   class restore hsm_state = object(self)
     inherit Endpoint.base
-    inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned ]
+    inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned; `Operational ]
     inherit !Endpoint.post
     inherit !Endpoint.no_cache
 
