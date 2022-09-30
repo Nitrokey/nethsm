@@ -168,6 +168,7 @@ let ls dir =
   |> List.sort String.compare
 
 let (let*) = Result.bind 
+let (let+) a f = Result.map f a
 
 let command_suffix = "_cmd.sh"
 
@@ -256,7 +257,13 @@ let tests_endpoint (module B: BACKEND) () =
         let* expected_code = actual_code Fpath.(v "headers.expected") in
         let* actual_code = actual_code Fpath.(v "headers.out") in
         Alcotest.(check string) ("CMD: code matches") expected_code actual_code;
-        Ok ()
+        let* skip = Bos.OS.Path.exists Fpath.(v "body.skip") in
+        if not skip then
+          let* expected_body = Bos.OS.File.read_lines Fpath.(v "body.expected") in
+          let+ actual_body = Bos.OS.File.read_lines Fpath.(v "body.out") in
+          Alcotest.(check (list string)) ("CMD: body matches") expected_body actual_body
+        else
+          Ok ()
       end
       |> function
       | Ok () -> ()

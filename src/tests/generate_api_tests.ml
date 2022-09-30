@@ -13,7 +13,7 @@ let api_file = "../../docs/nethsm-api.yaml"
 let allowed_methods = ["get" ; "put" ; "post"]
 let all_states = ["Unprovisioned"; "Locked"; "Operational"]
 let skip_endpoints = ["/system/update"; "/system/cancel-update"; "/system/commit-update"; "/system/backup"; "/system/restore"; "/keys/{KeyID}/cert"; "/config/tls/cert.pem"]
-let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics"; "/config/time"; "/system/info"]
+let skip_body_endpoints = ["/random"; "/config/tls/csr.pem"; "/config/tls/cert.pem"; "/config/tls/public.pem"; "/health/state"; "/metrics"; "/config/time"; "/system/info"; "/keys/{KeyID}"; "/keys"; "/users/{UserID}"; "/users"]
 
 let is_quoted s =
   let l = String.length s in
@@ -62,7 +62,6 @@ let example_of_type json =
 
 let write file content =
   let oc = open_out file in
-  Printf.fprintf oc "#!/bin/sh\n";
   Printf.fprintf oc "%s" content;
   close_out oc
 
@@ -173,7 +172,7 @@ let make_resp_data raml_meth =
   let get_example (code, meta) = match code with
   | "200" ->
     begin
-      match Ezjsonm.get_dict @@ Ezjsonm.find meta ["body"] with
+      match Ezjsonm.get_dict @@ Ezjsonm.find meta ["content"] with
       | exception Not_found -> [("200", None)]
       | mediatypes ->
         List.map (fun (typ, yml) ->
