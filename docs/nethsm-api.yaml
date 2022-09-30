@@ -312,7 +312,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     put:
       responses:
         '204':
@@ -378,7 +378,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
@@ -411,7 +411,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
@@ -450,7 +450,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
@@ -490,7 +490,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
@@ -570,7 +570,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
@@ -603,7 +603,7 @@ paths:
         - Operator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     put:
       responses:
         '201':
@@ -636,7 +636,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     delete:
       responses:
         '204':
@@ -657,14 +657,14 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
     parameters:
       - name: KeyID
         in: path
         required: true
         schema:
           type: string
-        x-test-value: MyRSAKey
+        x-test-value: myKey1
   /keys/{KeyID}/restrictions/tags/{Tag}:
     put:
       responses:
@@ -690,7 +690,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
       x-test-value-Tag: MyNewTag
     delete:
       responses:
@@ -712,7 +712,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
-      x-test-value-KeyID: MyRSAKey
+      x-test-value-KeyID: myKey1
       x-test-value-Tag: MyTag
     parameters:
       - name: Tag
