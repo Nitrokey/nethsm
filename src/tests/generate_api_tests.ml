@@ -64,7 +64,10 @@ let write file content =
   close_out oc
 
 let write_cmd file content =
-  write file content;
+  let oc = open_out file in
+  Printf.fprintf oc "#!/bin/sh\n";
+  Printf.fprintf oc "%s" content;
+  close_out oc;
   ignore (Sys.command("chmod u+x " ^ file))
 
 let path_to_filename state meth path =
@@ -310,16 +313,14 @@ let tests_for_states meth path cmd (response_code, response_body)
   (* prepare required state and role *)
   let setup_file = outdir ^ "/setup.sh" in
   let setup_cmd = prepare_setup meth path cmd (state, role, req) in
-  write setup_file setup_cmd;
-  ignore (Sys.command("chmod u+x " ^ setup_file));
+  write_cmd setup_file setup_cmd;
 
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =
     if path = "/system/shutdown" then "exit 1" else
     {|NITROHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
   in
-  write shutdown_file shutdown_cmd;
-  ignore (Sys.command("chmod u+x " ^ shutdown_file));
+  write_cmd shutdown_file shutdown_cmd;
 
   if test_res = `Pos then
   begin
