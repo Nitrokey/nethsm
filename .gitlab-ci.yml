@@ -123,6 +123,7 @@ test_keyfender:
   needs:
     - job: build_builder_image
       optional: true
+  coverage: '/(Coverage: ).*\((.*)\)/'
   script:
     - opam exec -- make -j$(nproc) coverage-summary
 
