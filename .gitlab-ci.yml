@@ -124,6 +124,11 @@ test_keyfender:
     - job: build_builder_image
       optional: true
   coverage: '/(Coverage: ).*\((.*)\)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: obj/cobertura.xml
   script:
     - opam exec -- make -j$(nproc) coverage-summary
 

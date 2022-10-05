@@ -372,9 +372,18 @@ build: $(KEYFENDER)
 # Generate a summary coverage report. Runs all test-keyfender-* targets if not
 # previously run in this tree.
 coverage-summary: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-test-keyfender-e2e
+	mkdir -p $(TOP_DIR)/obj
+	bisect-ppx-report cobertura \
+		--coverage-path=src/tests \
+		--coverage-path=src/keyfender \
+		--coverage-path=src/s_keyfender \
+		--source-path=src/keyfender \
+		--source-path=src/s_keyfender \
+		$(TOP_DIR)/obj/cobertura.xml
 	bisect-ppx-report summary \
 	    --coverage-path=src/tests \
-	    --coverage-path=src/keyfender
+	    --coverage-path=src/keyfender \
+	    --coverage-path=src/s_keyfender
 
 .PHONY: coverage
 # Generate a combined coverage report. Runs all test-keyfender-* targets if not
@@ -384,7 +393,9 @@ coverage: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-test-keyfen
 	bisect-ppx-report html \
 	    --coverage-path=src/tests \
 	    --coverage-path=src/keyfender \
+	    --coverage-path=src/s_keyfender \
 	    --source-path=src/keyfender \
+	    --source-path=src/s_keyfender \
 	    -o $(TOP_DIR)/obj/coverage
 	@echo "Open obj/coverage/index.html for coverage report"
 
