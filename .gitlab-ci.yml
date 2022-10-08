@@ -18,7 +18,8 @@ workflow:
   rules:
     - if: $CI_COMMIT_BRANCH != "master" && $CI_PIPELINE_SOURCE == "push"
       when: never
-    - changes:
+    - if: $CI_COMMIT_BRANCH != "master"
+      changes:
         paths: *builder_dep_paths
       variables:
         BUILDER_TAG: ${CI_COMMIT_SHORT_SHA}
@@ -55,7 +56,7 @@ build_builder_image:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         NOPUSH: "--no-push"
-    - if: ($BUILDER_TAG != "latest" && $CI_COMMIT_BRANCH != "master")
+    - if: $BUILDER_TAG != "latest"
   stage: prepare
   image:
     name: gcr.io/kaniko-project/executor:debug
