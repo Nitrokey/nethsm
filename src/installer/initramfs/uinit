@@ -24,11 +24,23 @@ name="data"
 var sep = "--------------------------------------------------"
 
 var reset = $false
+var fast = $false
 
 for i $args {
   if (eq $i "factory-reset") {
     set reset = $true
     break
+  }
+  if (eq $i "factory-reset-fast") {
+    set reset = $true
+    set fast = $true
+    break
+  }
+}
+
+fn wait {|x|
+  if (not $fast) {
+    sleep $x
   }
 }
 
@@ -50,7 +62,7 @@ echo $sep
 echo "Software version to be installed:"
 cat /update.changelog
 echo
-sleep 5
+wait 5
 
 if $reset {
   echo $sep
@@ -83,7 +95,7 @@ if $reset {
 
 echo $sep
 echo "Done. Shutting down in 30 seconds..."
-sleep 30
+wait 30
 
 echo "Shutting down..."
 poweroff
