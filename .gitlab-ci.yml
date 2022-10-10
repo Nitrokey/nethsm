@@ -2,6 +2,7 @@ variables:
   BUILDER_TAG: latest
   USE_CCACHE: 1
   CCACHE_DIR: /downloads/ccache
+  GIT_LFS_SKIP_SMUDGE: 1
 
 .dependency_paths:
   builder: &builder_dep_paths
@@ -174,6 +175,7 @@ build_muen_prodrive_hermes:
   variables:
     MODE: muen
     MUEN_HARDWARE: prodrive-hermes-1.0
+    GIT_LFS_SKIP_SMUDGE: 0
   stage: build_muen
   needs:
     - job: build_builder_image
