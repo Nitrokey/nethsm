@@ -496,7 +496,7 @@ $(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREB
 	$(CBFSTOOL) $@ add \
 	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
 	$(CBFSTOOL) $@ add \
-	    -f src/coreboot/blobs/ascii.pf2 -n etc/ascii.pf2 -t raw
+	    -f src/coreboot/ascii.pf2 -n etc/ascii.pf2 -t raw
 
 $(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
 	OFFSET_ROM=$(shell strings -o -t x $(OBJ_COREBOOT_ROM) | \
