@@ -48,6 +48,7 @@ stages:
   - build
   - build_muen
   - build_coreboot
+  - test_hw
   - deploy
   - check
   - build_container
@@ -188,6 +189,55 @@ build_muen_prodrive_hermes:
       - obj/artifacts/
   script:
     - opam exec -- make -j$(nproc) artifacts
+
+build_ci_installer_prodrive_hermes:
+  rules:
+    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
+  stage: test_hw
+  needs:
+    - job: build_muen_prodrive_hermes
+  artifacts:
+    name: "$CI_JOB_NAME"
+    expire_in: 1 week
+    paths:
+      - obj/ci-installer.img
+  script:
+    - tools/mk-ci-installer.sh ${CI_PROJECT_DIR}/obj/artifacts/*/*/installer.img
+
+test_muen_prodrive_hermes:
+  tags:
+    - "hermes"
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+  variables:
+    NETHSM_IP: 192.168.1.1
+    BMC_IP: 192.168.1.2
+    BMC_USER: bmc_admin
+    BMC_PASS: nitrokey
+    HTTP_SERVER: 192.168.1.100
+  stage: test_hw
+  needs:
+    - build_ci_installer_prodrive_hermes
+  before_script: []
+  script:
+    - cp obj/ci-installer.img /var/www/html/${CI_JOB_ID}-installer.img
+    - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/${CI_JOB_ID}-installer.img"
+    - rm /var/www/html/${CI_JOB_ID}-installer.img
+    - >-
+      while ! curl -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
+      printf "." ; sleep 5 ; done && echo
+    - cd src/tests
+    - NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh &&
+    - >-
+      TIMEFORMAT="total time: %R";
+      time NETHSM_URL="https://${NETHSM_IP}/api" REQUESTS=1000 CONNECTIONS=10 ./load_test.sh
+  after_script:
+    - >-
+      curl -k -s
+      https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset -u
+      ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
+      '{"ResetType": "ForceOff"}'
 
 build_container_image:
   rules:

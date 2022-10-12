@@ -224,7 +224,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	cd src/tests && \
 	    NITROHSM_URL="http://localhost:8080/api" ./provision_test.sh
 	cd src/tests && \
-	    NITROHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./load_test.sh
+	    NITROHSM_URL="http://localhost:8080/api" REQUESTS=1 CONNECTIONS=1 ./load_test.sh
 	cd src/tests && \
 	    NITROHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
 	pkill test_server.exe || true
@@ -653,11 +653,9 @@ $(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(OBJ_UPDATE_CHANGELOG)
 # Installer stuff
 
 OBJ_INSTALLER_IMG := $(OBJ_DIR)/installer.img
-OBJ_CI_INSTALLER_IMG := $(OBJ_DIR)/ci-installer.img
 OBJ_INSTALLER_ROOT := $(OBJ_DIR)/installer
 OBJ_INSTALLER_INITRAMFS := $(OBJ_INSTALLER_ROOT)/boot/initramfs
 INSTALLER_DIR := $(TOP_DIR)/src/installer
-CI_INSTALLER_GRUB_CFG := $(INSTALLER_DIR)/grub-ci-installer.cfg
 
 INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
 
@@ -695,15 +693,7 @@ $(OBJ_INSTALLER_IMG): $(OBJ_INSTALLER_INITRAMFS) $(OBJ_INSTALLER_ROOT) tools/gpg
 	for i in $$(find $(OBJ_INSTALLER_ROOT) -type f); do \
 		tools/gpg-sign-detached.sh $(MUEN_KEY_DIR) $${i} ; \
 	done
-	cd $(OBJ_INSTALLER_ROOT) && find . -type f | cpio -v -o > $@
-
-$(OBJ_CI_INSTALLER_IMG): $(OBJ_INSTALLER_IMG) $(CI_INSTALLER_GRUB_CFG)
-	cp -a $(OBJ_INSTALLER_ROOT) /tmp/ci-installer
-	cp $(CI_INSTALLER_GRUB_CFG) /tmp/ci-installer/boot/grub/grub.cfg
-	rm /tmp/ci-installer/boot/grub/grub.cfg.sig
-	tools/gpg-sign-detached.sh $(MUEN_KEY_DIR) /tmp/ci-installer/boot/grub/grub.cfg
-	cd /tmp/ci-installer && find . -type f | cpio -v -o > $@
-	rm -rf /tmp/ci-installer
+	cd $(OBJ_INSTALLER_ROOT) && find . -type f | cpio -v -o -H newc -F $@
 
 # ------------------------------------------------------------------------------
 # Artifacts
@@ -711,7 +701,7 @@ $(OBJ_CI_INSTALLER_IMG): $(OBJ_INSTALLER_IMG) $(CI_INSTALLER_GRUB_CFG)
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_IMG)
 
 ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
-ARTIFACTS += $(OBJ_INSTALLER_IMG) $(OBJ_CI_INSTALLER_IMG)
+ARTIFACTS += $(OBJ_INSTALLER_IMG)
 endif
 
 ifneq ($(WITH_COREBOOT),)
