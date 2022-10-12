@@ -95,7 +95,7 @@ let passphrase = function
 
 let prepare_setup _meth _path _cmd (state, role, _req) =
   (* 1. prepare server state *)
-  let provision = "NITROHSM_URL=\"https://localhost:8443/api\" ../../provision_test.sh"
+  let provision = "NETHSM_URL=\"https://localhost:8443/api\" ../../provision_test.sh"
   in
   let lock =
     let header = auth_header (passphrase "Administrator") in
@@ -318,7 +318,7 @@ let tests_for_states meth path cmd (response_code, response_body)
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =
     if path = "/system/shutdown" then "exit 1" else
-    {|NITROHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
+    {|NETHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
   in
   write_cmd shutdown_file shutdown_cmd;
 

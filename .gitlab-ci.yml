@@ -230,14 +230,20 @@ test_muen_prodrive_hermes:
     - cd src/tests
     - NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh &&
     - >-
-      TIMEFORMAT="total time: %R";
-      time NETHSM_URL="https://${NETHSM_IP}/api" REQUESTS=1000 CONNECTIONS=10 ./load_test.sh
+      { TIMEFORMAT="Total time: %R" ; time
+      NETHSM_URL="https://${NETHSM_IP}/api" REQUESTS=1000 CONNECTIONS=10
+      ./load_test.sh ; } 2>&1 | tee ${CI_PROJECT_DIR}/obj/load_test.out
+    - >-
+      TIME=$(tail -1 ${CI_PROJECT_DIR}/obj/load_test.out | sed -n 's/Total time: \(.*\)/\1/p')
+    - PERF=$(bc -l <<<"x=100/e(l(2)*${TIME}/60);scale=2;x/1")
+    - "echo Performance: ${PERF}%"
   after_script:
     - >-
       curl -k -s
       https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset -u
       ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
       '{"ResetType": "ForceOff"}'
+  coverage: "/(^Performance: )(.*)%/"
 
 build_container_image:
   rules:

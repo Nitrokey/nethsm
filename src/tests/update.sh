@@ -15,7 +15,7 @@ fi
 
 
 echo "Updating."
-url="${NITROHSM_URL}/v1/system/update"
+url="${NETHSM_URL}/v1/system/update"
 echo "POST ${url}" 1>&2
 curl -k -X POST -H 'Content-Type: application/octet-stream' \
     --user admin:Administrator \
@@ -23,7 +23,7 @@ curl -k -X POST -H 'Content-Type: application/octet-stream' \
     ${url}
 
 
-url="${NITROHSM_URL}/v1/system/commit-update"
+url="${NETHSM_URL}/v1/system/commit-update"
 echo "POST ${url}" 1>&2
 curl -k -X POST \
     --user admin:Administrator \

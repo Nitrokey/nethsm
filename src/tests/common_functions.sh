@@ -1,11 +1,11 @@
 # Allow overriding from environment.
-NITROHSM_URL="${NITROHSM_URL:-https://192.168.1.1/api}"
+NETHSM_URL="${NETHSM_URL:-https://192.168.1.1/api}"
 CURL="${CURL:-curl -f -sS -k}"
 
 GET()
 {
     local url
-    url="${NITROHSM_URL}$1"
+    url="${NETHSM_URL}$1"
     shift
     echo "GET ${url}" 1>&2
     ${CURL} ${url} "$@" || exit 1
@@ -15,7 +15,7 @@ GET()
 PUT()
 {
     local url
-    url="${NITROHSM_URL}$1"
+    url="${NETHSM_URL}$1"
     shift
     echo "PUT ${url}" 1>&2
     ${CURL} -X PUT -H "Content-Type: application/json" --data @- ${url} "$@" || exit 1
@@ -25,7 +25,7 @@ PUT()
 POST()
 {
     local url
-    url="${NITROHSM_URL}$1"
+    url="${NETHSM_URL}$1"
     shift
     echo "POST ${url}" 1>&2
     ${CURL} -X POST -H "Content-Type: application/json" --data @- ${url} "$@" || exit 1
