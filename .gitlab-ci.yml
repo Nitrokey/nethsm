@@ -212,10 +212,10 @@ test_muen_prodrive_hermes:
       - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     NETHSM_IP: 192.168.1.1
-    BMC_IP: 192.168.1.2
+    BMC_IP: 192.168.144.2
     BMC_USER: bmc_admin
     BMC_PASS: nitrokey
-    HTTP_SERVER: 192.168.1.100
+    HTTP_SERVER: 192.168.144.1
   stage: test_hw
   needs:
     - build_ci_installer_prodrive_hermes
