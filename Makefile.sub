@@ -88,7 +88,7 @@ TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
-KEYFENDER_CARGS ?= --no-platform=true --single-interface
+KEYFENDER_CARGS ?= --no-platform=true --single-interface --bisect-ppx
 DUNE := OCAMLRUNPARAM=b dune
 DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
 OPAMVAR_coverage := true

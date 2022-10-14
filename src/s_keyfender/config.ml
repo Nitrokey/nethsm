@@ -139,6 +139,28 @@ let malloc_metrics_conf =
   end
   |> abstract
 
+let bisect_key =
+  let doc =
+    Key.Arg.info ~doc:"Enable bisect_ppx for the unikernel"
+      ["bisect-ppx"]
+  in
+  Key.(create "bisect-ppx" Arg.(flag doc))
+
+let bisect_ppx_conf =
+  impl @@ object
+    inherit base_configurable
+    method ty = typ ()
+    method module_name = ""
+    method name = "bisect_ppx"
+    method! keys = [ Key.abstract bisect_key ]
+    method! packages = 
+      Key.if_ 
+        (Key.value bisect_key)
+        [ package "bisect_ppx" ]
+        []
+  end
+  |> abstract
+
 let main =
   let packages = [
     package "keyfender";
@@ -166,7 +188,8 @@ let main =
     ]
   in
   foreign
-    ~packages ~keys ~deps:[malloc_metrics_conf]
+    ~packages ~keys ~deps:[malloc_metrics_conf; bisect_ppx_conf]
+    
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
      stackv4v6 @->

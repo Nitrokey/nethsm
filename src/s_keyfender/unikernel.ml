@@ -137,7 +137,7 @@ struct
 
   module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
 
-  let start console _entropy () () update_key_store assets internal_stack ext_stack () =
+  let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
       let sleep e =
         Log.warn (fun m ->
             m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
