@@ -15,6 +15,13 @@ variables:
     - .gitlab-ci.yml
     - Makefile*
 
+.setup_opam_downloads: &setup_opam_downloads
+  - git config --global --add safe.directory ${CI_PROJECT_DIR}
+  - sudo chmod 01777 /downloads
+  - mkdir -p /downloads/opam
+  - rm -rf ~/.opam/download-cache
+  - ln -s /downloads/opam ~/.opam/download-cache
+
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH != "master" && $CI_PIPELINE_SOURCE == "push"
@@ -28,12 +35,6 @@ workflow:
 
 default:
   image: "${CI_REGISTRY_IMAGE}/builder:${BUILDER_TAG}"
-  before_script:
-    - git config --global --add safe.directory ${CI_PROJECT_DIR}
-    - sudo chmod 01777 /downloads
-    - mkdir -p /downloads/opam
-    - rm -rf ~/.opam/download-cache
-    - ln -s /downloads/opam ~/.opam/download-cache
   tags:
     - docker
   interruptible: true
@@ -45,13 +46,10 @@ default:
 
 stages:
   - prepare
+  - test
   - build
-  - build_muen
-  - build_coreboot
   - test_hw
-  - deploy
-  - check
-  - build_container
+  - commit
 
 build_builder_image:
   rules:
@@ -60,6 +58,7 @@ build_builder_image:
         NOPUSH: "--no-push"
     - if: $BUILDER_TAG != "latest"
   stage: prepare
+  needs: []
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -86,23 +85,45 @@ build_builder_image:
       --image-fs-extract-retry 5
       ${NOPUSH}
 
-deploy_builder_image:
+validate_api_spec:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH == "master"
-  stage: deploy
-  image:
-    name: quay.io/skopeo/stable:latest
-    entrypoint: [""]
-  dependencies: []
-  before_script:
-    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - if: $CI_COMMIT_BRANCH != "master"
+  variables:
+    API_SPEC: "docs/nethsm-api.yaml"
+    API_SPEC_DEBUG: "nethsm-api-debug.log"
+  stage: test
+  needs: []
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
+  services:
+    - name: swaggerapi/swagger-validator-v2
+      alias: swagger-validator
   script:
-    - >
-      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} 2>/dev/null ;
-      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
-      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
+    - 'curl --request POST http://swagger-validator:8080/validator/debug
+      --header "Accept: application/json"
+      --header "Content-Type: application/yaml"
+      --data-binary @$API_SPEC
+      --output $API_SPEC_DEBUG'
+    - grep "^{}$" nethsm-api-debug.log
+
+test_keyfender:
+  rules:
+    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    MODE: test
+  stage: test
+  needs:
+    - job: build_builder_image
+      optional: true
+  coverage: '/(Coverage: ).*\((.*)\)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: obj/cobertura.xml
+  before_script: *setup_opam_downloads
+  script:
+    - opam exec -- make -j$(nproc) coverage-summary
 
 build_dev:
   rules:
@@ -114,53 +135,9 @@ build_dev:
   needs:
     - job: build_builder_image
       optional: true
+  before_script: *setup_opam_downloads
   script:
     - opam exec -- make -j$(nproc) build
-
-test_keyfender:
-  rules:
-    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
-  variables:
-    MODE: test
-  stage: build
-  needs:
-    - job: build_builder_image
-      optional: true
-  coverage: '/(Coverage: ).*\((.*)\)/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: obj/cobertura.xml
-  script:
-    - opam exec -- make -j$(nproc) coverage-summary
-
-build_muen_qemu_kvm:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
-      changes:
-        paths: *coreboot_dep_paths
-      variables:
-        WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
-  variables:
-    MODE: muen
-    MUEN_HARDWARE: qemu-kvm
-  stage: build_muen
-  needs:
-    - job: build_builder_image
-      optional: true
-    - build_dev
-  artifacts:
-    name: "$CI_JOB_NAME"
-    expire_in: 1 week
-    paths:
-      - obj/artifacts/
-  script:
-    - opam exec -- make -j$(nproc) artifacts
 
 build_muen_prodrive_hermes:
   rules:
@@ -177,18 +154,55 @@ build_muen_prodrive_hermes:
     MODE: muen
     MUEN_HARDWARE: prodrive-hermes-1.0
     GIT_LFS_SKIP_SMUDGE: 0
-  stage: build_muen
+  stage: build
   needs:
     - job: build_builder_image
       optional: true
-    - build_dev
+    # - job: build_dev
+    #   artifacts: false
   artifacts:
-    name: "$CI_JOB_NAME"
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
     paths:
-      - obj/artifacts/
+      - ${CI_JOB_NAME}_artifacts
+  before_script: *setup_opam_downloads
   script:
     - opam exec -- make -j$(nproc) artifacts
+    - mkdir -p ${CI_JOB_NAME}_artifacts
+    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --dirty --tags --always)
+
+build_muen_qemu_kvm:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
+      changes:
+        paths: *coreboot_dep_paths
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != "master"
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: qemu-kvm
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+    - job: build_dev
+      artifacts: false
+  artifacts:
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - ${CI_JOB_NAME}_artifacts
+  before_script: *setup_opam_downloads
+  script:
+    - opam exec -- make -j$(nproc) artifacts
+    - mkdir -p ${CI_JOB_NAME}_artifacts
+    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --dirty --tags --always)
 
 build_ci_installer_prodrive_hermes:
   rules:
@@ -197,12 +211,12 @@ build_ci_installer_prodrive_hermes:
   needs:
     - job: build_muen_prodrive_hermes
   artifacts:
-    name: "$CI_JOB_NAME"
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
     paths:
       - obj/ci-installer.img
   script:
-    - tools/mk-ci-installer.sh ${CI_PROJECT_DIR}/obj/artifacts/*/*/installer.img
+    - tools/mk-ci-installer.sh ${CI_PROJECT_DIR}/build_muen_prodrive_hermes_artifacts/installer.img
 
 test_muen_prodrive_hermes:
   tags:
@@ -219,7 +233,6 @@ test_muen_prodrive_hermes:
   stage: test_hw
   needs:
     - build_ci_installer_prodrive_hermes
-  before_script: []
   script:
     - cp obj/ci-installer.img /var/www/html/${CI_JOB_ID}-installer.img
     - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/${CI_JOB_ID}-installer.img"
@@ -251,8 +264,10 @@ build_container_image:
       variables:
         NOPUSH: "--no-push"
     - if: $CI_COMMIT_BRANCH != "master"
-  needs: []
-  stage: build_container
+  needs:
+    - job: build_builder_image
+      optional: true
+  stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -276,7 +291,25 @@ build_container_image:
       --push-retry 5
       --image-fs-extract-retry 5
 
-deploy_container_image:
+commit_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - >
+      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} 2>/dev/null ;
+      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
+      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
+
+commit_container_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -285,11 +318,11 @@ deploy_container_image:
     IMAGE_NAME: "nitrokey/nethsm"
     IMAGE_TAG: "testing"
     REGISTRY: "docker.io"
-  stage: deploy
+  stage: commit
   image:
     name: quay.io/skopeo/stable:latest
     entrypoint: [""]
-  dependencies: []
+  needs: []
   before_script:
     - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
     - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
@@ -297,26 +330,21 @@ deploy_container_image:
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
-validate_api_spec:
+commit_artifact_package:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != "master"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
   variables:
-    API_SPEC: "docs/nethsm-api.yaml"
-    API_SPEC_DEBUG: "nethsm-api-debug.log"
-  stage: check
+    PACKAGENAME: nethsm
+    VERSION: latest
+  stage: commit
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
   needs: []
-  image: "alpine"
-  dependencies: []
-  services:
-    - name: swaggerapi/swagger-validator-v2
-      alias: swagger-validator
-  before_script: []
   script:
-    - apk add curl
-    - 'curl --request POST http://swagger-validator:8080/validator/debug
-      --header "Accept: application/json"
-      --header "Content-Type: application/yaml"
-      --data-binary @$API_SPEC
-      --output $API_SPEC_DEBUG'
-    - grep "^{}$" nethsm-api-debug.log
+    - >
+      curl -o artifacts.zip --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/master/download?job=build_muen_prodrive_hermes"
+    - >
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file artifacts.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${PACKAGENAME}/${VERSION}/${PACKAGENAME}_${CI_COMMIT_SHORT_SHA}.zip"
