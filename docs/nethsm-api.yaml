@@ -290,7 +290,13 @@ paths:
     get:
       responses:
         '200':
-          description: ''
+          description: |
+            For response body with content type `application/json`:
+            * *RSA* keys include `modulus` and `publicExponent` properties.
+            * P* keys include the common format (0x04 followed by big-endian \
+              encoded affine coordinates x and y).
+            * Curve25519 keys are 32 byte, and follow the RFC8032 5.1.2 encoding \
+              (little endian, x over y).
           content:
             application/json:
               schema:
