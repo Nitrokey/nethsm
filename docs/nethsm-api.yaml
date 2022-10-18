@@ -677,6 +677,16 @@ paths:
       description: Sign a message with the secret key.
       operationId: POST_keys-KeyID-sign
       requestBody:
+        description: |
+          For request body with content type `application/json`:
+          * Mode `PKCS1` expects the already hashed data.
+          * Mode `PSS_*` expects the already hashed data.
+          * Mode `EdDSA` expects the raw message
+            (ED25519 applies the SHA512 hash internally,
+            also to derive the nonce).
+          * Mode `ECDSA` expects the hashed data
+            (using SHA224 for P224, SHA256 for P256,
+            SHA384 for P384 and SHA512 for P521).
         content:
           application/json:
             schema:
