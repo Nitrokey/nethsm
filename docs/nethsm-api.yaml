@@ -578,6 +578,11 @@ paths:
       description: Decrypt an encrypted message with the secret key.
       operationId: POST_keys-KeyID-decrypt
       requestBody:
+        description: |
+          For request body with content type `application/json`:
+          * Mode `RAW` expects raw binary data.
+          * Mode `PKCS1` expects PKCS1-encoded and padded binary data.
+          * Mode `OAEP_*` expects EME-OAEP-encoded and padded binary data.
         content:
           application/json:
             schema:
