@@ -301,6 +301,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicKey'
+              examples:
+                rsa:
+                  summary: 'RSA'
+                  value:
+                    mechanisms:
+                      - RSA_Signature_PSS_SHA256
+                    type: RSA
+                    restrictions:
+                      tags:
+                        - berlin
+                    key:
+                      modulus: FhJQl11CiY0ifRHXeAqFh4rdSl6
+                      publicExponent: FhJQl11CiY0ifRHXeAqFh4rdSl6
+                    operations: 242
+                    
+                ecdsa:
+                  summary: 'P* Keys'
+                  value:
+                    mechanisms:
+                      - ECDSA_Signature
+                    type: EC_P224
+                    operations: 242
+                    restrictions:
+                      tags:
+                      - berlin
+                    key:
+                      data: BMKlPJ60PNFgsekRwg7n5mTIJkWWy6XLy0ORj14HumKi5qH63JaJzFOWLxYiaB6KH0NOgEKb7rUt
+                eddsa:
+                  summary: 'Curve25519'
+                  value:
+                    mechanisms:
+                      - EdDSA_Signature
+                    type: Curve25519
+                    operations: 242
+                    restrictions:
+                      tags:
+                      - berlin
+                    key:
+                      data: htnjTKRUz3XnLys5YD2+bKvzXZuu9cvXKwsCnWdzR+4=
         '401':
           description: Authentication required but none provided.
         '403':
