@@ -330,6 +330,14 @@ paths:
       description: Import a private key into NetHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
       operationId: PUT_keys-KeyID
       requestBody:
+        description: |
+          For request body with content type `application/json`:
+          * *RSA* includes `primeP`, `primeQ`, and `publicExponent` properties.
+            The remaining properties `privateExponent`, `modulus`, ..) are computed.
+          * *EC_P224*, *EC_P256*, *EC_P384*, *EC_P521* uses the `data` property.
+            Keys are the raw (big endian) scalar.
+          * *Curve25519* uses the `data` property.
+            Keys are the raw (little endian) key.
         content:
           application/x-pem-file:
             schema:
