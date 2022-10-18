@@ -345,6 +345,42 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PrivateKey'
+            examples:
+              rsa:
+                summary: RSA
+                value:
+                  type: RSA
+                  mechanisms:
+                    - RSA_Signature_PSS_SHA256
+                  key:
+                    primeP: AOnWFZ+JrI/xOXJU04uYCZOiPVUWd6CSbVseEYrYQYxc7dVroePshz29tc+VEOUP5T0O8lXMEkjFAwjW6C9QTAsPyl6jwyOQluMRIkdN4/7BAg3HAMuGd7VmkGyYrnZWW54sLWp1JD6XJG33kF+9OSar9ETPoVyBgK5punfiUFEL
+                    primeQ: ANT1kWDdP9hZoFKT49dwdM/S+3ZDnxQa7kZk9p+JKU5RaU9e8pS2GOJljHwkES1FH6CUGeIaUi81tRKe2XZhe/163sEyMcxkaaRbBbTc1v6ZDKILFKKt4eX7LAQfhL/iFlgi6pcyUM8QDrm1QeFgGz11ChM0JuQw1WwkX06lg8iv
+                    publicExponent: AQAB
+                  restrictions:
+                    tags:
+                      - berlin
+              ecdsa:
+                summary: P* Keys
+                value:
+                  type: EC_P224
+                  mechanisms:
+                    - ECDSA_Signature
+                  key:
+                    data: "BgcqhkjOPQIBBgUrgQQAIQM6AATZOhHS/Sed4w=="
+                  restrictions:
+                    tags:
+                      - berlin
+              eddsa:
+                summary: Curve25519
+                value:
+                  type: Curve25519
+                  mechanisms:
+                    - EdDSA_Signature
+                  key:
+                    data: "m0o4HHT5tiwxxJ3hCzK6H9pXt9R854qyJ+q4Lmei/Kg="
+                  restrictions:
+                    tags:
+                      - berlin
         required: true
       parameters:
         - name: mechanisms
