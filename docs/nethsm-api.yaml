@@ -659,7 +659,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/SignData'
         '400':
-          description: Bad Request, e.g. invalid signing mode.
+          description: |
+            Bad Request, e.g. invalid signing mode.
+            * Mode `PKCS1` returns failure if input is bigger than key size
+            * Mode `PSS_*` returns failure if the input is not the hash length,
+              or the private key is smaller than hash length.
+            * Mode `ECDSA` returns failure if the input exceeds the group size in bits.
+              The hash algorithm is not part of the encoding.
         '401':
           description: Authentication required but none provided.
         '403':
