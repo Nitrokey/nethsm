@@ -552,7 +552,11 @@ paths:
     post:
       responses:
         '200':
-          description: ''
+          description: |
+            For response body with content type `application/json`:
+            * Mode `RAW` returns the raw binary data.
+            * Mode `PKCS1` returns the raw binary data.
+            * Mode `OAEP_*` returns the raw binary data.
           content:
             application/json:
               schema:
