@@ -645,7 +645,15 @@ paths:
     post:
       responses:
         '200':
-          description: ''
+          description: |
+            For response body with content type `application/json`:
+            * Mode `PKCS1` returns the PKCS1 padded signature
+              (no signatureAlgorithm OID prepended, since the used hash is not known).
+            * Mode `PSS_*` returns the EMSA-PSS encoded signature.
+            * Mode `EdDSA` returns the RFC 8032 (5.1.6) encoding:
+              r appened with s, in total 64 bytes (each 32 bytes).
+            * Mode `ECDSA` returns the ASN.1 DER encoded signature
+              (a SEQUENCE of INTEGER r INTEGER s).
           content:
             application/json:
               schema:
