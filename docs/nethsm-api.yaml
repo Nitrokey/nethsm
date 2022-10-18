@@ -478,7 +478,9 @@ paths:
     get:
       responses:
         '200':
-          description: ''
+          description: |
+            For response body with content type `application/x-pem-file`:
+            * Returns the PEM encoded public key, as specified in PKCS #8.
           content:
             application/x-pem-file:
               schema:
