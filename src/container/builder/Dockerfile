@@ -28,7 +28,7 @@ ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-
 # Note: Some of these would be installed by "opam depext" automatically during
 # the build process, but we do this now to save time and downloads later.
 ARG nethsm_packages="cgpt e2fsprogs grub-common grub-pc-bin jq libgmp-dev \
-        libseccomp-dev linux-libc-dev m4 parallel perl pkg-config \
+        libseccomp-dev linux-libc-dev m4 parallel perl pkg-config zip \
         sudo libprotobuf-dev protobuf-compiler software-properties-common"
 
 RUN apt-get update && \

@@ -1,4 +1,5 @@
 variables:
+  DEFAULT_BRANCH: master
   BUILDER_TAG: latest
   USE_CCACHE: 1
   CCACHE_DIR: /downloads/ccache
@@ -24,9 +25,9 @@ variables:
 
 workflow:
   rules:
-    - if: $CI_COMMIT_BRANCH != "master" && $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
       when: never
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
       changes:
         paths: *builder_dep_paths
       variables:
@@ -88,7 +89,7 @@ build_builder_image:
 validate_api_spec:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     API_SPEC: "docs/nethsm-api.yaml"
     API_SPEC_DEBUG: "nethsm-api-debug.log"
@@ -108,7 +109,7 @@ validate_api_spec:
 
 test_keyfender:
   rules:
-    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   variables:
     MODE: test
   stage: test
@@ -128,7 +129,7 @@ test_keyfender:
 build_dev:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: dev
   stage: build
@@ -144,12 +145,12 @@ build_muen_prodrive_hermes:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
       changes:
         paths: *coreboot_dep_paths
       variables:
         WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
     MUEN_HARDWARE: prodrive-hermes-1.0
@@ -177,12 +178,12 @@ build_muen_qemu_kvm:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
       changes:
         paths: *coreboot_dep_paths
       variables:
         WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
@@ -206,7 +207,7 @@ build_muen_qemu_kvm:
 
 build_ci_installer_prodrive_hermes:
   rules:
-    - if: $CI_COMMIT_BRANCH != "master" || $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   stage: test_hw
   needs:
     - job: build_muen_prodrive_hermes
@@ -223,7 +224,7 @@ test_muen_prodrive_hermes:
     - "hermes"
   except:
     variables:
-      - ($CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule")
+      - ($CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     NETHSM_IP: 192.168.1.1
     BMC_IP: 192.168.144.2
@@ -263,7 +264,7 @@ build_container_image:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         NOPUSH: "--no-push"
-    - if: $CI_COMMIT_BRANCH != "master"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   needs:
     - job: build_builder_image
       optional: true
@@ -295,7 +296,7 @@ commit_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image:
     name: quay.io/skopeo/stable:latest
@@ -313,7 +314,7 @@ commit_container_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   variables:
     IMAGE_NAME: "nitrokey/nethsm"
     IMAGE_TAG: "testing"
@@ -330,21 +331,34 @@ commit_container_image:
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
-commit_artifact_package:
+create_artifact_packages:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == "master"
-  variables:
-    PACKAGENAME: nethsm
-    VERSION: latest
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image: "${CI_REGISTRY_IMAGE}/builder:latest"
   needs: []
   script:
+    - >-
+      REF=$(curl -sS -f --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines?sha=${CI_COMMIT_SHA}&status=success"
+      | jq -r '.[0].ref')
+    - echo $REF
     - >
-      curl -o artifacts.zip --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
-      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/master/download?job=build_muen_prodrive_hermes"
-    - >
-      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file artifacts.zip
-      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${PACKAGENAME}/${VERSION}/${PACKAGENAME}_${CI_COMMIT_SHORT_SHA}.zip"
+      curl -o artifacts.zip -f --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${REF}/download?job=build_muen_prodrive_hermes"
+    - unzip artifacts.zip
+    - cd build_muen_prodrive_hermes_artifacts
+    - >-
+      [ -f bios.swu ] && mv bios.swu bios_${CI_COMMIT_SHORT_SHA}.swu && zip bios.zip bios_${CI_COMMIT_SHORT_SHA}.swu 
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file bios.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/bios/latest/nethsm_bios_${CI_COMMIT_SHORT_SHA}.zip"
+    - >-
+      mv installer.img installer_${CI_COMMIT_SHORT_SHA}.img && zip installer.zip installer_${CI_COMMIT_SHORT_SHA}.img
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file installer.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/installer/latest/nethsm_installer_${CI_COMMIT_SHORT_SHA}.zip"
+    - >-
+      mv update.img.bin update_${CI_COMMIT_SHORT_SHA}.bin && zip update.zip update_${CI_COMMIT_SHORT_SHA}.bin
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file update.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/update/latest/nethsm_update_${CI_COMMIT_SHORT_SHA}.zip"
