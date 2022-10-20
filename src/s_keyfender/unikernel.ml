@@ -11,6 +11,27 @@ let _print_banner =
 let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
+module Logs_sequence_number = struct
+  let seq_tag = Logs.Tag.def "seq" Format.pp_print_int
+
+  let reporter base =
+    let v = ref 0 in
+    {
+      Logs.report = fun src level ~over k msgf ->
+        let msgf = fun fn ->
+          let fn ?header ?tags =
+            let tags = Option.value tags ~default:Logs.Tag.empty in
+            let tags = Some (Logs.Tag.add seq_tag !v tags) in
+            incr v;
+            fn ?header ?tags
+          in
+          msgf fn
+        in
+        base.Logs.report src level ~over k msgf
+    }
+end
+
+
 module Main
     (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
@@ -193,7 +214,7 @@ struct
             Syslog.create console stack ~hostname:"keyfender"
               (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
           in
-          Logs.set_reporter reporter
+          Logs.set_reporter (Logs_sequence_number.reporter reporter)
         else
           Log_reporter.set_reporter (Log_reporter.create ())
       and setup_http_listener http =
