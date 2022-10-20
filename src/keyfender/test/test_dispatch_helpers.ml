@@ -66,4 +66,19 @@ module Expect = struct
     | Some (`OK, _, `Stream s, _) -> Some (hsm, s)
     | _ -> None
 
+  let string expected (hsm, response) =
+    Alcotest.(check status) 
+      "Response code"
+      (Some `OK)
+      (status_of_response response);
+    Alcotest.(check body_type) 
+      "Response body type"
+      (Some `String)
+      (body_type_of_response response);
+    match response with
+    | Some (`OK, _, `String s, _) -> 
+      Alcotest.(check string) "Response string" expected s;
+      Some hsm
+    | _ -> None
+  
 end

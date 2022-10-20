@@ -8,14 +8,15 @@ sig
     Cohttp_lwt.Body.t *
     string list
 
-  type 'a response = 'a * cohttp_response option
+  type 'hsm response = 'hsm * cohttp_response option
 
-  val ok : 'a response -> 'a option
+  val ok : 'hsm response -> 'hsm option
 
-  val not_found : 'a response -> 'a option
+  val not_found : 'hsm response -> 'hsm option
 
-  val no_content : 'a response -> 'a option
+  val no_content : 'hsm response -> 'hsm option
 
-  val stream : 'a response -> ('a * string Lwt_stream.t) option
+  val stream : 'hsm response -> ('hsm * string Lwt_stream.t) option
 
+  val string : string -> 'hsm response -> 'hsm option
 end

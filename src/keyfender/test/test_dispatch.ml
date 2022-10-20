@@ -557,28 +557,36 @@ let system_backup_and_restore_operational =
     request ~meth:`POST ~hsm_state ~headers "/system/backup"
     |> Expect.stream
   in
-  let content_type = "application/octet-stream" in
-  let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
   let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* backup is done, let's remove a key and try to restore it *)
   let* hsm_state =
     request ~meth:`DELETE ~hsm_state ~headers:admin_headers "/keys/keyID"
     |> Expect.no_content
   in
+  (* the unlock passphrase is changed, but we don't expect it to be restored *)
+  let new_passphrase_json = {|{"passphrase": "i am secure"}|} in
+  let* hsm_state =
+    request ~meth:`PUT ~hsm_state ~headers:admin_headers 
+      "/config/unlock-passphrase" ~body:(`String new_passphrase_json)
+    |> Expect.no_content
+  in
   let* _ =
     request ~headers:admin_headers ~hsm_state "/keys/keyID"
     |> Expect.not_found
   in
+  (* restore *)
   let* hsm_state =
+    let content_type = "application/octet-stream" in
+    let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
     request ~meth:`POST ~hsm_state ~content_type ~query ~body:(`String data) "/system/restore"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Locked);
-  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
   let* hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    request ~meth:`POST ~body:(`String new_passphrase_json) ~hsm_state "/unlock"
     |> Expect.no_content
   in
+  (* check that keys are restored *)
   let* _ =
     request ~headers:admin_headers ~hsm_state "/keys/keyID"
     |> Expect.ok
