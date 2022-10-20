@@ -171,8 +171,13 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   let slot_of_key key =
     match Mirage_kv.Key.segments key with
+    | _      :: v :: _ when String.equal v Version.file -> None
     | prefix :: _ when String.equal prefix slot_auth -> Some Authentication
     | prefix :: _ when String.equal prefix slot_key -> Some Key
     | _ -> None
+
+  let prefix_of_slot = function
+    | Authentication -> Mirage_kv.Key.v slot_auth
+    | Key -> Mirage_kv.Key.v slot_key    
 
 end

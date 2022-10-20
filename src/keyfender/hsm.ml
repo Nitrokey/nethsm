@@ -2036,20 +2036,26 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   begin
+                    let module KeySet = Set.Make(Mirage_kv.Key) in
+                    (* when the mode is operational, we have to clear 
+                       user and keys that are not in the backup. *)
+                    let backup_keys = ref KeySet.empty in
                     let rec next stream =
                       Lwt_stream.is_empty stream >>= function
                       | true -> t.state <- Locked ; Lwt.return (Ok ())
                       | false ->
                         read_and_decrypt stream key >>== fun ((k, v), stream) ->
                         let key = Mirage_kv.Key.v k in
-                        let should_restore_key = 
-                          (not is_operational) || 
-                          (Option.is_some (Encrypted_store.slot_of_key key))
-                        in
+                        if is_operational then
+                          backup_keys := KeySet.add key !backup_keys;
                         begin
+                          let should_restore_key = 
+                            (not is_operational) || 
+                            (Option.is_some (Encrypted_store.slot_of_key key))
+                          in
                           if should_restore_key then
                             internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
-                            (KV.set b key v) 
+                              (KV.set b key v) 
                           else
                             Lwt_result.return ()
                         end
@@ -2057,6 +2063,48 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                         next stream
                     in
                     next stream'' >>== fun () ->
+                    begin
+                      if is_operational then
+                        (* we remove keys and users that not present in the 
+                           backup *)
+                        let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
+                        internal_server_error
+                          Read "restoring backup (listing keys)" KV.pp_error 
+                          (KV.list b auth_prefix)
+                        >>== fun auth_keys ->
+                        let key_prefix = Encrypted_store.prefix_of_slot Key in
+                        internal_server_error
+                          Read "restoring backup (listing keys)" KV.pp_error 
+                          (KV.list b key_prefix)
+                        >>== fun key_keys ->
+                        let add_prefix prefix keys =
+                          List.map (fun (k, _) -> Mirage_kv.Key.(prefix / k)) keys
+                        in
+                        let keys =
+                          add_prefix auth_prefix auth_keys
+                          @ add_prefix key_prefix key_keys
+                        in
+                        List.filter_map (fun key -> 
+                          if 
+                            Option.is_some (Encrypted_store.slot_of_key key)
+                            && not (KeySet.mem key !backup_keys)
+                          then
+                            (Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
+                            Some key)
+                          else None
+                        ) keys
+                        |> Lwt_list.fold_left_s 
+                          (fun r k ->
+                            match r with
+                            | Error _ -> Lwt.return r
+                            | Ok () ->
+                              internal_server_error Write "restoring backup (removing keys from KV)" KV.pp_write_error
+                                (KV.remove b k)) 
+                          (Ok ())
+                      else
+                        Lwt_result.return () 
+                    end
+                    >>== fun () ->
                     let `Raw stop_ts = Clock.now_raw () in
                     match new_time with
                     | None -> Lwt.return_ok () 

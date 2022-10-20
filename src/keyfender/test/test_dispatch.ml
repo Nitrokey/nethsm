@@ -563,13 +563,16 @@ let system_backup_and_restore_operational =
     request ~meth:`DELETE ~hsm_state ~headers:admin_headers "/keys/keyID"
     |> Expect.no_content
   in
+  (* add key, we'll check that it's removed after restore *)
+  Lwt_main.run 
+    (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in  
+    Hsm.Key.add_pem hsm_state mechanisms ~id:"newKeyID" test_key_pem no_restrictions) 
+  |> Result.get_ok;
   (* the unlock passphrase is changed, but we don't expect it to be restored *)
-  let new_passphrase_json = {|{"passphrase": "i am secure"}|} in
-  let* hsm_state =
-    request ~meth:`PUT ~hsm_state ~headers:admin_headers 
-      "/config/unlock-passphrase" ~body:(`String new_passphrase_json)
-    |> Expect.no_content
-  in
+  Lwt_main.run 
+    (Hsm.Config.set_unlock_passphrase hsm_state ~passphrase:"i am secure")
+  |> Result.get_ok;
+  (* the removed key is indeed removed *)
   let* _ =
     request ~headers:admin_headers ~hsm_state "/keys/keyID"
     |> Expect.not_found
@@ -582,14 +585,19 @@ let system_backup_and_restore_operational =
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Locked);
-  let* hsm_state =
-    request ~meth:`POST ~body:(`String new_passphrase_json) ~hsm_state "/unlock"
-    |> Expect.no_content
-  in
-  (* check that keys are restored *)
+  (* unlock *)
+  Lwt_main.run 
+    (Hsm.unlock_with_passphrase hsm_state ~passphrase:"i am secure")
+  |> Result.get_ok;
+  (* check that deleted keys are restored *)
   let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/keyID"
-    |> Expect.ok
+  request ~headers:admin_headers ~hsm_state "/keys/keyID"
+  |> Expect.ok
+  in
+  (* check that new keys are deleted *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
+    |> Expect.not_found
   in
   ()
   

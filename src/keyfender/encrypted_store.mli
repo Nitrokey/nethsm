@@ -71,4 +71,8 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
   (** [slot_of_key key] returns the slot in which the key resides, or None if 
       it's not part of the encrypted store. [key] should be a key of the 
       underlying store. *)
+
+  val prefix_of_slot : slot -> KV.key
+  (** [prefix_of_slot slot] returns the prefix used to store values of [slot] in
+      the underlying store. *)
 end
