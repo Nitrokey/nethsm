@@ -1,6 +1,6 @@
 (test
   (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender alcotest)
-  (modules test_dispatch)
+  (modules test_dispatch test_dispatch_helpers)
   (preprocessor_deps public.pem)
   (preprocess (pps ppx_blob))
   (deps update.bin ../bin/sign_update.exe key.pem changes version)
