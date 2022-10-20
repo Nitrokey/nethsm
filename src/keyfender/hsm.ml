@@ -2012,8 +2012,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt.Infix in
       let (>>==) = Lwt_result.bind in
       let `Raw start_ts = Clock.now_raw () in
-      let is_unprovisioned = t.state = Unprovisioned in
-      Lwt.return @@ get_query_parameters ~timestamp_optional:is_unprovisioned uri 
+      let is_operational = 
+        match t.state with Operational _ -> true | _ -> false 
+      in
+      Lwt.return @@ get_query_parameters ~timestamp_optional:is_operational uri 
       >>== fun (new_time, backup_passphrase) ->
       decode_value stream >>== fun (backup_salt, stream') ->
       decode_value stream' >>== fun (version, stream'') ->
@@ -2039,8 +2041,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                       | true -> t.state <- Locked ; Lwt.return (Ok ())
                       | false ->
                         read_and_decrypt stream key >>== fun ((k, v), stream) ->
-                        internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
-                          (KV.set b (Mirage_kv.Key.v k) v) >>== fun () ->
+                        let key = Mirage_kv.Key.v k in
+                        let should_restore_key = 
+                          (not is_operational) || 
+                          (Option.is_some (Encrypted_store.slot_of_key key))
+                        in
+                        begin
+                          if should_restore_key then
+                            internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
+                            (KV.set b key v) 
+                          else
+                            Lwt_result.return ()
+                        end
+                        >>== fun () ->
                         next stream
                     in
                     next stream'' >>== fun () ->
@@ -2048,12 +2061,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                     match new_time with
                     | None -> Lwt.return_ok () 
                     | Some new_time ->
-                    let elapsed = Ptime.diff stop_ts start_ts in
-                    match Ptime.add_span new_time elapsed with
-                    | Some ts -> set_time_offset b ts
-                    | None ->
-                      t.state <- Unprovisioned;
-                      Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+                      let elapsed = Ptime.diff stop_ts start_ts in
+                      match Ptime.add_span new_time elapsed with
+                      | Some ts -> set_time_offset b ts
+                      | None ->
+                        t.state <- Unprovisioned;
+                        Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
                   end))
         | _ ->
           let msg =
