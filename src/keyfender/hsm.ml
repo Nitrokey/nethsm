@@ -805,7 +805,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           | Error `Store `Kv (`Not_found _) ->
             let user = prepare_user ~name ~passphrase ~role in
             write store id user >|= fun () ->
-            Access.info (fun m -> m "added %s (%s)" name id)
+            Access.info (fun m -> m "added %s (%s): %a" name id pp_role role)
           | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
           | Error _ as e ->
             internal_server_error Read "Adding user" User_store.pp_read_error
@@ -1060,6 +1060,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             cert = None ;
             operations = 0 ;
             restrictions }
+          >|= fun () ->
+          Access.info (fun f -> f "created (%s)" id);
+          if not (Json.TagSet.is_empty restrictions.tags) then 
+            Access.info (fun f -> f "tags (%s): %s" id
+              (Json.TagSet.to_yojson restrictions.tags |> Yojson.to_string))
 
     let add_json ~id t mechanisms typ key restrictions =
       let b64err msg ctx data =
@@ -1260,6 +1265,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let restrictions' =
           { Json.tags = Json.TagSet.add tag key.restrictions.tags }
         in
+        Access.info (fun f -> f "update (%s): added tag %S" id tag);
         encode_and_write t id {key with restrictions = restrictions'}
         >|= fun () ->
         true
@@ -1274,6 +1280,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Json.tags = Json.TagSet.remove tag key.restrictions.tags
         }
         in
+        Access.info (fun f -> f "update (%s): removed tag %S" id tag);
         encode_and_write t id {key with restrictions = restrictions'}
         >|= fun () ->
         true
