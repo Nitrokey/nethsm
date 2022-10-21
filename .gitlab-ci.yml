@@ -22,6 +22,7 @@ variables:
   - mkdir -p /downloads/opam
   - rm -rf ~/.opam/download-cache
   - ln -s /downloads/opam ~/.opam/download-cache
+  - echo "machine git.nitrokey.com login ci-job password ${GITLAB_TOKEN}" > $HOME/.netrc
 
 workflow:
   rules:
@@ -282,6 +283,7 @@ build_container_image:
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - echo "machine git.nitrokey.com login ci-job password ${GITLAB_TOKEN}" > /home/opam/.netrc
   script:
     - >-
       /kaniko/executor --context "${CI_PROJECT_DIR}"
