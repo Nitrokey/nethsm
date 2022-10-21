@@ -93,7 +93,7 @@ validate_api_spec:
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     API_SPEC: "docs/nethsm-api.yaml"
-    API_SPEC_DEBUG: "nethsm-api-debug.log"
+    API_SPEC_DEBUG: "/tmp/nethsm-api-debug.log"
   stage: test
   needs: []
   image: "${CI_REGISTRY_IMAGE}/builder:latest"
@@ -101,12 +101,15 @@ validate_api_spec:
     - name: swaggerapi/swagger-validator-v2
       alias: swagger-validator
   script:
-    - 'curl --request POST http://swagger-validator:8080/validator/debug
+    - >-
+      curl --request POST http://swagger-validator:8080/validator/debug
       --header "Accept: application/json"
       --header "Content-Type: application/yaml"
       --data-binary @$API_SPEC
-      --output $API_SPEC_DEBUG'
-    - grep "^{}$" nethsm-api-debug.log
+      | tee ${API_SPEC_DEBUG} | json_pp
+    - >-
+      jq -e 'contains({"schemaValidationMessages":[{"level":"error"}]}) | not'
+      ${API_SPEC_DEBUG} >/dev/null
 
 test_keyfender:
   rules:
