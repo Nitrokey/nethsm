@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: NetHSM
   version: v1
-  description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All <a href="https://tools.ietf.org/html/rfc4648#section-4">base64</a> encoded values are Big Endian.
+  description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All [base64](https://tools.ietf.org/html/rfc4648#section-4) encoded values are Big Endian.
 servers:
   - url: https://{host}/api/{version}
     variables:
@@ -34,7 +34,7 @@ paths:
           description: Yes, it is alive.
         '412':
           description: Not locked or unprovisioned (in operational state).
-      description: Retrieve wether NetHSM is alive (powered up). This corresponds to the state <i>Locked</i> or <i>Unprovisioned</i>.
+      description: Retrieve wether NetHSM is alive (powered up). This corresponds to the state *Locked* or *Unprovisioned*.
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -47,7 +47,7 @@ paths:
           description: Yes, it is alive and ready.
         '412':
           description: Not alive and ready (not in operational state).
-      description: Retrieve wether NetHSM is alive and ready to take traffic. This corresponds to the state <i>Operational</i>.
+      description: Retrieve wether NetHSM is alive and ready to take traffic. This corresponds to the state *Operational*.
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -82,8 +82,8 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
-      description: 'Get metrics. Precondition: NetHSM is <i>Operational</i> and a <b>R-Metrics</b> can be authenticated.'
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: 'Get metrics. Precondition: NetHSM is *Operational* and a **R-Metrics** can be authenticated.'
       security:
         - basic: []
       x-annotation-role:
@@ -94,12 +94,12 @@ paths:
     post:
       responses:
         '204':
-          description: Provisioning was successful, NetHSM is <i>Operational</i> now.
+          description: Provisioning was successful, NetHSM is *Operational* now.
         '400':
           description: Malformed request data (e.g. malformed time, weak passphrase).
         '412':
-          description: Precondition failed (NetHSM was not <i>Unprovisioned</i>).
-      description: Initial provisioning, only available in <i>Unprovisioned</i> state.
+          description: Precondition failed (NetHSM was not *Unprovisioned*).
+      description: Initial provisioning, only available in *Unprovisioned* state.
       requestBody:
         content:
           application/json:
@@ -114,14 +114,14 @@ paths:
     post:
       responses:
         '204':
-          description: Unlock was successful, NetHSM is <i>Operational</i> now.
+          description: Unlock was successful, NetHSM is *Operational* now.
         '400':
           description: Bad request (invalid passphrase).
         '403':
           description: Unlock failed (access denied).
         '412':
-          description: Precondition failed (NetHSM was not <i>Locked</i>).
-      description: Brings a <i>Locked</i> NetHSM into <i>Operational</i> state.
+          description: Precondition failed (NetHSM was not *Locked*).
+      description: Brings a *Locked* NetHSM into *Operational* state.
       requestBody:
         content:
           application/json:
@@ -136,14 +136,14 @@ paths:
     post:
       responses:
         '204':
-          description: Lock was successful, NetHSM is <i>Locked</i> now.
+          description: Lock was successful, NetHSM is *Locked* now.
         '401':
           description: Authentication required but none provided.
         '403':
           description: Lock failed (access denied).
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
-      description: Brings an <i>Operational</i> NetHSM into <i>Locked</i> state.
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Brings an *Operational* NetHSM into *Locked* state.
       security:
         - basic: []
       x-annotation-role:
@@ -154,7 +154,7 @@ paths:
     post:
       responses:
         '200':
-          description: Successful request for <i>length</i> random bytes.
+          description: Successful request for *length* random bytes.
           content:
             application/json:
               schema:
@@ -164,8 +164,8 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
-      description: 'Retrieve cryptographically strong random bytes from NetHSM. Precondition: NetHSM is <i>Operational</i> and a <b>R-Operator</b> can be authenticated.'
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: 'Retrieve cryptographically strong random bytes from NetHSM. Precondition: NetHSM is *Operational* and a **R-Operator** can be authenticated.'
       requestBody:
         content:
           application/json:
@@ -192,7 +192,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get a list of the identifiers of all keys that are currently stored in NetHSM. Separate requests need to be made to request the individual key data.
       parameters:
         - name: filter
@@ -218,7 +218,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Import a private key into NetHSM and let NetHSM generate a KeyID. The public key will be automatically derived.
       requestBody:
         content:
@@ -260,7 +260,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Generate a pair of public and private key and store it in NetHSM. KeyID is optional as a parameter and will be generated by NetHSM if not present.
       requestBody:
         content:
@@ -335,7 +335,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve the public key.
       security:
         - basic: []
@@ -358,8 +358,8 @@ paths:
         '409':
           description: Conflict, key already exists for this keyID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
-      description: Import a private key into NetHSM and store it under the <i>KeyID</i> path. The public key will be automatically derived.
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Import a private key into NetHSM and store it under the *KeyID* path. The public key will be automatically derived.
       requestBody:
         description: |
           For request body with content type `application/json`:
@@ -444,7 +444,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a pair of public and private key.
       security:
         - basic: []
@@ -477,7 +477,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve public key in PEM format.
       security:
         - basic: []
@@ -509,7 +509,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve a certificate signing request in PEM format.
       requestBody:
         content:
@@ -557,7 +557,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Decrypt an encrypted message with the secret key.
       requestBody:
         description: |
@@ -601,7 +601,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Encrypt a message with the secret key.
       requestBody:
         content:
@@ -654,7 +654,7 @@ paths:
         '404':
           description: Key for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Sign a message with the secret key.
       requestBody:
         description: |
@@ -701,7 +701,7 @@ paths:
         '404':
           description: Certificate for KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve stored certificate. The content-type header will display the media type of the stored data.
       security:
         - basic: []
@@ -722,7 +722,7 @@ paths:
         '409':
           description: Conflict, certificate already exists for this KeyID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Store a certificate. Maximum size 1MB. The content-type header provides the media type. Only application/json, application/x-pem-file, application/x-x509-ca-cert, application/octet-stream, text/plain and application/pgp-keys is allowed.
       requestBody:
         content:
@@ -754,7 +754,7 @@ paths:
         '404':
           description: Certificate with this KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Delete the certificate.
       security:
         - basic: []
@@ -786,7 +786,7 @@ paths:
         '404':
           description: KeyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Add a tag to the authorized set
       security:
         - basic: []
@@ -807,7 +807,7 @@ paths:
         '404':
           description: Tag or keyID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a tag from the authorized set
       security:
         - basic: []
@@ -842,7 +842,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get a list of all user ids that have accounts on NetHSM.
       security:
         - basic: []
@@ -861,7 +861,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Create a new user on NetHSM. The user-ID is generated by NetHSM.
       requestBody:
         content:
@@ -891,7 +891,7 @@ paths:
         '404':
           description: User for UserID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: 'Get user info: name and role.'
       security:
         - basic: []
@@ -914,7 +914,7 @@ paths:
         '409':
           description: Conflict - user already exists for this user-ID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Create a user on keyfender.
       requestBody:
         content:
@@ -940,7 +940,7 @@ paths:
         '404':
           description: User not found for this user-ID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a user from keyfender.
       security:
         - basic: []
@@ -969,7 +969,7 @@ paths:
         '404':
           description: User not found for this user-ID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Update the passphrase.
       requestBody:
         content:
@@ -1007,7 +1007,7 @@ paths:
         '404':
           description: User not found for this user-ID.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get the list of tags set to an Operator user.
       security:
         - basic: []
@@ -1039,7 +1039,7 @@ paths:
         '404':
           description: UserID not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Add a tag to the Operator user.
       security:
         - basic: []
@@ -1060,7 +1060,7 @@ paths:
         '404':
           description: Tag or user not found.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a tag from the Operator user
       security:
         - basic: []
@@ -1093,7 +1093,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Update the unlock passphrase.
       requestBody:
         content:
@@ -1121,7 +1121,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: 'Read unattended boot configuration: is it on or off?'
       security:
         - basic: []
@@ -1140,7 +1140,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: 'Configure unattended boot: switch it on or off (flip the switch).'
       requestBody:
         content:
@@ -1168,7 +1168,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get public key for NetHSMs https API.
       security:
         - basic: []
@@ -1190,7 +1190,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get certificate for NetHSMs https API.
       security:
         - basic: []
@@ -1207,7 +1207,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
       requestBody:
         content:
@@ -1235,7 +1235,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get NetHSM certificate signing request e.g. to replace self-signed intital certificate.
       requestBody:
         content:
@@ -1261,7 +1261,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Generate a new pair of public and private key for NetHSM's https API.
       requestBody:
         content:
@@ -1289,7 +1289,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get network configuration. IP address, netmask, router.
       security:
         - basic: []
@@ -1308,7 +1308,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Configure network.
       requestBody:
         content:
@@ -1336,7 +1336,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get logging configuration. Protocol is always syslog over UDP. Configurable are IP adress and port, log level.
       security:
         - basic: []
@@ -1355,7 +1355,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Configure log level and destination.
       requestBody:
         content:
@@ -1381,7 +1381,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Update the backup passphrase.
       requestBody:
         content:
@@ -1409,7 +1409,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get system time.
       security:
         - basic: []
@@ -1428,7 +1428,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Configure system time.
       requestBody:
         content:
@@ -1456,7 +1456,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Get detailed system information, including firmware version, system software version, hardware version.
       security:
         - basic: []
@@ -1474,7 +1474,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Reboot NetHSM.
       security:
         - basic: []
@@ -1492,7 +1492,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Shut down NetHSM.
       security:
         - basic: []
@@ -1510,7 +1510,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Reset NetHSM to factory settings.
       security:
         - basic: []
@@ -1534,7 +1534,7 @@ paths:
         '409':
           description: Conflict - Major version downgrade is not allowed.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i>).
+          description: Precondition failed (NetHSM was not *Operational*).
       description: Update NetHSM software.
       requestBody:
         content:
@@ -1558,7 +1558,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i> or update image is not present - call /update first).
+          description: Precondition failed (NetHSM was not *Operational* or update image is not present - call `/update` first).
       description: Commit update of NetHSM software.
       security:
         - basic: []
@@ -1576,7 +1576,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i> or update image is not present - call /update first).
+          description: Precondition failed (NetHSM was not *Operational* or update image is not present - call `/update` first).
       description: Cancel update of NetHSM software.
       security:
         - basic: []
@@ -1594,7 +1594,7 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not <i>Operational</i> or <i>Backup Passphrase</i> was not set).
+          description: Precondition failed (NetHSM was not *Operational* or *Backup Passphrase* was not set).
       description: Back up the key store to a backup file.
       security:
         - basic: []
@@ -1610,8 +1610,8 @@ paths:
         '400':
           description: Bad request - restore did not apply.
         '412':
-          description: Precondition failed (NetHSM was not <i>Unprovisioned</i>).
-      description: Restore the key store from a backup file. Only available in <i>Unprovisioned</i> state.
+          description: Precondition failed (NetHSM was not *Unprovisioned*).
+      description: Restore the key store from a backup file. Only available in *Unprovisioned* state.
       requestBody:
         content:
           application/octet-stream:
