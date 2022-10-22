@@ -117,9 +117,9 @@ COPY muennet-tailroom.patch /tmp/
 RUN cd /nethsm-tools/muen/components/linux/modules/muennet \
         && patch </tmp/muennet-tailroom.patch
 
-ARG GITLAB_TOKEN
+ARG VENDOR_TOKEN
 RUN mkdir -p /nethsm-tools/coreboot \
-        && git clone --depth 50 -b nethsm https://gitlab-ci-token:${GITLAB_TOKEN}@git.nitrokey.com/nitrokey/nethsm/coreboot.git /nethsm-tools/coreboot \
+        && git clone --depth 50 -b nethsm https://ci-job:${VENDOR_TOKEN}@git.nitrokey.com/nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot \
         && cd /nethsm-tools/coreboot \
         && git remote set-url origin https://github.com/coreboot/coreboot.git \
         && git submodule update --checkout --init --depth 50
@@ -129,7 +129,7 @@ RUN if [ -d /downloads ] ; then mkdir -p /downloads/tarballs \
         && make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386
 
 RUN cd /nethsm-tools/coreboot/payloads/external/GRUB2 \
-        && git clone --depth 50 -b nethsm https://gitlab-ci-token:${GITLAB_TOKEN}@git.nitrokey.com/nitrokey/nethsm/grub.git grub2 \
+        && git clone --depth 50 -b nethsm https://ci-job:${VENDOR_TOKEN}@git.nitrokey.com/nitrokey/nethsm/vendor/grub.git grub2 \
         && mkdir grub2/gnulib && cd grub2/gnulib \
         && git init && git remote add origin https://github.com/coreutils/gnulib \
         && git fetch origin --depth 1 $(sed -n s/^GNULIB_REVISION=//p ../bootstrap.conf) \

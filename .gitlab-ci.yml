@@ -22,7 +22,7 @@ variables:
   - mkdir -p /downloads/opam
   - rm -rf ~/.opam/download-cache
   - ln -s /downloads/opam ~/.opam/download-cache
-  - echo "machine git.nitrokey.com login ci-job password ${GITLAB_TOKEN}" > $HOME/.netrc
+  - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > $HOME/.netrc
 
 workflow:
   rules:
@@ -80,7 +80,7 @@ build_builder_image:
       --cache=true
       --cache-repo "${CI_REGISTRY_IMAGE}/builder/cache"
       --skip-unused-stages=true
-      --build-arg GITLAB_TOKEN=${GITLAB_TOKEN}
+      --build-arg VENDOR_TOKEN=${VENDOR_TOKEN}
       --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --build-arg COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --push-retry 5
@@ -286,7 +286,7 @@ build_container_image:
       echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
       "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
       tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-    - echo "machine git.nitrokey.com login ci-job password ${GITLAB_TOKEN}" > /home/opam/.netrc
+    - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > /home/opam/.netrc
   script:
     - >-
       /kaniko/executor --context "${CI_PROJECT_DIR}"
@@ -346,7 +346,7 @@ create_artifact_packages:
   needs: []
   script:
     - >-
-      REF=$(curl -sS -f --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}"
+      REF=$(curl -sS -f --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}"
       "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines?sha=${CI_COMMIT_SHA}&status=success"
       | jq -r '.[0].ref')
     - echo $REF
