@@ -4,6 +4,8 @@ variables:
   USE_CCACHE: 1
   CCACHE_DIR: /downloads/ccache
   GIT_LFS_SKIP_SMUDGE: 1
+  BUILDKIT_HOST: tcp://172.17.0.1:12345
+  PUSH: "push=true"
 
 .dependency_paths:
   builder: &builder_dep_paths
@@ -16,12 +18,21 @@ variables:
     - .gitlab-ci.yml
     - Makefile*
 
-.setup_opam_downloads: &setup_opam_downloads
+.setup_job_default: &setup_job_default
   - git config --global --add safe.directory ${CI_PROJECT_DIR}
+  - git config --global --add safe.directory /nethsm-tools
   - sudo chmod 01777 /downloads
   - mkdir -p /downloads/opam
   - rm -rf ~/.opam/download-cache
   - ln -s /downloads/opam ~/.opam/download-cache
+  - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > $HOME/.netrc
+
+.setup_job_buildkit: &setup_job_buildkit
+  - mkdir -p $HOME/.docker
+  - >
+    echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
+    "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
+    tr -d '\n')\"}}}" > ${HOME}/.docker/config.json
   - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > $HOME/.netrc
 
 workflow:
@@ -57,35 +68,86 @@ build_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
-        NOPUSH: "--no-push"
+        PUSH: "push=false"
     - if: $BUILDER_TAG != "latest"
   stage: prepare
   needs: []
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    name: moby/buildkit:rootless
     entrypoint: [""]
-  before_script:
-    - chmod 01777 /downloads
-    - "[ -d /downloads/opam/ ] || mkdir -m 0777 /downloads/opam"
-    - mkdir -p /kaniko/.docker
-    - >
-      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
-      "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
-      tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+  before_script: *setup_job_buildkit
   script:
     - >-
-      /kaniko/executor
-      --context "${CI_PROJECT_DIR}/src/container/builder"
-      --destination "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}"
-      --cache=true
-      --cache-repo "${CI_REGISTRY_IMAGE}/builder/cache"
-      --skip-unused-stages=true
-      --build-arg VENDOR_TOKEN=${VENDOR_TOKEN}
-      --build-arg OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
-      --build-arg COMMIT_ID=${CI_COMMIT_SHORT_SHA}
-      --push-retry 5
-      --image-fs-extract-retry 5
-      ${NOPUSH}
+      buildctl build --frontend=dockerfile.v0 --progress=plain
+      --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
+      --local context="${CI_PROJECT_DIR}/src/container/builder"
+      --secret id=netrc,src=${HOME}/.netrc
+      --opt build-arg:VENDOR_TOKEN=${VENDOR_TOKEN}
+      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
+      --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
+
+build_container_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        PUSH: "push=false"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  needs:
+    - job: build_builder_image
+      optional: true
+  stage: build
+  image:
+    name: moby/buildkit:rootless
+    entrypoint: [""]
+  before_script: *setup_job_buildkit
+  script:
+    - >-
+      buildctl build --frontend=dockerfile.v0 --progress=plain
+      --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
+      --local context=${CI_PROJECT_DIR}
+      --secret id=netrc,src=${HOME}/.netrc
+      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
+
+commit_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - >
+      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} >/dev/null 2>&1 ;
+      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
+      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
+
+commit_container_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  variables:
+    IMAGE_NAME: "nitrokey/nethsm"
+    IMAGE_TAG: "testing"
+    REGISTRY: "docker.io"
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
+  script:
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
 validate_api_spec:
   rules:
@@ -126,7 +188,7 @@ test_keyfender:
       coverage_report:
         coverage_format: cobertura
         path: obj/cobertura.xml
-  before_script: *setup_opam_downloads
+  before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) coverage-summary
 
@@ -140,7 +202,7 @@ build_dev:
   needs:
     - job: build_builder_image
       optional: true
-  before_script: *setup_opam_downloads
+  before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) build
 
@@ -170,7 +232,7 @@ build_muen_prodrive_hermes:
     expire_in: 1 week
     paths:
       - ${CI_JOB_NAME}_artifacts
-  before_script: *setup_opam_downloads
+  before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
     - mkdir -p ${CI_JOB_NAME}_artifacts
@@ -202,7 +264,7 @@ build_muen_qemu_kvm:
     expire_in: 1 week
     paths:
       - ${CI_JOB_NAME}_artifacts
-  before_script: *setup_opam_downloads
+  before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
     - mkdir -p ${CI_JOB_NAME}_artifacts
@@ -263,79 +325,6 @@ test_muen_prodrive_hermes:
       '{"ResetType": "ForceOff"}'
   coverage: "/(^Performance: )(.*)%/"
 
-build_container_image:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        NOPUSH: "--no-push"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
-  needs:
-    - job: build_builder_image
-      optional: true
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  before_script:
-    - chmod 01777 /downloads
-    - "[ -d /downloads/opam/ ] || mkdir -m 0777 /downloads/opam"
-    - mkdir -m 0777 -p /home/opam/.opam
-    - ln -s /downloads/opam /home/opam/.opam/download-cache
-    - mkdir -p /kaniko/.docker
-    - >
-      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
-      "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
-      tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-    - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > /home/opam/.netrc
-  script:
-    - >-
-      /kaniko/executor --context "${CI_PROJECT_DIR}"
-      --single-snapshot
-      --snapshotMode=time
-      --dockerfile ${CI_PROJECT_DIR}/src/container/alpine/Dockerfile
-      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" ${NOPUSH}
-      --push-retry 5
-      --image-fs-extract-retry 5
-
-commit_builder_image:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
-  stage: commit
-  image:
-    name: quay.io/skopeo/stable:latest
-    entrypoint: [""]
-  needs: []
-  before_script:
-    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
-  script:
-    - >
-      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} 2>/dev/null ;
-      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
-      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
-
-commit_container_image:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
-  variables:
-    IMAGE_NAME: "nitrokey/nethsm"
-    IMAGE_TAG: "testing"
-    REGISTRY: "docker.io"
-  stage: commit
-  image:
-    name: quay.io/skopeo/stable:latest
-    entrypoint: [""]
-  needs: []
-  before_script:
-    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
-    - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
-  script:
-    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
-    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-
 create_artifact_packages:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -356,7 +345,7 @@ create_artifact_packages:
     - unzip artifacts.zip
     - cd build_muen_prodrive_hermes_artifacts
     - >-
-      [ -f bios.swu ] && mv bios.swu bios_${CI_COMMIT_SHORT_SHA}.swu && zip bios.zip bios_${CI_COMMIT_SHORT_SHA}.swu 
+      [ -f bios.swu ] && mv bios.swu bios_${CI_COMMIT_SHORT_SHA}.swu && zip bios.zip bios_${CI_COMMIT_SHORT_SHA}.swu
       && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file bios.zip
       "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/bios/latest/nethsm_bios_${CI_COMMIT_SHORT_SHA}.zip"
     - >-
