@@ -2,7 +2,11 @@ openapi: 3.0.0
 info:
   title: NetHSM
   version: v1
-  description: All endpoints expect exactly the specified JSON. Additional properties will cause a Bad Request Error (400). All HTTP errors contain a JSON structure with an explanation of type string. All [base64](https://tools.ietf.org/html/rfc4648#section-4) encoded values are Big Endian.
+  description: |
+    All endpoints expect exactly the specified JSON.
+    Additional properties will cause a Bad Request Error (400).
+    All HTTP errors contain a JSON structure with an explanation of type string.
+    All [base64](https://tools.ietf.org/html/rfc4648#section-4) encoded values are Big Endian.
 servers:
   - url: https://{host}/api/{version}
     variables:
@@ -34,7 +38,9 @@ paths:
           description: Yes, it is alive.
         '412':
           description: Not locked or unprovisioned (in operational state).
-      description: Retrieve wether NetHSM is alive (powered up). This corresponds to the state *Locked* or *Unprovisioned*.
+      description: |
+        Retrieve wether NetHSM is alive (powered up).
+        This corresponds to the state *Locked* or *Unprovisioned*.
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -47,7 +53,9 @@ paths:
           description: Yes, it is alive and ready.
         '412':
           description: Not alive and ready (not in operational state).
-      description: Retrieve wether NetHSM is alive and ready to take traffic. This corresponds to the state *Operational*.
+      description: |
+        Retrieve wether NetHSM is alive and ready to take traffic.
+        This corresponds to the state *Operational*.
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -83,7 +91,9 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: 'Get metrics. Precondition: NetHSM is *Operational* and a **R-Metrics** can be authenticated.'
+      description: |
+        Get metrics.
+        Precondition: NetHSM is *Operational* and a **R-Metrics** can be authenticated.
       security:
         - basic: []
       x-annotation-role:
@@ -165,7 +175,9 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: 'Retrieve cryptographically strong random bytes from NetHSM. Precondition: NetHSM is *Operational* and a **R-Operator** can be authenticated.'
+      description: |
+        Retrieve cryptographically strong random bytes from NetHSM.
+        Precondition: NetHSM is *Operational* and a **R-Operator** can be authenticated.
       requestBody:
         content:
           application/json:
@@ -193,7 +205,9 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get a list of the identifiers of all keys that are currently stored in NetHSM. Separate requests need to be made to request the individual key data.
+      description: |
+        Get a list of the identifiers of all keys that are currently stored in NetHSM.
+        Separate requests need to be made to request the individual key data.
       parameters:
         - name: filter
           in: query
@@ -210,7 +224,10 @@ paths:
     post:
       responses:
         '201':
-          description: Successful import of a private key. The response contains a Location header, e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+          description: |
+            Successful import of a private key.
+            The response contains a Location header,
+            e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
         '400':
           description: Bad request (specified properties are invalid).
         '401':
@@ -219,7 +236,9 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Import a private key into NetHSM and let NetHSM generate a KeyID. The public key will be automatically derived.
+      description: |
+        Import a private key into NetHSM and let NetHSM generate a KeyID.
+        The public key will be automatically derived.
       requestBody:
         content:
           application/x-pem-file:
@@ -252,7 +271,9 @@ paths:
     post:
       responses:
         '201':
-          description: Successful creation of new public and private key pair. Set Location header to the new KeyID.
+          description: |
+            Successful creation of new public and private key pair.
+            Set Location header to the new KeyID.
         '400':
           description: Bad request (specified properties are invalid).
         '401':
@@ -261,7 +282,9 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Generate a pair of public and private key and store it in NetHSM. KeyID is optional as a parameter and will be generated by NetHSM if not present.
+      description: |
+        Generate a pair of public and private key and store it in NetHSM.
+        KeyID is optional as a parameter and will be generated by NetHSM if not present.
       requestBody:
         content:
           application/json:
@@ -359,7 +382,9 @@ paths:
           description: Conflict, key already exists for this keyID.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Import a private key into NetHSM and store it under the *KeyID* path. The public key will be automatically derived.
+      description: |
+        Import a private key into NetHSM and store it under the *KeyID* path.
+        The public key will be automatically derived.
       requestBody:
         description: |
           For request body with content type `application/json`:
@@ -702,7 +727,9 @@ paths:
           description: Certificate for KeyID not found.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Retrieve stored certificate. The content-type header will display the media type of the stored data.
+      description: |
+        Retrieve stored certificate.
+        The content-type header will display the media type of the stored data.
       security:
         - basic: []
       x-annotation-role:
@@ -723,7 +750,12 @@ paths:
           description: Conflict, certificate already exists for this KeyID.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Store a certificate. Maximum size 1MB. The content-type header provides the media type. Only application/json, application/x-pem-file, application/x-x509-ca-cert, application/octet-stream, text/plain and application/pgp-keys is allowed.
+      description: |
+        Store a certificate.
+        Maximum size 1MB.
+        The content-type header provides the media type.
+        Only application/json, application/x-pem-file, application/x-x509-ca-cert,
+        application/octet-stream, text/plain and application/pgp-keys is allowed.
       requestBody:
         content:
           application/x-pem-file:
@@ -853,7 +885,10 @@ paths:
     post:
       responses:
         '201':
-          description: Successful creation of user. The response contains a Location header, e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+          description: |
+            Successful creation of user.
+            The response contains a Location header,
+            e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
         '400':
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
         '401':
@@ -1337,7 +1372,10 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get logging configuration. Protocol is always syslog over UDP. Configurable are IP adress and port, log level.
+      description: |
+        Get logging configuration.
+        Protocol is always syslog over UDP.
+        Configurable are IP adress and port, log level.
       security:
         - basic: []
       x-annotation-role:
@@ -1457,7 +1495,8 @@ paths:
           description: Access denied.
         '412':
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get detailed system information, including firmware version, system software version, hardware version.
+      description: |
+        Get detailed system information, including firmware, system, and hardware version.
       security:
         - basic: []
       x-annotation-role:
@@ -1558,7 +1597,9 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not *Operational* or update image is not present - call `/update` first).
+          description: |
+            Precondition failed (NetHSM was not *Operational* or
+            update image is not present - call `/update` first).
       description: Commit update of NetHSM software.
       security:
         - basic: []
@@ -1576,7 +1617,9 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not *Operational* or update image is not present - call `/update` first).
+          description: |
+            Precondition failed (NetHSM was not *Operational* or
+            update image is not present - call `/update` first).
       description: Cancel update of NetHSM software.
       security:
         - basic: []
@@ -1594,7 +1637,9 @@ paths:
         '403':
           description: Access denied.
         '412':
-          description: Precondition failed (NetHSM was not *Operational* or *Backup Passphrase* was not set).
+          description: |
+            Precondition failed (NetHSM was not *Operational* or
+            *Backup Passphrase* was not set).
       description: Back up the key store to a backup file.
       security:
         - basic: []
@@ -1611,7 +1656,9 @@ paths:
           description: Bad request - restore did not apply.
         '412':
           description: Precondition failed (NetHSM was not *Unprovisioned*).
-      description: Restore the key store from a backup file. Only available in *Unprovisioned* state.
+      description: |
+        Restore the key store from a backup file.
+        Only available in *Unprovisioned* state.
       requestBody:
         content:
           application/octet-stream:
