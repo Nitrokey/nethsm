@@ -141,7 +141,9 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreboot/util/crossgcc/tarballs,uid=1000,gid=1000 <<EOF
-  make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386
+  make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386 |
+  # filter backspaces
+  sed -u ':a;s/[^\cH]\cH//g;ta'
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
