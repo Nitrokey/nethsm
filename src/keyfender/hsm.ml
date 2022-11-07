@@ -2018,6 +2018,66 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let** stream = fn stream in
         stream_while stream fn
 
+    module KeySet = Set.Make(Mirage_kv.Key)
+
+    let restore_key ~is_operational ~backup_keys ~key ~kv stream =
+      let (let**) = Lwt_result.bind in
+      (* decrypt KV data *)
+      let** ((k, v), stream) = read_and_decrypt stream key in
+      let key = Mirage_kv.Key.v k in
+      if is_operational then
+        backup_keys := KeySet.add key !backup_keys;
+      let should_restore_key =
+        (not is_operational) ||
+        (Option.is_some (Encrypted_store.slot_of_key key))
+      in
+      if should_restore_key then
+        let** () = internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
+          (KV.set kv key v)
+        in
+        Lwt_result.return stream
+      else
+        Lwt_result.return stream
+
+    let remove_extra_keys ~kv backup_keys =
+      let (let**) = Lwt_result.bind in
+      let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
+      let** auth_keys =
+        internal_server_error
+          Read "restoring backup (listing keys)" KV.pp_error
+          (KV.list kv auth_prefix)
+      in
+      let key_prefix = Encrypted_store.prefix_of_slot Key in
+      let** key_keys =
+        internal_server_error
+          Read "restoring backup (listing keys)" KV.pp_error
+          (KV.list kv key_prefix)
+      in
+      let add_prefix prefix keys =
+        List.map (fun (k, _) -> Mirage_kv.Key.(prefix / k)) keys
+      in
+      let keys =
+        add_prefix auth_prefix auth_keys
+        @ add_prefix key_prefix key_keys
+      in
+      List.filter_map (fun key ->
+        if
+          Option.is_some (Encrypted_store.slot_of_key key)
+          && not (KeySet.mem key backup_keys)
+        then
+          (Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
+          Some key)
+        else None
+      ) keys
+      |> Lwt_list.fold_left_s
+        (fun r k ->
+          match r with
+          | Error _ -> Lwt.return r
+          | Ok () ->
+            internal_server_error Write "restoring backup (removing keys from KV)" KV.pp_write_error
+              (KV.remove kv k))
+        (Ok ())
+
     let restore t uri stream =
       let (let**) = Lwt_result.bind in
       let `Raw start_ts = Clock.now_raw () in
@@ -2046,73 +2106,19 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   begin
-                    let module KeySet = Set.Make(Mirage_kv.Key) in
                     (* when the mode is operational, we have to clear
                        user and keys that are not in the backup. *)
                     let backup_keys = ref KeySet.empty in
                     let** () =
                       (* while the stream has content *)
-                      stream_while
-                        stream''
-                        (fun stream ->
-                          (* decrypt KV data *)
-                          let** ((k, v), stream) = read_and_decrypt stream key in
-                          let key = Mirage_kv.Key.v k in
-                          if is_operational then
-                            backup_keys := KeySet.add key !backup_keys;
-                          let should_restore_key =
-                            (not is_operational) ||
-                            (Option.is_some (Encrypted_store.slot_of_key key))
-                          in
-                          if should_restore_key then
-                            let** () = internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
-                              (KV.set b key v)
-                            in
-                            Lwt_result.return stream
-                          else
-                            Lwt_result.return stream
-                        )
+                      stream_while stream''
+                        (restore_key ~is_operational ~backup_keys ~key ~kv:b)
                     in
                     let** () =
                       if is_operational then
                         (* we remove keys and users that not present in the
                            backup *)
-                        let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
-                        let** auth_keys =
-                          internal_server_error
-                            Read "restoring backup (listing keys)" KV.pp_error
-                            (KV.list b auth_prefix)
-                        in
-                        let key_prefix = Encrypted_store.prefix_of_slot Key in
-                        let** key_keys =
-                          internal_server_error
-                            Read "restoring backup (listing keys)" KV.pp_error
-                            (KV.list b key_prefix)
-                        in
-                        let add_prefix prefix keys =
-                          List.map (fun (k, _) -> Mirage_kv.Key.(prefix / k)) keys
-                        in
-                        let keys =
-                          add_prefix auth_prefix auth_keys
-                          @ add_prefix key_prefix key_keys
-                        in
-                        List.filter_map (fun key ->
-                          if
-                            Option.is_some (Encrypted_store.slot_of_key key)
-                            && not (KeySet.mem key !backup_keys)
-                          then
-                            (Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
-                            Some key)
-                          else None
-                        ) keys
-                        |> Lwt_list.fold_left_s
-                          (fun r k ->
-                            match r with
-                            | Error _ -> Lwt.return r
-                            | Ok () ->
-                              internal_server_error Write "restoring backup (removing keys from KV)" KV.pp_write_error
-                                (KV.remove b k))
-                          (Ok ())
+                        remove_extra_keys ~kv:b !backup_keys
                       else
                         (* unprovisioned: end state is locked *)
                        (t.state <- Locked;
