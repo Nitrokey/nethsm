@@ -1998,11 +1998,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | Error e -> Error (Bad_request, "Request parse error: " ^ e ^ ".")
         | Ok timestamp -> Ok (Some timestamp)
 
-    let get_query_parameters ~timestamp_optional uri =
+    let get_query_parameters uri =
       match get_timestamp_opt uri with
       | Error e -> Error e
-      | Ok None when timestamp_optional = false ->
-        Error (Bad_request, "Request is missing system time")
       | Ok timestamp_opt ->
         match Uri.get_query_param uri "backupPassphrase" with
         | None -> Error (Bad_request, "Request is missing backup passphrase.")
@@ -2085,7 +2083,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         match t.state with Operational _ -> true | _ -> false
       in
       let** (new_time, backup_passphrase) =
-        Lwt.return (get_query_parameters ~timestamp_optional:is_operational uri)
+        Lwt.return (get_query_parameters uri)
       in
       let** (backup_salt, stream') = decode_value stream in
       let** (version, stream'') = decode_value stream' in
