@@ -2008,6 +2008,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | None -> Error (Bad_request, "Request is missing backup passphrase.")
         | Some backup_passphrase -> Ok (timestamp_opt, backup_passphrase)
 
+    (* runs the function while the stream has items *)
+    let rec stream_while stream fn =
+      let open Lwt.Infix in
+      let (let**) = Lwt_result.bind in
+      Lwt_stream.is_empty stream >>= function
+      | true -> Lwt.return_ok ()
+      | false ->
+        let** stream = fn stream in
+        stream_while stream fn
+    
     let restore t uri stream =
       let open Lwt.Infix in
       let (let**) = Lwt_result.bind in
@@ -2041,28 +2051,28 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                     (* when the mode is operational, we have to clear 
                        user and keys that are not in the backup. *)
                     let backup_keys = ref KeySet.empty in
-                    let rec next stream =
-                      Lwt_stream.is_empty stream >>= function
-                      | true -> t.state <- Locked ; Lwt.return (Ok ())
-                      | false ->
-                        let** ((k, v), stream) = read_and_decrypt stream key in
-                        let key = Mirage_kv.Key.v k in
-                        if is_operational then
-                          backup_keys := KeySet.add key !backup_keys;
-                        let** () =
+                    let** () =
+                      stream_while 
+                        stream''
+                        (fun stream -> 
+                          let** ((k, v), stream) = read_and_decrypt stream key in
+                          let key = Mirage_kv.Key.v k in
+                          if is_operational then
+                            backup_keys := KeySet.add key !backup_keys;
                           let should_restore_key = 
                             (not is_operational) || 
                             (Option.is_some (Encrypted_store.slot_of_key key))
                           in
                           if should_restore_key then
-                            internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
+                            let** () = internal_server_error Write "restoring backup (writing to KV)" KV.pp_write_error
                               (KV.set b key v) 
+                            in
+                            Lwt_result.return stream
                           else
-                            Lwt_result.return ()
-                        in
-                        next stream
+                            Lwt_result.return stream
+                        )
                     in
-                    let** () = next stream'' in
+                    t.state <- Locked;
                     let** () =
                       if is_operational then
                         (* we remove keys and users that not present in the 
