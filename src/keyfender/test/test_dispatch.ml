@@ -585,11 +585,7 @@ let system_backup_and_restore_operational =
       ~body:(`String data) "/system/restore"
     |> Expect.no_content
   in
-  assert (Hsm.state hsm_state = `Locked);
-  (* unlock *)
-  Lwt_main.run 
-    (Hsm.unlock_with_passphrase hsm_state ~passphrase:"i am secure")
-  |> Result.get_ok;
+  assert (Hsm.state hsm_state = `Operational);
   (* check that deleted keys are restored *)
   let* _ =
   request ~headers:admin_headers ~hsm_state "/keys/keyID"
