@@ -581,7 +581,8 @@ let system_backup_and_restore_operational =
   let* hsm_state =
     let content_type = "application/octet-stream" in
     let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
-    request ~meth:`POST ~hsm_state ~content_type ~query ~body:(`String data) "/system/restore"
+    request ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type ~query
+      ~body:(`String data) "/system/restore"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Locked);

@@ -123,13 +123,13 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       | Ok () ->
         let rd' = { rd with resp_body = `Stream stream } in
         Wm.continue true rd'
-    
+
     method! content_types_provided =
       Wm.continue [ ("application/octet-stream", Wm.continue `Empty) ]
-    
+
   end
 
-  class restore hsm_state = object(self)
+  class restore hsm_state ip = object(self)
     inherit Endpoint.base
     inherit !Endpoint.input_state_validated hsm_state [ `Unprovisioned; `Operational ]
     inherit !Endpoint.post
@@ -144,5 +144,23 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
 
     method! content_types_accepted =
       Wm.continue [ ("application/octet-stream", self#process_post) ]
+
+    method! is_authorized rd =
+      match Hsm.state hsm_state with
+      | `Unprovisioned -> Wm.continue `Authorized rd
+      | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
+      | `Locked -> assert false
+
+    method! forbidden rd =
+      let open Lwt.Syntax in
+      let* forbidden =
+        match Hsm.state hsm_state with
+        | `Unprovisioned -> Lwt.return false
+        | `Operational ->
+          Endpoint.Access.forbidden hsm_state `Administrator rd
+        | `Locked -> assert false
+      in
+      Wm.continue forbidden rd
+
   end
 end
