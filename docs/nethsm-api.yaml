@@ -1675,7 +1675,6 @@ paths:
             $ref: '#/components/schemas/Passphrase'
         - name: systemTime
           in: query
-          required: false
           schema:
             type: string
             format: date-time
