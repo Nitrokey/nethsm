@@ -37,3 +37,11 @@
   (name test_server)
   (public_name test_server)
   (package keyfender))
+
+(executable
+  (libraries logs-syslog keyfender)
+  (modules test_logs)
+  (name test_logs))
+
+(cram
+ (deps ./test_logs.exe))
