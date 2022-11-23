@@ -39,7 +39,7 @@
   (package keyfender))
 
 (executable
-  (libraries logs-syslog keyfender)
+  (libraries logs.fmt keyfender)
   (modules test_logs)
   (name test_logs))
 
