@@ -131,10 +131,14 @@ COPY --chown=1000:1000 muennet-tailroom.patch /nethsm-tools/muen/components/linu
 RUN patch -d /nethsm-tools/muen/components/linux/modules/muennet -i muennet-tailroom.patch
 
 FROM ada AS coreboot
-ARG VENDOR_TOKEN
-RUN --mount=type=tmpfs,target=/tmp <<EOF
+RUN <<EOF
+  mkdir -p -m 0700 ~/.ssh
+  ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   mkdir -p /nethsm-tools/coreboot
-  git clone --depth 50 -b nethsm https://ci-job:${VENDOR_TOKEN}@git.nitrokey.com/nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot
+  git clone --depth 50 -b nethsm git@git.nitrokey.com:nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot
   cd /nethsm-tools/coreboot
   git remote set-url origin https://github.com/coreboot/coreboot.git
   git submodule update --checkout --init --depth 50
@@ -146,9 +150,9 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreb
   sed -u ':a;s/[^\cH]\cH//g;ta'
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   cd /nethsm-tools/coreboot/payloads/external/GRUB2
-  git clone --depth 50 -b nethsm https://ci-job:${VENDOR_TOKEN}@git.nitrokey.com/nitrokey/nethsm/vendor/grub.git grub2
+  git clone --depth 50 -b nethsm git@git.nitrokey.com:nitrokey/nethsm/vendor/grub.git grub2
   mkdir grub2/gnulib && cd grub2/gnulib
   git init && git remote add origin https://github.com/coreutils/gnulib
   git fetch origin --depth 1 $(sed -n s/^GNULIB_REVISION=//p ../bootstrap.conf)

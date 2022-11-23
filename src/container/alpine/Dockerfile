@@ -4,7 +4,7 @@ FROM ${distro_version} AS builder
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add curl openssl rsync git mercurial make gcc patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
-    coreutils unzip bubblewrap sudo
+    coreutils unzip bubblewrap sudo openssh-client
   cd /tmp
   curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh -s -- --download-only
   install opam-2* /usr/local/bin/opam
@@ -60,13 +60,18 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   cp -a /tmp/swagger-ui/dist/* src/s_keyfender/htdocs/api_docs/
 EOF
 
+RUN <<EOF
+  mkdir -p -m 0700 ~/.ssh
+  ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
+EOF
+
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 \
-  --mount=type=secret,id=netrc,target=/home/opam/.netrc,uid=1000,gid=1000 <<EOF
+  --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 \
-  --mount=type=secret,id=netrc,target=/home/opam/.netrc,uid=1000,gid=1000 <<EOF
+  --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
   opam exec -- mirage configure --no-depext -t unix --no-platform=true \

@@ -25,7 +25,10 @@ variables:
   - mkdir -p /downloads/opam
   - rm -rf ~/.opam/download-cache
   - ln -s /downloads/opam ~/.opam/download-cache
-  - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > $HOME/.netrc
+  - eval $(ssh-agent)
+  - cat $VENDOR_KEY | ssh-add -
+  - mkdir -p -m 0700 ~/.ssh
+  - ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
 
 .setup_job_buildkit: &setup_job_buildkit
   - mkdir -p $HOME/.docker
@@ -33,7 +36,6 @@ variables:
     echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
     "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
     tr -d '\n')\"}}}" > ${HOME}/.docker/config.json
-  - echo "machine git.nitrokey.com login ci-job password ${VENDOR_TOKEN}" > $HOME/.netrc
 
 workflow:
   rules:
@@ -81,8 +83,7 @@ build_builder_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
       --local context="${CI_PROJECT_DIR}/src/container/builder"
-      --secret id=netrc,src=${HOME}/.netrc
-      --opt build-arg:VENDOR_TOKEN=${VENDOR_TOKEN}
+      --ssh default="${VENDOR_KEY}"
       --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
@@ -106,7 +107,7 @@ build_container_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
       --local context=${CI_PROJECT_DIR}
-      --secret id=netrc,src=${HOME}/.netrc
+      --ssh default="${VENDOR_KEY}"
       --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 
