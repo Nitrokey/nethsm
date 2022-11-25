@@ -195,7 +195,11 @@ struct
           in
           Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)
         else
-          Log_reporter.set_reporter (Log_reporter.create ())
+          let logs = Log_reporter.create () in
+          Log_reporter.set_reporter logs;
+          Logs.set_reporter
+            (Keyfender.Logs_sequence_number.reporter
+              (Log_reporter.reporter logs))
       and setup_http_listener http =
         let http_port = Key_gen.http_port () in
         let tcp = `TCP http_port in
