@@ -3,12 +3,16 @@ let (let++) v f = Lwt_result.map f v
 
 module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
 
-  module Cache = Cachecache.Lru.Make(struct
+  type creation_time = int64
+
+  module Cache = Lru.F.Make(struct
     type t = Mirage_kv.Key.t
 
-    let hash = Hashtbl.hash
+    let compare = Mirage_kv.Key.compare
+  end)(struct
+    type t = KV.value * creation_time
 
-    let equal = Mirage_kv.Key.equal
+    let weight _ = 1
   end)
 
   include KV
@@ -27,17 +31,17 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
     cache_size = 16;
   }
 
-  type creation_time = int64
-
   let s_to_ns s =
     Int64.of_float (1_000_000_000. *. s)
 
+  type cache = {
+    mutable cache: Cache.t;
+    settings: settings;
+    async_refresh_request: (key -> unit);
+  }
+
   type mode =
-    | Cache of {
-      cache: (KV.value * creation_time) Cache.t;
-      settings: settings;
-      async_refresh_request: (key -> unit);
-    } 
+    | Cache of cache
     | Batch of op list ref
 
   type t = {
@@ -45,8 +49,8 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
     mode: mode;
   }
 
-  let update cache key value = 
-    Cache.replace cache key (value, Monotonic_clock.elapsed_ns ())
+  let update cache key value =
+    Cache.add key (value, Monotonic_clock.elapsed_ns ()) cache
 
   let rec refresh_loop ~kv ~cache stream =
     let* v = Lwt_stream.get stream in
@@ -55,21 +59,20 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
     | Some key ->
       let* result = KV.get kv key in
       (match result with
-      | Ok value -> update cache key value
-      | Error _ -> Cache.remove cache key);
+      | Ok value -> cache.cache <- update cache.cache key value
+      | Error _ -> cache.cache <- Cache.remove key cache.cache);
       refresh_loop ~kv ~cache stream
 
   let connect ?(settings = default_settings) kv =
     let async_refresh_stream, async_refresh_request = Lwt_stream.create () in
-    let cache = Cache.v settings.cache_size in
-    Lwt.async (fun () -> refresh_loop ~kv ~cache async_refresh_stream);
-    { kv;
-      mode = Cache {
-        cache;
-        settings;
-        async_refresh_request = fun v -> async_refresh_request (Some v);
-      }
+    let cache = {
+      cache = Cache.empty settings.cache_size;
+      settings;
+      async_refresh_request = fun v -> async_refresh_request (Some v);
     }
+    in
+    Lwt.async (fun () -> refresh_loop ~kv ~cache async_refresh_stream);
+    { kv; mode = Cache cache }
 
   let disconnect t = KV.disconnect t.kv
 
@@ -79,25 +82,26 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
 
   let digest t = KV.digest t.kv
 
-  type 'a validation = 
+  type 'a validation =
     | Up_to_date of 'a
     | Stale of 'a
     | Invalid
+    | Unknown
 
   let check ~settings cache id =
     let now = Monotonic_clock.elapsed_ns () in
     let invalid_threshold = Int64.(sub now (s_to_ns settings.evict_delay_s)) in
     let stale_threshold = Int64.(sub now (s_to_ns settings.refresh_delay_s)) in
-    match Cache.find_opt cache id with
-    | None -> Invalid
-    | Some (_, date) when Int64.compare date invalid_threshold < 0 -> Invalid 
+    match Cache.find id cache with
+    | None -> Unknown
+    | Some (_, date) when Int64.compare date invalid_threshold < 0 -> Invalid
     | Some (v, date) when Int64.compare date stale_threshold < 0 -> Stale v
     | Some (v, _) -> Up_to_date v
 
   let batch t ?retries fn =
     match t.mode with
     | Batch _ -> Fmt.failwith "No recursive batches"
-    | Cache {cache; _} ->
+    | Cache c ->
       let ops = ref [] in
       let+ v = KV.batch t.kv ?retries (fun kv ->
         ops := [];
@@ -106,47 +110,50 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
       in
       (* If the batch operation succeeds, the cache is updated. *)
       List.iter (function
-        | Remove key -> Cache.remove cache key
-        | Set (key, value) -> update cache key value) !ops;
+        | Remove key -> c.cache <- Cache.remove key c.cache
+        | Set (key, value) -> c.cache <- update c.cache key value) !ops;
+      c.cache <- Cache.trim c.cache;
       v
 
   (* Cached operations *)
   let get t id =
     match t.mode with
     | Batch _ -> KV.get t.kv id
-    | Cache {cache; settings; async_refresh_request} -> 
+    | Cache ({cache; settings; async_refresh_request} as c) ->
       match check ~settings cache id with
       | Up_to_date v -> Lwt.return_ok v
-      | Stale v -> 
+      | Stale v ->
         async_refresh_request id;
         Lwt.return_ok v
-      | Invalid ->
+      | (Invalid | Unknown) as check ->
         let++ value = KV.get t.kv id in
-        update cache id value;
+        c.cache <- update cache id value;
+        if check = Unknown then
+          c.cache <- Cache.trim c.cache;
         value
 
   let exists t id =
     match t.mode with
     | Batch _ -> KV.exists t.kv id
-    | Cache {cache; settings; async_refresh_request} -> 
+    | Cache {cache; settings; async_refresh_request} ->
       match check ~settings cache id with
       | Up_to_date _ -> Lwt.return_ok (Some `Value)
-      | Stale _ -> 
+      | Stale _ ->
         async_refresh_request id;
         Lwt.return_ok (Some `Value)
-      | Invalid -> KV.exists t.kv id
+      | Invalid | Unknown -> KV.exists t.kv id
 
   (* Mutations have to update the cache *)
   let set t id value =
     let++ () = KV.set t.kv id value in
     match t.mode with
-    | Cache {cache; _} -> update cache id value
+    | Cache ({cache; _} as c) -> c.cache <- update cache id value
     | Batch lst -> lst := (Set (id, value)) :: !lst
 
   let remove t id =
     let++ () = KV.remove t.kv id in
     match t.mode with
-    | Cache {cache; _} -> Cache.remove cache id
+    | Cache ({cache; _} as c) -> c.cache <- Cache.remove id cache
     | Batch lst -> lst := (Remove id) :: !lst
 
 end
