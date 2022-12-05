@@ -23,7 +23,6 @@ depends: [
   "bos" #{with-test}
   "spawn" #{with-test}
   "astring"
-  "cachecache"
   "logs"
   "lwt"
   "ptime"
@@ -65,7 +64,6 @@ pin-depends: [
   ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
   ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
   ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
-  ["cachecache.dev" "git+https://github.com/pascutto/cachecache.git#23ebb1f203564f56dc11d5b775999dcd1281c34b"] # branch main
 ]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for
