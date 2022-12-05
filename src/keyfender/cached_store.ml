@@ -28,7 +28,7 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
   let default_settings = {
     refresh_delay_s = 20.;
     evict_delay_s = 30.;
-    cache_size = 16;
+    cache_size = 1024;
   }
 
   let s_to_ns s =
