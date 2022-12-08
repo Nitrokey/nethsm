@@ -482,8 +482,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     module Config_store = Config_store.Make(KV)
     module Domain_key_store = Domain_key_store.Make(Rng)(KV)
     module Encrypted_store = Encrypted_store.Make(Rng)(KV)
-  
-    module User_info = struct 
+
+    module User_info = struct
       type t = {
         name : string ;
         salt : string ;
@@ -491,15 +491,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         role : Json.role ;
         tags : Json.TagSet.t ;
       }[@@deriving yojson]
-  
+
       let name t = t.name
-  
+
       let role t = t.role
-  
+
       let tags t = t.tags
-  
+
     end
-  
+
     module User_store = Cached_store.Make(Json_store.Make(Encrypted_store)(User_info))(Monotonic_clock)
 
     module Key_info = struct
@@ -547,7 +547,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   end
 
   open Stores
-  
+
 
   type keys = {
     domain_key : Cstruct.t ; (* needed when unlock passphrase changes and likely for unattended boot *)
@@ -581,6 +581,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     mbox : cb Lwt_mvar.t ;
     res_mbox : (unit, string) result Lwt_mvar.t ;
     device_id : string ;
+    cache_settings: Cached_store.settings;
   }
 
   let state t = to_external_state t.state
@@ -677,14 +678,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device id, depending on boot mode *)
-  let unlock kv slot credentials =
+  let unlock ~cache_settings kv slot credentials =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
     prepare_keys kv slot credentials >>= fun (domain_key, as_key, ks_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
-    let auth_store = User_store.connect auth_store in
-    let key_store = Key_store.connect key_store in
+    let auth_store = User_store.connect ~settings:cache_settings auth_store in
+    let key_store = Key_store.connect ~settings:cache_settings key_store in
     let keys = { domain_key ; auth_store ; key_store } in
     Operational keys
 
@@ -692,7 +693,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let unlock_with_passphrase t ~passphrase =
     let open Lwt_result.Infix in
-    unlock t.kv Passphrase passphrase >|= fun state' ->
+    unlock ~cache_settings:t.cache_settings t.kv Passphrase passphrase >|= fun state' ->
     t.state <- state'
 
   let generate_cert priv =
@@ -722,7 +723,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       (Config_store.get kv Certificate) >|= fun (cert, chain) ->
     cert, chain, priv
 
-  let boot_config_store kv device_id =
+  let boot_config_store ~cache_settings kv device_id =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
       (Config_store.get_opt kv Time_offset >|= function
@@ -740,7 +741,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Some true ->
       begin
         let open Lwt.Infix in
-        unlock_with_device_id kv ~device_id >|= function
+        unlock_with_device_id ~cache_settings kv ~device_id >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
           Log.err (fun m -> m "unattended boot failed with %s" msg);
@@ -1068,7 +1069,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             restrictions }
           >|= fun () ->
           Access.info (fun f -> f "created (%s)" id);
-          if not (Json.TagSet.is_empty restrictions.tags) then 
+          if not (Json.TagSet.is_empty restrictions.tags) then
             Access.info (fun f -> f "tags (%s): %s" id
               (Json.TagSet.to_yojson restrictions.tags |> Yojson.to_string))
 
@@ -1515,11 +1516,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error Write
               "Initializing key store" KV.pp_write_error
               (KV.set b k_v_key k_v_value) >>= fun () ->
-            let keys = { 
-              domain_key ; 
-              auth_store = User_store.connect auth_store ; 
-              key_store = Key_store.connect key_store 
-              } 
+            let keys = {
+              domain_key ;
+              auth_store = User_store.connect auth_store ;
+              key_store = Key_store.connect key_store
+              }
             in
             t.state <- Operational keys;
             let admin_k, admin_v =
@@ -2155,7 +2156,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Lwt.return @@ Error (Bad_request, msg)
   end
 
-  let boot ~device_id software_update_key kv =
+  let default_cache_settings = {
+    Cached_store.cache_size = 256;
+    refresh_delay_s = None;
+    evict_delay_s = 1.;
+  }
+
+  let boot ?(cache_settings = default_cache_settings) ~device_id software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -2186,14 +2193,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert priv
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id } in
+        let t = { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id; cache_settings } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
-          boot_config_store kv device_id >>= fun state ->
+          boot_config_store ~cache_settings kv device_id >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id }
+          { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id; cache_settings }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"

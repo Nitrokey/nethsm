@@ -1,6 +1,12 @@
 open Lwt.Syntax
 let (let++) v f = Lwt_result.map f v
 
+type settings = {
+  refresh_delay_s: float option;
+  evict_delay_s: float;
+  cache_size: int;
+}
+
 module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
 
   type creation_time = int64
@@ -19,14 +25,9 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
 
   type op = Set of (key * value) | Remove of key
 
-  type settings = {
-    refresh_delay_s: float;
-    evict_delay_s: float;
-    cache_size: int;
-  }
 
   let default_settings = {
-    refresh_delay_s = 20.;
+    refresh_delay_s = None;
     evict_delay_s = 30.;
     cache_size = 1024;
   }
@@ -34,11 +35,15 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
   let s_to_ns s =
     Int64.of_float (1_000_000_000. *. s)
 
+  type async_refresh = {
+    request: key -> unit;
+    cancel: unit -> unit;
+  }
+
   type cache = {
     mutable cache: Cache.t;
     settings: settings;
-    async_refresh_request: (key -> unit);
-    async_refresh_cancel: unit -> unit;
+    async_refresh: async_refresh option;
   }
 
   type mode =
@@ -53,21 +58,28 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
   let update cache key value =
     Cache.add key (value, Monotonic_clock.elapsed_ns ()) cache
 
-  type 'a validation =
+  type ('a, 'b) validation =
     | Up_to_date of 'a
-    | Stale of 'a
+    | Stale of ('a * 'b)
     | Invalid
     | Unknown
 
-  let check ~settings cache id =
+  let check ~settings ~async_refresh cache id =
     let now = Monotonic_clock.elapsed_ns () in
     let invalid_threshold = Int64.(sub now (s_to_ns settings.evict_delay_s)) in
-    let stale_threshold = Int64.(sub now (s_to_ns settings.refresh_delay_s)) in
-    match Cache.find id cache with
-    | None -> Unknown
-    | Some (_, date) when Int64.compare date invalid_threshold < 0 -> Invalid
-    | Some (v, date) when Int64.compare date stale_threshold < 0 -> Stale v
-    | Some (v, _) -> Up_to_date v
+    let stale_threshold =
+      Option.bind async_refresh
+        (fun async_refesh ->
+          Option.map
+            (fun refresh_delay -> Int64.(sub now (s_to_ns refresh_delay)), async_refesh)
+            settings.refresh_delay_s)
+    in
+    match Cache.find id cache, stale_threshold with
+    | None, _ -> Unknown
+    | Some (_, date), _ when Int64.compare date invalid_threshold < 0 -> Invalid
+    | Some (v, date), Some (stale_threshold, async_refresh)
+      when Int64.compare date stale_threshold < 0 -> Stale (v, async_refresh)
+    | Some (v, _), _ -> Up_to_date v
 
   let rec refresh_loop ~settings ~kv ~cache stream =
     let* v = Lwt_stream.get stream in
@@ -75,7 +87,7 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
     | None -> Lwt.return ()
     | Some key ->
       let* result = KV.get kv key in
-      (match result, check ~settings cache.cache key with
+      (match result, check ~settings ~async_refresh:(Some ()) cache.cache key with
       | Ok value, (Stale _ | Invalid) -> cache.cache <- update cache.cache key value
       | Ok _, (Unknown | Up_to_date _) -> () (* we only update when the value
                                                 is still stale after fetching.
@@ -89,25 +101,37 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
       refresh_loop ~settings ~kv ~cache stream
 
   let connect ?(settings = default_settings) kv =
-    let async_refresh_stream, async_refresh_request = Lwt_stream.create () in
+    let async_refresh_stream =
+      Option.map (fun _ -> Lwt_stream.create ()) settings.refresh_delay_s
+    in
+    let async_refresh =
+      Option.map (fun (_, async_refresh_request) ->
+        {
+          request = (fun v -> async_refresh_request (Some (v)));
+          cancel = (fun () -> async_refresh_request None)
+        }) async_refresh_stream
+    in
     let cache = {
       cache = Cache.empty settings.cache_size;
       settings;
-      async_refresh_request = (fun v -> async_refresh_request (Some (v)));
-      async_refresh_cancel = (fun () -> async_refresh_request None);
+      async_refresh;
     }
     in
-    Lwt.dont_wait
+    Option.iter (fun (async_refresh_stream, _) ->
+      Lwt.dont_wait
       (fun () -> refresh_loop ~settings ~kv ~cache async_refresh_stream)
       (fun exn ->
         Logs.err (fun f ->
           f "Unexpected exception in cache refresh loop: %a" Fmt.exn exn);
-        raise exn);
+        raise exn); ) async_refresh_stream;
     { kv; mode = Cache cache }
 
   let disconnect t =
     (match t.mode with
-    | Cache t -> t.async_refresh_cancel ()
+    | Cache t ->
+      (match t.async_refresh with
+      | Some {cancel; _} -> cancel ()
+      | _ -> ())
     | _ -> invalid_arg "Cannot disconnect batch device");
     KV.disconnect t.kv
 
@@ -138,11 +162,11 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
   let get t id =
     match t.mode with
     | Batch _ -> KV.get t.kv id
-    | Cache ({cache; settings; async_refresh_request; _} as c) ->
-      match check ~settings cache id with
+    | Cache ({cache; settings; async_refresh; _} as c) ->
+      match check ~settings ~async_refresh cache id with
       | Up_to_date v -> Lwt.return_ok v
-      | Stale v ->
-        async_refresh_request id;
+      | Stale (v, {request; _}) ->
+        request id;
         Lwt.return_ok v
       | (Invalid | Unknown) as check ->
         let++ value = KV.get t.kv id in
@@ -154,11 +178,11 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
   let exists t id =
     match t.mode with
     | Batch _ -> KV.exists t.kv id
-    | Cache {cache; settings; async_refresh_request; _} ->
-      match check ~settings cache id with
+    | Cache {cache; settings; async_refresh; _} ->
+      match check ~settings ~async_refresh cache id with
       | Up_to_date _ -> Lwt.return_ok (Some `Value)
-      | Stale _ ->
-        async_refresh_request id;
+      | Stale (_, {request; _}) ->
+        request id;
         Lwt.return_ok (Some `Value)
       | Invalid | Unknown -> KV.exists t.kv id
 

@@ -52,8 +52,8 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init (
 
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
-let copy t = 
-  let v = Marshal.to_string t [Marshal.Closures] in
+let copy t =
+  let v = Marshal.to_string t [] in
   Marshal.from_string v 0
 
 let create_operational_mock mbox =
@@ -301,7 +301,7 @@ let system_shutdown_ok =
 
 let system_factory_reset_ok =
   "a request for /system/factory-reset with authenticated user returns 200"
-  @? fun () -> 
+  @? fun () ->
     begin match admin_post_request "/system/factory-reset" with
       | _, Some (`No_content, _, _, _) -> true
       | _ -> false
@@ -1500,9 +1500,9 @@ let keys_post_pem =
   @? fun () ->
   begin
     match admin_post_request ~content_type:"application/x-pem-file" ~query ~body:(`String key_pem) "/keys" with
-    | _, Some (`Created, headers, _, _) -> 
-      begin match Cohttp.Header.get headers "location" with 
-      | None -> false 
+    | _, Some (`Created, headers, _, _) ->
+      begin match Cohttp.Header.get headers "location" with
+      | None -> false
       | Some loc when String.contains loc '?' -> false (* the query string shouldn't be included *)
       | Some _ -> true
       end
@@ -2316,22 +2316,22 @@ let keys_key_restrictions_tags_sign_fail =
 
 let keys_get_restrictions_filtered =
   Alcotest.test_case "GET on /keys?filter list is filtered by restrictions" `Quick @@
-  fun () -> 
+  fun () ->
   let hsm_state = hsm_with_tags () in
   (match request ~headers:operator_headers ~hsm_state "/keys" ~query:[("filter", [])] with
-  | _, Some (`OK, _, `String body, _) -> 
+  | _, Some (`OK, _, `String body, _) ->
     Alcotest.(check (neg string)) "when operator has tag: list isn't empty" body "[]"
-  | _ -> 
+  | _ ->
     Alcotest.fail "when operator has tag: didn't return OK");
   Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
   match request ~headers:operator_headers ~hsm_state "/keys" ~query:[("filter", [])] with
-  | _, Some (`OK, _, `String body, _) -> 
+  | _, Some (`OK, _, `String body, _) ->
     Alcotest.(check string) "when operator doesn't have tag: list is empty" body "[]"
   | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
 
 let keys_get_restrictions_unfiltered =
   Alcotest.test_case "GET on /keys list is not filtered by restrictions" `Quick @@
-  fun () -> 
+  fun () ->
   let hsm_state = hsm_with_tags () in
   (match request ~headers:operator_headers ~hsm_state "/keys" with
   | _, Some (`OK, _, `String body, _) ->
@@ -2340,7 +2340,7 @@ let keys_get_restrictions_unfiltered =
     Alcotest.fail "when operator has tag: didn't return OK");
   Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin") |> Result.get_ok |> ignore;
   match request ~headers:operator_headers ~hsm_state "/keys" with
-  | _, Some (`OK, _, `String body, _) -> 
+  | _, Some (`OK, _, `String body, _) ->
     Alcotest.(check (neg string)) "when operator doesn't have tag: list is also not empty" body "[]"
   | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
 
@@ -3008,10 +3008,10 @@ let () =
                                  user_passphrase_post_fails_not_found ;
                                  user_passphrase_post_fails_invalid_id ] ;
     "/users/operator/passphrase", [ user_passphrase_operator_post ];
-    "/keys", [ keys_get ; 
+    "/keys", [ keys_get ;
                keys_get_restrictions_filtered ;
                keys_get_restrictions_unfiltered ;
-               keys_post_json ; 
+               keys_post_json ;
                keys_post_pem ];
     "/keys/generate", [ keys_generate ;
                         keys_generate_invalid_id ;

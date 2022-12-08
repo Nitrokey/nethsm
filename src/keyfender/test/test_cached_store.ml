@@ -1,6 +1,6 @@
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 
-module Stats_store(Store: Mirage_kv.RW) = struct 
+module Stats_store(Store: Mirage_kv.RW) = struct
   include Store
   let pp_read_error = pp_error
 
@@ -19,11 +19,11 @@ module Stats_store(Store: Mirage_kv.RW) = struct
   }
 
   let get {t; stats} =
-    stats.reads <- stats.reads + 1; 
+    stats.reads <- stats.reads + 1;
     get t
 
   let set {t; stats} =
-    stats.writes <- stats.writes + 1; 
+    stats.writes <- stats.writes + 1;
     set t
 
   let disconnect {t; _} = disconnect t
@@ -40,7 +40,7 @@ module Stats_store(Store: Mirage_kv.RW) = struct
 
   let remove {t; _} = remove t
 
-  let batch {t; stats} ?retries fn = 
+  let batch {t; stats} ?retries fn =
     let batch_stats = {reads=0; writes=0} in
     let open Lwt.Syntax in
     let+ v = batch ?retries t (fun t -> fn {t; stats = batch_stats}) in
@@ -49,7 +49,7 @@ module Stats_store(Store: Mirage_kv.RW) = struct
     v
 
   let connect t = {t; stats = {reads=0; writes=0}}
-  
+
 end
 
 module KV = Mirage_kv_mem.Make(Hsm_clock)
@@ -62,7 +62,7 @@ let key0 = Mirage_kv.Key.v "/key0"
 
 let key1 = Mirage_kv.Key.v "/key1"
 
-let read_error: Cached_store.read_error Alcotest.testable = (module 
+let read_error: Cached_store.read_error Alcotest.testable = (module
   struct
     type t = Cached_store.read_error
 
@@ -85,19 +85,19 @@ let init_store ?settings () =
   expect underlying_store "init" ~reads:0 ~writes:1;
   (underlying_store, cached_store)
 
-let read_is_cached = 
+let read_is_cached =
   Alcotest.test_case "read is cached" `Quick @@ fun () ->
   Lwt_main.run @@
   let* (underlying_store, cached_store) = init_store () in
   let* _ = Cached_store.get cached_store key0 in
   expect underlying_store "first read" ~reads:1 ~writes:1;
-  let* _ = Cached_store.get cached_store key0 in 
-  let* _ = Cached_store.get cached_store key0 in 
-  let+ v = Cached_store.get cached_store key0 in 
+  let* _ = Cached_store.get cached_store key0 in
+  let* _ = Cached_store.get cached_store key0 in
+  let+ v = Cached_store.get cached_store key0 in
   expect underlying_store "next reads are cached" ~reads:1 ~writes:1;
   Alcotest.check read_result "value is correct" (Ok "value") v
 
-let exist_is_cached = 
+let exist_is_cached =
   Alcotest.test_case "read is cached" `Quick @@ fun () ->
   Lwt_main.run @@
   let* (underlying_store, cached_store) = init_store () in
@@ -105,12 +105,12 @@ let exist_is_cached =
   expect underlying_store "call to read (k0)" ~reads:1 ~writes:1;
   let* k1_exist = Cached_store.exists cached_store key1 in
   expect underlying_store "call to exist (k1)" ~reads:2 ~writes:1;
-  let+ cached_k0_exist = Cached_store.exists cached_store key0 in 
+  let+ cached_k0_exist = Cached_store.exists cached_store key0 in
   expect underlying_store "exist(k0) is cached" ~reads:2 ~writes:1;
   Alcotest.(check bool) "k0: cached result is true" true (cached_k0_exist = Ok (Some `Value));
   Alcotest.(check bool) "k1: cached result is false" true (k1_exist = Ok None)
-      
-let writes_update_cache = 
+
+let writes_update_cache =
   Alcotest.test_case "writes update the cache" `Quick @@ fun () ->
   Lwt_main.run @@
   let* (underlying_store, cached_store) = init_store () in
@@ -121,13 +121,13 @@ let writes_update_cache =
   Alcotest.check read_result "value is correct" (Ok "new value") v;
   Lwt.return_unit
 
-let remove_invalidate_cache = 
+let remove_invalidate_cache =
   Alcotest.test_case "remove invalidate the cache" `Quick @@ fun () ->
   Lwt_main.run @@
   let* (underlying_store, cached_store) = init_store () in
   let* _ = Cached_store.remove cached_store key0 in
   expect underlying_store "remove key0" ~reads:0 ~writes:1;
-  let* k0_exists = Cached_store.exists cached_store key0 in 
+  let* k0_exists = Cached_store.exists cached_store key0 in
   expect underlying_store "exists key0" ~reads:1 ~writes:1;
   Alcotest.(check bool) "k0 doesn't exist" true (k0_exists = Ok None);
   Lwt.return_unit
@@ -136,7 +136,7 @@ let batch_operations_are_cached_on_success =
   Alcotest.test_case "batch operations are cached on success" `Quick @@ fun () ->
   Lwt_main.run @@
   let* (underlying_store, cached_store) = init_store () in
-  let* _ = Cached_store.batch cached_store (fun cached_store -> 
+  let* _ = Cached_store.batch cached_store (fun cached_store ->
     let+ _ = Cached_store.set cached_store key0 "new value" in
     expect underlying_store "in batch" ~reads:0 ~writes:1)
   in
@@ -148,7 +148,7 @@ let batch_operations_are_cached_on_success =
 let time_based_eviction_mechanism =
   Alcotest.test_case "time-based eviction mechanism" `Quick @@ fun () ->
   Lwt_main.run @@
-  let settings = {Cached_store.refresh_delay_s = 0.1; evict_delay_s = 0.2; cache_size = 16} in
+  let settings = {Keyfender.Cached_store.refresh_delay_s = Some 0.1; evict_delay_s = 0.2; cache_size = 16} in
   let* (underlying_store, cached_store) = init_store ~settings () in
   (* obtain a value *)
   let* initial_value = Cached_store.get cached_store key0 in

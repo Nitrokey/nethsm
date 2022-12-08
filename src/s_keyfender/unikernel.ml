@@ -174,6 +174,12 @@ struct
 
   module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
 
+  let cache_settings = {
+    Keyfender.Cached_store.cache_size = 1024;
+    refresh_delay_s = Some 5.;
+    evict_delay_s = 10.;
+  }
+
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
       let entropy_port = 4444 in
       startTrngListener internal_stack entropy_port >>= fun () ->
@@ -222,7 +228,7 @@ struct
           | Error `Msg m ->
             Lwt.fail_with ("couldn't decode update key: " ^ m)
       ) >>= fun update_key ->
-      Hsm.boot ~device_id update_key store >>= fun (hsm_state, mvar, res_mvar) ->
+      Hsm.boot ~cache_settings ~device_id update_key store >>= fun (hsm_state, mvar, res_mvar) ->
       let setup_log stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0

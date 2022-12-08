@@ -1,3 +1,10 @@
+
+type settings = {
+  refresh_delay_s: float option;
+  evict_delay_s: float;
+  cache_size: int;
+}
+
 module Make (KV : Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) :
 sig
   include Typed_kv.S with
@@ -6,11 +13,6 @@ sig
     type write_error = KV.write_error and
     type read_error = KV.read_error
 
-  type settings = {
-    refresh_delay_s: float;
-    evict_delay_s: float;
-    cache_size: int;
-  }
 
   val connect : ?settings:settings -> KV.t -> t
 
