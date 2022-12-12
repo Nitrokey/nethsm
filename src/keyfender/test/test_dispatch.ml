@@ -292,6 +292,7 @@ let system_update_invalid_data =
 
 let system_update_platform_bad =
   "a request for /system/update with bad platform." @? fun () ->
+  let expect = warning "during update, platform reported platform bad" in
   let body =
     let data = prefix_and_pad "binary data is here" in
     let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
@@ -302,7 +303,7 @@ let system_update_platform_bad =
       ~mbox:(fun mbox -> Lwt_mvar.put mbox (Error "platform bad"))
       ()
   in
-  match admin_post_request ~hsm_state ~body "/system/update" with
+  match admin_post_request ~expect ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`Bad_request, _, _, _) ->
       Hsm.state hsm_state = `Operational
   | _ -> false
@@ -453,9 +454,12 @@ let system_backup_and_restore_changed_devkey =
               ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
               >|= fun (y, _, _) -> y )
           in
+          let expect =
+            info "Device Key changed. Refreshing stored Domain Key."
+          in
           match
-            request ~meth:`POST ~content_type ~query ~body:(`String data)
-              ~hsm_state:hsm_state_2 "/system/restore"
+            request ~expect ~meth:`POST ~content_type ~query
+              ~body:(`String data) ~hsm_state:hsm_state_2 "/system/restore"
           with
           | hsm_state', Some (`No_content, _, _, _) -> (
               assert (Hsm.state hsm_state' = `Locked);
@@ -564,8 +568,12 @@ let system_backup_and_restore_unattended_changed_devkey =
         ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]);
       ]
     in
-    request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state
-      "/system/restore"
+    let expect =
+      error "unattended boot failed with not authenticated"
+      ^ info "Device Key changed. Refreshing stored Domain Key."
+    in
+    request ~expect ~meth:`POST ~content_type ~query ~body:(`String data)
+      ~hsm_state "/system/restore"
     |> Expect.no_content
   in
   Alcotest.(check string)
@@ -598,7 +606,9 @@ let system_backup_and_restore_operational =
   let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* backup is done, let's remove a key and try to restore it *)
   let* hsm_state =
-    request ~meth:`DELETE ~hsm_state ~headers:admin_headers "/keys/keyID"
+    let expect = info "removed (keyID)" in
+    request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
+      "/keys/keyID"
     |> Expect.no_content
   in
   (* add key, we'll check that it's removed after restore *)
@@ -617,10 +627,11 @@ let system_backup_and_restore_operational =
   in
   (* restore *)
   let* hsm_state =
+    let expect = info "removing: /key/newKeyID\n" in
     let content_type = "application/octet-stream" in
     let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
-    request ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type ~query
-      ~body:(`String data) "/system/restore"
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~query ~body:(`String data) "/system/restore"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Operational);
@@ -1037,9 +1048,14 @@ let post_config_tls_generate_bad_length =
 
 let config_network_ok =
   "GET on /config/network succeeds" @? fun () ->
+  let expect =
+    warning
+      "error Cannot find the key /config/ip-config while retrieving IP, using \
+       default"
+  in
   let headers = admin_headers in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
+    request ~expect ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
       "/config/network"
   with
   | _, Some (`OK, _, `String body, _) ->
@@ -1197,7 +1213,8 @@ let operator_json =
 
 let users_post =
   "POST on /users/ succeeds" @? fun () ->
-  match admin_post_request ~body:(`String operator_json) "/users" with
+  let expect = info "added Jane User (xxxx): R-Operator" in
+  match admin_post_request ~expect ~body:(`String operator_json) "/users" with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
@@ -1208,7 +1225,8 @@ let users_post =
 
 let user_operator_add =
   "PUT on /users/op succeeds" @? fun () ->
-  match admin_put_request ~body:(`String operator_json) "/users/op" with
+  let expect = info "added Jane User (op): R-Operator" in
+  match admin_put_request ~expect ~body:(`String operator_json) "/users/op" with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
@@ -1243,8 +1261,9 @@ let user_operator_add_invalid_id2 =
 
 let user_operator_delete =
   "DELETE on /users/operator succeeds" @? fun () ->
+  let expect = info "removed (operator)" in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`DELETE
+    request ~expect ~hsm_state:(operational_mock ()) ~meth:`DELETE
       ~headers:admin_headers "/users/operator"
   with
   | _, Some (`No_content, _, _, _) -> true
@@ -1355,9 +1374,10 @@ let user_operator_tags_get_invalid_id =
 
 let user_operator_tags_put =
   "PUT on /users/operator/tags/frankfurt returns 204 no content" @? fun () ->
+  let expect = info "added a tag to operator (operator): \"frankfurt\"" in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers:admin_headers
-      "/users/operator/tags/frankfurt"
+    request ~expect ~hsm_state:(operational_mock ()) ~meth:`PUT
+      ~headers:admin_headers "/users/operator/tags/frankfurt"
   with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
@@ -1382,8 +1402,9 @@ let user_operator_tags_put_invalid_id =
 
 let user_operator_tags_delete =
   "DELETE on /users/operator/tags/berlin returns no content" @? fun () ->
+  let expect = info "removed a tag from operator (operator): \"berlin\"" in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`DELETE
+    request ~expect ~hsm_state:(operational_mock ()) ~meth:`DELETE
       ~headers:admin_headers "/users/operator/tags/berlin"
   with
   | _, Some (`No_content, _, _, _) -> true
@@ -1437,8 +1458,9 @@ let user_version_delete_fails_invalid_id =
 let user_passphrase_post =
   "POST on /users/admin/passphrase succeeds" @? fun () ->
   let new_passphrase = "my super new passphrase" in
+  let expect = info "changed admin (admin) passphrase" in
   match
-    admin_post_request
+    admin_post_request ~expect
       ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
       "/users/admin/passphrase"
   with
@@ -1458,8 +1480,9 @@ let user_passphrase_operator_post =
   "POST on /users/operator/passphrase succeeds" @? fun () ->
   let headers = auth_header "operator" "test2Passphrase" in
   let new_passphrase = "my super new passphrase" in
+  let expect = info "changed operator (operator) passphrase" in
   match
-    request ~hsm_state:(operational_mock ())
+    request ~expect ~hsm_state:(operational_mock ())
       ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
       ~meth:`POST ~headers "/users/operator/passphrase"
   with
@@ -1513,7 +1536,8 @@ let key_json =
 
 let keys_post_json =
   "POST on /keys succeeds" @? fun () ->
-  match admin_post_request ~body:(`String key_json) "/keys" with
+  let expect = info "created (xxxx)" in
+  match admin_post_request ~expect ~body:(`String key_json) "/keys" with
   | _, Some (`Created, _, _, _) -> true
   | _ -> false
 
@@ -1540,8 +1564,9 @@ let keys_post_pem =
     [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ]
   in
   "POST on /keys succeeds" @? fun () ->
+  let expect = info "created (xxxx)" ^ info "tags (xxxx): [\"munich\"]" in
   match
-    admin_post_request ~content_type:"application/x-pem-file" ~query
+    admin_post_request ~expect ~content_type:"application/x-pem-file" ~query
       ~body:(`String key_pem) "/keys"
   with
   | _, Some (`Created, headers, _, _) -> (
@@ -1557,7 +1582,10 @@ let keys_generate =
     {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048 }|}
   in
   "POST on /keys/generate succeeds" @? fun () ->
-  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  let expect = info "created (xxxx)" in
+  match
+    admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
@@ -1611,8 +1639,9 @@ let keys_generate_ed25519 =
   let generate_ed25519 =
     {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519" }|}
   in
+  let expect = info "created (xxxx)" in
   match
-    admin_post_request ~body:(`String generate_ed25519) "/keys/generate"
+    admin_post_request ~expect ~body:(`String generate_ed25519) "/keys/generate"
   with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
@@ -1628,8 +1657,9 @@ let keys_generate_ed25519_explicit_keyid =
   let generate_ed25519 =
     {|{ mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", "id": "mynewkey" }|}
   in
+  let expect = info "created (mynewkey)" in
   match
-    admin_post_request ~body:(`String generate_ed25519) "/keys/generate"
+    admin_post_request ~expect ~body:(`String generate_ed25519) "/keys/generate"
   with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
@@ -1656,8 +1686,9 @@ let keys_generate_generic =
   let generate_generic =
     {|{ mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", length: 256 }|}
   in
+  let expect = info "created (xxxx)" in
   match
-    admin_post_request ~body:(`String generate_generic) "/keys/generate"
+    admin_post_request ~expect ~body:(`String generate_generic) "/keys/generate"
   with
   | _, Some (`Created, headers, _, _) -> (
       match Cohttp.Header.get headers "location" with
@@ -1752,17 +1783,19 @@ let keys_key_get_invalid_id2 =
 
 let keys_key_put_json =
   "PUT on /keys/keyID succeeds" @? fun () ->
-  match admin_put_request ~body:(`String key_json) "/keys/keyID" with
+  let expect = info "created (keyID)" in
+  match admin_put_request ~expect ~body:(`String key_json) "/keys/keyID" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
 let keys_key_put_pem =
   "PUT on /keys/keyID succeeds" @? fun () ->
+  let expect = info "created (keyID)" ^ info "tags (keyID): [\"munich\"]" in
   let query =
     [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ]
   in
   match
-    admin_put_request ~content_type:"application/x-pem-file" ~query
+    admin_put_request ~expect ~content_type:"application/x-pem-file" ~query
       ~body:(`String key_pem) "/keys/keyID"
   with
   | _, Some (`No_content, _, _, _) -> true
@@ -1785,9 +1818,10 @@ let keys_key_put_invalid_id =
 
 let keys_key_delete =
   "DELETE on /keys/keyID succeeds" @? fun () ->
+  let expect = info "removed (keyID)" in
   match
-    request ~meth:`DELETE ~headers:admin_headers ~hsm_state:(hsm_with_key ())
-      "/keys/keyID"
+    request ~expect ~meth:`DELETE ~headers:admin_headers
+      ~hsm_state:(hsm_with_key ()) "/keys/keyID"
   with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
@@ -2200,7 +2234,10 @@ let ed25519_json =
 
 let keys_key_put_ed25519 =
   "PUT on /keys/keyID succeeds with ED25519 key" @? fun () ->
-  match admin_put_request ~body:(`String ed25519_json) "/keys/keyID" with
+  let expect = info "created (keyID)" in
+  match
+    admin_put_request ~expect ~body:(`String ed25519_json) "/keys/keyID"
+  with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -2352,7 +2389,10 @@ let generic_json =
 
 let keys_key_put_generic =
   "PUT on /keys/keyID succeeds with Generic key" @? fun () ->
-  match admin_put_request ~body:(`String generic_json) "/keys/keyID" with
+  let expect = info "created (keyID)" in
+  match
+    admin_put_request ~expect ~body:(`String generic_json) "/keys/keyID"
+  with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -2382,8 +2422,9 @@ let keys_key_get_with_restrictions =
 
 let keys_key_restrictions_tags_put =
   "PUT on /keys/keyID/restrictions/tags/frankfurt succeeds" @? fun () ->
+  let expect = info "update (keyID): added tag \"frankfurt\"" in
   match
-    admin_put_request ~hsm_state:(hsm_with_tags ())
+    admin_put_request ~expect ~hsm_state:(hsm_with_tags ())
       "/keys/keyID/restrictions/tags/frankfurt"
   with
   | _, Some (`No_content, _, _, _) -> true
@@ -2391,9 +2432,10 @@ let keys_key_restrictions_tags_put =
 
 let keys_key_restrictions_tags_delete =
   "DELETE on /keys/keyID/restrictions/tags/berlin succeeds" @? fun () ->
+  let expect = info "update (keyID): removed tag \"berlin\"" in
   match
-    request ~headers:admin_headers ~hsm_state:(hsm_with_tags ()) ~meth:`DELETE
-      "/keys/keyID/restrictions/tags/berlin"
+    request ~expect ~headers:admin_headers ~hsm_state:(hsm_with_tags ())
+      ~meth:`DELETE "/keys/keyID/restrictions/tags/berlin"
   with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
@@ -2675,7 +2717,12 @@ let rate_limit_for_get =
   "rate limit for get" @? fun () ->
   let hsm_state = operational_mock () in
   let headers = auth_header "not a valid user" "no valid password" in
-  ignore (request ~hsm_state ~headers path);
+  let expect =
+    warning
+      "not a valid user unauthenticated: Cannot find the key \
+       /authentication/not a valid user"
+  in
+  ignore (request ~expect ~hsm_state ~headers path);
   match request ~hsm_state ~headers path with
   | _, Some (`Too_many_requests, _, _, _) -> (
       match
@@ -2727,11 +2774,16 @@ let rate_limit_time_for_get =
   "rate limit time for get after a second" @? fun () ->
   let hsm_state = operational_mock () in
   let headers = auth_header "not a valid user" "no valid password" in
-  ignore (request ~hsm_state ~headers path);
+  let expect =
+    warning
+      "not a valid user unauthenticated: Cannot find the key \
+       /authentication/not a valid user"
+  in
+  ignore (request ~hsm_state ~expect ~headers path);
   match request ~hsm_state ~headers path with
   | _, Some (`Too_many_requests, _, _, _) -> (
       Mock_clock.one_second_later ();
-      match request ~hsm_state ~headers path with
+      match request ~hsm_state ~expect ~headers path with
       | _, Some (`Unauthorized, _, _, _) -> true
       | _ -> false)
   | _ -> false
@@ -2774,9 +2826,15 @@ let auth_decode_invalid_base64 =
     let base64 = "wrong" ^ Base64.encode_string (user ^ ":" ^ pass) in
     Header.init_with "authorization" ("Basic " ^ base64)
   in
+  let expect =
+    warning
+      "is_authorized failed with header value Basic \
+       wrongYWRtaW46dGVzdDFQYXNzcGhyYXNl and message invalid base64 encoding: \
+       Wrong padding (data wrongYWRtaW46dGVzdDFQYXNzcGhyYXNl)"
+  in
   let admin_headers = auth_header "admin" "test1Passphrase" in
   match
-    request ~hsm_state:(operational_mock ()) ~headers:admin_headers
+    request ~expect ~hsm_state:(operational_mock ()) ~headers:admin_headers
       "/system/info"
   with
   | _hsm_state, Some (`Unauthorized, _, _, _) -> true
