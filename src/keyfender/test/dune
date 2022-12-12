@@ -8,7 +8,8 @@
   mirage-random-test
   mirage-kv-mem
   keyfender
-  alcotest)
+  alcotest
+  str)
  (modules test_dispatch test_export_backup test_dispatch_helpers test_utils)
  (preprocessor_deps public.pem)
  (preprocess

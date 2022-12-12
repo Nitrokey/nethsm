@@ -3,6 +3,30 @@ open Lwt.Infix
 
 let () = Mirage_crypto_rng_unix.initialize ()
 
+module Test_logs = struct
+  let buffer = Buffer.create 1000
+  let fmt = Format.formatter_of_buffer buffer
+  let reporter = Logs.format_reporter ~app:fmt ~dst:fmt ()
+  let tag_regex = Str.regexp {|([a-f0-9]+)|}
+  let sanitize s = Str.global_substitute tag_regex (fun _ -> "(xxxx)") s
+
+  let check ~expect fn =
+    let backup = Logs.reporter () in
+    Fun.protect ~finally:(fun () ->
+        Buffer.clear buffer;
+        Logs.set_reporter backup)
+    @@ fun () ->
+    Logs.set_reporter reporter;
+    let result = fn () in
+    Format.pp_print_flush fmt ();
+    Alcotest.(check string) "logs" expect (sanitize (Buffer.contents buffer));
+    result
+end
+
+let info msg = Fmt.str "test_dispatch.exe: [INFO] %s\n" msg
+let warning msg = Fmt.str "test_dispatch.exe: [WARNING] %s\n" msg
+let error msg = Fmt.str "test_dispatch.exe: [ERROR] %s\n" msg
+
 module Mock_clock = struct
   let _now = ref (1000, 0L)
   let now_d_ps () = !_now
@@ -44,7 +68,7 @@ let platform =
     firmwareVersion = "N/A";
   }
 
-let request ?hsm_state ?(body = `Empty) ?(meth = `GET)
+let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     ?(headers = Header.init ()) ?(content_type = "application/json") ?query
     ?(ip = Ipaddr.V4.any) endpoint =
   let headers = Header.replace headers "content-type" content_type in
@@ -62,8 +86,9 @@ let request ?hsm_state ?(body = `Empty) ?(meth = `GET)
   Logs.info (fun f ->
       f "[REQ] %s %a" (Cohttp.Code.string_of_method meth) Uri.pp uri);
   let resp =
-    Lwt_main.run
-    @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' ip) ~body ~request
+    Test_logs.check ~expect (fun () ->
+        Lwt_main.run
+        @@ Handlers.Wm.dispatch' (Handlers.routes hsm_state' ip) ~body ~request)
   in
   Option.iter
     (fun (code, _, _, _) ->
@@ -169,12 +194,13 @@ let auth_header user pass =
 let admin_headers = auth_header "admin" "test1Passphrase"
 let operator_headers = auth_header "operator" "test2Passphrase"
 
-let admin_put_request ?(hsm_state = operational_mock ()) ?(body = `Empty)
-    ?content_type ?query path =
+let admin_put_request ?expect ?(hsm_state = operational_mock ())
+    ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
-  request ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
+  request ?expect ~meth:`PUT ~hsm_state ~headers ~body ?content_type ?query path
 
-let admin_post_request ?(hsm_state = operational_mock ()) ?(body = `Empty)
-    ?content_type ?query path =
+let admin_post_request ?expect ?(hsm_state = operational_mock ())
+    ?(body = `Empty) ?content_type ?query path =
   let headers = admin_headers in
-  request ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query path
+  request ?expect ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query
+    path
