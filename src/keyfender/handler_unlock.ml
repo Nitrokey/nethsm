@@ -17,12 +17,17 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
       then
         let ok passphrase =
           Hsm.unlock_with_passphrase hsm_state ~passphrase >>= function
-          | Ok () ->
-            Rate_limit.reset ip unlock_user;
-            Wm.continue true rd
-          | Error e -> Endpoint.respond_error e rd
+          | Ok () -> Wm.continue true rd
+          | Error e ->
+            Rate_limit.add (Hsm.now ()) ip unlock_user;
+            Endpoint.respond_error e rd
         in
-        Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
+        let r = Json.decode_passphrase json in
+        (* even if passphrase validation fails, add to rate limit *)
+        (match r with
+         | Error _ -> Rate_limit.add (Hsm.now ()) ip unlock_user
+         | Ok _ -> ());
+        Endpoint.err_to_bad_request ok rd r
       else
         Endpoint.respond_error
           (Too_many_requests, "Service unavailable: too many requests")

@@ -2468,6 +2468,19 @@ let rate_limit_for_unlock =
   "rate limit for unlock"
   @? fun () ->
     begin
+    let body = `String {| { "passphrase" : "notUnlock1234" } |} in
+    let hsm_state = locked_mock () in
+    ignore (request ~meth:`POST ~body ~hsm_state path); (* returns Bad_request *)
+    match request ~meth:`POST ~body ~hsm_state path with
+    | _, Some (`Too_many_requests, _, _, _) -> true
+    | _ -> false
+  end
+
+let rate_limit_for_unlock2 =
+  let path = "/unlock" in
+  "rate limit for unlock"
+  @? fun () ->
+    begin
     let body = `String {| { "passphrase" : "notUnlock" } |} in
     let hsm_state = locked_mock () in
     ignore (request ~meth:`POST ~body ~hsm_state path); (* returns Bad_request *)
@@ -2535,7 +2548,7 @@ let reset_rate_limit_after_successful_login_2 =
 
 let rate_limit_time_for_get =
   let path = "/system/info" in
-  "rate limit for get after a second"
+  "rate limit time for get after a second"
   @? fun () ->
     begin
     let hsm_state = operational_mock () in
@@ -2553,6 +2566,25 @@ let rate_limit_time_for_get =
   end
 
 let rate_limit_time_for_unlock =
+  let path = "/unlock" in
+  "rate limit time for unlock"
+  @? fun () ->
+    begin
+    let body = `String {| { "passphrase" : "notUnlock1234" } |} in
+    let hsm_state = locked_mock () in
+    ignore (request ~meth:`POST ~body ~hsm_state path); (* returns Forbidden *)
+    match request ~meth:`POST ~body ~hsm_state path with
+    | _, Some (`Too_many_requests, _, _, _) ->
+      begin
+        Mock_clock.one_second_later ();
+        match request ~meth:`POST ~body ~hsm_state path with
+        | _, Some (`Forbidden, _, _, _) -> true
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let rate_limit_time_for_unlock2 =
   let path = "/unlock" in
   "rate limit time for unlock"
   @? fun () ->
@@ -2998,8 +3030,10 @@ let () =
                     reset_rate_limit_after_successful_login  ;
                     reset_rate_limit_after_successful_login_2  ;
                     rate_limit_for_unlock;
+                    rate_limit_for_unlock2;
                     rate_limit_time_for_get;
-                    rate_limit_time_for_unlock];
+                    rate_limit_time_for_unlock;
+                    rate_limit_time_for_unlock2];
     "access.ml: decode auth", [ auth_decode_invalid_base64 ];
     "RSA decrypt", crypto_rsa_decrypt ();
     "RSA PKCS1 sign", [ crypto_rsa_pkcs1_sign () ];

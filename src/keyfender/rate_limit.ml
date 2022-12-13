@@ -13,14 +13,17 @@ let active_requests than reqs =
 
 let within now ip username =
   match Hashtbl.find_opt requests (ip, username) with
-  | None -> Hashtbl.add requests (ip, username) [ now ] ; true
+  | None -> true
   | Some last_requests ->
     let requests' = now :: active_requests (one_second_ago now) last_requests in
-    let result = List.length requests' <= 1 in
-    Hashtbl.replace requests (ip, username) requests';
-    result
+    List.length requests' <= 1
 
-let reset ip username = Hashtbl.remove requests (ip, username)
+let add now ip username =
+  match Hashtbl.find_opt requests (ip, username) with
+  | None -> Hashtbl.add requests (ip, username) [ now ]
+  | Some last_requests ->
+    let requests' = now :: active_requests (one_second_ago now) last_requests in
+    Hashtbl.replace requests (ip, username) requests'
 
 let discard_old_entries now =
   let valid = one_second_ago now in

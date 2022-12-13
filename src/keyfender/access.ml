@@ -40,11 +40,12 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
         else
           Hsm.User.is_authenticated hsm_state ~username ~passphrase >>= fun auth ->
           if auth then begin
-            Rate_limit.reset ip username;
             let rd' = Webmachine.Rd.with_req_headers (replace_authorization username) rd in
             Wm.continue `Authorized rd'
-          end else
+          end else begin
+            Rate_limit.add (Hsm.now ()) ip username;
             Wm.continue (`Basic "invalid authorization") rd
+          end
       | Error (`Msg msg) ->
         Logs.warn (fun m -> m "is_authorized failed with header value %s and message %s" auth msg);
         Wm.continue (`Basic "invalid authorization") rd
