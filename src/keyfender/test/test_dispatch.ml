@@ -63,13 +63,17 @@ let create_operational_mock mbox =
 
 let operational_mock = create_operational_mock good_platform
 
-let operational_mock ?(mbox = good_platform)  () =
-  if mbox == good_platform then
-    copy operational_mock
-  else
-    create_operational_mock mbox
+let operational_mock ?(mbox = good_platform) () =
+  let t =
+    if mbox == good_platform then
+      copy operational_mock
+    else
+      create_operational_mock mbox
+  in
+  Hsm.reset_rate_limit ();
+  t
 
-let locked_mock =
+let create_locked_mock () =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
@@ -80,7 +84,12 @@ let locked_mock =
     assert (r = Ok ());
     Hsm.boot ~device_id:"test dispatch" software_update_key kv >|= fun (y, _, _) -> y)
 
-let locked_mock () = copy locked_mock
+let locked_mock = create_locked_mock ()
+
+let locked_mock () =
+  let t = copy locked_mock in
+  Hsm.reset_rate_limit ();
+  t
 
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in
@@ -568,7 +577,8 @@ let unlock_failed =
 
 let unlock_failed_two =
   "a request for /unlock with the wrong passphrase fails"
-  @? fun () ->
+  @?
+  fun () ->
   begin
     let wrong_passphrase = {|{ "passphrase": "wrongwrongwrong" }|} in
     match request ~meth:`POST ~body:(`String wrong_passphrase) ~hsm_state:(locked_mock ()) "/unlock" with
@@ -1297,14 +1307,14 @@ let user_passphrase_post =
     match admin_post_request ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}")) "/users/admin/passphrase" with
   | hsm_state, Some (`No_content, _, _, _) ->
      begin
-       match request ~hsm_state ~meth:`GET ~headers:admin_headers "/users/admin" with
-       | _, Some (`Unauthorized, _, _, _) ->
-          begin
-            let headers = auth_header "admin" new_passphrase in
-            match request ~hsm_state ~headers "/users/admin" with
-            | _, Some (`OK, _, _, _) -> true
-            | _ -> false
-          end
+       let headers = auth_header "admin" new_passphrase in
+       match request ~hsm_state ~headers "/users/admin" with
+       | _, Some (`OK, _, _, _) ->
+         begin
+           match request ~hsm_state ~meth:`GET ~headers:admin_headers "/users/admin" with
+           | _, Some (`Unauthorized, _, _, _) -> true
+           | _ -> false
+         end
        | _ -> false
      end
   | _ -> false
@@ -2449,23 +2459,17 @@ let keys_key_version_cert_delete_fails =
     | _ -> false
   end
 
-let rate_limit = 10
-
 let rate_limit_for_unlock =
   let path = "/unlock" in
   "rate limit for unlock"
   @? fun () ->
     begin
     let hsm_state = locked_mock () in
-    for _ = 1 to rate_limit do
-      ignore (request ~hsm_state path)
-    done;
+    ignore (request ~hsm_state path);
     match request ~hsm_state path with
     | _, Some (`Too_many_requests, _, _, _) -> true
     | _ -> false
   end
-
-let rate_limit = 10
 
 let rate_limit_for_get =
   let path = "/system/info" in
@@ -2474,9 +2478,7 @@ let rate_limit_for_get =
     begin
     let hsm_state = operational_mock () in
     let headers = auth_header "not a valid user" "no valid password" in
-    for _ = 0 to rate_limit do
-      ignore (request ~hsm_state ~headers path)
-    done;
+    ignore (request ~hsm_state ~headers path);
     match request ~hsm_state ~headers path with
     | _, Some (`Too_many_requests, _, _, _) ->
      begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
@@ -2493,9 +2495,6 @@ let reset_rate_limit_after_successful_login =
     begin
     let hsm_state = operational_mock () in
     let headers = auth_header "admin" "no valid password" in
-    for _ = 1 to rate_limit - 1 do
-      ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
-    done;
     (* one request left before the rate limit returns Too_many_requests *)
     (* reset the rate limit by a successful request *)
     begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
@@ -2503,20 +2502,28 @@ let reset_rate_limit_after_successful_login =
         (* test rate_limit requests again *)
         begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
           | _, Some (`Unauthorized, _, _, _) ->
-            begin
-              for _ = 1 to rate_limit - 2 do
-                ignore (request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path)
-              done;
-              match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
-              | _, Some (`Unauthorized, _, _, _) ->
-                begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
-                  | _, Some (`Too_many_requests, _, _, _) -> true
-                  | _ -> false
-                end
+            begin match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+              | _, Some (`Too_many_requests, _, _, _) -> true
               | _ -> false
             end
-        | _ -> false
-        end ;
+          | _ -> false
+        end
+      | _ -> false
+    end
+  end
+
+let reset_rate_limit_after_successful_login_2 =
+  let path = "/system/info" in
+  "rate limit is reset after successful login (i.e. two consecutive requests are fine)"
+  @? fun () ->
+    begin
+    let hsm_state = operational_mock () in
+    begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
+      | _, Some (`OK, _, _, _) ->
+        begin match request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path with
+          | _, Some (`OK, _, _, _) -> true
+          | _ -> false
+        end
       | _ -> false
     end
   end
@@ -2946,6 +2953,7 @@ let () =
                             keys_key_version_cert_delete_fails ];
     "rate limit", [ rate_limit_for_get ;
                     reset_rate_limit_after_successful_login  ;
+                    reset_rate_limit_after_successful_login_2  ;
                     rate_limit_for_unlock];
     "access.ml: decode auth", [ auth_decode_invalid_base64 ];
     "RSA decrypt", crypto_rsa_decrypt ();

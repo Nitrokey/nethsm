@@ -2124,4 +2124,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Error `Msg msg ->
       Log.err (fun m -> m "error booting %s" msg);
       invalid_arg "broken NetHSM"
+
+  let reset_rate_limit () =
+    Rate_limit.reset_all ()
 end

@@ -2,8 +2,6 @@
 let requests : (Ipaddr.V4.t * string, Ptime.t list) Hashtbl.t =
   Hashtbl.create 7
 
-let max_requests_per_second = 10
-
 let one_second_ago now =
   let one_second = Ptime.Span.of_int_s 1 in
   match Ptime.sub_span now one_second with
@@ -18,7 +16,7 @@ let within now ip username =
   | None -> Hashtbl.add requests (ip, username) [ now ] ; true
   | Some last_requests ->
     let requests' = now :: active_requests (one_second_ago now) last_requests in
-    let result = List.length requests' <= max_requests_per_second in
+    let result = List.length requests' <= 1 in
     Hashtbl.replace requests (ip, username) requests';
     result
 
@@ -29,3 +27,6 @@ let discard_old_entries now =
   Hashtbl.filter_map_inplace
     (fun _ vs -> match active_requests valid vs with [] -> None | xs -> Some xs)
     requests
+
+let reset_all () =
+  Hashtbl.reset requests

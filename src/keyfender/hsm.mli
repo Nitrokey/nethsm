@@ -221,6 +221,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   include S
 
   val boot : device_id:string -> Mirage_crypto_pk.Rsa.pub -> KV.t -> (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
+
+  val reset_rate_limit : unit -> unit
 end
 
 val build_tag : string
