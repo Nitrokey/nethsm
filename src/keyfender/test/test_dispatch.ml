@@ -8,10 +8,14 @@ let () =
   Mirage_crypto_rng_unix.initialize ()
 
 module Mock_clock = struct
-  let now_d_ps () = (1000, 0L)
+  let _now = ref (1000, 0L)
+  let now_d_ps () = !_now
   let current_tz_offset_s () = None
   let period_d_ps () = None
+  let one_second_later () =
+    _now := fst !_now, Int64.add (snd !_now) 1_000_000_000_000L
 end
+
 module Hsm_clock = Keyfender.Hsm_clock.Make(Mock_clock)
 
 module Time = struct
@@ -2529,6 +2533,44 @@ let reset_rate_limit_after_successful_login_2 =
     end
   end
 
+let rate_limit_time_for_get =
+  let path = "/system/info" in
+  "rate limit for get after a second"
+  @? fun () ->
+    begin
+    let hsm_state = operational_mock () in
+    let headers = auth_header "not a valid user" "no valid password" in
+    ignore (request ~hsm_state ~headers path);
+    match request ~hsm_state ~headers path with
+    | _, Some (`Too_many_requests, _, _, _) ->
+      begin
+        Mock_clock.one_second_later ();
+        match request ~hsm_state ~headers path with
+        | _, Some (`Unauthorized, _, _, _) -> true
+        | _ -> false
+      end
+    | _ -> false
+  end
+
+let rate_limit_time_for_unlock =
+  let path = "/unlock" in
+  "rate limit time for unlock"
+  @? fun () ->
+    begin
+    let body = `String {| { "passphrase" : "notUnlock" } |} in
+    let hsm_state = locked_mock () in
+    ignore (request ~meth:`POST ~body ~hsm_state path); (* returns Bad_request *)
+    match request ~meth:`POST ~body ~hsm_state path with
+    | _, Some (`Too_many_requests, _, _, _) ->
+      begin
+        Mock_clock.one_second_later ();
+        match request ~meth:`POST ~body ~hsm_state path with
+        | _, Some (`Bad_request, _, _, _) -> true
+        | _ -> false
+      end
+    | _ -> false
+  end
+
 let auth_decode_invalid_base64 =
   "a request for /system/info with wrong base64 in user authentication returns 401"
   @? fun () ->
@@ -2955,7 +2997,9 @@ let () =
     "rate limit", [ rate_limit_for_get ;
                     reset_rate_limit_after_successful_login  ;
                     reset_rate_limit_after_successful_login_2  ;
-                    rate_limit_for_unlock];
+                    rate_limit_for_unlock;
+                    rate_limit_time_for_get;
+                    rate_limit_time_for_unlock];
     "access.ml: decode auth", [ auth_decode_invalid_base64 ];
     "RSA decrypt", crypto_rsa_decrypt ();
     "RSA PKCS1 sign", [ crypto_rsa_pkcs1_sign () ];
