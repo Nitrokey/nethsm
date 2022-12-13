@@ -2464,9 +2464,10 @@ let rate_limit_for_unlock =
   "rate limit for unlock"
   @? fun () ->
     begin
+    let body = `String {| { "passphrase" : "notUnlock" } |} in
     let hsm_state = locked_mock () in
-    ignore (request ~hsm_state path);
-    match request ~hsm_state path with
+    ignore (request ~meth:`POST ~body ~hsm_state path); (* returns Bad_request *)
+    match request ~meth:`POST ~body ~hsm_state path with
     | _, Some (`Too_many_requests, _, _, _) -> true
     | _ -> false
   end
