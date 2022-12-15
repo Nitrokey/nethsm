@@ -46,7 +46,7 @@ To add the outer signature to a software update image the keyfender library prov
 
 # Rate Limiting {#sec-rl}
 
-To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is enforced globally (at the moment at most 10 accesses per second). The rate limit for all endpoints requiring authentication is 10 per second per IP address.
+To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is one failed access per second per IP address. The rate limit for all endpoints requiring authentication is 1 failed authentication per second per IP address and username.
 
 # Reset to Factory Defaults {#sec-rtfd}
 
