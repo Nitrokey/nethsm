@@ -4,6 +4,7 @@
   <boolean name="hsuart_supported" value="false"/>
   <boolean name="xhcidbg_supported" value="false"/>
   <boolean name="uefi_gop_rmrr_access" value="false"/>
+  <boolean name="trng_available" value="false" />
  </config>
  <mappings>
   <aliases>

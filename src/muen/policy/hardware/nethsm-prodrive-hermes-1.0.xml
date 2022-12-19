@@ -182,6 +182,16 @@
       <memory caching="UC" name="mem1" physicalAddress="16#8fe1_d000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#e00f_1000#" size="16#1000#"/>
     </device>
+    <!-- manually added UART3 -->
+    <device name="communication_controller_3">
+      <pci bus="16#00#" device="16#19#" function="2">
+        <identification classcode="16#0780#" deviceId="16#a347#" revisionId="16#10#" vendorId="16#8086#"/>
+        <iommuGroup id="12"/>
+      </pci>
+      <irq name="irq1" number="30"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#8fe1_b000#" size="16#1000#"/>
+      <memory caching="UC" name="mmconf" physicalAddress="16#e00c_a000#" size="16#1000#"/>
+    </device>
     <device name="isa_bridge_1">
       <description>Intel Corporation Cannon Point-LP LPC Controller</description>
       <pci bus="16#00#" device="16#1f#" function="0">

@@ -133,6 +133,11 @@
         </device>
         <device logical="tpm" physical="tpm">
         </device>
+        <if variable="trng_available" value="true">
+          <device logical="trng" physical="trng">
+            <pci bus="16#00#" device="16#19#" function="2"/>
+          </device>
+        </if>
       </devices>
       <events>
         <source>

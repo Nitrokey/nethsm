@@ -5,12 +5,14 @@
   <boolean name="xhcidbg_supported" value="false"/>
 	<boolean name="uefi_gop_rmrr_access" value="false"/>
 	<boolean name="dbgserver_sink_serial" value="true" />
+  <boolean name="trng_available" value="true" />
  </config>
  <mappings>
   <aliases>
    <alias name="serial_device_1" physical="communication_controller_1">
     <resource name="mem1" physical="mem1"/>
    </alias>
+   <alias name="trng" physical="communication_controller_3"/>
    <alias name="nic_1" physical="ethernet_controller_1"/>
    <alias name="storage_controller" physical="sata_controller_1"/>
    <alias name="lpc_controller" physical="isa_bridge_1"/>
