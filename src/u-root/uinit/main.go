@@ -10,12 +10,16 @@
 package main
 
 import (
+	_ "embed"
 	"log"
 	"os"
 	"syscall"
 
-	Script "nethsm/uinit/script"
+	"nethsm/uinit/script"
 )
+
+//go:embed .build_tag
+var buildTag string
 
 // globalState encapsulates global variables shared across the uinit codebase.
 // With the exception of s, which mutates, all of these are essentially
@@ -24,7 +28,7 @@ import (
 // essentially a "script", this will have to do.
 type globalState struct {
 	// s represents our global Script context.
-	s *Script.Script
+	s *script.Script
 	// UID and GID that the etcd server is run as. We use 1 (coventionally,
 	// "daemon").
 	etcdUidGid int
@@ -37,13 +41,15 @@ type globalState struct {
 	tpmDevice            string
 	listenerProtocol     string
 	listenerPort         string
+	keyfenderIP          string
+	entropyPort          string
 }
 
 // This is the actual singleton instance of globalState used throughout. This
 // way it is at least obvious from the code when it is referring to a variable
 // from globalState, as G.variable.
 var G = &globalState{
-	s:                    Script.New(),
+	s:                    script.New(),
 	etcdUidGid:           1,
 	kernelRelease:        getKernelRelease(),
 	diskDevice:           "/dev/sda",
@@ -53,6 +59,8 @@ var G = &globalState{
 	tpmDevice:            "/dev/tpm0",
 	listenerProtocol:     "tcp",
 	listenerPort:         ":1023",
+	keyfenderIP:          "169.254.169.1",
+	entropyPort:          "4444",
 }
 
 func main() {

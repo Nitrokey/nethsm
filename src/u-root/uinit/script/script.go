@@ -9,10 +9,11 @@
 // s := Script.New()
 // s.Execf("/bbin/ip addr add 192.168.1.0/24 dev eth")
 // s.Execf("/bbin/ip link set dev eth0 up")
-// if err := s.Err(); err != nil {
-//	// Handle err
-// }
-package Script
+//
+//	if err := s.Err(); err != nil {
+//	 // Handle err
+//	}
+package script
 
 import (
 	"bufio"

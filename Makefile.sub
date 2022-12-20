@@ -549,7 +549,7 @@ OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_SRC := /nethsm-tools/u-root
 U_ROOT_UINIT := $(TOP_DIR)/src/u-root/uinit
-U_ROOT_BUILD_TAG := $(U_ROOT_UINIT)/build_tag.go
+U_ROOT_BUILD_TAG := $(U_ROOT_UINIT)/.build_tag
 # XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
 U_ROOT_PKGS := ./cmds/core/init \
     ./cmds/core/cpio \
@@ -563,7 +563,7 @@ U_ROOT_PKGS := ./cmds/core/init \
     $(U_ROOT_UINIT)
 
 $(U_ROOT_BUILD_TAG):
-	echo "package main\n\nconst buildTag = \"$(BUILD_TAG)\"\n" >$@
+	echo -n "$(BUILD_TAG)" >$@
 
 INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_ETC_DIR) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)

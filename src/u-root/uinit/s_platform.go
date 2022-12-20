@@ -257,7 +257,7 @@ func sPlatformActions() {
 		return
 	}
 	c := make(chan string)
-	go platformListener(c)
+	startTask("Platform Listener", func() { platformListener(c) })
 
 	mountMuenFs()
 	G.s.Logf("Channels:")
@@ -274,6 +274,8 @@ func sPlatformActions() {
 
 	dumpNetworkStatus()
 
+	startTask("TRNG", trngTask)
+
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
 	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid /dev/sda3 /data")
@@ -285,7 +287,7 @@ func sPlatformActions() {
 
 	// If /data/initialised-<buildTag> does NOT exist, assume /data is empty and
 	// populate it from the template CPIO archive included in the initramfs.
-	const initFile = "/data/initialised-" + buildTag
+	initFile := "/data/initialised-" + buildTag
 	if _, err := os.Stat(initFile); os.IsNotExist(err) {
 		_ = os.RemoveAll("/data/./")
 		log.Printf("Populating /data")

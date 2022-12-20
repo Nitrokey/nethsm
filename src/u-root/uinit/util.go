@@ -80,3 +80,17 @@ func dumpNetworkStatus() {
 	G.s.Logf("Routes:")
 	G.s.Execf("/bbin/ip route")
 }
+
+func startTask(name string, f func()) {
+	go func() {
+		log.Printf("%s task started.", name)
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("%s task failed: %v", name, err)
+			} else {
+				log.Printf("%s task finished.", name)
+			}
+		}()
+		f()
+	}()
+}
