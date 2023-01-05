@@ -2093,6 +2093,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let restore t uri stream =
       let (let**) = Lwt_result.bind in
       let `Raw start_ts = Clock.now_raw () in
+      let initial_state = t.state in
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
@@ -2136,6 +2137,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                        (t.state <- Locked;
                         Lwt_result.return ())
                     in
+                    (match t.state with
+                    | Operational v ->
+                      User_store.clear_cache v.auth_store;
+                      Key_store.clear_cache v.key_store
+                    | _ -> ());
                     let `Raw stop_ts = Clock.now_raw () in
                     match new_time with
                     | None -> Lwt.return_ok ()
@@ -2144,7 +2150,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                       match Ptime.add_span new_time elapsed with
                       | Some ts -> set_time_offset b ts
                       | None ->
-                        t.state <- Unprovisioned;
+                        t.state <- initial_state;
                         Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
                   end))
         | _ ->

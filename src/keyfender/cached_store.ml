@@ -55,6 +55,10 @@ module Make(KV: Typed_kv.S)(Monotonic_clock : Mirage_clock.MCLOCK) = struct
     mode: mode;
   }
 
+  let clear_cache cache = match cache.mode with
+    | Batch _ -> invalid_arg "Cached_store: cannot clear in batch mode"
+    | Cache c -> c.cache <- Cache.empty c.settings.cache_size
+
   let update cache key value =
     Cache.add key (value, Monotonic_clock.elapsed_ns ()) cache
 

@@ -16,4 +16,5 @@ sig
 
   val connect : ?settings:settings -> KV.t -> t
 
+  val clear_cache : t -> unit
 end
