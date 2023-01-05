@@ -246,7 +246,24 @@ The backup is encrypted with the _Backup Key_, derived from the _Backup Passphra
 
 ## System Restore {#sec-us-sr}
 
-System restore is only possible in an _Unprovisioned_ state. Refer to [Reset to Factory Defaults](#sec-us-rtfd) and [Initial Provisioning](#sec-us-ip).
+### Unprovisioned {#sec-us-sr-u}
+
+Refer to [Reset to Factory Defaults](#sec-us-rtfd) and [Initial Provisioning](#sec-us-ip).
+
+### Operational {#sec-us-sr-p}
+
+Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network.
+
+1. Browse to the NetHSM and log in as an **R-Administrator** account.
+2. Navigate to "Restore from an existing backup".
+3. You will need to provide the _Backup Passphrase_ and the backup archive.
+4. The NetHSM restores keys and users data.
+5. The NetHSM ends in Operational state.
+
+**Notes:**
+
+- Keys and users that are not present in the backup will be deleted.
+- System configuration is not restored.
 
 ## Reset to Factory Defaults {#sec-us-rtfd}
 
@@ -324,7 +341,7 @@ _Tags_ are managed by Administrator users:
 
 The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the **S-Keyfender** subject has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
-The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with ephemeral _Unlock Keys_. 
+The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with ephemeral _Unlock Keys_.
 
 The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot](#sec-us-ub). Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
@@ -342,7 +359,7 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |             GOTO UNLOCKED
 |         ELSE:
 |             Return _Failure_ to API caller
-| 
+|
 |     UNLOCKED:
 |     _State_ = _Operational_
 
@@ -425,7 +442,9 @@ When a backup is initiated, **S-Keyfender** prepares a backup, encrypts it with 
 
 During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and [Unattended Boot](#sec-us-ub) must have been enabled. For details refer to [Encryption Architecture](#sec-dd-ea).
 
-**Note**: For the avoidance of doubt, partial backup and restore are _not_ provided. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM, and also the _Unlock Passphrase_, to those current at the time of the backup.
+**Note (Unprovisioned)**: For the avoidance of doubt, partial backup and restore are _not_ provided when restoring from an unprovisioned state. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM, and also the _Unlock Passphrase_, to those current at the time of the backup.
+
+**Note (Operational)**: When restoring from an operational state, only _Authentication Store_ and _Key Store_ are restored. Data in _Configuration Store_ and _Domain Key Store_ is ignored.
 
 When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
 
@@ -439,10 +458,10 @@ Some sample sessions:
 
     | C->S: DEVICE-ID\n
     | S->C: OK abcdef\n
-    
+
     | C->S: SHUTDOWN\n
     | S->C: OK\n
-    
+
     | C->S: FOO\n
     | S->C: ERROR Unknown command\n
 
