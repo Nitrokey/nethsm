@@ -14,7 +14,7 @@ import (
 	"os"
 	"syscall"
 
-	"nethsm/uinit/script"
+	Script "nethsm/uinit/script"
 )
 
 // globalState encapsulates global variables shared across the uinit codebase.
@@ -30,7 +30,7 @@ type globalState struct {
 	etcdUidGid int
 	// Current kernel release.
 	kernelRelease        string
-	diskDevice			 string
+	diskDevice           string
 	sysActivePartition   string
 	sysInactivePartition string
 	dataPartition        string
@@ -44,9 +44,9 @@ type globalState struct {
 // from globalState, as G.variable.
 var G = &globalState{
 	s:                    Script.New(),
-	etcdUidGid:            1,
+	etcdUidGid:           1,
 	kernelRelease:        getKernelRelease(),
-	diskDevice:			  "/dev/sda",
+	diskDevice:           "/dev/sda",
 	sysActivePartition:   "/dev/sda1",
 	sysInactivePartition: "/dev/sda2",
 	dataPartition:        "/dev/sda3",
@@ -56,14 +56,13 @@ var G = &globalState{
 }
 
 func main() {
-	log.SetPrefix("uinit: ")
-
 	// We expect a hostname to be passed in via the kernel's boot parameters,
 	// as uroot.uinitargs=HOSTNAME.
-	var hostname = "(none)"
+	hostname := "(none)"
 	if len(os.Args) == 2 {
 		hostname = os.Args[1]
 	}
+	log.SetPrefix(hostname + ": ")
 
 	switch hostname {
 	case "net_external":
