@@ -4,8 +4,7 @@
 #
 
 INSTALLER=$1
-mkdir -p obj
-CI_INSTALLER=${PWD}/obj/ci-installer.img
+CI_INSTALLER=$2
 
 CI_INSTALLER_GRUB_CFG=${PWD}/src/installer/grub-ci-installer.cfg
 KEY_DIR=${PWD}/keys/test-key
