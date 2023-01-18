@@ -125,6 +125,43 @@ struct
       ]
     end
 
+  let startTrngListener stack port =
+    if Key_gen.no_platform () then Lwt.return_unit else
+    let module RNG = Mirage_crypto_rng in
+    let trng = RNG.Entropy.register_source "trng" in
+    let `Acc feed_entropy = RNG.accumulate None trng in
+    let pools = RNG.pools None in
+    let platform_ip = Key_gen.platform () in
+    let first_package, first_package_notify = Lwt.wait () in
+    let chan, push = Lwt_stream.create () in
+    Internal_stack.UDP.listen (Internal_stack.udp stack) ~port
+      (fun ~src ~dst:_ ~src_port:_ data ->
+        (match src with
+        | Ipaddr.V4 ip when ip = platform_ip -> push (Some data)
+        | ip ->
+          Log.warn (fun m -> m "Dropping TRNG package from unknown source: %a" Ipaddr.pp ip));
+        Lwt.return_unit
+      );
+    let rec loop () =
+      Lwt.pick [
+        (Time.sleep_ns (Duration.of_sec 30) >|= fun () ->
+          Log.err (fun m -> m "Receiving no data from TRNG!"));
+        Lwt_stream.get chan >|= fun data ->
+          let data = Option.get data in
+          Log.debug (fun m -> m "Received %d bytes of data from TRNG: %a ..."
+            (Cstruct.length data) Cstruct.hexdump_pp (Cstruct.sub data 0 8));
+          let block_len = (Cstruct.length data) / pools in
+          for i = 0 to pred pools do
+            let offset = i * block_len in
+            feed_entropy (Cstruct.sub data offset block_len);
+          done;
+          if Lwt.is_sleeping first_package then Lwt.wakeup_later first_package_notify ()
+      ] >>= fun () -> (loop[@tailcall]) ()
+    in
+    Lwt.async loop;
+    Log.info (fun m -> m "Waiting for first data from TRNG");
+    first_package
+
   let pp_platform_err ppf = function
     | `Write err -> Format.fprintf ppf "write error %s" err
     | `Read err -> Format.fprintf ppf "read error %s" err
@@ -138,6 +175,8 @@ struct
   module Memtrace = Memtrace.Make(Hsm_clock)(Ext_stack.TCP)
 
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
+      let entropy_port = 4444 in
+      startTrngListener internal_stack entropy_port >>= fun () ->
       let sleep e =
         Log.warn (fun m ->
             m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
