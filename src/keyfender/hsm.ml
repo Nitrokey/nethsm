@@ -580,7 +580,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     system_info : Json.system_info ;
     mbox : cb Lwt_mvar.t ;
     res_mbox : (unit, string) result Lwt_mvar.t ;
-    device_id : string ;
+    device_key : string ;
     cache_settings: Cached_store.settings;
   }
 
@@ -652,7 +652,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let open Lwt_result.Infix in
     let get_salt_key = function
       | Domain_key_store.Passphrase -> Config_store.Unlock_salt
-      | Domain_key_store.Device_id -> Config_store.Device_id_salt
+      | Domain_key_store.Device_key -> Config_store.Device_key_salt
     in
     internal_server_error Read "Prepare keys" Config_store.pp_error
       (Config_store.get kv (get_salt_key slot)) >>= fun salt ->
@@ -677,7 +677,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Lwt.return @@ Error (Internal_server_error, Fmt.str "%s store too old (%a), no migration code" slot_str Version.pp stored)
         | `Kv store -> Lwt.return @@ Ok store
 
-  (* credential is passphrase or device id, depending on boot mode *)
+  (* credential is passphrase or device key, depending on boot mode *)
   let unlock ~cache_settings kv slot credentials =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
@@ -689,7 +689,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let keys = { domain_key ; auth_store ; key_store } in
     Operational keys
 
-  let unlock_with_device_id kv ~device_id = unlock kv Device_id device_id
+  let unlock_with_device_key kv ~device_key = unlock kv Device_key device_key
 
   let unlock_with_passphrase t ~passphrase =
     let open Lwt_result.Infix in
@@ -723,7 +723,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       (Config_store.get kv Certificate) >|= fun (cert, chain) ->
     cert, chain, priv
 
-  let boot_config_store ~cache_settings kv device_id =
+  let boot_config_store ~cache_settings kv device_key =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
       (Config_store.get_opt kv Time_offset >|= function
@@ -741,7 +741,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Some true ->
       begin
         let open Lwt.Infix in
-        unlock_with_device_id ~cache_settings kv ~device_id >|= function
+        unlock_with_device_key ~cache_settings kv ~device_key >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
           Log.err (fun m -> m "unattended boot failed with %s" msg);
@@ -1574,18 +1574,18 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error Write "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
-              let salt, unlock_key = salted t.device_id in
+              let salt, unlock_key = salted t.device_key in
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Write device ID salt" KV.pp_write_error
-                    (Config_store.set b Device_id_salt salt) >>= fun () ->
-                  internal_server_error Write "Write device ID" KV.pp_write_error
-                    (Domain_key_store.set b Device_id ~unlock_key keys.domain_key))
+                  internal_server_error Write "Write Device Key salt" KV.pp_write_error
+                    (Config_store.set b Device_key_salt salt) >>= fun () ->
+                  internal_server_error Write "Write Device Key" KV.pp_write_error
+                    (Domain_key_store.set b Device_key ~unlock_key keys.domain_key))
             end else begin
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Remove device ID salt" KV.pp_write_error
-                    (Config_store.remove b Device_id_salt) >>= fun () ->
-                  internal_server_error Write "Remove device ID" KV.pp_write_error
-                    (Domain_key_store.remove b Device_id))
+                  internal_server_error Write "Remove Device Key salt" KV.pp_write_error
+                    (Config_store.remove b Device_key_salt) >>= fun () ->
+                  internal_server_error Write "Remove Device Key" KV.pp_write_error
+                    (Domain_key_store.remove b Device_key))
         end)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
@@ -2168,7 +2168,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     evict_delay_s = 1.;
   }
 
-  let boot ?(cache_settings = default_cache_settings) ~device_id software_update_key kv =
+  let boot ?(cache_settings = default_cache_settings) ~device_key software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -2199,14 +2199,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         and cert, key = generate_cert priv
         and chain = []
         in
-        let t = { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id; cache_settings } in
+        let t = { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_key; cache_settings } in
         Lwt.return (Ok t)
       | Some version ->
         match Version.(compare current version) with
         | `Equal ->
-          boot_config_store ~cache_settings kv device_id >>= fun state ->
+          boot_config_store ~cache_settings kv device_key >>= fun state ->
           certificate_chain kv >|= fun (cert, chain, key) ->
-          { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_id; cache_settings }
+          { state ; has_changes ; key ; cert ; chain ; software_update_key ; kv ; info ; system_info ; mbox ; res_mbox ; device_key; cache_settings }
         | `Smaller ->
           let msg =
             "store has higher version than software, please update software version"

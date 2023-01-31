@@ -210,11 +210,11 @@ struct
         | Error e ->
           Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
           Lwt.fail_with "store not readable") >>= fun () ->
-      (write_platform internal_stack "DEVICE-ID" >>= function
+      (write_platform internal_stack "DEVICE-KEY" >>= function
         | Error e ->
-          Log.err (fun m -> m "couldn't retrieve device id: %a" pp_platform_err e);
-          Lwt.fail_with "failed to retrieve device id from platform"
-        | Ok device_id -> Lwt.return device_id) >>= fun device_id ->
+          Log.err (fun m -> m "couldn't retrieve device key: %a" pp_platform_err e);
+          Lwt.fail_with "failed to retrieve device key from platform"
+        | Ok device_key -> Lwt.return device_key) >>= fun device_key ->
       (Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
         | Error e ->
           Log.err (fun m -> m "couldn't retrieve update key: %a" Update_key.pp_error e);
@@ -228,7 +228,7 @@ struct
           | Error `Msg m ->
             Lwt.fail_with ("couldn't decode update key: " ^ m)
       ) >>= fun update_key ->
-      Hsm.boot ~cache_settings ~device_id update_key store >>= fun (hsm_state, mvar, res_mvar) ->
+      Hsm.boot ~cache_settings ~device_key update_key store >>= fun (hsm_state, mvar, res_mvar) ->
       let setup_log stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0

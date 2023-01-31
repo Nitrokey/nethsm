@@ -32,7 +32,7 @@ let () =
   Lwt_main.run
   begin
     Store.connect () >>= fun store ->
-    Hsm.boot ~device_id:"test server" update_key store >>= fun (hsm_state, mvar, _) ->
+    Hsm.boot ~device_key:"test server" update_key store >>= fun (hsm_state, mvar, _) ->
     let any = Ipaddr.V4.Prefix.global in
     Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun tcp ->
     Udpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun udp ->

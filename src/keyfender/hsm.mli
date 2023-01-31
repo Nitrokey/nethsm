@@ -220,7 +220,7 @@ end
 module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (Monotonic_clock : Mirage_clock.MCLOCK) (Clock : Hsm_clock.HSMCLOCK) : sig
   include S
 
-  val boot : ?cache_settings:Cached_store.settings -> device_id:string -> Mirage_crypto_pk.Rsa.pub -> KV.t -> (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
+  val boot : ?cache_settings:Cached_store.settings -> device_key:string -> Mirage_crypto_pk.Rsa.pub -> KV.t -> (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
 
   val reset_rate_limit : unit -> unit
 end

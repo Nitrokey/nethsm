@@ -8,7 +8,7 @@ module Make (KV : Mirage_kv.RW) = struct
 
   type _ k =
     | Unlock_salt : Cstruct.t k
-    | Device_id_salt : Cstruct.t k
+    | Device_key_salt : Cstruct.t k
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
@@ -26,7 +26,7 @@ module Make (KV : Mirage_kv.RW) = struct
       let open Gmap.Order in
       match t, t' with
       | Unlock_salt, Unlock_salt -> Eq | Unlock_salt, _ -> Lt | _, Unlock_salt -> Gt
-      | Device_id_salt, Device_id_salt -> Eq | Device_id_salt, _ -> Lt | _, Device_id_salt -> Gt
+      | Device_key_salt, Device_key_salt -> Eq | Device_key_salt, _ -> Lt | _, Device_key_salt -> Gt
       | Certificate, Certificate -> Eq | Certificate, _ -> Lt | _, Certificate -> Gt
       | Private_key, Private_key -> Eq | Private_key, _ -> Lt | _, Private_key -> Gt
       | Version, Version -> Eq | Version, _ -> Lt | _, Version -> Gt
@@ -42,7 +42,7 @@ module Make (KV : Mirage_kv.RW) = struct
 
   let name : type a. a k -> string = function
     | Unlock_salt -> "unlock-salt"
-    | Device_id_salt -> "device-id-salt"
+    | Device_key_salt -> "device-key-salt"
     | Certificate -> "certificate"
     | Private_key -> "private-key"
     | Version -> "version"
@@ -56,7 +56,7 @@ module Make (KV : Mirage_kv.RW) = struct
   let to_string : type a. a k -> a -> string = fun k v ->
     match k, v with
     | Unlock_salt, salt -> Cstruct.to_string salt
-    | Device_id_salt, salt -> Cstruct.to_string salt
+    | Device_key_salt, salt -> Cstruct.to_string salt
     | Certificate, (server, chain) ->
       (* maybe upstream/extend X509.Certificate *)
       let encode_one crt =
@@ -99,7 +99,7 @@ module Make (KV : Mirage_kv.RW) = struct
     let guard p err = if p then Ok () else Error (`Msg err) in
     match key with
     | Unlock_salt -> Ok (Cstruct.of_string data)
-    | Device_id_salt -> Ok (Cstruct.of_string data)
+    | Device_key_salt -> Ok (Cstruct.of_string data)
     | Certificate ->
       begin
         let rec decode data acc =
@@ -183,7 +183,7 @@ module Make (KV : Mirage_kv.RW) = struct
     | Error e -> Error e
 
   let batch = KV.batch
-  
+
   let set kv key value =
     let data = to_string key value in
     KV.set kv (key_path key) data

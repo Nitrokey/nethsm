@@ -24,7 +24,7 @@ let update_key =
   | Error `Msg m -> invalid_arg m
 
 let unprovisioned_mock () =
-  Kv_mem.connect () >>= Hsm.boot ~device_id:"test stream" update_key >|= fun (y, _, _) -> y
+  Kv_mem.connect () >>= Hsm.boot ~device_key:"test stream" update_key >|= fun (y, _, _) -> y
 
 (* let operational_mock () =
   unprovisioned_mock () >>= fun state ->

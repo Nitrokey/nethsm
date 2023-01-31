@@ -6,11 +6,11 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   let dk_prefix = "domain-key"
 
-  type slot = Passphrase | Device_id
+  type slot = Passphrase | Device_key
 
   let name = function
     | Passphrase -> "0"
-    | Device_id -> "1"
+    | Device_key -> "1"
 
   let key_path slot = Mirage_kv.Key.(add (v dk_prefix) (name slot))
 

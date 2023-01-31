@@ -31,7 +31,7 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 The following aspects of the system design, which have changed over the course of the development of NetHSM, are not yet reflected in this document:
 
 * [Reset to Factory Defaults](#sec-us-rtfd): NetHSM will not be equipped with a physical "Reset Button". Instead, the user will be required to initiate and _confirm_ a Reset to Factory Defaults by interacting with a local serial console connected to the unit. This feature is not implemented yet.
-* [Encryption Architecture](#sec-dd-ea): The _Device ID_ used as part of [Unattended Boot](#sec-us-ub) is currently hard-coded for development purposes. This will be replaced with a TPM-based solution, the exact details of which are yet to be defined.
+* [Encryption Architecture](#sec-dd-ea): The _Device Key_ used as part of [Unattended Boot](#sec-us-ub) is currently hard-coded for development purposes. This will be replaced with a TPM-based solution, the exact details of which are yet to be defined.
 * [Technical Architecture](#sec-dd-ta): **S-TRNG** is not implemented yet and will be replaced by a TPM-based solution, the exact architecture of which is yet to be defined. For now **S-Storage** and **S-Platform** are combined in a single subject **S-Kitchen-Sink** and should be separated later.
 * [System Firmware](#sec-dd-ta-sf):
     * _Firmware_ integrity shall be protected by the use of Intel Boot Guard on the platform. This feature is not implemented yet.
@@ -56,9 +56,9 @@ Configuration Store
 
 : An unencrypted data store containing system configuration, including: network configuration, TLS endpoint configuration (certificates and private key), logging and metrics configuration.
 
-Device ID
+Device Key
 
-: A persistent device-dependent identifier, unique to each NetHSM hardware unit delivered by Nitrokey. The Device ID is used to derive an _Unlock Key_, if and only if unattended boot is configured.
+: A persistent device-dependent identifier, unique to each NetHSM hardware unit delivered by Nitrokey. The Device Key is used to derive an _Unlock Key_, if and only if unattended boot is configured.
 
 Domain Key
 
@@ -346,7 +346,7 @@ The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256
 The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot](#sec-us-ub). Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
 |     _State_ = _Locked_
-|     _Unlock Key_ = KDF(_Device ID_)
+|     _Unlock Key_ = KDF(_Device Key_)
 |     _Domain Key_ = Decrypt\_AES256GCM(_Unlock Key_, _Slot 1_)
 |     IF decryption was successful:
 |         GOTO UNLOCKED
@@ -363,11 +363,11 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |     UNLOCKED:
 |     _State_ = _Operational_
 
-During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), a unique _Device ID_ is used to derive the _Unlock Key_, which is then used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails (for example, due to _User Data_ having been restored from a backup created on a different hardware unit), the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
+During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), a unique _Device Key_ is used to derive the _Unlock Key_, which is then used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails (for example, due to _User Data_ having been restored from a backup created on a different hardware unit), the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
 
 During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. This is used to derive the _Unlock Key_, which is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
 
-For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to compute an _Unlock Key_ derived from the _Device ID_ and populate "Slot 1" with a _Domain Key_ encrypted with this _Unlock Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
+For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to compute an _Unlock Key_ derived from the _Device Key_ and populate "Slot 1" with a _Domain Key_ encrypted with this _Unlock Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
 ## Technical Architecture {#sec-dd-ta}
 
@@ -381,7 +381,7 @@ The **S-TRNG** subject is a minimized Linux which provides external entropy to *
 
 The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**.
 
-The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NetHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device ID_, and shutdown and reboot the device.
+The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NetHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device Key_, and shutdown and reboot the device.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
 
@@ -450,13 +450,13 @@ When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the con
 
 #### Communication with S-Platform {#sec-dd-ta-cws}
 
-The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the device ID. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
+The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the Device Key. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
 
 The client, after establishing the TCP stream, sends the command (all uppercase) followed by a single newline character. The server replies with either "OK" or "ERROR", optionally followed by a whitespace character and printable ASCII characters, terminated with a newline character.
 
 Some sample sessions:
 
-    | C->S: DEVICE-ID\n
+    | C->S: DEVICE-KEY\n
     | S->C: OK abcdef\n
 
     | C->S: SHUTDOWN\n
@@ -533,7 +533,7 @@ Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot pa
 2. Muen uses the [Signed Block Stream][sbs-spec] (SBS) protocol for _Verified Boot_. The SBS implementation from Codelabs has been integrated to GRUB 2.
 3. If a hardware "reset button" is used (see [Physical Reset (Recovery)](#sec-us-rtfd-pr)), this implies extra customizations to Coreboot.
 4. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
-5. Support for flashing a unique _Device ID_, this _may_ require customization of Coreboot and/or the payload.
+5. Support for flashing a unique _Device Key_, this _may_ require customization of Coreboot and/or the payload.
 6. If Coreboot is used in combination with "ME Cleaner" or similar, care must be taken by the team selecting the board and/or _Firmware_ to ensure that the system is still stable in such a configuration and all the above requirements are provided for.
 
 [sbs-spec]: https://www.codelabs.ch/download/bsbsc-spec.pdf
