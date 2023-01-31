@@ -8,7 +8,7 @@
 //
 // You can use "socat" or "nc" to talk to it.
 //
-// To test "Device ID" functionality against "swtpm", launch swtpm as follows:
+// To test "Device Key" functionality against "swtpm", launch swtpm as follows:
 //
 // mkdir -p ./swtpm-state && swtpm socket --tpmstate dir=./swtpm-state --server type=unixio,path=./swtpm.socket --log level=5 --tpm2 --flags not-need-init,startup-clear
 //
@@ -40,11 +40,11 @@ func mockActions() {
 	request := <-c
 	log.Printf("platformListener returned: %s", request)
 	if request == "FACTORY-RESET" {
-		log.Printf("Deleting Device ID from TPM.")
-		err := tpmDeleteDeviceId(G.tpmDevice)
+		log.Printf("Deleting Device Key from TPM.")
+		err := tpmDeleteDeviceKey(G.tpmDevice)
 		if err != nil {
 			// Deliberately non-fatal.
-			log.Printf("TPM: DeleteDeviceId() failed: %v", err)
+			log.Printf("TPM: DeleteDeviceKey() failed: %v", err)
 		}
 	}
 }

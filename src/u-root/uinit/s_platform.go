@@ -100,14 +100,14 @@ func platformListener(result chan string) {
 		// Each of these returns a (possibly nil) response, a (possibly nil)
 		// error and the new value for terminalCommand.
 
-		// DEVICE-ID
-		doDeviceId := func() ([]byte, error, bool) {
-			log.Printf("[%s] Requested DEVICE-ID.", remoteAddr)
-			deviceId, err := tpmGetDeviceId(G.tpmDevice)
+		// DEVICE-KEY
+		doDeviceKey := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested DEVICE-KEY.", remoteAddr)
+			deviceKey, err := tpmGetDeviceKey(G.tpmDevice)
 			if err != nil {
 				return errorResponse(err), err, false
 			} else {
-				return okResponse(hex.EncodeToString(deviceId)), nil, false
+				return okResponse(hex.EncodeToString(deviceKey)), nil, false
 			}
 		}
 
@@ -199,8 +199,8 @@ func platformListener(result chan string) {
 		var cmdErr error = nil
 		terminalCommand := false
 		switch command {
-		case "DEVICE-ID":
-			response, cmdErr, terminalCommand = doDeviceId()
+		case "DEVICE-KEY":
+			response, cmdErr, terminalCommand = doDeviceKey()
 		case "UPDATE":
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
@@ -245,7 +245,7 @@ func platformListener(result chan string) {
 // sPlatformActions are executed for S-Platform.
 func sPlatformActions() {
 	// Load TPM kernel modules first, as platformListener needs TPM for
-	// GetDeviceId().
+	// GetDeviceKey().
 	G.s.Logf("Loading TPM driver")
 	G.s.Execf("/bbin/insmod /lib/modules/" + G.kernelRelease +
 		"/kernel/drivers/char/tpm/tpm_tis_core.ko")
@@ -359,13 +359,13 @@ func sPlatformActions() {
 		}
 
 		// TODO: This is currently done here for testing. We should decide what
-		// (if anything) is to be done about "Device ID" at RESET time in any
+		// (if anything) is to be done about "Device Key" at RESET time in any
 		// final design.
-		log.Printf("Deleting Device ID from TPM.")
-		err := tpmDeleteDeviceId(G.tpmDevice)
+		log.Printf("Deleting Device Key from TPM.")
+		err := tpmDeleteDeviceKey(G.tpmDevice)
 		if err != nil {
 			// Deliberately non-fatal.
-			log.Printf("TPM: DeleteDeviceId() failed: %v", err)
+			log.Printf("TPM: DeleteDeviceKey() failed: %v", err)
 		}
 
 		log.Printf("System will reboot now.")

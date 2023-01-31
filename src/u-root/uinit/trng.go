@@ -15,6 +15,17 @@ import (
 
 const trngPort = "ttyS1"
 
+var trngNotify, trngWait func()
+
+func init() {
+	ch := make(chan struct{})
+	trngNotify = func() {
+		trngNotify = func() {}
+		close(ch)
+	}
+	trngWait = func() { <-ch }
+}
+
 func check(err error) {
 	if err != nil {
 		panic(err)
@@ -71,6 +82,7 @@ func trngLoop(trng io.Reader) {
 		rand.Seed(seed)
 		_, err = devRand.Write(buf[4096:])
 		check(err)
+		trngNotify()
 		time.Sleep(time.Second)
 	}
 }
