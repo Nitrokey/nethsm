@@ -103,7 +103,7 @@ func platformListener(result chan string) {
 		// DEVICE-KEY
 		doDeviceKey := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested DEVICE-KEY.", remoteAddr)
-			deviceKey, err := tpmGetDeviceKey(G.tpmDevice)
+			deviceKey, err := tpmGetDeviceKey()
 			if err != nil {
 				return errorResponse(err), err, false
 			} else {

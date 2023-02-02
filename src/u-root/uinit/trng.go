@@ -13,17 +13,17 @@ import (
 	"github.com/u-root/u-root/pkg/termios"
 )
 
-const trngPort = "ttyS1"
+const trngDev = "/dev/ttyS1"
 
-var trngNotify, trngWait func()
+var rngNotify, rngWait func()
 
 func init() {
 	ch := make(chan struct{})
-	trngNotify = func() {
-		trngNotify = func() {}
+	rngNotify = func() {
+		rngNotify = func() {}
 		close(ch)
 	}
-	trngWait = func() { <-ch }
+	rngWait = func() { <-ch }
 }
 
 func check(err error) {
@@ -33,10 +33,10 @@ func check(err error) {
 }
 
 func trngTask() {
-	trng, err := termios.NewTTYS(trngPort)
+	f, err := os.Open(trngDev)
 	check(err)
 
-	settings, err := trng.Get()
+	settings, err := termios.GetTermios(f.Fd())
 	check(err)
 
 	settings, err = termios.MakeSerialBaud(settings, 115200)
@@ -44,14 +44,30 @@ func trngTask() {
 
 	settings = termios.MakeRaw(settings)
 
-	err = trng.Set(settings)
+	err = termios.SetTermios(f.Fd(), settings)
 	check(err)
 
-	trngLoop(trng)
+	trngLoop(f)
+}
+
+func trngReader(trng io.Reader) chan []byte {
+	ch := make(chan []byte)
+	buf := make([]byte, 8192)
+	buf2 := make([]byte, 8192)
+	go func() {
+		defer log.Println("TRNG reader stopped")
+		for {
+			_, err := io.ReadFull(trng, buf)
+			check(err)
+			ch <- buf
+			buf, buf2 = buf2, buf
+		}
+	}()
+	return ch
 }
 
 func trngLoop(trng io.Reader) {
-	buf := make([]byte, 8192)
+	var buf []byte
 
 	con, err := net.Dial("udp", net.JoinHostPort(G.keyfenderIP, G.entropyPort))
 	check(err)
@@ -61,50 +77,44 @@ func trngLoop(trng io.Reader) {
 	check(err)
 	defer devRand.Close() // nolint
 
-	watchdog := watchdog(30 * time.Second)
-	defer func() { watchdog <- false }()
-
-	for {
-		_, err := io.ReadFull(trng, buf)
-		check(err)
-		ent := entropy(buf)
-		if ent < 7.2 {
-			log.Printf("Entropy %f from TRNG too low, dropping data.\n", ent)
-			continue
+	feeder := func(buf []byte) {
+		if buf == nil {
+			return
 		}
-		watchdog <- true
-		// log.Printf("Bytes: %v\n", hex.EncodeToString(buf[:20]))
-		_, err = con.Write(buf[:4096])
+		_, err = con.Write(buf[:len(buf)/2])
 		if err != nil {
-			log.Printf("TRNG: %v", err)
+			log.Printf("Sending entropy failed: %v", err)
 		}
 		seed := rand.Int63() ^ int64(binary.LittleEndian.Uint64(buf))
 		rand.Seed(seed)
-		_, err = devRand.Write(buf[4096:])
+		_, err = devRand.Write(buf[len(buf)/2:])
 		check(err)
-		trngNotify()
+		rngNotify()
+	}
+
+	trngCh := trngReader(trng)
+
+	for {
+		select {
+		case buf = <-trngCh:
+			ent := entropy(buf)
+			if ent > 7.2 {
+				feeder(buf)
+				time.Sleep(time.Second)
+			} else {
+				log.Printf("WARNING: Entropy %f from TRNG too low, dropping data.\n", ent)
+			}
+		case <-time.After(time.Second * 30):
+			log.Println("WARNING: reading from TRNG timed out! Using only entropy from TPM!")
+		}
+		buf, err = tpmRand()
+		if err != nil {
+			log.Printf("reading random from TPM failed: %v", err)
+		} else {
+			feeder(buf)
+		}
 		time.Sleep(time.Second)
 	}
-}
-
-func watchdog(to time.Duration) chan bool {
-	ch := make(chan bool)
-	go func() {
-		defer log.Println("TRNG watchdog stopped")
-		for {
-			timeout := time.NewTimer(to)
-			select {
-			case <-timeout.C:
-				log.Println("WARNING: reading from TRNG timed out!")
-			case w := <-ch:
-				timeout.Stop()
-				if !w {
-					return
-				}
-			}
-		}
-	}()
-	return ch
 }
 
 // calculate the Shannon Entropy of a byte slice

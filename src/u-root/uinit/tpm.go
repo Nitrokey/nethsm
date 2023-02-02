@@ -7,8 +7,10 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/linux"
@@ -27,6 +29,51 @@ const (
 	sealedDeviceKeyFile = "/data/sealedDeviceKey"
 )
 
+var (
+	tpmCtxInstance *tpm2.TPMContext
+	tpmCtxMutex    sync.Mutex
+)
+
+func getTPMContext() (*tpm2.TPMContext, func()) {
+	tpmCtxMutex.Lock()
+	if tpmCtxInstance == nil {
+		tcti, err := linux.OpenDevice(G.tpmDevice)
+		if err != nil {
+			panic(err)
+		}
+		tpmCtxInstance = tpm2.NewTPMContext(tcti)
+	}
+	return tpmCtxInstance, tpmCtxMutex.Unlock
+}
+
+type tpmRandReader struct{ *tpm2.TPMContext }
+
+func (v tpmRandReader) Read(p []byte) (int, error) {
+	l := len(p)
+	if l > 48 {
+		l = 48
+	}
+	data, err := v.GetRandom(uint16(l))
+	if err != nil {
+		return 0, err
+	}
+	n := copy(p, data)
+	return n, nil
+}
+
+var tpmRandBuf [4096]byte
+
+func tpmRand() ([]byte, error) {
+	tpm, tpmRelease := getTPMContext()
+	defer tpmRelease()
+	buf := tpmRandBuf[:]
+	_, err := io.ReadFull(tpmRandReader{tpm}, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
 // tpmGetDeviceKey returns the 256-bit "Device Key" of the NetHSM.
 //
 // tpmPath is the path to the TPM character device, normally "/dev/tpm0".
@@ -34,14 +81,9 @@ const (
 // The Device Key is sealed against PCR-2 with an SRK on the TPM and stored on
 // the harddisk. If the Device Key does not exist, a new one is created. If the
 // SRK does not exist either, it is created as well.
-func tpmGetDeviceKey(tpmPath string) ([]byte, error) {
-	tcti, err := linux.OpenDevice(tpmPath)
-	if err != nil {
-		return nil, fmt.Errorf("Error in OpenDevice(%s): %v", tpmPath, err)
-	}
-	defer tcti.Close()
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
+func tpmGetDeviceKey() ([]byte, error) {
+	tpm, tpmRelease := getTPMContext()
+	defer tpmRelease()
 
 	srk, err := getSRK(tpm)
 	if err != nil {
@@ -57,7 +99,7 @@ func tpmGetDeviceKey(tpmPath string) ([]byte, error) {
 	if len(key) == 0 {
 		log.Printf("Provisioning new Device Key\n")
 
-		trngWait()
+		rngWait()
 		key = make([]byte, 32)
 		crand.Read(key)
 
