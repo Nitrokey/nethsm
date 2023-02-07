@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -91,6 +92,22 @@ func tpmGetDeviceKey() ([]byte, error) {
 	}
 
 	var key []byte
+
+	// invalidate PCR afterwards to inhibit unsealing the Device Key again
+	defer func() {
+		keyHash := sha256.Sum256(key)
+		tpm.PCRExtend(tpm.PCRHandleContext(pcrIdx),
+			tpm2.NewTaggedHashListBuilder().
+				Append(tpm2.HashAlgorithmSHA256, keyHash[:]).
+				MustFinish(),
+			nil)
+		_, err := unsealDeviceKey(tpm, srk)
+		if tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, tpm2.AnySessionIndex) {
+			log.Printf("Successfully invalidated PCR value.")
+		} else {
+			log.Printf("WARNING: Invalidating PCR value failed!\n")
+		}
+	}()
 
 	key, err = unsealDeviceKey(tpm, srk)
 	if err != nil {
