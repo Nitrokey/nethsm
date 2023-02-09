@@ -352,14 +352,12 @@ z7vvltQ9fOTqe29fERS2ASgq
   | Ok _ -> invalid_arg "not an RSA key"
   | Error `Msg m -> invalid_arg m
 
-module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Mirage_crypto.Hash.SHA256)
-
 let prefix_and_pad s =
   let pad = String.make (512 - String.length s) '\000' in
   String.concat "" [ "\000\000\000\001" ; s ; pad ]
 
 let sign_update u =
-  let signature = Pss_sha256.sign ~key:update_key (`Message (Cstruct.of_string u)) in
+  let signature = Mirage_crypto_pk.Rsa.PKCS1.sign ~hash:`SHA256 ~key:update_key (`Message (Cstruct.of_string u)) in
   let length = Cstruct.length signature in
   let len_buf = Cstruct.create 3 in
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
