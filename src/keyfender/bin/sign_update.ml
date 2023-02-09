@@ -2,17 +2,15 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-module Hash = Mirage_crypto.Hash.SHA256
-
 let write_len length =
   let len_buf = Cstruct.create 3 in
   assert (length < 1 lsl 24); (* TODO *)
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-  Cstruct.to_string len_buf
+  Cstruct.to_bytes len_buf
 
 let prepend_len s =
-  write_len (String.length s) ^ s
+  Bytes.cat (write_len (Bytes.length s)) s
 
 let read_file filename =
   let filesize = (Unix.stat filename).Unix.st_size in
@@ -29,27 +27,14 @@ let read_file filename =
   Unix.close fd;
   Bytes.to_string buf
 
-let create_tmp_file data =
-  let name = Filename.temp_file "signhash" "bin" in
-  let fd = Unix.openfile name [ Unix.O_WRONLY ; Unix.O_CREAT ] 0 in
-  let l = Bytes.length data in
-  let written = Unix.write fd data 0 l in
-  Unix.close fd;
-  if written = l then
-    name
-  else
-    invalid_arg "couldn't write data (written <> l)"
-
-let openssl_sign pkcs11 key_file hash =
-  let hash_file = create_tmp_file (Cstruct.to_bytes hash) in
+let openssl_sign pkcs11 key_file data_file =
   let sig_file = Filename.temp_file "sig" "bin" in
   let cmd = match pkcs11 with
     | None ->
-      Printf.sprintf "openssl pkeyutl -sign -inkey %s -in %s -pkeyopt digest:sha256 -keyform pem -out %s"
-        key_file hash_file sig_file
+      Printf.sprintf "openssl dgst -sha256 -sign %s -out %s %s" key_file sig_file data_file
     | Some pin ->
       Printf.sprintf "pkcs11-tool -l --pin %s -s --id %s -m SHA256-RSA-PKCS -i %s -o %s"
-        pin key_file hash_file sig_file
+        pin key_file data_file sig_file
   in
   let signature =
     if Sys.command cmd = 0 then
@@ -57,7 +42,6 @@ let openssl_sign pkcs11 key_file hash =
     else
       invalid_arg "openssl returned non-zero exit code"
   in
-  Sys.remove hash_file;
   Sys.remove sig_file;
   signature
 
@@ -65,7 +49,7 @@ let read_file_chunked filename hash prepend_length output =
   let filesize = (Unix.stat filename).Unix.st_size in
   let hash' =
     if prepend_length
-    then output hash @@ Bytes.of_string @@ write_len filesize
+    then output hash @@ write_len filesize
     else hash
   in
   let chunksize = 4096 in
@@ -95,10 +79,14 @@ let sign flags key_file changelog_file version_file image_file output_file =
   in
   if not version_ok then
     invalid_arg "Version file must contain only a version number: MAJOR.MINOR";
-  let update_hash hash bytes = Hash.feed hash (Cstruct.of_bytes bytes) in
-  let hash = Hash.empty in
-  let hash = read_file_chunked changelog_file hash true update_hash in
-  let hash = Hash.feed hash (Cstruct.of_string @@ prepend_len version) in
+  let data_file = Filename.temp_file "data" "bin" in
+  let fd = Unix.openfile data_file [ Unix.O_WRONLY ; Unix.O_CREAT ] 0 in
+  let write_chunk fd () bytes =
+    let written = Unix.write fd bytes 0 (Bytes.length bytes) in
+    assert (written = Bytes.length bytes)
+  in
+  read_file_chunked changelog_file () true (write_chunk fd);
+  write_chunk fd () (prepend_len (Bytes.unsafe_of_string version));
   let filesize = (Unix.stat image_file).Unix.st_size in
   let block_size = 512 in
   let blocks = (filesize + (pred block_size)) / block_size in
@@ -114,12 +102,13 @@ let sign flags key_file changelog_file version_file image_file output_file =
     Cstruct.BE.set_uint32 l 0 (Int32.of_int blocks);
     l
   in
-  let hash = Hash.feed hash blocks_buf in
-  let hash = read_file_chunked image_file hash false update_hash in
-  let hash = Hash.feed hash pad_buf in
-  let final_hash = Hash.get hash in
-  let signature = openssl_sign flags key_file final_hash in
-  let signature = prepend_len signature in
+  write_chunk fd () (Cstruct.to_bytes blocks_buf);
+  read_file_chunked image_file () false (write_chunk fd);
+  write_chunk fd () (Cstruct.to_bytes pad_buf);
+  Unix.close fd;
+  let signature = openssl_sign flags key_file data_file in
+  Sys.remove data_file;
+  let signature = prepend_len (Bytes.unsafe_of_string signature) in
   let fd = match output_file with
    | None -> Unix.stdout
    | Some filename ->
@@ -131,9 +120,9 @@ let sign flags key_file changelog_file version_file image_file output_file =
     let written = Unix.write fd bytes 0 (Bytes.length bytes) in
     assert (written = Bytes.length bytes)
   in
-  write_chunk () @@ Bytes.unsafe_of_string signature;
+  write_chunk () @@ signature;
   read_file_chunked changelog_file () true write_chunk;
-  write_chunk () @@ Bytes.unsafe_of_string @@ prepend_len version;
+  write_chunk () @@ prepend_len (Bytes.unsafe_of_string version);
   write_chunk () @@ Cstruct.to_bytes blocks_buf;
   read_file_chunked image_file () false write_chunk;
   write_chunk () @@ Cstruct.to_bytes pad_buf;
