@@ -45,8 +45,8 @@ let openssl_sign pkcs11 key_file hash =
   let sig_file = Filename.temp_file "sig" "bin" in
   let cmd = match pkcs11 with
     | None ->
-      Printf.sprintf "openssl dgst -sha256 -sign %s -out %s %s"
-        key_file sig_file hash_file
+      Printf.sprintf "openssl pkeyutl -sign -inkey %s -in %s -pkeyopt digest:sha256 -keyform pem -out %s"
+        key_file hash_file sig_file
     | Some pin ->
       Printf.sprintf "pkcs11-tool -l --pin %s -s --id %s -m SHA256-RSA-PKCS -i %s -o %s"
         pin key_file hash_file sig_file
