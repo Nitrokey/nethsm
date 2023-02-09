@@ -40,12 +40,16 @@ let create_tmp_file data =
   else
     invalid_arg "couldn't write data (written <> l)"
 
-let openssl_sign flags key_file hash =
+let openssl_sign pkcs11 key_file hash =
   let hash_file = create_tmp_file (Cstruct.to_bytes hash) in
   let sig_file = Filename.temp_file "sig" "bin" in
-  let cmd =
-    Printf.sprintf "openssl pkeyutl %s -sign -in %s -inkey %s -out %s -pkeyopt digest:sha256 -pkeyopt rsa_padding_mode:pss -pkeyopt rsa_pss_saltlen:digest"
-      (Option.value ~default:"" flags) hash_file key_file sig_file
+  let cmd = match pkcs11 with
+    | None ->
+      Printf.sprintf "openssl dgst -sha256 -sign %s -out %s %s"
+        key_file sig_file hash_file
+    | Some pin ->
+      Printf.sprintf "pkcs11-tool -l --pin %s -s --id %s -m SHA256-RSA-PKCS -i %s -o %s"
+        pin key_file hash_file sig_file
   in
   let signature =
     if Sys.command cmd = 0 then
@@ -138,12 +142,12 @@ let sign flags key_file changelog_file version_file image_file output_file =
 
 open Cmdliner
 
-let openssl_flags =
-  let doc = "openssl flags" in
-  Arg.(value & opt (some string) None & info [ "openssl" ] ~doc ~docv:"FLAG")
+let pkcs11_pin =
+  let doc = "PKCS11 pin" in
+  Arg.(value & opt (some string) None & info [ "pkcs11" ] ~doc ~docv:"PIN")
 
 let key =
-  let doc = "private key" in
+  let doc = "private key (or slot)" in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"KEY")
 
 let changelog =
@@ -165,7 +169,7 @@ let output =
 let command =
   let doc = "Sign a NetHSM software image" in
   let man = [ `S "BUGS"; `P "Submit bugs";] in
-  Term.(term_result (const sign $ openssl_flags $ key $ changelog $ version $ image $ output)),
+  Term.(term_result (const sign $ pkcs11_pin $ key $ changelog $ version $ image $ output)),
   Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =

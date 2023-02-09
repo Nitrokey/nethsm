@@ -36,11 +36,14 @@ MUEN_KEY_DIR ?= keys/test-key
 # Set USE_CCACHE=1 if you would like to use ccache to speed up the build.
 USE_CCACHE ?=
 
-# Set OUTER_SMARTCARD to PKCS 11 URL to use a smartcard for the inner RSA
-# signature. The OUTER_SMARTCARD_FLAGS will then be applied when signing the
-# image.
+# Set OUTER_SMARTCARD to yes to use a smartcard for the RSA signature of update
+# images. The OUTER_SMARTCARD_SLOT and OUTER_SMARTCARD_USER_PIN will then be
+# applied when signing the image.
+# The public key of the OUTER_SMARTCARD_SLOT is embedded in the S-Keyfender
+# unikernel
 OUTER_SMARTCARD ?=
-OUTER_SMARTCARD_FLAGS ?= -engine pkcs11 -keyform engine
+OUTER_SMARTCARD_SLOT ?= 03
+OUTER_SMARTCARD_USER_PIN ?= 123456
 ifeq ($(OUTER_SMARTCARD),)
 OUTER_PUB_KEY ?= src/keyfender/test/public.pem
 OUTER_PRIV_KEY ?= src/keyfender/test/key.pem
@@ -190,7 +193,7 @@ $(UPDATE_KEY):
 ifeq ($(OUTER_SMARTCARD),)
 	cp $(OUTER_PUB_KEY) $@
 else
-	certtool --load-privkey "${OUTER_SMARTCARD}" --pubkey-info --no-text > $@
+	pkcs11-tool --read-object --id "${OUTER_SMARTCARD_SLOT}" --type pubkey | openssl rsa -inform der -outform pem -pubin > $@
 endif
 
 .PHONY: clean-keyfender
@@ -643,8 +646,8 @@ ifeq ($(OUTER_SMARTCARD),)
 SIGN_UPDATE_KEY := $(OUTER_PRIV_KEY)
 SIGN_UPDATE_FLAGS :=
 else
-SIGN_UPDATE_KEY := $(OUTER_SMARTCARD)
-SIGN_UPDATE_FLAGS := --openssl="$(OUTER_SMARTCARD_FLAGS)"
+SIGN_UPDATE_KEY := $(OUTER_SMARTCARD_SLOT)
+SIGN_UPDATE_FLAGS := --pkcs11 "${OUTER_SMARTCARD_USER_PIN}"
 endif
 
 $(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(OBJ_UPDATE_CHANGELOG)

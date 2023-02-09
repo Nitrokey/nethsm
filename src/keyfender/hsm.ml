@@ -1828,7 +1828,6 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Cstruct.to_string len_buf ^ s
 
     module Hash = Mirage_crypto.Hash.SHA256
-    module Pss_sha256 = Mirage_crypto_pk.Rsa.PSS(Hash)
 
     let update_mutex = Lwt_mutex.create ()
 
@@ -1884,7 +1883,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                    Error (Bad_request, "unexpected end of data"))) >>= fun () ->
              let final_hash = Hash.get hash in
              let signature = Cstruct.of_string signature in
-             if Pss_sha256.verify ~key:t.software_update_key ~signature (`Digest final_hash) then
+             if Mirage_crypto_pk.Rsa.PKCS1.verify
+                 ~hashp:(function `SHA256 -> true | _ -> false)
+                 ~key:t.software_update_key ~signature (`Digest final_hash)
+             then
                let current = t.system_info.softwareVersion in
                if version_is_upgrade ~current ~update:version' then
                  begin

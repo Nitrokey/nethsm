@@ -38,11 +38,18 @@ Add the changes (as a markdown list) before the previous release marker. This wi
 
 # System Software Update Signing {#sec-ssus}
 
-**TODO**: Conplete this section, once System Software Update is actually implemented.
-
 A _System Software_ update image must be signed twice, once for the verified boot (the inner signature), and once including the ChangeLog with the software update key. The public software update key is passed to the keyfender library during `Hsm.boot`. By default, the unikernel copies `src/keyfender/test/public.pem` (private part is `src/keyfender/test/key.pem`) to `src/s_keyfender/update_key_store/key.pem`, which is embedded into the unikernel at build time. It must be a PEM encoded RSA public key. If the Makefile variable `OUTER_SMARTCARD` is set (to a PKCS11 URL), the public key is extracted from the SmartCard to be embedded into the unikernel. In addition, the SmartCard is used for signing the update image (using `bin/sign_update.exe`).
 
 To add the outer signature to a software update image the keyfender library provides `bin/sign-update.exe`. Please read the output of `sign-update.exe --help` for instructions how to use it. The output file can be uploaded to a NetHSM (/system/update endpoint). The signature is created by `openssl pkeyutl`.
+
+## Using a Nitrokey Pro for signing the image
+
+The steps to store the private key(s) on a Nitrokey Pro are (using OpenSC at 0.23.0, ccid 1.5.0, Nitrokey Pro 3.4)
+- Generate a RSA key: `pkcs11-tool -l --login-type so --so-pin 12345678 --keypairgen --key-type rsa:2048 --label outer` (somehow the label gets overwritten anyways, the provided ID is as well not the one used in the Nitrokey)
+- Use `pkcs11-tool -O` to dump the slot ID (in our case 03)
+- Set the Makefile variables OUTER_SMARTCARD to yes, OUTER_SMARTCARD_SLOT to the slot (03), and OUTER_SMARTCARD_USER_PIN in the Makefile.sub (or via environment)
+
+TODO: still needs the OpenPGP on the SmartCard
 
 # Rate Limiting {#sec-rl}
 
