@@ -123,6 +123,10 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   git -C /nethsm-tools/muen submodule update --init --depth 50
 EOF
 
+# patch sbs-tools until it's fixed upstream
+COPY --chown=1000:1000 sbs-smartcard.patch /nethsm-tools/muen/tools/sbs
+RUN patch -d /nethsm-tools/muen/tools/sbs -i sbs-smartcard.patch -p1
+
 RUN --mount=type=tmpfs,target=/tmp \
   make -C /nethsm-tools/muen PATH=/opt/gnat/bin:$PATH -j$(nproc) tools
 
