@@ -44,12 +44,18 @@ To add the outer signature to a software update image the keyfender library prov
 
 ## Using a Nitrokey Pro for signing the image
 
-The steps to store the private key(s) on a Nitrokey Pro are (using OpenSC at 0.23.0, ccid 1.5.0, Nitrokey Pro 3.4)
+The steps to store the private key(s) on a Nitrokey Pro are (using OpenSC at 0.23.0, ccid 1.5.0, Nitrokey Pro 3.4) for the outer signature
 - Generate a RSA key: `pkcs11-tool -l --login-type so --so-pin 12345678 --keypairgen --key-type rsa:2048 --label outer` (somehow the label gets overwritten anyways, the provided ID is as well not the one used in the Nitrokey)
 - Use `pkcs11-tool -O` to dump the slot ID (in our case 03)
 - Set the Makefile variables OUTER_SMARTCARD to yes, OUTER_SMARTCARD_SLOT to the slot (03), and OUTER_SMARTCARD_USER_PIN in the Makefile.sub (or via environment)
 
-TODO: still needs the OpenPGP on the SmartCard
+Same hardware (a second Nitrokey Pro), for the inner signature (gpg 2.3.3):
+- `` gpg --homedir `pwd`/keys/smartcard/private --card-edit ``, here "admin" and "key-attr" to select a 4096 bit RSA key
+- in the same dialog, "generate-key", which takes some time and eventually outputs a keyID
+- "list" should output some stuff
+- preserve the keyID, `` gpg --homedir `pwd`/keys/smartcard/private --batch --export > `pwd`/keys/smartcard/key.pub ``
+- set MUEN_KEY_DIR in Makefile.sub to keys/smartcard
+- ensure to have a sbs_create supporting SmartCards
 
 # Rate Limiting {#sec-rl}
 
