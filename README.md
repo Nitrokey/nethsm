@@ -14,30 +14,40 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
 
 1. Ensure you have installed OPAM >= 2.0.0 and OCaml >= 4.10.1. We recommend that you use the latest OCaml release, at the moment 4.11.1.
 2. Create a new OPAM switch for NetHSM development, using a known-good commit of `ocaml/opam-repository`:
-    
-       opam repo add nethsm-default git+https://github.com/ocaml/opam-repository#$(cat .opam-repository-commit) --dont-select
-       opam switch create nethsm 4.11.1 --repos nethsm-default
-       eval $(opam env)
+
+    ```
+    opam repo add nethsm-default git+https://github.com/ocaml/opam-repository#$(cat .opam-repository-commit) --dont-select
+    opam switch create nethsm 4.11.1 --repos nethsm-default
+    eval $(opam env)
+    ```
 
 3. Build the system with:
 
-       make -j$(nproc) build
+    ```
+    make -j$(nproc) build
+    ```
 
 ### Building with Docker
 
 1. To enter the Docker container, run:
 
-       make local-container-enter
-       # If you want to use a locally built image, run:
-       # make DOCKER_IMAGE_NAME=nethsm-builder local-container-enter
-   
+    ```
+    make local-container-enter
+    # If you want to use a locally built image, run:
+    # make DOCKER_IMAGE_NAME=nethsm-builder local-container-enter
+    ```
+
 2. Once inside the container, run:
 
-       make local-container-setup
+    ```
+    make local-container-setup
+    ```
 
 3. Build the system with:
 
-       make -j$(nproc) build
+    ```
+    make -j$(nproc) build
+    ```
 
 Notes:
 
@@ -127,18 +137,24 @@ Building the full Muen system, either for development under KVM, or for target h
 
 1. To enter the Docker container, run:
 
-       make local-container-enter
+    ```
+    make local-container-enter
+    ```
 
 2. Once inside the container, run:
 
-       make local-container-setup
+    ```
+    make local-container-setup
+    ```
 
 3. Build the system with:
 
-       # For QEMU/KVM:
-       make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
-       # For Prodrive Hermes:
-       make -j$(nproc) MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 build
+    ```
+    # For QEMU/KVM:
+    make -j$(nproc) MODE=muen MUEN_HARDWARE=qemu-kvm build
+    # For Prodrive Hermes:
+    make -j$(nproc) MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 build
+    ```
 
 Notes:
 
