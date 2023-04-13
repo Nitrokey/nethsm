@@ -4,20 +4,6 @@ The NetHSM software can be built either as components that run on your local mac
 
 In either case, running `make` in this directory will produce a short help. The following sections detail how to build and run the software.
 
-## Use of Git submodules in this repository
-
-This repository uses several large Git submodules, including recursive submodules for Muen and Coreboot.
-
-Cloning this repository with `--recursive` or manually initialising submodules in a fresh clone of this repository **WILL NOT WORK**.
-
-When working with a fresh clone of this repository, before running any other `make` commands, please run the following once:
-
-    make MODE=any fetch-submodules
-
-If you plan to use this tree for development only with a specific `MODE` (see below), you can use that in place of `MODE=any` above to check out only the required submodules.
-
-To disable any attempts at shallow clones, add `NO_SHALLOW=1`. If you get stuck, try `make deinit-submodules`.
-
 ## Local Development System
 
 The local development system builds only the subset of the codebase required to run an `S-Keyfender` instance against a local Git repository for data storage. This is the default if a `MODE` is not specified to `make`.
