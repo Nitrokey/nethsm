@@ -21,8 +21,8 @@ ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-
   bison bzip2 ca-certificates ccache cpio curl file flex git-core gnupg gnuplot \
   inotify-tools kmod lcov libc6-dev libcurl4-gnutls-dev libelf-dev \
   libfreetype6-dev libiberty-dev libncurses-dev libseccomp-dev libssl-dev \
-  libxml2-utils make mtools openssh-client patch picocom pkg-config python3 python3-pip \
-  g++ git-merge-changelog python-is-python3 libtool qemu-system-x86 rsync \
+  libxml2-utils make mtools opensc openssh-client patch pcscd picocom pkg-config python3 python3-pip \
+  g++ git-merge-changelog python-is-python3 libtool qemu-system-x86 rsync scdaemon \
   screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev"
 
 # Mirage/Solo5/NetHSM: Required packages
