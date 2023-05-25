@@ -15,3 +15,5 @@ cache/
 *~
 _opam
 etcd-download/
+keys/smartcard/private/reader_*.status
+keys/smartcard/private/scdaemon.conf
