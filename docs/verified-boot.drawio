@@ -1,1 +1,76 @@
-<mxfile host="Electron" modified="2020-11-18T15:36:29.745Z" agent="5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/13.0.3 Chrome/80.0.3987.163 Electron/8.2.1 Safari/537.36" etag="qY5rOd6kvogZDfbZPTY5" version="13.0.3" type="device"><diagram id="71IxqLbchl5RIq7VZlb2" name="Page-1">3ZlNc9owEIZ/DcdkkPwFx0JIemhmOnXTj1NGYGErtS0qyzH013eFZYyRE+g0xE4ujLSWZenZV9qVGFjTZH0jyCq65QGNB3gYrAfW1QDjMRrBrzJsSoPjWaUhFCwoTag2+OwP1cahtuYsoFmjoeQ8lmzVNC54mtKFbNiIELxoNlvyuPnVFQmpYfAXJDat31kgo9I6wl5t/0hZGFVfRu64fJKQqrGeSRaRgBd7Jms2sKaCc1mWkvWUxopdxaV87/qJp7uBCZrKU14IH2YXq/nvQopv93cX98Xy62104Za9PJI41xPWg5WbioDgeRpQ1clwYE2KiEnqr8hCPS3A5WCLZBJDDUFRd0eFpOsnx4l2swfVUJ5QKTbQRL9Q8dKC2dWLGr/jaVu0hx4PtZFol4e7rmsqUNBg/gGSZUDKJBEyM1DRALSjq1zIiIc8JfGstk6aMOs2nzhfaYQPVMqNXggkl7wNsPrQ83hhXDwXC/rMtKrlRERI5TPtcLu7BI2JZI/Ncbw4e2Swn3JB52rVdC1U+0CorilUhFuE6p5Lp47BKs/oW1cpPlGldpcqxQb5my93QGHYg+20dzK1n4IFMXzJwlyAw3jaOTi7d+BG5l44ufYNUDBl2aSRScF/0SmPuQBLylO1yJcsjg9MJGZhCtUFIKJgnyiADJKhD/pBwoJgu0O04W866CWkOzqeCtitmcCZHDA2HNC5Sg+zpROTJeSdi1GVuO9B8jeZpAnYfL6UBUxN9ZGoxPv9Shd7l84xzyDbaRGve2m55/KNGae25w885EsVY0We9S6tsuyut13k9W/ZH0ByTEa4jRE629aIzOB0m9Puo7jTBDXCBqhRCyf7bJjMEOLn8we6aDlNvjYqZPeLFW6JJL1hdaCrcdeszHNyf1i5TVZo2PUiNG+9MkgSAIkaEwwJjo1Hw+K7SVWsZp6CbM+Mt85rZtlVeN3X8sR//zkjQkeDetsyOZ8f3shB/fCY6DmmgF81YcTmRZwPgiIy3x59tpvKALuxku1cQClUpV6ytXHf2Jp5JkyQLVk3F510zeQP9folOL2s/tS9qfLVer+yaewVx29H/+M2U7/6mbNU7q2Ug0hsuKm8jdVv1Z462hEaH4ylvK41OvogBNnsNVupBtnpA66+Uyuo7LHW0w5Wm8SgWv/fVjav/7S0Zn8B</diagram></mxfile>
+<mxfile host="app.diagrams.net" modified="2023-06-08T09:22:55.812Z" agent="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/114.0" etag="o3m7tadnShLUkuFTYKO0" version="21.3.7" type="device">
+  <diagram id="71IxqLbchl5RIq7VZlb2" name="Page-1">
+    <mxGraphModel dx="1183" dy="1326" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-6" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="20" y="220" width="570" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-3" value="starts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="gjE-pbqwtrV_U-_wfTMh-1" target="gjE-pbqwtrV_U-_wfTMh-2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-1" value="Coreboot" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-5" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="gjE-pbqwtrV_U-_wfTMh-2" target="gjE-pbqwtrV_U-_wfTMh-4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-2" value="GRUB 2" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="240" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-4" value="GRUB configuration" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="440" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-8" value="CBFS" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="280" y="220" width="40" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-9" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="20" y="20" width="570" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-10" value="System Software image" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="227.5" y="20" width="145" height="26.36" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-12" value="public Boot Key" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="340" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-17" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="50" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-18" value="Muen" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="82" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-19" value="Subjects" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="140" y="82" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-20" value="Subjects" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="150" y="92" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-21" value="Subjects" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="160" y="102" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-16" value="signed with Boot Key" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="35" y="147" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-22" value="SBS image" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="110" y="50" width="80" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-24" value="GRUB configuration" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="280" y="75" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-25" value="Signature of &lt;br&gt;GRUB configuration" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="420" y="75" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gjE-pbqwtrV_U-_wfTMh-28" value="verifies" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="260" y="260" as="sourcePoint" />
+            <mxPoint x="260" y="191" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="260" y="191" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
