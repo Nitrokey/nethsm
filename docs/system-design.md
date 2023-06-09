@@ -26,12 +26,6 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 [muen]: https://muen.sk/
 [mirage]: https://mirage.io/
 
-# Status of This Document {#sec-sotd}
-
-The following aspects of the system design, which have changed over the course of the development of NetHSM, are not yet reflected in this document:
-
-* [Reset to Factory Defaults](#sec-us-rtfd): NetHSM will not be equipped with a physical "Reset Button". Instead, the user will be required to initiate and _confirm_ a Reset to Factory Defaults by interacting with a local serial console connected to the unit. This feature is not implemented yet.
-
 # Terminology and Conventions {#sec-tac}
 
 Authentication Store
@@ -68,7 +62,7 @@ Extension
 
 Firmware
 
-: The platform firmware (a.k.a. "BIOS") used by the NetHSM hardware. Refer to [System Firmware](#sec-dd-ta-sf) for details.
+: The platform firmware (a.k.a. "BIOS", "UEFI") used by the NetHSM hardware. Refer to [System Firmware](#sec-dd-ta-sf) for details.
 
 Key Store
 
@@ -256,16 +250,6 @@ Pre-conditions: A _Provisioned_ NetHSM, connected to your infrastructure network
 3. The NetHSM reboots.
 4. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning](#sec-us-ip).
 
-### Physical Reset (Recovery) {#sec-us-rtfd-pr}
-
-Pre-conditions: Physical access to a _Provisioned_ NetHSM.
-
-1. If the NetHSM is powered on, power it off,
-2. While powering on the NetHSM, hold down the "Reset Button" for at least 10 seconds.
-3. The NetHSM securely erases all _User Data_.
-4. The NetHSM reboots.
-5. The NetHSM boots up in an _Unprovisioned_ state; see [Initial Provisioning](#sec-us-ip).
-
 # Detailed Description {#sec-dd}
 
 ## Data Model {#sec-dd-dm}
@@ -336,11 +320,11 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |     UNLOCKED:
 |     _State_ = _Operational_
 
-A random *Device Key* (unique per device) is generated during the first boot of the system. The TPM is used to seal it with the Storage Root Key (SRK) and the PCR measurement of the firmware. During subsequent boots the sealed *Device Key* is unsealed with the TPM. This prevents access of unauthorized firmware to the *Device Key*.
+A random _Device Key_ (unique per device) is generated during the first boot of the system. The TPM is used to seal it with the Storage Root Key (SRK) and the PCR measurement of the _Firmware_. During subsequent boots the sealed _Device Key_ is unsealed with the TPM. This prevents access of unauthorized _Firmware_ to the _Device Key_.
 
 During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), the _Device Key_ is used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
 
-During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. The *Device Key* is extended with the KDF of the *Unlock Passphrase* and hashed with SHA256. The resulting hash is used as the *Unlock Key*. The _Unlock Key_ is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_ or invalid *Device Key*), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
+During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. The _Device Key_ is extended with the KDF of the _Unlock Passphrase_ and hashed with SHA256. The resulting hash is used as the _Unlock Key_. The _Unlock Key_ is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_ or invalid _Device Key_), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
 
 For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to populate "Slot 1" with a _Domain Key_ encrypted with the _Device Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
@@ -455,6 +439,8 @@ As currently designed, the private key used by **S-Keyfender** for the TLS endpo
 
 [RFC 4330]: https://tools.ietf.org/html/rfc4330
 
+**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. _Firmware_ updates are to be deployed through BMC. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which could take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
+
 ### Linux-based Subjects {#sec-dd-ta-ls}
 
 All Linux-based Muen subjects that are integrated in the system will be built on a common base. We use the term "minimized Linux" to refer to this base, which is a collection of:
@@ -504,12 +490,9 @@ Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot pa
 
 1. GPT support for [System Software Update](#sec-dd-ta-ssu).
 2. Muen uses the [Signed Block Stream][sbs-spec] (SBS) protocol for _Verified Boot_. The SBS implementation from Codelabs has been integrated to GRUB 2.
-3. If a hardware "reset button" is used (see [Physical Reset (Recovery)](#sec-us-rtfd-pr)), this implies extra customizations to Coreboot.
-4. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
+3. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
 
 [sbs-spec]: https://www.codelabs.ch/download/bsbsc-spec.pdf
-
-**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which would likely take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
 
 #### Verified Boot {#sec-dd-ta-sf-vb}
 
