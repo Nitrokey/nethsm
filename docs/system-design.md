@@ -119,9 +119,7 @@ Unprovisioned
 
 Note: Other than a NetHSM hardware appliance, resetting a NetHSM testing software container yields to the Locked state.
 
-# Detailed Description {#sec-dd}
-
-## Data Model {#sec-dd-dm}
+# Data Model {#sec-dd-dm}
 
 ![Data Model](DataModel.png){width=75%}
 
@@ -132,7 +130,7 @@ For each data store, the diagram shows, as a high-level overview, which types of
 * valid input and output data types for each HTTPS endpoint, which correspond to the "Values" stored in each data store,
 * constraints for each data type, e.g. "a KeyID needs to be a string of alphanumeric characters, which is between 1 and 128 characters long".
 
-## Encryption Architecture {#sec-dd-ea}
+# Encryption Architecture {#sec-dd-ea}
 
 ![Encryption Architecture](EncryptionArchitecture.png){width=75%}
 
@@ -167,7 +165,7 @@ During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left
 
 For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to populate "Slot 1" with a _Domain Key_ encrypted with the _Device Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
-## Technical Architecture {#sec-dd-ta}
+# Technical Architecture {#sec-dd-ta}
 
 ![Muen Subjects](MuenSubjects.png){width=75%}
 
@@ -189,7 +187,7 @@ The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpo
 
 **Note**: Currently **S-TRNG**, **S-Storage** and **S-Platform** are combined in a single subject **S-Platform**.
 
-### S-Keyfender {#sec-dd-ta-s}
+## S-Keyfender {#sec-dd-ta-s}
 
 **S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers. We expect that initially there will be two consumers of the REST API:
 
@@ -208,7 +206,7 @@ For the avoidance of doubt, the following functionality is specifically _not_ pr
 [nitropy]: https://docs.nitrokey.com/software/nitropy/
 [RFC 3164]: https://tools.ietf.org/html/rfc3164
 
-#### Timekeeping {#sec-dd-ta-s-t}
+## Timekeeping {#sec-dd-ta-s-t}
 
 In order to provide core system functionality, including but not limited to:
 
@@ -217,13 +215,13 @@ In order to provide core system functionality, including but not limited to:
 
 **S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, as a minimum, we will implement a REST endpoint to allow an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
+Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
 
 **Note**: There will be no support for timezones; any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client (e.g. Web UI) to translate to local time, if this is desired.
 
 [RFC 3339]: https://tool.ietf.org/html/rfc3339
 
-#### Backup and Restore {#sec-dd-ta-s-bar}
+## Backup and Restore {#sec-dd-ta-s-bar}
 
 Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using a key derivation function. When a _Backup Passphrase_ is configured or changed by an **R-Administrator**, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an **R-Administrator** and a _Backup Key_ exists.
 
@@ -246,7 +244,7 @@ During system restore, the backup is decrypted by **S-Keyfender** using an ephem
 
 When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
 
-#### Communication with S-Platform {#sec-dd-ta-cws}
+## Communication with S-Platform {#sec-dd-ta-cws}
 
 The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the *Device Key*. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
 
@@ -263,7 +261,7 @@ Some sample sessions:
     | C->S: FOO\n
     | S->C: ERROR Unknown command\n
 
-#### Future Extensions {#sec-dd-ta-fe}
+## Future Extensions {#sec-dd-ta-fe}
 
 **Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage**. Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
 
@@ -280,7 +278,7 @@ As currently designed, the private key used by **S-Keyfender** for the TLS endpo
 
 **Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. _Firmware_ updates are to be deployed through BMC. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which could take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
 
-### Linux-based Subjects {#sec-dd-ta-ls}
+## Linux-based Subjects {#sec-dd-ta-ls}
 
 All Linux-based Muen subjects that are integrated in the system will be built on a common base. We use the term "minimized Linux" to refer to this base, which is a collection of:
 
@@ -298,9 +296,7 @@ All Linux-based Muen subjects that are integrated in the system will be built on
 [muslcross]: https://musl.cc/
 
 
-### System Software Update {#sec-dd-ta-ssu}
-
-**Note** The software update, as described in this section, is not yet implemented.
+## System Software Update {#sec-dd-ta-ssu}
 
 The _System Software_ is a binary image, signed and distributed by Nitrokey. The versioning schema is *major*.*minor*. In each *major* release series, upgrades and downgrades within the same *major* release are allowed ("eligible" below). The data layout will not change within a *major* release series, but may change between release *major*.x and *major*+1.y. Downgrades to an older *major* release are not allowed.
 
@@ -323,7 +319,7 @@ The actual implementation details of **S-Platform** will be based on the design 
 [chromium-autoupdate]: https://www.chromium.org/chromium-os/chromiumos-design-docs/filesystem-autoupdate
 
 
-### System Firmware {#sec-dd-ta-sf}
+## System Firmware {#sec-dd-ta-sf}
 
 Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot payload (boot loader). It provides the following functionality:
 
@@ -333,7 +329,7 @@ Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot pa
 
 [sbs-spec]: https://www.codelabs.ch/download/bsbsc-spec.pdf
 
-#### Verified Boot {#sec-dd-ta-sf-vb}
+## Verified Boot {#sec-dd-ta-sf-vb}
 
 ![](verified-boot.png)
 
@@ -355,7 +351,7 @@ These components are wrapped in a plain CPIO image, which is written to the syst
 
 During system boot, Coreboot will launch the GRUB 2 payload, which will initially execute the commands defined by a trusted GRUB configuration embedded in CBFS. This configuration will attempt to "chain" into a correctly signed GRUB configuration file found in any _System Software_ image present on either the internal SSD or a USB key (for use by a Live USB installer, updater, or other component). If signature verification of the configuration file succeeds, then the system will proceed to boot from that device.
 
-## Security Design {#sec-dd-sd}
+# Security Design {#sec-dd-sd}
 
 NetHSM runs on commodity hardware using a minimal amount of high-assurance software to protect private keys stored in the *Key Store*. A TPM is used to secure a *Device Key*, which is used to encrypt the *Domain Key*, and prevents unauthorized modifications of the firmware.
 
@@ -369,7 +365,7 @@ Muen is implemented in Ada, a memory-safe programming language, and its isolatio
 
 NetHSM uses etcd to store all _User Data_. This comes with an log for each data modification, which adds accountability and rollback points for the data.
 
-### Entropy {#sec-dd-sd-rn}
+## Entropy {#sec-dd-sd-rn}
 
 NetHSM has the following entropy sources:
 
@@ -381,7 +377,7 @@ NetHSM has the following entropy sources:
 
 Entropy is consumed in S-Platform and S-Keyfender.
 
-#### S-Platform
+### S-Platform
 
 S-Platform executes the following in an endless loop:
 
@@ -393,7 +389,7 @@ S-Platform executes the following in an endless loop:
 The feeder function sends the first half of the buffer to S-Keyfender, and writes the second half to /dev/random.
 During boot of the system **S-Keyfender** requests a Device Key from S-Platform. At very first boot of the system a Device Key doesn't exist yet. The possible generation of a new Device Key is delayed until the feeder has been called at least once. The entropy used to generate the Device Key is retrieved from the Go library [crypto/rand.Read()][go-crypto-rand] which uses getrandom(2). If any of the two entropy sources failed, no Device Key is generated, an error message is logged at the serial console, the system doesn't proceed booting and ends in an non-operational state.
 
-#### S-Keyfender
+### S-Keyfender
 
 The **S-Keyfender** subject uses as cryptographically secure random number generator, an [implementation of][fortuna-impl] [Fortuna] with 32 pools. **S-Keyfender** does not have direct access to real hardware, it is crucial to collect non-predictable entropy.
 
@@ -410,7 +406,7 @@ In case during the operation either TRNG RS232 or TPM RNG fails, an error messag
 [RDRAND]: https://software.intel.com/content/www/us/en/develop/articles/intel-digital-random-number-generator-drng-software-implementation-guide.html
 [whirlwind]: http://www.ieee-security.org/TC/SP2014/papers/Not-So-RandomNumbersinVirtualizedLinuxandtheWhirlwindRNG.pdf
 
-### Asymmetric cryptographic implementations
+## Asymmetric cryptographic implementations
 
 The cryptography implementations are as follows:
 
@@ -428,7 +424,7 @@ EC: part of the [mirage-crypto-ec] package, uses C code generated by [fiat-crypt
 [BoringSSL]: https://github.com/google/boringssl
 [ocaml-ec]: https://github.com/mirage/mirage-crypto/blob/v0.10.1/ec/mirage_crypto_ec.ml
 
-### Cryptographic Parameters {#sec-cp}
+## Cryptographic Parameters {#sec-cp}
 
 The key generated for the HTTPS endpoint is an EC key (secp256r1).
 
@@ -439,6 +435,6 @@ The data stored on disk is encrypted with AES256-GCM (32 byte key, nonce size is
 
 [stackexchange]: https://crypto.stackexchange.com/questions/5807/aes-gcm-and-its-iv-nonce-value
 
-### Rate Limiting {#sec-rl}
+## Rate Limiting {#sec-rl}
 
 To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is one failed access per second per IP address. The rate limit for all endpoints requiring authentication is 1 failed authentication per second per IP address and username.
