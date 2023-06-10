@@ -130,7 +130,10 @@ struct
     let module RNG = Mirage_crypto_rng in
     let trng = RNG.Entropy.register_source "trng" in
     let `Acc feed_entropy = RNG.accumulate None trng in
-    let pools = RNG.pools None in
+    let rand_block_len = 4096 in
+    let rand_block_num = 2 in
+    let rand_total_len = rand_block_num * rand_block_len in
+    let block_num = rand_block_num * RNG.pools None in
     let platform_ip = Key_gen.platform () in
     let first_package, first_package_notify = Lwt.wait () in
     let chan, push = Lwt_stream.create () in
@@ -144,18 +147,22 @@ struct
       );
     let rec loop () =
       Lwt.pick [
-        (Time.sleep_ns (Duration.of_sec 30) >|= fun () ->
-          Log.err (fun m -> m "Receiving no data from TRNG!"));
+        (Time.sleep_ns (Duration.of_sec 30) >>= fun () ->
+          let msg = "Receiving no entropy from S-Platform! Shutting down!" in
+          Log.err (fun m -> m "%s" msg);
+          Lwt.fail_with msg);
         Lwt_stream.get chan >|= fun data ->
           let data = Option.get data in
+          let data_len = Cstruct.length data in
           Log.debug (fun m -> m "Received %d bytes of data from TRNG: %a ..."
-            (Cstruct.length data) Cstruct.hexdump_pp (Cstruct.sub data 0 8));
-          let block_len = (Cstruct.length data) / pools in
-          for i = 0 to pred pools do
+            data_len Cstruct.hexdump_pp (Cstruct.sub data 0 8));
+          let block_len = data_len / block_num in
+          for i = 0 to pred block_num do
             let offset = i * block_len in
             feed_entropy (Cstruct.sub data offset block_len);
           done;
-          if Lwt.is_sleeping first_package then Lwt.wakeup_later first_package_notify ()
+          if data_len < rand_total_len then Log.err (fun m -> m "Receiving not enough entropy! TRNG or TPM broken?");
+          if data_len >= rand_block_len && Lwt.is_sleeping first_package then Lwt.wakeup_later first_package_notify ();
       ] >>= fun () -> (loop[@tailcall]) ()
     in
     Lwt.async loop;

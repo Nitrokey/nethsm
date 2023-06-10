@@ -62,17 +62,11 @@ func (v tpmRandReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-var tpmRandBuf [4096]byte
-
-func tpmRand() ([]byte, error) {
+func tpmRand(buf []byte) error {
 	tpm, tpmRelease := getTPMContext()
 	defer tpmRelease()
-	buf := tpmRandBuf[:]
 	_, err := io.ReadFull(tpmRandReader{tpm}, buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
+	return err
 }
 
 // tpmGetDeviceKey returns the 256-bit "Device Key" of the NetHSM.
@@ -116,7 +110,9 @@ func tpmGetDeviceKey() ([]byte, error) {
 	if len(key) == 0 {
 		log.Printf("Provisioning new Device Key\n")
 
-		rngWait()
+		if !randIsFullySeeded() {
+			return nil, fmt.Errorf("waiting for TRNG seeding timed out.")
+		}
 		key = make([]byte, 32)
 		crand.Read(key)
 

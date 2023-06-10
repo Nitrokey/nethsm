@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"io"
 	"log"
 	"math"
@@ -9,27 +8,50 @@ import (
 	"net"
 	"os"
 	"time"
+	"unsafe"
 
 	"github.com/u-root/u-root/pkg/termios"
 )
 
-const trngDev = "/dev/ttyS1"
+const (
+	trngDev       = "/dev/ttyS1"
+	randBlockSize = 4096 // this must be in sync with values in startTrngListener in unikernel.ml
+	randTotalSize = randBlockSize * 2
+	timeout       = time.Second * 10
+)
 
-var rngNotify, rngWait func()
+var (
+	fullySeededNotify func()
+	randIsFullySeeded func() bool
+)
 
 func init() {
 	ch := make(chan struct{})
-	rngNotify = func() {
-		rngNotify = func() {}
+	fullySeededNotify = func() {
 		close(ch)
 	}
-	rngWait = func() { <-ch }
+	randIsFullySeeded = func() bool {
+		select {
+		case <-ch:
+			return true
+		case <-time.After(timeout):
+			return false
+		}
+	}
 }
 
 func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func getTPMBlock(buf []byte) []byte {
+	return buf[:randBlockSize]
+}
+
+func getTRNGBlock(buf []byte) []byte {
+	return buf[randBlockSize:]
 }
 
 func trngTask() {
@@ -50,69 +72,80 @@ func trngTask() {
 	trngLoop(f)
 }
 
-func trngReader(trng io.Reader) chan []byte {
+func randReader(trng io.Reader) func(func([]byte)) {
 	ch := make(chan []byte)
-	buf := make([]byte, 8192)
-	buf2 := make([]byte, 8192)
+	noTRNG := make([]byte, randBlockSize)
+	reader := func(handler func([]byte)) {
+		var buf []byte
+		select {
+		case buf = <-ch:
+			ent := entropy(getTRNGBlock(buf))
+			if ent < 7.2 {
+				log.Printf("ERROR: entropy %f from TRNG too low, dropping data.\n", ent)
+				buf = noTRNG
+			}
+		case <-time.After(timeout):
+			log.Printf("ERROR: reading from TRNG timed out! Using only entropy from TPM!")
+			buf = noTRNG
+		}
+		err := tpmRand(getTPMBlock(buf))
+		if err != nil {
+			log.Printf("ERROR: reading entropy from TPM failed: %v", err)
+			buf = getTRNGBlock(buf)
+		}
+		if len(buf) > 0 {
+			handler(buf)
+		} else {
+			log.Printf("ERROR: couldn't read any entropy from RNGs!")
+		}
+	}
+	buf1 := make([]byte, randTotalSize)
+	buf2 := make([]byte, randTotalSize)
 	go func() {
 		defer log.Println("TRNG reader stopped")
 		for {
-			_, err := io.ReadFull(trng, buf)
+			_, err := io.ReadFull(trng, getTRNGBlock(buf1))
 			check(err)
-			ch <- buf
-			buf, buf2 = buf2, buf
+			ch <- buf1
+			buf1, buf2 = buf2, buf1
 		}
 	}()
-	return ch
+	return reader
 }
 
 func trngLoop(trng io.Reader) {
-	var buf []byte
-
-	con, err := net.Dial("udp", net.JoinHostPort(G.keyfenderIP, G.entropyPort))
+	keyfender, err := net.Dial("udp", net.JoinHostPort(G.keyfenderIP, G.entropyPort))
 	check(err)
-	defer con.Close() // nolint
+	defer keyfender.Close() // nolint
 
 	devRand, err := os.OpenFile("/dev/random", os.O_WRONLY, 0)
 	check(err)
 	defer devRand.Close() // nolint
 
-	feeder := func(buf []byte) {
-		if buf == nil {
-			return
+	fullySeeded := false
+	seeder := func(buf []byte) {
+		rand.Seed(rand.Int63() ^
+			*(*int64)(unsafe.Pointer(&buf[0])) ^
+			*(*int64)(unsafe.Pointer(&buf[len(buf)/2])))
+		_, err = devRand.Write(buf)
+		check(err)
+		if !fullySeeded && len(buf) == randTotalSize {
+			fullySeededNotify()
+			fullySeeded = true
 		}
-		_, err = con.Write(buf[:len(buf)/2])
+	}
+
+	sender := func(buf []byte) {
+		_, err = keyfender.Write(buf)
 		if err != nil {
 			log.Printf("Sending entropy failed: %v", err)
 		}
-		seed := rand.Int63() ^ int64(binary.LittleEndian.Uint64(buf))
-		rand.Seed(seed)
-		_, err = devRand.Write(buf[len(buf)/2:])
-		check(err)
-		rngNotify()
 	}
 
-	trngCh := trngReader(trng)
-
+	getRand := randReader(trng)
 	for {
-		select {
-		case buf = <-trngCh:
-			ent := entropy(buf)
-			if ent > 7.2 {
-				feeder(buf)
-				time.Sleep(time.Second)
-			} else {
-				log.Printf("WARNING: Entropy %f from TRNG too low, dropping data.\n", ent)
-			}
-		case <-time.After(time.Second * 30):
-			log.Println("WARNING: reading from TRNG timed out! Using only entropy from TPM!")
-		}
-		buf, err = tpmRand()
-		if err != nil {
-			log.Printf("reading random from TPM failed: %v", err)
-		} else {
-			feeder(buf)
-		}
+		getRand(seeder)
+		getRand(sender)
 		time.Sleep(time.Second)
 	}
 }
