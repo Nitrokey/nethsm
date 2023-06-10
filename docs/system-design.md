@@ -6,7 +6,7 @@
 
 NetHSM is a networked hardware security module which can securely store a large number of cryptographic keys, have a high computing performance, and offers common key management functions via a modern REST-based API.
 
-This document describes the System Design and Technical Architecture of the NetHSM, which includes:
+For further introductory and user guidance, see the [user documentation][docs] as a prerequisite to understand this document. This document describes the System Design and Technical Architecture of the NetHSM, which includes:
 
 * core functionality (business logic),
 * encryption architecture and local persistent storage,
@@ -23,6 +23,7 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 [MirageOS][mirage] is a library operating system that constructs unikernels for secure applications. Applications can be developed on a normal OS such as Linux or macOS and then retargeted to run as a unikernel on Muen without any modifications to the source code.
 
+[docs]: https://docs.nitrokey.com/nethsm/
 [muen]: https://muen.sk/
 [mirage]: https://mirage.io/
 
@@ -70,7 +71,7 @@ Key Store
 
 Role
 
-: Each user account configured on the NetHSM has a single _Role_ assigned to it. Roles are referred to as **R-Name** throughout this document; see [Roles](#sec-dd-r) for a detailed list.
+: Each user account configured on the NetHSM has a single _Role_ assigned to it. Roles are referred to as **R-Name** throughout this document; see user documentation for a detailed list.
 
 System Software
 
@@ -78,7 +79,7 @@ System Software
 
 Tags
 
-: Key access can be restricted to users matching specific _Tags_. Refer to [Tags](#sec-dd-t) for details.
+: Key access can be restricted to users matching specific _Tags_. Refer to the user documentation for details.
 
 Unlock Key
 
@@ -130,35 +131,6 @@ For each data store, the diagram shows, as a high-level overview, which types of
 
 * valid input and output data types for each HTTPS endpoint, which correspond to the "Values" stored in each data store,
 * constraints for each data type, e.g. "a KeyID needs to be a string of alphanumeric characters, which is between 1 and 128 characters long".
-
-## Roles {#sec-dd-r}
-
-Each user account configured on the NetHSM has _one_ of the following _Roles_ assigned to it. Following is a high-level description of the operations allowed by individual _Roles_, for endpoint-specific details please refer to the REST API documentation.
-
-R-Administrator
-
-: A user account with this _Role_ has access to all operations provided by the REST API, with the exception of "key usage" operations, i.e. message signing and decryption.
-
-R-Operator
-
-: A user account with this _Role_ has access to all "key usage" operations, a read-only subset of "key management" operations and "user management" operations allowing changes to their own account only.
-
-R-Metrics
-
-: A user account with this _Role_ has access to read-only metrics operations only.
-
-R-Backup
-
-: A user account with this _Role_ has access to the operations required to initiate a system backup only.
-
-## Tags {#sec-dd-t}
-
-To enable a fine-grained access control of key usage operations, Operator user accounts can get assigned a list of _Tags_ granting them access to restricted keys.
-
-_Tags_ are managed by R-Administrator users:
-
-- Keys can be subject to a restriction list: a set of _Tags_ in which **one** of them need to be matched for the key to be used.
-- Operator users get assigned a set of _Tags_ enabling them the use of the corresponding keys. It can be read but not modified by the user.
 
 ## Encryption Architecture {#sec-dd-ea}
 
