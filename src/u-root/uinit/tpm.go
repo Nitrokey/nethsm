@@ -10,7 +10,6 @@ import (
 	crand "crypto/rand"
 	"crypto/x509"
 	"encoding/base32"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -44,9 +43,9 @@ var (
 // must be in sync with platform_data in src/keyfender/json.ml
 type platformData struct {
 	DeviceId        string            `json:"deviceId"`
-	DeviceKey       string            `json:"deviceKey"`
+	DeviceKey       []byte            `json:"deviceKey"`
 	PCR             map[int]string    `json:"pcr"`
-	AKPub           map[string]string `json:"akPub"`
+	AKPub           map[string][]byte `json:"akPub"`
 	HardwareVersion string            `json:"hardwareVersion"`
 	FirmwareVersion string            `json:"firmwareVersion"`
 }
@@ -92,24 +91,16 @@ func getIdFromAk(akPub *tpm2.Public) string {
 	return base32.StdEncoding.EncodeToString(akName[:7])[:10]
 }
 
-func getDerFromAk(akPub *tpm2.Public) (string, error) {
-	akDer, err := x509.MarshalPKIXPublicKey(akPub.Public())
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(akDer), nil
-}
-
-func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string]string, error) {
+func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
 		templates.NewRestrictedECCSigningKeyWithDefaults(),
 		nil, nil, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("create AK: %v", err)
+		return "", nil, fmt.Errorf("create AK256: %v", err)
 	}
 	defer tpm.FlushContext(ak256Ctx)
 
-	ak256Der, err := getDerFromAk(ak256Pub)
+	ak256Der, err := x509.MarshalPKIXPublicKey(ak256Pub.Public())
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal AK256: %v", err)
 	}
@@ -118,17 +109,17 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string]string, error) {
 		templates.NewRestrictedECCSigningKey(tpm2.HashAlgorithmSHA384, nil, tpm2.ECCCurveNIST_P384),
 		nil, nil, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("create AK: %v", err)
+		return "", nil, fmt.Errorf("create AK384: %v", err)
 	}
 	defer tpm.FlushContext(ak384Ctx)
 
-	ak384Der, err := getDerFromAk(ak384Pub)
+	ak384Der, err := x509.MarshalPKIXPublicKey(ak384Pub.Public())
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal AK384: %v", err)
 	}
 
 	deviceId := getIdFromAk(ak256Pub)
-	akPub := make(map[string]string)
+	akPub := make(map[string][]byte)
 	akPub["P256"] = ak256Der
 	akPub["P384"] = ak384Der
 	return deviceId, akPub, nil
@@ -229,7 +220,7 @@ func tpmGetPlatformData() (platformData, error) {
 		platformDataJson, _ := json.MarshalIndent(data, "", "    ")
 		log.Printf("Platform Data: %v\n", string(platformDataJson))
 
-		data.DeviceKey = hex.EncodeToString(deviceKey)
+		data.DeviceKey = deviceKey
 
 		return nil
 	})

@@ -29,7 +29,7 @@ let update_key =
 
 let platform = {
   Keyfender.Json.deviceId = "0000000000" ;
-  deviceKey = "test stream" ;
+  deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" ;
   pcr = [] ;
   akPub = [] ;
   hardwareVersion = "N/A";

@@ -584,7 +584,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     system_info : Json.system_info ;
     mbox : cb Lwt_mvar.t ;
     res_mbox : (unit, string) result Lwt_mvar.t ;
-    device_key : string ;
+    device_key : Cstruct.t ;
     cache_settings: Cached_store.settings;
   }
 
@@ -652,15 +652,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     internal_server_error Write "Write time offset" KV.pp_write_error
       (Config_store.set kv Time_offset span)
 
-  let prepare_keys kv slot credentials =
+  let prepare_keys kv slot unlock_key =
     let open Lwt_result.Infix in
-    let get_salt_key = function
-      | Domain_key_store.Passphrase -> Config_store.Unlock_salt
-      | Domain_key_store.Device_key -> Config_store.Device_key_salt
-    in
-    internal_server_error Read "Prepare keys" Config_store.pp_error
-      (Config_store.get kv (get_salt_key slot)) >>= fun salt ->
-    let unlock_key = Crypto.key_of_passphrase ~salt credentials in
     Lwt_result.map_error (function `Msg m -> Forbidden, m)
       (Domain_key_store.get kv slot ~unlock_key) >|= fun domain_key ->
     let auth_store_key, key_store_key =
@@ -682,10 +675,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device key, depending on boot mode *)
-  let unlock ~cache_settings kv slot credentials =
+  let unlock ~cache_settings kv slot unlock_key =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    prepare_keys kv slot credentials >>= fun (domain_key, as_key, ks_key) ->
+    prepare_keys kv slot unlock_key >>= fun (domain_key, as_key, ks_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
     let auth_store = User_store.connect ~settings:cache_settings auth_store in
@@ -695,9 +688,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   let unlock_with_device_key kv ~device_key = unlock kv Device_key device_key
 
+  let unlock_key_of_passphrase passphrase salt device_key =
+    let pass_hash = Crypto.key_of_passphrase ~salt passphrase in
+    Mirage_crypto.Hash.SHA256.digest (Cstruct.append pass_hash device_key)
+
   let unlock_with_passphrase t ~passphrase =
     let open Lwt_result.Infix in
-    unlock ~cache_settings:t.cache_settings t.kv Passphrase passphrase >|= fun state' ->
+    internal_server_error Read "Get passphrase salt" Config_store.pp_error
+    (Config_store.get t.kv Config_store.Unlock_salt) >>= fun salt ->
+    let unlock_key = unlock_key_of_passphrase passphrase salt t.device_key in
+    unlock ~cache_settings:t.cache_settings t.kv Passphrase unlock_key >|= fun state' ->
     t.state <- state'
 
   let generate_cert priv =
@@ -1483,7 +1483,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     (* state already checked in Handler_provision.service_available *)
     assert (state t = `Unprovisioned);
     let unlock_salt = Rng.generate Crypto.salt_len in
-    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+    let unlock_key = unlock_key_of_passphrase unlock unlock_salt t.device_key in
     let domain_key = Rng.generate (Crypto.key_len * 2) in
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
@@ -1543,16 +1543,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
   module Config = struct
 
-    let salted passphrase =
-      let salt = Rng.generate Crypto.salt_len in
-      let key = Crypto.key_of_passphrase ~salt passphrase in
-      salt, key
-
     let set_unlock_passphrase t ~passphrase =
       match t.state with
       | Operational keys ->
         let open Lwt_result.Infix in
-        let unlock_salt, unlock_key = salted passphrase in
+        let unlock_salt = Rng.generate Crypto.salt_len in
+        let unlock_key = unlock_key_of_passphrase passphrase unlock_salt t.device_key in
         with_write_lock (fun () ->
             KV.batch t.kv (fun b ->
                 internal_server_error Write "Write unlock salt" KV.pp_write_error
@@ -1578,16 +1574,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             internal_server_error Write "Write unattended boot" KV.pp_write_error
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
-              let salt, unlock_key = salted t.device_key in
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Write Device Key salt" KV.pp_write_error
-                    (Config_store.set b Device_key_salt salt) >>= fun () ->
                   internal_server_error Write "Write Device Key" KV.pp_write_error
-                    (Domain_key_store.set b Device_key ~unlock_key keys.domain_key))
+                    (Domain_key_store.set b Device_key ~unlock_key:t.device_key keys.domain_key))
             end else begin
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Remove Device Key salt" KV.pp_write_error
-                    (Config_store.remove b Device_key_salt) >>= fun () ->
                   internal_server_error Write "Remove Device Key" KV.pp_write_error
                     (Domain_key_store.remove b Device_key))
         end)
@@ -1753,7 +1744,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match t.state with
       | Operational _keys ->
         let open Lwt_result.Infix in
-        let backup_salt, backup_key = salted passphrase in
+        let backup_salt = Rng.generate Crypto.salt_len in
+        let backup_key = Crypto.key_of_passphrase ~salt:backup_salt passphrase in
         with_write_lock (fun () ->
             KV.batch t.kv (fun b ->
                 internal_server_error Write "Write backup salt" KV.pp_write_error
@@ -2183,7 +2175,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         invalid_arg ("Invalid softwareVersion, broken NetHSM " ^ msg)
     in
     let info = { Json.vendor = "Nitrokey GmbH" ; product = "NetHSM" }
-    and device_key = platform.Json.deviceKey
+    and device_key = Cstruct.of_string (Base64.decode_exn platform.Json.deviceKey)
     and system_info = {
       Json.softwareVersion ;
       softwareBuild = build_tag ;

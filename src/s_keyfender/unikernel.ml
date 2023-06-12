@@ -193,7 +193,7 @@ struct
 
 let dummy_platform : Keyfender.Json.platform_data = {
   Keyfender.Json.deviceId = "0000000000" ;
-  deviceKey = "no platform" ;
+  deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" ;
   pcr = [] ;
   akPub = [] ;
   hardwareVersion = "N/A";

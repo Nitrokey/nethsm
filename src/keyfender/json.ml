@@ -484,6 +484,19 @@ let assoc_list_of_yojson = function
     map l []
   | _ -> Error "Expected JSON object"
 
+type cstruct = Cstruct.t
+
+let cstruct_to_yojson cs =
+  let b64 = Base64.encode_exn (Cstruct.to_string cs) in
+  `String b64
+
+let cstruct_of_yojson = function
+  | `String s ->
+    (match (Base64.decode s) with
+    | Ok s -> Ok (Cstruct.of_string s)
+    | Error (`Msg msg) -> Error msg)
+  | _ -> Error "Expected JSON string"
+
 type system_info = {
   softwareVersion : version ;
   softwareBuild : string ;

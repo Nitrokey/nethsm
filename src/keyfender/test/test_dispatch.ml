@@ -41,7 +41,7 @@ let software_update_key =
 
 let platform = {
   Keyfender.Json.deviceId = "0000000000" ;
-  deviceKey = "test dispatch" ;
+  deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" ;
   pcr = [] ;
   akPub = [] ;
   hardwareVersion = "N/A";
@@ -794,7 +794,7 @@ let unattended_boot_failed_wrong_device_key =
     in
     match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      let platform = {platform with deviceKey = "test other dispatch"} in
+      let platform = {platform with deviceKey = "//////////////////////////////////////////8="} in
       Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked)
     | _ -> false
   end

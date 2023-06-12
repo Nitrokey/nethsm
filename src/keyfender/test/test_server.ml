@@ -23,7 +23,7 @@ module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
 let platform = {
   Keyfender.Json.deviceId = "0000000000" ;
-  deviceKey = "test server" ;
+  deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" ;
   pcr = [] ;
   akPub = [] ;
   hardwareVersion = "N/A";
