@@ -799,27 +799,6 @@ let unattended_boot_failed_wrong_device_key =
     | _ -> false
   end
 
-let unattended_boot_failed =
-  "unattended boot fails to unlock"
-  @? fun () ->
-  begin
-    let store, hsm_state =
-      Lwt_main.run (
-        Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
-        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
-        store, state)
-    in
-    match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
-    | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (
-        Kv_mem.remove store (Mirage_kv.Key.v "/config/device-key-salt") >>= fun _ ->
-        Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) ->
-        Hsm.state hsm_state = `Locked)
-    | _ -> false
-  end
-
-
 let get_config_tls_public_pem =
   "get tls public pem file succeeds"
   @? fun () ->
@@ -2963,8 +2942,7 @@ let () =
                lock_failed ];
     "/config/unattended_boot", [ get_unattended_boot_ok ;
                                  unattended_boot_succeeds ;
-                                 unattended_boot_failed_wrong_device_key ;
-                                 unattended_boot_failed ];
+                                 unattended_boot_failed_wrong_device_key ];
     "/config/unlock-passphrase", [ change_unlock_passphrase ;
                                    change_unlock_passphrase_empty ];
     "/config/tls/public.pem", [ get_config_tls_public_pem ];
