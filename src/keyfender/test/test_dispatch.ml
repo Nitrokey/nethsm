@@ -708,6 +708,27 @@ let unlock_twice =
     | _ -> false
   end
 
+let unlock_fails_wrong_device_key =
+  "a request for /unlock with the wrong device key fails"
+  @? fun () ->
+  let kv = Lwt_main.run (
+    Kv_mem.connect () >>= fun kv ->
+    Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
+    Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun r ->
+    assert (r = Ok ()); kv)
+  in
+  let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y) in
+  begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock" with
+  | hsm_state, Some (`No_content, _, _, _) when Hsm.state hsm_state = `Operational ->
+      let platform = { platform with deviceKey="//////////////////////////////////////////8=" } in
+      let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y) in
+      begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock" with
+      | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Locked
+      | _ -> false
+      end
+  | _ -> false
+  end
+
 let lock_ok =
   "a request for /lock locks the HSM"
   @? fun () ->
@@ -2937,7 +2958,8 @@ let () =
     "/unlock", [ unlock_ok ;
                  unlock_failed ;
                  unlock_failed_two ;
-                 unlock_twice ];
+                 unlock_twice ;
+                 unlock_fails_wrong_device_key ];
     "/lock", [ lock_ok ;
                lock_failed ];
     "/config/unattended_boot", [ get_unattended_boot_ok ;
