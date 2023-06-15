@@ -5,7 +5,9 @@ package main
 import (
 	"bytes"
 	crand "crypto/rand"
-	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base32"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -21,9 +23,6 @@ import (
 )
 
 const (
-	// srkHandle defines the handle for the SRK
-	srkHandle = 0x81000001
-
 	// PCR index for sealing
 	pcrIdx = 2
 
@@ -35,8 +34,9 @@ var (
 	tpmCtxMutex    sync.Mutex
 )
 
-func getTPMContext() (*tpm2.TPMContext, func()) {
+func withTPMContext(f func(*tpm2.TPMContext) error) error {
 	tpmCtxMutex.Lock()
+	defer tpmCtxMutex.Unlock()
 	if tpmCtxInstance == nil {
 		tcti, err := linux.OpenDevice(G.tpmDevice)
 		if err != nil {
@@ -44,7 +44,7 @@ func getTPMContext() (*tpm2.TPMContext, func()) {
 		}
 		tpmCtxInstance = tpm2.NewTPMContext(tcti)
 	}
-	return tpmCtxInstance, tpmCtxMutex.Unlock
+	return f(tpmCtxInstance)
 }
 
 type tpmRandReader struct{ *tpm2.TPMContext }
@@ -63,10 +63,74 @@ func (v tpmRandReader) Read(p []byte) (int, error) {
 }
 
 func tpmRand(buf []byte) error {
-	tpm, tpmRelease := getTPMContext()
-	defer tpmRelease()
-	_, err := io.ReadFull(tpmRandReader{tpm}, buf)
+	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		_, err := io.ReadFull(tpmRandReader{tpm}, buf)
+		return err
+	})
 	return err
+}
+
+type akData struct {
+	id     string
+	pub256 string
+	pub384 string
+}
+
+func getIdFromAk(akPub *tpm2.Public) string {
+	akName := akPub.Name().Digest()
+	return base32.StdEncoding.EncodeToString(akName[:7])[:10]
+}
+
+func getPemFromAk(akPub *tpm2.Public) (string, error) {
+	akDer, err := x509.MarshalPKIXPublicKey(akPub.Public())
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: akDer,
+		},
+	)), nil
+}
+
+func tpmGetAKData() (akData, error) {
+	var ak akData
+
+	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+			templates.NewRestrictedECCSigningKeyWithDefaults(),
+			nil, nil, nil)
+		if err != nil {
+			return fmt.Errorf("create AK: %v", err)
+		}
+		defer tpm.FlushContext(ak256Ctx)
+
+		ak256Pem, err := getPemFromAk(ak256Pub)
+		if err != nil {
+			return fmt.Errorf("mashall AK256: %v", err)
+		}
+
+		ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
+			nil, nil, nil)
+		if err != nil {
+			return fmt.Errorf("create AK: %v", err)
+		}
+		defer tpm.FlushContext(ak384Ctx)
+
+		ak384Pem, err := getPemFromAk(ak384Pub)
+		if err != nil {
+			return fmt.Errorf("mashall AK384: %v", err)
+		}
+
+		ak.id = getIdFromAk(ak256Pub)
+		ak.pub256 = ak256Pem
+		ak.pub384 = ak384Pem
+		return nil
+	})
+
+	return ak, err
 }
 
 // tpmGetDeviceKey returns the 256-bit "Device Key" of the NetHSM.
@@ -77,109 +141,63 @@ func tpmRand(buf []byte) error {
 // the harddisk. If the Device Key does not exist, a new one is created. If the
 // SRK does not exist either, it is created as well.
 func tpmGetDeviceKey() ([]byte, error) {
-	tpm, tpmRelease := getTPMContext()
-	defer tpmRelease()
-
-	srk, err := getSRK(tpm)
-	if err != nil {
-		return nil, fmt.Errorf("getSRK: %v", err)
-	}
-
 	var key []byte
 
-	// invalidate PCR afterwards to inhibit unsealing the Device Key again
-	defer func() {
-		keyHash := sha256.Sum256(key)
+	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
+			nil, nil, nil)
+		if err != nil {
+			return fmt.Errorf("create SRK: %v", err)
+		}
+		defer tpm.FlushContext(srkCtx)
+
+		key, err = unsealDeviceKey(tpm, srkCtx)
+		if err != nil {
+			return fmt.Errorf("Unsealing Device Key failed: %w\n", err)
+		}
+		if len(key) == 0 {
+			if !randIsFullySeeded() {
+				return fmt.Errorf("waiting for TRNG seeding timed out.")
+			}
+			key = make([]byte, 32)
+			crand.Read(key)
+
+			// Select PCR index in the SHA256 bank
+			pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{pcrIdx}}}
+
+			err = sealDeviceKey(tpm, srkCtx, key, pcrSelection)
+			if err != nil {
+				return fmt.Errorf("sealing new key failed: %w", err)
+			}
+			key2, err := unsealDeviceKey(tpm, srkCtx)
+			if err != nil {
+				return fmt.Errorf("unsealing new key failed: %w", err)
+			}
+			if !bytes.Equal(key, key2) {
+				return fmt.Errorf("unsealed key does not match generated key.")
+			}
+			log.Printf("Created and sealed new Device Key\n")
+		} else {
+			log.Printf("Sucessfully unsealed Device Key\n")
+		}
+
+		// invalidate PCR afterwards to inhibit unsealing the Device Key again
 		tpm.PCRExtend(tpm.PCRHandleContext(pcrIdx),
 			tpm2.NewTaggedHashListBuilder().
-				Append(tpm2.HashAlgorithmSHA256, keyHash[:]).
+				Append(tpm2.HashAlgorithmSHA256, make([]byte, 32)).
 				MustFinish(),
 			nil)
-		_, err := unsealDeviceKey(tpm, srk)
+		_, err = unsealDeviceKey(tpm, srkCtx)
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, tpm2.AnySessionIndex) {
 			log.Printf("Successfully invalidated PCR value.")
 		} else {
-			log.Printf("WARNING: Invalidating PCR value failed!\n")
+			return fmt.Errorf("invalidating PCR value failed: %w", err)
 		}
-	}()
 
-	key, err = unsealDeviceKey(tpm, srk)
-	if err != nil {
-		return nil, fmt.Errorf("Unsealing Device Key failed: %w\n", err)
-	}
-	if len(key) == 0 {
-		log.Printf("Provisioning new Device Key\n")
-
-		if !randIsFullySeeded() {
-			return nil, fmt.Errorf("waiting for TRNG seeding timed out.")
-		}
-		key = make([]byte, 32)
-		crand.Read(key)
-
-		// Select PCR index in the SHA256 bank
-		pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{pcrIdx}}}
-
-		err = sealDeviceKey(tpm, srk, key, pcrSelection)
-		if err != nil {
-			return nil, fmt.Errorf("sealing new key failed: %w", err)
-		}
-		key2, err := unsealDeviceKey(tpm, srk)
-		if err != nil {
-			return nil, fmt.Errorf("unsealing new key failed: %w", err)
-		}
-		if !bytes.Equal(key, key2) {
-			return nil, fmt.Errorf("unsealed key does not match generated key.")
-		}
-	}
-
-	return key, nil
-}
-
-// tpmDeleteDeviceKey can be used to delete an existing "Device Key" and its
-// related SRK from the TPM.
-//
-// tpmPath is the path to the TPM character device, normally "/dev/tpm0".
-func tpmDeleteDeviceKey(tpmPath string) error {
-	tcti, err := linux.OpenDevice(tpmPath)
-	if err != nil {
-		return fmt.Errorf("Error in OpenDevice(%s): %v", tpmPath, err)
-	}
-	defer tcti.Close()
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	_ = os.Remove(sealedDeviceKeyFile)
-	srk, _ := getSRK(tpm)
-	if srk != nil {
-		_, err = tpm.EvictControl(tpm.OwnerHandleContext(), srk, srk.Handle(), nil)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func getSRK(tpm *tpm2.TPMContext) (tpm2.ResourceContext, error) {
-	srk, err := tpm.CreateResourceContextFromTPM(srkHandle)
-	if err != nil && !tpm2.IsResourceUnavailableError(err, srkHandle) {
-		return nil, err
-	}
-
-	if srk == nil || srk.Handle() == tpm2.HandleUnassigned {
-		log.Println("Creating new SRK on TPM")
-		template := templates.NewECCStorageKeyWithDefaults()
-
-		object, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil, template, nil, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		defer tpm.FlushContext(object)
-
-		srk, err = tpm.EvictControl(tpm.OwnerHandleContext(), object, srkHandle, nil)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return srk, nil
+		return nil
+	})
+	return key, err
 }
 
 // sealDeviceKey seals the supplied secret to a sealed object in the storage hierarchy
@@ -199,7 +217,7 @@ func sealDeviceKey(
 	defer f.Close()
 
 	// Build the sealed object template
-	template := templates.NewSealedObject(tpm2.HashAlgorithmSHA256)
+	template := templates.NewSealedObject(tpm2.HashAlgorithmSHA384)
 
 	// Disallow passphrase authorization for the user role
 	template.Attrs &^= tpm2.AttrUserWithAuth
@@ -210,12 +228,12 @@ func sealDeviceKey(
 		return err
 	}
 
-	digest, err := util.ComputePCRDigest(tpm2.HashAlgorithmSHA256, pcrSelection, values)
+	digest, err := util.ComputePCRDigest(tpm2.HashAlgorithmSHA384, pcrSelection, values)
 	if err != nil {
 		return err
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
+	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA384)
 	trial.PolicyPCR(digest, pcrSelection)
 
 	template.AuthPolicy = trial.GetDigest()
@@ -262,14 +280,14 @@ func unsealDeviceKey(tpm *tpm2.TPMContext, srk tpm2.ResourceContext) ([]byte, er
 	// Settings for symmetric parameter encryption
 	AesCfb := tpm2.SymDef{
 		Algorithm: tpm2.SymAlgorithmAES,
-		KeyBits:   &tpm2.SymKeyBitsU{Sym: 128},
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 192},
 		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
 	}
 
 	// Start a parameter encrypted policy session with PCR assertion.
 	// The first parameter (tpmKey) must be set, else the parameter encryption
 	// is not secure, because the session key can be reconstructed.
-	session, err := tpm.StartAuthSession(srk, nil, tpm2.SessionTypePolicy, &AesCfb, tpm2.HashAlgorithmSHA256)
+	session, err := tpm.StartAuthSession(srk, nil, tpm2.SessionTypePolicy, &AesCfb, tpm2.HashAlgorithmSHA384)
 	if err != nil {
 		return nil, err
 	}

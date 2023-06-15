@@ -256,6 +256,16 @@ func sPlatformActions() {
 		log.Printf("Script failed: %v", err)
 		return
 	}
+
+	ak, err := tpmGetAKData()
+	if err != nil {
+		log.Printf("Couldn't read AK: %v", err)
+	}
+
+	G.s.Logf("NetHSM Device ID: %s\n", ak.id)
+	G.s.Logf("Assertion Public Key P-256:\n%s\n", ak.pub256)
+	G.s.Logf("Assertion Public Key P-384:\n%s\n", ak.pub384)
+
 	c := make(chan string)
 	startTask("Platform Listener", func() { platformListener(c) })
 
@@ -356,16 +366,6 @@ func sPlatformActions() {
 		if err := G.s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)
 			return
-		}
-
-		// TODO: This is currently done here for testing. We should decide what
-		// (if anything) is to be done about "Device Key" at RESET time in any
-		// final design.
-		log.Printf("Deleting Device Key from TPM.")
-		err := tpmDeleteDeviceKey(G.tpmDevice)
-		if err != nil {
-			// Deliberately non-fatal.
-			log.Printf("TPM: DeleteDeviceKey() failed: %v", err)
 		}
 
 		log.Printf("System will reboot now.")

@@ -40,11 +40,5 @@ func mockActions() {
 	request := <-c
 	log.Printf("platformListener returned: %s", request)
 	if request == "FACTORY-RESET" {
-		log.Printf("Deleting Device Key from TPM.")
-		err := tpmDeleteDeviceKey(G.tpmDevice)
-		if err != nil {
-			// Deliberately non-fatal.
-			log.Printf("TPM: DeleteDeviceKey() failed: %v", err)
-		}
 	}
 }
