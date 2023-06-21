@@ -144,11 +144,11 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1
   git submodule update --checkout --init --depth 50
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreboot/util/crossgcc/tarballs,uid=1000,gid=1000 <<EOF
-  make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386 |
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreboot/util/crossgcc/tarballs,uid=1000,gid=1000 bash -c "\
+  set -o pipefail; make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386 | \
   # filter backspaces
-  sed -u ':a;s/[^\cH]\cH//g;ta'
-EOF
+  sed -u ':a;s/[^\cH]\cH//g;ta' \
+  "
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   cd /nethsm-tools/coreboot/payloads/external/GRUB2
