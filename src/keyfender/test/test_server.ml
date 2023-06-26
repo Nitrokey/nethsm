@@ -17,6 +17,14 @@ module Store = Mirage_kv_mem.Make(Hsm_clock)
 module Hsm = Keyfender.Hsm.Make(Mirage_random_test)(Store)(Time)(Mclock)(Hsm_clock)
 module Webserver = Keyfender.Server.Make(Mirage_random_test)(Http)(Hsm)
 
+let platform = {
+  Keyfender.Json.deviceId = "0000000000" ;
+  deviceKey = "test server" ;
+  pcr = "" ;
+  akPubP256 = "" ;
+  akPubP384 = "" ;
+}
+
 let () =
   let update_key =
     match X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string) with
@@ -32,7 +40,7 @@ let () =
   Lwt_main.run
   begin
     Store.connect () >>= fun store ->
-    Hsm.boot ~device_key:"test server" update_key store >>= fun (hsm_state, mvar, _) ->
+    Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, _) ->
     let any = Ipaddr.V4.Prefix.global in
     Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun tcp ->
     Udpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None >>= fun udp ->

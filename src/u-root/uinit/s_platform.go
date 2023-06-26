@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -100,15 +100,18 @@ func platformListener(result chan string) {
 		// Each of these returns a (possibly nil) response, a (possibly nil)
 		// error and the new value for terminalCommand.
 
-		// DEVICE-KEY
-		doDeviceKey := func() ([]byte, error, bool) {
-			log.Printf("[%s] Requested DEVICE-KEY.", remoteAddr)
-			deviceKey, err := tpmGetDeviceKey()
+		// PLATFORM-DATA
+		doPlatformData := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested PLATFORM-DATA.", remoteAddr)
+			data, err := tpmGetPlatformData()
 			if err != nil {
 				return errorResponse(err), err, false
-			} else {
-				return okResponse(hex.EncodeToString(deviceKey)), nil, false
 			}
+			json, err := json.Marshal(data)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			return okResponse(string(json)), nil, false
 		}
 
 		// UPDATE
@@ -199,8 +202,8 @@ func platformListener(result chan string) {
 		var cmdErr error = nil
 		terminalCommand := false
 		switch command {
-		case "DEVICE-KEY":
-			response, cmdErr, terminalCommand = doDeviceKey()
+		case "PLATFORM-DATA":
+			response, cmdErr, terminalCommand = doPlatformData()
 		case "UPDATE":
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
@@ -262,9 +265,9 @@ func sPlatformActions() {
 		log.Printf("Couldn't read AK: %v", err)
 	}
 
-	G.s.Logf("NetHSM Device ID: %s\n", ak.id)
-	G.s.Logf("Assertion Public Key P-256:\n%s\n", ak.pub256)
-	G.s.Logf("Assertion Public Key P-384:\n%s\n", ak.pub384)
+	G.s.Logf("NetHSM Device ID: %s\n", ak.DeviceId)
+	G.s.Logf("Assertion Public Key P-256:\n%s\n", ak.AKPubP256)
+	G.s.Logf("Assertion Public Key P-384:\n%s\n", ak.AKPubP384)
 
 	c := make(chan string)
 	startTask("Platform Listener", func() { platformListener(c) })

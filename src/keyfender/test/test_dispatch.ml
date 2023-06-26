@@ -34,10 +34,19 @@ let software_update_key =
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
   | Error `Msg m -> invalid_arg m
 
+
+let platform = {
+  Keyfender.Json.deviceId = "0000000000" ;
+  deviceKey = "test dispatch" ;
+  pcr = "" ;
+  akPubP256 = "" ;
+  akPubP384 = "" ;
+}
+
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' = match hsm_state with
-    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~device_key:"test dispatch" software_update_key >|= fun (y, _, _) -> y)
+    | None -> Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~platform software_update_key >|= fun (y, _, _) -> y)
     | Some x -> x
   in
   let path = "/api/v1" ^ endpoint in
@@ -58,7 +67,7 @@ let copy t =
 
 let create_operational_mock mbox =
   Lwt_main.run (
-  Kv_mem.connect () >>= Hsm.boot ~device_key:"test dispatch" software_update_key >>= fun (state, _, m) ->
+  Kv_mem.connect () >>= Hsm.boot ~platform software_update_key >>= fun (state, _, m) ->
     mbox m >>= fun () ->
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
     Hsm.User.add state ~id:"operator" ~role:`Operator ~passphrase:"test2Passphrase" ~name:"operator" >>= fun _ ->
@@ -83,12 +92,12 @@ let create_locked_mock () =
   Lwt_main.run (
     (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
     Kv_mem.connect () >>= fun kv ->
-    Hsm.boot ~device_key:"test dispatch" software_update_key kv >>= fun (state, _, _) ->
+    Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
     (* provision HSM, leading to state operational (and writes to the kv store) *)
     Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun r ->
     (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
     assert (r = Ok ());
-    Hsm.boot ~device_key:"test dispatch" software_update_key kv >|= fun (y, _, _) -> y)
+    Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
 
 let locked_mock = create_locked_mock ()
 
@@ -456,7 +465,7 @@ let system_update_version_downgrade =
 
 let operational_mock_with_mbox () =
   Lwt_main.run (
-    Kv_mem.connect () >>= Hsm.boot ~device_key:"test dispatch" software_update_key >>= fun (state, o, m) ->
+    Kv_mem.connect () >>= Hsm.boot ~platform software_update_key >>= fun (state, o, m) ->
     Lwt.async (fun () -> let rec go () = Lwt_mvar.take o >>= fun _ -> go () in go ());
     Lwt.async (fun () -> let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in go ());
     Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >>= fun _ ->
@@ -759,13 +768,13 @@ let unattended_boot_succeeds =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_key:"test dispatch" software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (Hsm.boot ~device_key:"test dispatch" software_update_key store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational)
+      Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational)
     | _ -> false
   end
 
@@ -776,13 +785,14 @@ let unattended_boot_failed_wrong_device_key =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_key:"test dispatch" software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
     match admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state "/config/unattended-boot" with
     | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run (Hsm.boot ~device_key:"test other dispatch" software_update_key store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked)
+      let platform = {platform with deviceKey = "test other dispatch"} in
+      Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked)
     | _ -> false
   end
 
@@ -793,7 +803,7 @@ let unattended_boot_failed =
     let store, hsm_state =
       Lwt_main.run (
         Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~device_key:"test dispatch" software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase" Ptime.epoch >|= fun _ ->
         store, state)
     in
@@ -801,7 +811,7 @@ let unattended_boot_failed =
     | _hsm_state', Some (`No_content, _, _, _) ->
       Lwt_main.run (
         Kv_mem.remove store (Mirage_kv.Key.v "/config/device-key-salt") >>= fun _ ->
-        Hsm.boot ~device_key:"test dispatch" software_update_key store >|= fun (hsm_state, _, _) ->
+        Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) ->
         Hsm.state hsm_state = `Locked)
     | _ -> false
   end
@@ -1113,14 +1123,14 @@ let invalid_config_version =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef" >>= fun _ ->
-         Hsm.boot ~device_key:"test dispatch" software_update_key data)
+         Hsm.boot ~platform software_update_key data)
        |> ignore) ;
   Alcotest.check_raises "no version breaks HSM" (Invalid_argument "broken NetHSM")
     (fun () ->
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
-         Hsm.boot ~device_key:"test dispatch" software_update_key data)
+         Hsm.boot ~platform software_update_key data)
        |> ignore)
 
 let config_version_but_no_salt =
@@ -1130,7 +1140,7 @@ let config_version_but_no_salt =
        Lwt_main.run (
          Kv_mem.connect () >>= fun data ->
          Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
-         Hsm.boot ~device_key:"test dispatch" software_update_key data)
+         Hsm.boot ~platform software_update_key data)
        |> ignore)
 
 let users_get =

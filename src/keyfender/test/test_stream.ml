@@ -23,8 +23,16 @@ let update_key =
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
   | Error `Msg m -> invalid_arg m
 
+let platform = {
+  Keyfender.Json.deviceId = "0000000000" ;
+  deviceKey = "test stream" ;
+  pcr = "" ;
+  akPubP256 = "" ;
+  akPubP384 = "" ;
+}
+
 let unprovisioned_mock () =
-  Kv_mem.connect () >>= Hsm.boot ~device_key:"test stream" update_key >|= fun (y, _, _) -> y
+  Kv_mem.connect () >>= Hsm.boot ~platform update_key >|= fun (y, _, _) -> y
 
 (* let operational_mock () =
   unprovisioned_mock () >>= fun state ->

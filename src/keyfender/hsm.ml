@@ -2168,7 +2168,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     evict_delay_s = 1.;
   }
 
-  let boot ?(cache_settings = default_cache_settings) ~device_key software_update_key kv =
+  let boot ?(cache_settings = default_cache_settings) ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -2177,11 +2177,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         invalid_arg ("Invalid softwareVersion, broken NetHSM " ^ msg)
     in
     let info = { Json.vendor = "Nitrokey GmbH" ; product = "NetHSM" }
+    and device_key = platform.Json.deviceKey
     and system_info = {
       Json.firmwareVersion = "N/A" ;
       softwareVersion ;
       hardwareVersion = "N/A";
-      buildTag = build_tag
+      buildTag = build_tag ;
+      deviceId = platform.deviceId ;
+      pcr = platform.pcr ;
+      akPubP256 = platform.akPubP256 ;
+      akPubP384 = platform.akPubP384 ;
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()

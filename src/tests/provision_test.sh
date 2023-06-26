@@ -17,6 +17,10 @@ STATE=$(GET /v1/health/state)
 echo $STATE # should be Operational
 echo
 
+INFO=$(GET_admin /v1/system/info)
+echo $INFO | jq
+echo
+
 # create operator
 PUT_admin /v1/users/operator <<EOM
 {
@@ -77,5 +81,6 @@ PUT_admin /v1/keys/MyAESKey <<EOM
   }
 }
 EOM
+
 echo "Setup complete."
 

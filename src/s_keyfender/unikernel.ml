@@ -187,6 +187,14 @@ struct
     evict_delay_s = 10.;
   }
 
+let dummy_platform = {
+  Keyfender.Json.deviceId = "0000000000" ;
+  deviceKey = "no platform" ;
+  pcr = "" ;
+  akPubP256 = "" ;
+  akPubP384 = "" ;
+}
+
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
       let entropy_port = 4444 in
       startTrngListener internal_stack entropy_port >>= fun () ->
@@ -217,11 +225,17 @@ struct
         | Error e ->
           Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
           Lwt.fail_with "store not readable") >>= fun () ->
-      (write_platform internal_stack "DEVICE-KEY" >>= function
+      (write_platform internal_stack "PLATFORM-DATA" >>= function
         | Error e ->
-          Log.err (fun m -> m "couldn't retrieve device key: %a" pp_platform_err e);
-          Lwt.fail_with "failed to retrieve device key from platform"
-        | Ok device_key -> Lwt.return device_key) >>= fun device_key ->
+          Log.err (fun m -> m "couldn't retrieve platform data: %a" pp_platform_err e);
+          Lwt.fail_with "failed to retrieve platform data from platform"
+        | Ok "" -> Lwt.return dummy_platform
+        | Ok data ->
+        match (Keyfender.Json.parse_platform_data data) with
+        | Error e ->
+          Log.err (fun m -> m "couldn't parse platform data: %s" e);
+          Lwt.fail_with "failed to parse platform data from platform"
+        | Ok x -> Lwt.return x) >>= fun platform ->
       (Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
         | Error e ->
           Log.err (fun m -> m "couldn't retrieve update key: %a" Update_key.pp_error e);
@@ -235,7 +249,7 @@ struct
           | Error `Msg m ->
             Lwt.fail_with ("couldn't decode update key: " ^ m)
       ) >>= fun update_key ->
-      Hsm.boot ~cache_settings ~device_key update_key store >>= fun (hsm_state, mvar, res_mvar) ->
+      Hsm.boot ~cache_settings ~platform update_key store >>= fun (hsm_state, mvar, res_mvar) ->
       let setup_log stack log =
         Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
         if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0

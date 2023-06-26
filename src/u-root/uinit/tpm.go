@@ -7,7 +7,8 @@ import (
 	crand "crypto/rand"
 	"crypto/x509"
 	"encoding/base32"
-	"encoding/pem"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,15 @@ var (
 	tpmCtxInstance *tpm2.TPMContext
 	tpmCtxMutex    sync.Mutex
 )
+
+// must be in sync with platform_data in src/keyfender/json.ml
+type platformData struct {
+	DeviceId  string `json:"deviceId"`
+	DeviceKey string `json:"deviceKey"`
+	PCR       string `json:"pcr"`
+	AKPubP256 string `json:"akPubP256"`
+	AKPubP384 string `json:"akPubP384"`
+}
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
 	tpmCtxMutex.Lock()
@@ -70,78 +80,66 @@ func tpmRand(buf []byte) error {
 	return err
 }
 
-type akData struct {
-	id     string
-	pub256 string
-	pub384 string
-}
-
 func getIdFromAk(akPub *tpm2.Public) string {
 	akName := akPub.Name().Digest()
 	return base32.StdEncoding.EncodeToString(akName[:7])[:10]
 }
 
-func getPemFromAk(akPub *tpm2.Public) (string, error) {
+func getDerFromAk(akPub *tpm2.Public) (string, error) {
 	akDer, err := x509.MarshalPKIXPublicKey(akPub.Public())
 	if err != nil {
 		return "", err
 	}
-	return string(pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "PUBLIC KEY",
-			Bytes: akDer,
-		},
-	)), nil
+	return base64.StdEncoding.EncodeToString(akDer), nil
 }
 
-func tpmGetAKData() (akData, error) {
-	var ak akData
+var akData platformData
 
-	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
-		ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-			templates.NewRestrictedECCSigningKeyWithDefaults(),
-			nil, nil, nil)
-		if err != nil {
-			return fmt.Errorf("create AK: %v", err)
-		}
-		defer tpm.FlushContext(ak256Ctx)
+func tpmGetAKData() (platformData, error) {
+	var err error
+	if akData.DeviceId == "" {
+		err = withTPMContext(func(tpm *tpm2.TPMContext) error {
+			ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+				templates.NewRestrictedECCSigningKeyWithDefaults(),
+				nil, nil, nil)
+			if err != nil {
+				return fmt.Errorf("create AK: %v", err)
+			}
+			defer tpm.FlushContext(ak256Ctx)
 
-		ak256Pem, err := getPemFromAk(ak256Pub)
-		if err != nil {
-			return fmt.Errorf("mashall AK256: %v", err)
-		}
+			ak256Der, err := getDerFromAk(ak256Pub)
+			if err != nil {
+				return fmt.Errorf("mashall AK256: %v", err)
+			}
 
-		ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
-			nil, nil, nil)
-		if err != nil {
-			return fmt.Errorf("create AK: %v", err)
-		}
-		defer tpm.FlushContext(ak384Ctx)
+			ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+				templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
+				nil, nil, nil)
+			if err != nil {
+				return fmt.Errorf("create AK: %v", err)
+			}
+			defer tpm.FlushContext(ak384Ctx)
 
-		ak384Pem, err := getPemFromAk(ak384Pub)
-		if err != nil {
-			return fmt.Errorf("mashall AK384: %v", err)
-		}
+			ak384Der, err := getDerFromAk(ak384Pub)
+			if err != nil {
+				return fmt.Errorf("mashall AK384: %v", err)
+			}
 
-		ak.id = getIdFromAk(ak256Pub)
-		ak.pub256 = ak256Pem
-		ak.pub384 = ak384Pem
-		return nil
-	})
-
-	return ak, err
+			akData.DeviceId = getIdFromAk(ak256Pub)
+			akData.AKPubP256 = ak256Der
+			akData.AKPubP384 = ak384Der
+			return nil
+		})
+	}
+	return akData, err
 }
 
 // tpmGetDeviceKey returns the 256-bit "Device Key" of the NetHSM.
 //
-// tpmPath is the path to the TPM character device, normally "/dev/tpm0".
-//
 // The Device Key is sealed against PCR-2 with an SRK on the TPM and stored on
-// the harddisk. If the Device Key does not exist, a new one is created. If the
-// SRK does not exist either, it is created as well.
-func tpmGetDeviceKey() ([]byte, error) {
-	var key []byte
+// the harddisk. If the Device Key does not exist, a new one is created.
+func tpmGetPlatformData() (platformData, error) {
+	var data platformData
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
@@ -152,7 +150,10 @@ func tpmGetDeviceKey() ([]byte, error) {
 		}
 		defer tpm.FlushContext(srkCtx)
 
-		key, err = unsealDeviceKey(tpm, srkCtx)
+		// Select PCR index in the SHA256 bank
+		pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{pcrIdx}}}
+
+		key, err := unsealDeviceKey(tpm, srkCtx)
 		if err != nil {
 			return fmt.Errorf("Unsealing Device Key failed: %w\n", err)
 		}
@@ -162,9 +163,6 @@ func tpmGetDeviceKey() ([]byte, error) {
 			}
 			key = make([]byte, 32)
 			crand.Read(key)
-
-			// Select PCR index in the SHA256 bank
-			pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{pcrIdx}}}
 
 			err = sealDeviceKey(tpm, srkCtx, key, pcrSelection)
 			if err != nil {
@@ -182,6 +180,19 @@ func tpmGetDeviceKey() ([]byte, error) {
 			log.Printf("Sucessfully unsealed Device Key\n")
 		}
 
+		data, err = tpmGetAKData()
+		if err != nil {
+			return fmt.Errorf("getting AK data failed: %w", err)
+		}
+
+		data.DeviceKey = hex.EncodeToString(key)
+
+		_, pcrValues, err := tpm.PCRRead(pcrSelection)
+		if err != nil {
+			return fmt.Errorf("reading PCR value failed: %w", err)
+		}
+		data.PCR = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][pcrIdx])
+
 		// invalidate PCR afterwards to inhibit unsealing the Device Key again
 		tpm.PCRExtend(tpm.PCRHandleContext(pcrIdx),
 			tpm2.NewTaggedHashListBuilder().
@@ -197,7 +208,7 @@ func tpmGetDeviceKey() ([]byte, error) {
 
 		return nil
 	})
-	return key, err
+	return data, err
 }
 
 // sealDeviceKey seals the supplied secret to a sealed object in the storage hierarchy

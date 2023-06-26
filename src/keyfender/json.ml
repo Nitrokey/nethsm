@@ -237,7 +237,7 @@ module TagSet = struct
 end
 
 let tagset_of_string m =
-  (Astring.String.cuts ~sep:"," m) 
+  (Astring.String.cuts ~sep:"," m)
   |> TagSet.of_list
 
 type key_type =
@@ -469,4 +469,20 @@ type system_info = {
   softwareVersion : version ;
   hardwareVersion : string ;
   buildTag : string ;
+  deviceId : string ;
+  pcr : string ;
+  akPubP256 : string ;
+  akPubP384 : string ;
 }[@@deriving yojson]
+
+(* must be in sync with platformData in src/u-root/uinit/tpm.go *)
+type platform_data = {
+  deviceId : string ;
+  deviceKey : string ;
+  pcr : string ;
+  akPubP256 : string ;
+  akPubP384 : string ;
+}[@@deriving yojson]
+
+let parse_platform_data s =
+  decode platform_data_of_yojson s
