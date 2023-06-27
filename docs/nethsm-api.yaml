@@ -18,12 +18,12 @@ paths:
   /info:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InfoData'
+                $ref: "#/components/schemas/InfoData"
       description: Information about the vendor and product.
       x-annotation-state:
         - Locked
@@ -34,9 +34,9 @@ paths:
   /health/alive:
     get:
       responses:
-        '200':
+        "200":
           description: Yes, it is alive.
-        '412':
+        "412":
           description: Not locked or unprovisioned (in operational state).
       description: |
         Retrieve wether NetHSM is alive (powered up).
@@ -49,9 +49,9 @@ paths:
   /health/ready:
     get:
       responses:
-        '200':
+        "200":
           description: Yes, it is alive and ready.
-        '412':
+        "412":
           description: Not alive and ready (not in operational state).
       description: |
         Retrieve wether NetHSM is alive and ready to take traffic.
@@ -63,12 +63,12 @@ paths:
   /health/state:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthStateData'
+                $ref: "#/components/schemas/HealthStateData"
       description: Retrieve the state of NetHSM.
       x-annotation-role:
         - Public
@@ -79,17 +79,17 @@ paths:
   /metrics:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MetricsData'
-        '401':
+                $ref: "#/components/schemas/MetricsData"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Get metrics.
@@ -103,18 +103,18 @@ paths:
   /provision:
     post:
       responses:
-        '204':
+        "204":
           description: Provisioning was successful, NetHSM is *Operational* now.
-        '400':
+        "400":
           description: Malformed request data (e.g. malformed time, weak passphrase).
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Unprovisioned*).
       description: Initial provisioning, only available in *Unprovisioned* state.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProvisionRequestData'
+              $ref: "#/components/schemas/ProvisionRequestData"
         required: true
       x-annotation-role:
         - Public
@@ -123,20 +123,20 @@ paths:
   /unlock:
     post:
       responses:
-        '204':
+        "204":
           description: Unlock was successful, NetHSM is *Operational* now.
-        '400':
+        "400":
           description: Bad request (invalid passphrase).
-        '403':
+        "403":
           description: Unlock failed (access denied).
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Locked*).
       description: Brings a *Locked* NetHSM into *Operational* state.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UnlockRequestData'
+              $ref: "#/components/schemas/UnlockRequestData"
         required: true
       x-annotation-role:
         - Public
@@ -145,13 +145,13 @@ paths:
   /lock:
     post:
       responses:
-        '204':
+        "204":
           description: Lock was successful, NetHSM is *Locked* now.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Lock failed (access denied).
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Brings an *Operational* NetHSM into *Locked* state.
       security:
@@ -163,17 +163,17 @@ paths:
   /random:
     post:
       responses:
-        '200':
+        "200":
           description: Successful request for *length* random bytes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RandomData'
-        '401':
+                $ref: "#/components/schemas/RandomData"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Retrieve cryptographically strong random bytes from NetHSM.
@@ -182,7 +182,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RandomRequestData'
+              $ref: "#/components/schemas/RandomRequestData"
         required: true
       security:
         - basic: []
@@ -193,17 +193,17 @@ paths:
   /keys:
     get:
       responses:
-        '200':
+        "200":
           description: Successful request for the list of keys.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/KeyList'
-        '401':
+                $ref: "#/components/schemas/KeyList"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Get a list of the identifiers of all keys that are currently stored in NetHSM.
@@ -223,18 +223,18 @@ paths:
         - Operational
     post:
       responses:
-        '201':
+        "201":
           description: |
             Successful import of a private key.
             The response contains a Location header,
             e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
-        '400':
+        "400":
           description: Bad request (specified properties are invalid).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Import a private key into NetHSM and let NetHSM generate a KeyID.
@@ -243,10 +243,10 @@ paths:
         content:
           application/x-pem-file:
             schema:
-              $ref: '#/components/schemas/PemPrivateKey'
+              $ref: "#/components/schemas/PemPrivateKey"
           application/json:
             schema:
-              $ref: '#/components/schemas/PrivateKey'
+              $ref: "#/components/schemas/PrivateKey"
         required: true
       parameters:
         - name: mechanisms
@@ -254,13 +254,13 @@ paths:
           schema:
             type: array
             items:
-              $ref: '#/components/schemas/KeyMechanism'
+              $ref: "#/components/schemas/KeyMechanism"
         - name: tags
           in: query
           schema:
             type: array
             items:
-              $ref: '#/components/schemas/ID'
+              $ref: "#/components/schemas/ID"
       security:
         - basic: []
       x-annotation-role:
@@ -270,17 +270,17 @@ paths:
   /keys/generate:
     post:
       responses:
-        '201':
+        "201":
           description: |
             Successful creation of new public and private key pair.
             Set Location header to the new KeyID.
-        '400':
+        "400":
           description: Bad request (specified properties are invalid).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Generate a pair of public and private key and store it in NetHSM.
@@ -289,7 +289,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/KeyGenerateRequestData'
+              $ref: "#/components/schemas/KeyGenerateRequestData"
         required: true
       security:
         - basic: []
@@ -300,7 +300,7 @@ paths:
   /keys/{KeyID}:
     get:
       responses:
-        '200':
+        "200":
           description: |
             For response body with content type `application/json`:
             * *RSA* keys include `modulus` and `publicExponent` properties.
@@ -311,10 +311,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PublicKey'
+                $ref: "#/components/schemas/PublicKey"
               examples:
                 rsa:
-                  summary: 'RSA'
+                  summary: "RSA"
                   value:
                     mechanisms:
                       - RSA_Signature_PSS_SHA256
@@ -326,9 +326,9 @@ paths:
                       modulus: FhJQl11CiY0ifRHXeAqFh4rdSl6
                       publicExponent: FhJQl11CiY0ifRHXeAqFh4rdSl6
                     operations: 242
-                    
+
                 ecdsa:
-                  summary: 'P* Keys'
+                  summary: "P* Keys"
                   value:
                     mechanisms:
                       - ECDSA_Signature
@@ -336,11 +336,11 @@ paths:
                     operations: 242
                     restrictions:
                       tags:
-                      - berlin
+                        - berlin
                     key:
                       data: BMKlPJ60PNFgsekRwg7n5mTIJkWWy6XLy0ORj14HumKi5qH63JaJzFOWLxYiaB6KH0NOgEKb7rUt
                 eddsa:
-                  summary: 'Curve25519'
+                  summary: "Curve25519"
                   value:
                     mechanisms:
                       - EdDSA_Signature
@@ -348,16 +348,16 @@ paths:
                     operations: 242
                     restrictions:
                       tags:
-                      - berlin
+                        - berlin
                     key:
                       data: htnjTKRUz3XnLys5YD2+bKvzXZuu9cvXKwsCnWdzR+4=
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve the public key.
       security:
@@ -370,17 +370,17 @@ paths:
       x-test-value-KeyID: myKey1
     put:
       responses:
-        '204':
+        "204":
           description: Successful import of a private key.
-        '400':
+        "400":
           description: Bad request (specified properties are invalid).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '409':
+        "409":
           description: Conflict, key already exists for this keyID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Import a private key into NetHSM and store it under the *KeyID* path.
@@ -397,10 +397,10 @@ paths:
         content:
           application/x-pem-file:
             schema:
-              $ref: '#/components/schemas/PemPrivateKey'
+              $ref: "#/components/schemas/PemPrivateKey"
           application/json:
             schema:
-              $ref: '#/components/schemas/PrivateKey'
+              $ref: "#/components/schemas/PrivateKey"
             examples:
               rsa:
                 summary: RSA
@@ -444,13 +444,13 @@ paths:
           schema:
             type: array
             items:
-              $ref: '#/components/schemas/KeyMechanism'
+              $ref: "#/components/schemas/KeyMechanism"
         - name: tags
           in: query
           schema:
             type: array
             items:
-              $ref: '#/components/schemas/ID'
+              $ref: "#/components/schemas/ID"
       security:
         - basic: []
       x-annotation-role:
@@ -460,15 +460,15 @@ paths:
       x-test-value-KeyID: MyNewKey
     delete:
       responses:
-        '204':
+        "204":
           description: Key was successfully deleted.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a pair of public and private key.
       security:
@@ -487,21 +487,21 @@ paths:
   /keys/{KeyID}/public.pem:
     get:
       responses:
-        '200':
+        "200":
           description: |
             For response body with content type `application/x-pem-file`:
             * Returns the PEM encoded public key, as specified in PKCS #8.
           content:
             application/x-pem-file:
               schema:
-                $ref: '#/components/schemas/PemPublicKey'
-        '401':
+                $ref: "#/components/schemas/PemPublicKey"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve public key in PEM format.
       security:
@@ -521,26 +521,26 @@ paths:
   /keys/{KeyID}/csr.pem:
     post:
       responses:
-        '200':
+        "200":
           description: Successful generation of certificate signing request.
           content:
             application/x-pem-file:
               schema:
-                $ref: '#/components/schemas/PemCSR'
-        '401':
+                $ref: "#/components/schemas/PemCSR"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Retrieve a certificate signing request in PEM format.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DistinguishedName'
+              $ref: "#/components/schemas/DistinguishedName"
         required: true
       security:
         - basic: []
@@ -559,7 +559,7 @@ paths:
   /keys/{KeyID}/decrypt:
     post:
       responses:
-        '200':
+        "200":
           description: |
             For response body with content type `application/json`:
             * Mode `RAW` returns the raw binary data.
@@ -568,20 +568,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecryptData'
-        '400':
+                $ref: "#/components/schemas/DecryptData"
+        "400":
           description: |
             Bad Request, e.g. invalid encryption mode.
             * Mode `RAW` returns failure if input is bigger than key size.
             * Mode `PKCS1` returns failure if input is bigger than key size.
             * Mode `OAEP_*` returns failure is input is bigger than key size.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Decrypt an encrypted message with the secret key.
       requestBody:
@@ -593,7 +593,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DecryptRequestData'
+              $ref: "#/components/schemas/DecryptRequestData"
         required: true
       security:
         - basic: []
@@ -611,28 +611,28 @@ paths:
   /keys/{KeyID}/encrypt:
     post:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EncryptData'
-        '400':
+                $ref: "#/components/schemas/EncryptData"
+        "400":
           description: Bad Request, e.g. invalid mechanism.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Encrypt a message with the secret key.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EncryptRequestData'
+              $ref: "#/components/schemas/EncryptRequestData"
         required: true
       security:
         - basic: []
@@ -650,7 +650,7 @@ paths:
   /keys/{KeyID}/sign:
     post:
       responses:
-        '200':
+        "200":
           description: |
             For response body with content type `application/json`:
             * Mode `PKCS1` returns the PKCS1 padded signature
@@ -663,8 +663,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SignData'
-        '400':
+                $ref: "#/components/schemas/SignData"
+        "400":
           description: |
             Bad Request, e.g. invalid signing mode.
             * Mode `PKCS1` returns failure if input is bigger than key size
@@ -672,13 +672,13 @@ paths:
               or the private key is smaller than hash length.
             * Mode `ECDSA` returns failure if the input exceeds the group size in bits.
               The hash algorithm is not part of the encoding.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Key for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Sign a message with the secret key.
       requestBody:
@@ -695,7 +695,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SignRequestData'
+              $ref: "#/components/schemas/SignRequestData"
         required: true
       security:
         - basic: []
@@ -713,19 +713,19 @@ paths:
   /keys/{KeyID}/cert:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/pgp-keys:
               schema:
-                $ref: '#/components/schemas/PGPPrivateKey'
-        '401':
+                $ref: "#/components/schemas/PGPPrivateKey"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Certificate for KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Retrieve stored certificate.
@@ -740,15 +740,15 @@ paths:
       x-test-value-KeyID: myKey1
     put:
       responses:
-        '201':
+        "201":
           description: Successful import of a certificate.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '409':
+        "409":
           description: Conflict, certificate already exists for this KeyID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Store a certificate.
@@ -760,13 +760,13 @@ paths:
         content:
           application/x-pem-file:
             schema:
-              $ref: '#/components/schemas/PemCert'
+              $ref: "#/components/schemas/PemCert"
           application/x-x509-ca-cert:
             schema:
               type: string
           application/pgp-keys:
             schema:
-              $ref: '#/components/schemas/PGPPrivateKey'
+              $ref: "#/components/schemas/PGPPrivateKey"
         required: true
       security:
         - basic: []
@@ -777,15 +777,15 @@ paths:
       x-test-value-KeyID: myKey1
     delete:
       responses:
-        '204':
+        "204":
           description: Successful deletion of a certificate.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Certificate with this KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete the certificate.
       security:
@@ -805,19 +805,19 @@ paths:
   /keys/{KeyID}/restrictions/tags/{Tag}:
     put:
       responses:
-        '204':
+        "204":
           description: Successful addition of the tag.
-        '304':
+        "304":
           description: Tag is already present for this key.
-        '400':
+        "400":
           description: Bad request, tag format is invalid.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: KeyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Add a tag to the authorized set
       security:
@@ -830,15 +830,15 @@ paths:
       x-test-value-Tag: MyNewTag
     delete:
       responses:
-        '204':
+        "204":
           description: Successful deletion of the tag.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Tag or keyID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a tag from the authorized set
       security:
@@ -863,17 +863,17 @@ paths:
   /users:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserList'
-        '401':
+                $ref: "#/components/schemas/UserList"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get a list of all user ids that have accounts on NetHSM.
       security:
@@ -884,25 +884,25 @@ paths:
         - Operational
     post:
       responses:
-        '201':
+        "201":
           description: |
             Successful creation of user.
             The response contains a Location header,
             e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
-        '400':
+        "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Create a new user on NetHSM. The user-ID is generated by NetHSM.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserPostData'
+              $ref: "#/components/schemas/UserPostData"
         required: true
       security:
         - basic: []
@@ -913,21 +913,21 @@ paths:
   /users/{UserID}:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserData'
-        '401':
+                $ref: "#/components/schemas/UserData"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: User for UserID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: 'Get user info: name and role.'
+      description: "Get user info: name and role."
       security:
         - basic: []
       x-annotation-role:
@@ -938,24 +938,24 @@ paths:
       x-test-value-UserID: operator
     put:
       responses:
-        '201':
+        "201":
           description: Successful creation of user.
-        '400':
+        "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '409':
+        "409":
           description: Conflict - user already exists for this user-ID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Create a user on keyfender.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserPostData'
+              $ref: "#/components/schemas/UserPostData"
         required: true
       security:
         - basic: []
@@ -966,15 +966,15 @@ paths:
       x-test-value-UserID: newOperator
     delete:
       responses:
-        '204':
+        "204":
           description: Successful deletion of user.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: User not found for this user-ID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a user from keyfender.
       security:
@@ -993,24 +993,24 @@ paths:
   /users/{UserID}/passphrase:
     post:
       responses:
-        '204':
+        "204":
           description: Successful change of passphrase.
-        '400':
+        "400":
           description: Bad request - weak passphrase.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: User not found for this user-ID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Update the passphrase.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserPassphrasePostData'
+              $ref: "#/components/schemas/UserPassphrasePostData"
         required: true
       security:
         - basic: []
@@ -1029,19 +1029,19 @@ paths:
   /users/{UserID}/tags:
     get:
       responses:
-        '200':
-          description: ''
+        "200":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TagList'
-        '401':
+                $ref: "#/components/schemas/TagList"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: User not found for this user-ID.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get the list of tags set to an Operator user.
       security:
@@ -1061,19 +1061,19 @@ paths:
   /users/{UserID}/tags/{Tag}:
     put:
       responses:
-        '204':
+        "204":
           description: Successful addition of the tag.
-        '304':
+        "304":
           description: Tag is already present for this UserID.
-        '400':
+        "400":
           description: Bad request, tag format is invalid or user is not an operator.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: UserID not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Add a tag to the Operator user.
       security:
@@ -1086,15 +1086,15 @@ paths:
       x-test-value-Tag: munich
     delete:
       responses:
-        '204':
+        "204":
           description: Successful deletion of the tag.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '404':
+        "404":
           description: Tag or user not found.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a tag from the Operator user
       security:
@@ -1119,22 +1119,22 @@ paths:
   /config/unlock-passphrase:
     put:
       responses:
-        '204':
+        "204":
           description: Successful change of passphrase.
-        '400':
+        "400":
           description: Bad request - weak passphrase.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Update the unlock passphrase.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UnlockPassphraseConfig'
+              $ref: "#/components/schemas/UnlockPassphraseConfig"
         required: true
       security:
         - basic: []
@@ -1145,19 +1145,19 @@ paths:
   /config/unattended-boot:
     get:
       responses:
-        '200':
+        "200":
           description: Successful read of unattended boot configuration.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnattendedBootConfig'
-        '401':
+                $ref: "#/components/schemas/UnattendedBootConfig"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: 'Read unattended boot configuration: is it on or off?'
+      description: "Read unattended boot configuration: is it on or off?"
       security:
         - basic: []
       x-annotation-role:
@@ -1166,22 +1166,22 @@ paths:
         - Operational
     put:
       responses:
-        '204':
+        "204":
           description: Successful change of unattended boot mode.
-        '400':
+        "400":
           description: Bad request - invalid status setting.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: 'Configure unattended boot: switch it on or off (flip the switch).'
+      description: "Configure unattended boot: switch it on or off (flip the switch)."
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UnattendedBootConfig'
+              $ref: "#/components/schemas/UnattendedBootConfig"
         required: true
       security:
         - basic: []
@@ -1192,17 +1192,17 @@ paths:
   /config/tls/public.pem:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of public key.
           content:
             application/x-pem-file:
               schema:
-                $ref: '#/components/schemas/PemPublicKey'
-        '401':
+                $ref: "#/components/schemas/PemPublicKey"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get public key for NetHSMs https API.
       security:
@@ -1214,17 +1214,17 @@ paths:
   /config/tls/cert.pem:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of certificate.
           content:
             application/x-pem-file:
               schema:
-                $ref: '#/components/schemas/PemCert'
-        '401':
+                $ref: "#/components/schemas/PemCert"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get certificate for NetHSMs https API.
       security:
@@ -1235,20 +1235,20 @@ paths:
         - Operational
     put:
       responses:
-        '201':
+        "201":
           description: Successfully set certificate.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
       requestBody:
         content:
           application/x-pem-file:
             schema:
-              $ref: '#/components/schemas/PemCert'
+              $ref: "#/components/schemas/PemCert"
         required: true
       security:
         - basic: []
@@ -1259,24 +1259,24 @@ paths:
   /config/tls/csr.pem:
     post:
       responses:
-        '200':
+        "200":
           description: Successful generation of certificate signing request.
           content:
             application/x-pem-file:
               schema:
-                $ref: '#/components/schemas/PemCSR'
-        '401':
+                $ref: "#/components/schemas/PemCSR"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get NetHSM certificate signing request e.g. to replace self-signed intital certificate.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DistinguishedName'
+              $ref: "#/components/schemas/DistinguishedName"
         required: true
       security:
         - basic: []
@@ -1287,22 +1287,22 @@ paths:
   /config/tls/generate:
     post:
       responses:
-        '204':
+        "204":
           description: Successful creation of new public and private key pair for NetHSM's https API.
-        '400':
+        "400":
           description: Bad request (specified properties are invalid).
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Generate a new pair of public and private key for NetHSM's https API.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TlsKeyGenerateRequestData'
+              $ref: "#/components/schemas/TlsKeyGenerateRequestData"
         required: true
       security:
         - basic: []
@@ -1313,17 +1313,17 @@ paths:
   /config/network:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of network configuration.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NetworkConfig'
-        '401':
+                $ref: "#/components/schemas/NetworkConfig"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get network configuration. IP address, netmask, router.
       security:
@@ -1334,22 +1334,22 @@ paths:
         - Operational
     put:
       responses:
-        '204':
+        "204":
           description: Succesful update of network configuration.
-        '400':
+        "400":
           description: Bad request - invalid input format.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Configure network.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NetworkConfig'
+              $ref: "#/components/schemas/NetworkConfig"
         required: true
       security:
         - basic: []
@@ -1360,17 +1360,17 @@ paths:
   /config/logging:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of logging configuration.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoggingConfig'
-        '401':
+                $ref: "#/components/schemas/LoggingConfig"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Get logging configuration.
@@ -1384,22 +1384,22 @@ paths:
         - Operational
     put:
       responses:
-        '204':
+        "204":
           description: Succesful update of logging configuration.
-        '400':
+        "400":
           description: Bad request - invalid input format.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Configure log level and destination.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoggingConfig'
+              $ref: "#/components/schemas/LoggingConfig"
         required: true
       security:
         - basic: []
@@ -1410,22 +1410,22 @@ paths:
   /config/backup-passphrase:
     put:
       responses:
-        '204':
+        "204":
           description: Successful change of passphrase.
-        '400':
+        "400":
           description: Bad request - weak passphrase.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Update the backup passphrase.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BackupPassphraseConfig'
+              $ref: "#/components/schemas/BackupPassphraseConfig"
         required: true
       security:
         - basic: []
@@ -1436,17 +1436,17 @@ paths:
   /config/time:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of system time.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TimeConfig'
-        '401':
+                $ref: "#/components/schemas/TimeConfig"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Get system time.
       security:
@@ -1457,22 +1457,22 @@ paths:
         - Operational
     put:
       responses:
-        '204':
+        "204":
           description: Succesful update of system time.
-        '400':
+        "400":
           description: Bad request - invalid input format.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Configure system time.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TimeConfig'
+              $ref: "#/components/schemas/TimeConfig"
         required: true
       security:
         - basic: []
@@ -1483,17 +1483,17 @@ paths:
   /system/info:
     get:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of system information.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SystemInfo'
-        '401':
+                $ref: "#/components/schemas/SystemInfo"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Get detailed system information, including firmware, system, and hardware version.
@@ -1506,13 +1506,13 @@ paths:
   /system/reboot:
     post:
       responses:
-        '204':
+        "204":
           description: About to reboot NetHSM.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Reboot NetHSM.
       security:
@@ -1524,13 +1524,13 @@ paths:
   /system/shutdown:
     post:
       responses:
-        '204':
+        "204":
           description: About to shut down NetHSM.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Shut down NetHSM.
       security:
@@ -1542,13 +1542,13 @@ paths:
   /system/factory-reset:
     post:
       responses:
-        '204':
+        "204":
           description: About to reset NetHSM.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Reset NetHSM to factory settings.
       security:
@@ -1560,19 +1560,19 @@ paths:
   /system/update:
     post:
       responses:
-        '200':
+        "200":
           description: Successfully verified update image (authenticity, integrity, and version number).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SystemUpdateData'
-        '401':
+                $ref: "#/components/schemas/SystemUpdateData"
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '409':
+        "409":
           description: Conflict - Major version downgrade is not allowed.
-        '412':
+        "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Update NetHSM software.
       requestBody:
@@ -1590,13 +1590,13 @@ paths:
   /system/commit-update:
     post:
       responses:
-        '204':
+        "204":
           description: About to update NetHSM.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: |
             Precondition failed (NetHSM was not *Operational* or
             update image is not present - call `/update` first).
@@ -1610,13 +1610,13 @@ paths:
   /system/cancel-update:
     post:
       responses:
-        '204':
+        "204":
           description: Update successfully cancelled.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: |
             Precondition failed (NetHSM was not *Operational* or
             update image is not present - call `/update` first).
@@ -1630,13 +1630,13 @@ paths:
   /system/backup:
     post:
       responses:
-        '200':
+        "200":
           description: Successful retrieval of backup data.
-        '401':
+        "401":
           description: Authentication required but none provided.
-        '403':
+        "403":
           description: Access denied.
-        '412':
+        "412":
           description: |
             Precondition failed (NetHSM was not *Operational* or
             *Backup Passphrase* was not set).
@@ -1650,16 +1650,16 @@ paths:
   /system/restore:
     post:
       responses:
-        '204':
+        "204":
           description: Successful restore from backup data.
-        '400':
+        "400":
           description: Bad request - restore did not apply.
-        '412':
+        "412":
           description: |
-            Precondition failed (NetHSM was not *Unprovisioned* or 
+            Precondition failed (NetHSM was not *Unprovisioned* or
             *Operational*).
       description: |
-        Restore the key store and user store from a backup file. If NetHSM is 
+        Restore the key store and user store from a backup file. If NetHSM is
         *Unprovisioned*, then the configuration is restored.
       requestBody:
         content:
@@ -1672,7 +1672,7 @@ paths:
           in: query
           required: true
           schema:
-            $ref: '#/components/schemas/Passphrase'
+            $ref: "#/components/schemas/Passphrase"
         - name: systemTime
           in: query
           schema:
@@ -1698,8 +1698,8 @@ components:
       type: string
     Switch:
       enum:
-        - 'on'
-        - 'off'
+        - "on"
+        - "off"
       type: string
     SystemState:
       enum:
@@ -1795,21 +1795,21 @@ components:
         - key: KeyID
       type: array
       items:
-        $ref: '#/components/schemas/KeyItem'
+        $ref: "#/components/schemas/KeyItem"
     KeyItem:
       example:
         key: KeyID
       type: object
       properties:
         key:
-          $ref: '#/components/schemas/ID'
+          $ref: "#/components/schemas/ID"
       required:
         - key
     KeyRestrictions:
       type: object
       properties:
         tags:
-          $ref: '#/components/schemas/TagList'
+          $ref: "#/components/schemas/TagList"
     UserList:
       example:
         - user: admin
@@ -1818,12 +1818,12 @@ components:
         - user: operator
       type: array
       items:
-        $ref: '#/components/schemas/UserItem'
+        $ref: "#/components/schemas/UserItem"
     UserItem:
       type: object
       properties:
         user:
-          $ref: '#/components/schemas/ID'
+          $ref: "#/components/schemas/ID"
       required:
         - user
     TagList:
@@ -1832,11 +1832,11 @@ components:
         - frankfurt
       type: array
       items:
-        $ref: '#/components/schemas/ID'
+        $ref: "#/components/schemas/ID"
     KeyMechanisms:
       type: array
       items:
-        $ref: '#/components/schemas/KeyMechanism'
+        $ref: "#/components/schemas/KeyMechanism"
     PrivateKey:
       example:
         mechanisms:
@@ -1852,13 +1852,13 @@ components:
       type: object
       properties:
         mechanisms:
-          $ref: '#/components/schemas/KeyMechanisms'
+          $ref: "#/components/schemas/KeyMechanisms"
         type:
-          $ref: '#/components/schemas/KeyType'
+          $ref: "#/components/schemas/KeyType"
         key:
-          $ref: '#/components/schemas/KeyPrivateData'
+          $ref: "#/components/schemas/KeyPrivateData"
         restrictions:
-          $ref: '#/components/schemas/KeyRestrictions'
+          $ref: "#/components/schemas/KeyRestrictions"
       required:
         - mechanisms
         - type
@@ -1867,13 +1867,13 @@ components:
       type: object
       properties:
         primeP:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         primeQ:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         publicExponent:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         data:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
     PublicKey:
       example:
         mechanisms:
@@ -1889,13 +1889,13 @@ components:
       type: object
       properties:
         mechanisms:
-          $ref: '#/components/schemas/KeyMechanisms'
+          $ref: "#/components/schemas/KeyMechanisms"
         type:
-          $ref: '#/components/schemas/KeyType'
+          $ref: "#/components/schemas/KeyType"
         restrictions:
-          $ref: '#/components/schemas/KeyRestrictions'
+          $ref: "#/components/schemas/KeyRestrictions"
         key:
-          $ref: '#/components/schemas/KeyPublicData'
+          $ref: "#/components/schemas/KeyPublicData"
         operations:
           type: integer
       required:
@@ -1908,18 +1908,18 @@ components:
       type: object
       properties:
         modulus:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         publicExponent:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         data:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
     DistinguishedName:
       example:
         countryName: DE
-        stateOrProvinceName: ''
+        stateOrProvinceName: ""
         localityName: Berlin
         organizationName: Nitrokey
-        organizationalUnitName: ''
+        organizationalUnitName: ""
         commonName: nethsm.local
         emailAddress: info@nitrokey.com
       type: object
@@ -1959,7 +1959,7 @@ components:
       type: object
       properties:
         state:
-          $ref: '#/components/schemas/SystemState'
+          $ref: "#/components/schemas/SystemState"
       required:
         - state
     MetricsData:
@@ -1971,13 +1971,13 @@ components:
       example:
         unlockPassphrase: UnlockPassphrase
         adminPassphrase: Administrator
-        systemTime: '2018-10-30T11:20:50Z'
+        systemTime: "2018-10-30T11:20:50Z"
       type: object
       properties:
         unlockPassphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
         adminPassphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
         systemTime:
           type: string
           format: date-time
@@ -1991,7 +1991,7 @@ components:
       type: object
       properties:
         passphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
       required:
         - passphrase
     RandomRequestData:
@@ -2011,7 +2011,7 @@ components:
       type: object
       properties:
         random:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - random
     KeyGenerateRequestData:
@@ -2024,17 +2024,17 @@ components:
       type: object
       properties:
         mechanisms:
-          $ref: '#/components/schemas/KeyMechanisms'
+          $ref: "#/components/schemas/KeyMechanisms"
         type:
-          $ref: '#/components/schemas/KeyType'
+          $ref: "#/components/schemas/KeyType"
         length:
           minimum: 128
           maximum: 8192
           type: integer
         id:
-          $ref: '#/components/schemas/ID'
+          $ref: "#/components/schemas/ID"
         restrictions:
-          $ref: '#/components/schemas/KeyRestrictions'
+          $ref: "#/components/schemas/KeyRestrictions"
       required:
         - mechanisms
         - type
@@ -2045,7 +2045,7 @@ components:
       type: object
       properties:
         type:
-          $ref: '#/components/schemas/TlsKeyType'
+          $ref: "#/components/schemas/TlsKeyType"
         length:
           minimum: 128
           maximum: 8192
@@ -2060,11 +2060,11 @@ components:
       type: object
       properties:
         mode:
-          $ref: '#/components/schemas/EncryptMode'
+          $ref: "#/components/schemas/EncryptMode"
         message:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         iv:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - mode
         - message
@@ -2075,9 +2075,9 @@ components:
       type: object
       properties:
         encrypted:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         iv:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - encrypted
         - iv
@@ -2088,11 +2088,11 @@ components:
       type: object
       properties:
         mode:
-          $ref: '#/components/schemas/DecryptMode'
+          $ref: "#/components/schemas/DecryptMode"
         encrypted:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
         iv:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - mode
         - encrypted
@@ -2102,7 +2102,7 @@ components:
       type: object
       properties:
         decrypted:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - decrypted
     SignRequestData:
@@ -2112,9 +2112,9 @@ components:
       type: object
       properties:
         mode:
-          $ref: '#/components/schemas/SignMode'
+          $ref: "#/components/schemas/SignMode"
         message:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - mode
         - message
@@ -2124,7 +2124,7 @@ components:
       type: object
       properties:
         signature:
-          $ref: '#/components/schemas/Base64'
+          $ref: "#/components/schemas/Base64"
       required:
         - signature
     UserPostData:
@@ -2137,9 +2137,9 @@ components:
         realName:
           type: string
         role:
-          $ref: '#/components/schemas/UserRole'
+          $ref: "#/components/schemas/UserRole"
         passphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
       required:
         - realName
         - role
@@ -2153,7 +2153,7 @@ components:
         realName:
           type: string
         role:
-          $ref: '#/components/schemas/UserRole'
+          $ref: "#/components/schemas/UserRole"
       required:
         - realName
         - role
@@ -2163,7 +2163,7 @@ components:
       type: object
       properties:
         passphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
       required:
         - passphrase
     UnlockPassphraseConfig:
@@ -2172,16 +2172,16 @@ components:
       type: object
       properties:
         passphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
       required:
         - passphrase
     UnattendedBootConfig:
       example:
-        status: 'off'
+        status: "off"
       type: object
       properties:
         status:
-          $ref: '#/components/schemas/Switch'
+          $ref: "#/components/schemas/Switch"
       required:
         - status
     NetworkConfig:
@@ -2213,7 +2213,7 @@ components:
         port:
           type: integer
         logLevel:
-          $ref: '#/components/schemas/LogLevel'
+          $ref: "#/components/schemas/LogLevel"
       required:
         - ipAddress
         - port
@@ -2224,12 +2224,12 @@ components:
       type: object
       properties:
         passphrase:
-          $ref: '#/components/schemas/Passphrase'
+          $ref: "#/components/schemas/Passphrase"
       required:
         - passphrase
     TimeConfig:
       example:
-        time: '2018-10-30T11:20:50Z'
+        time: "2018-10-30T11:20:50Z"
       type: object
       properties:
         time:
@@ -2240,9 +2240,13 @@ components:
     SystemInfo:
       example:
         firmwareVersion: N/A
-        softwareVersion: '1.7'
+        softwareVersion: "1.7"
         hardwareVersion: N/A
         buildTag: TAG-NN-g1234567-dirty
+        deviceId: 5UMIP364R2
+        pcr: c23c41509273dec732676aea195b983bd5755126874d054325e9e1b1869c47c7
+        akPubP256: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEup7z8QYvkzkBuLryG1SgVQjlPhSFW3PzYn1l3uLNd+pSBxX0OBpslcbnmPFr5wSs/iP46+H8MFlEAYUkYv6uuQ==
+        akPubP384: MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEfQiurLvEmjsAmumRtIqu70HKehRo8A/nVrqQGiR8Rcr+SUujwgtQByORX5BoRtv4sZNJW4FyLGqvXCIF9IV1puob2+9Qq5oEjz4x4malLbFdyXDmQK8o2NpvcbgOr215
       type: object
       properties:
         firmwareVersion:
@@ -2253,11 +2257,23 @@ components:
           type: string
         buildTag:
           type: string
+        deviceId:
+          type: string
+        pcr:
+          type: string
+        akPubP256:
+          type: string
+        akPubP384:
+          type: string
       required:
         - firmwareVersion
         - softwareVersion
         - hardwareVersion
         - buildTag
+        - deviceId
+        - pcr
+        - akPubP256
+        - akPubP384
     SystemUpdateData:
       example:
         releaseNotes: Some new feature is available.
