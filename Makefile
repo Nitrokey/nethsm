@@ -1,3 +1,6 @@
+# Copyright 2023 - 2023, Nitrokey GmbH
+# SPDX-License-Identifier: EUPL-1.2
+
 # This Makefile is a meta-Makefile that passes most targets through to
 # Makefile.sub. See there for the action, and for documented user-settable
 # parameters. Please ask before adding targets here.
