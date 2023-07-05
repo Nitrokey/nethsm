@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 let reporter base =
   let v = ref 0 in
   {

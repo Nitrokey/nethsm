@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 
 let requests : (Ipaddr.V4.t * string, Ptime.t list) Hashtbl.t =
   Hashtbl.create 7

@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 module Hash = Mirage_crypto.Hash.SHA256
 
 let write_len length =

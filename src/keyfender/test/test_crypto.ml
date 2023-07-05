@@ -1,3 +1,6 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
 
 let data = Mirage_random_test.generate 32
 let adata = Cstruct.of_string "my additional data"

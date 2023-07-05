@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 module type HSMCLOCK = sig
   include Mirage_clock.PCLOCK
   val now : unit -> Ptime.t (* hw_clock with offset applied *)

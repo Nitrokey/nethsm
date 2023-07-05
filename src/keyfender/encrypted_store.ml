@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 open Lwt.Infix
 
 module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct

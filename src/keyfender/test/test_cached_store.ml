@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
 
 module Stats_store(Store: Mirage_kv.RW) = struct

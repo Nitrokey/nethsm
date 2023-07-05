@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 val salt_len : int
 (** The length of the salt used in password derivation, in bytes. *)
 

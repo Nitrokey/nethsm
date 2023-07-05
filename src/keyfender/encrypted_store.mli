@@ -1,3 +1,7 @@
+(* Copyright 2023 - 2023, Nitrokey GmbH
+   SPDX-License-Identifier: EUPL-1.2
+*)
+
 (** A key-value store implementation which encrypts and authenticates its values
 
     This module implements a key-value store which stores values encrypted and
