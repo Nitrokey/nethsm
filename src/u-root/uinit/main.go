@@ -1,3 +1,6 @@
+// Copyright 2023 - 2023, Nitrokey GmbH
+// SPDX-License-Identifier: EUPL-1.2
+
 // uinit is our main extension point for u-root. This code gets compiled into
 // "/bbin/uinit" and executed by u-root's "init" at boot time.
 //

@@ -1,3 +1,6 @@
+// Copyright 2023 - 2023, Nitrokey GmbH
+// SPDX-License-Identifier: EUPL-1.2
+
 // Script is a grab-bag of functions for easy shell-like "scripting".
 //
 // To reduce code verbosity, these functions do not return errors. Instead,

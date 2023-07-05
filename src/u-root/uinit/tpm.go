@@ -1,3 +1,6 @@
+// Copyright 2023 - 2023, Nitrokey GmbH
+// SPDX-License-Identifier: EUPL-1.2
+
 // tpm.go contains TPM-related functions used to provision/retrieve and delete
 // the "Device Key" stored in the TPM.
 package main
