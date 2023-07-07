@@ -45,6 +45,32 @@ The image can be flashed as follows.
 2. Upload the `bios.swu` file.
 3. Fully power off the system (real power off, not just mainboard's the power button).
 
+
+#### Disabling CSME in firmware
+
+It is assumed that the firmware image contains CSME version 12. Other versions have not been tested and verified.
+
+##### Reading the entire firmware from using a Linux OS
+
+1. Flash the `.swu` (using the BMC), which should be read out 
+2. Boot into a Linux OS and pass `nopat iomem=relaxed` as cmdline argument to the linux kernel to allow internal SPI access for the firmware flash
+3. Use `flashrom -p internal -r raw-firmware.rom` to read out the entire firmware
+
+##### Disable CSME for the image
+
+1. Get a patched version of `me_cleaner` from [here](https://github.com/dt-zero/me_cleaner/tree/master) to work with CSME12
+2. Create a backup of your original `raw-firmware.rom` 
+3. Run `python me_cleaner.py -S raw-firmware.rom`
+4. compare both firmwares, a single bit should be swapped (check the issue below for an example)
+
+###### Verify that CSME has been disabled
+
+1. Coreboot contains a tool called [`intelmetool`](https://github.com/coreboot/coreboot/tree/master/util/intelmetool)
+2. Just compile it and run it inside a Linux OS to verify that CSME is soft-disabled.
+
+A more thorough history and description can be found in [this issue](https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/issues/136#note_14862).
+
+
 #### Install NetHSM system software
 
 The NetHSM system software can be either installed manually on a hard disk drive, or with the guided installer.
