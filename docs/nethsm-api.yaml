@@ -224,6 +224,11 @@ paths:
     post:
       responses:
         "201":
+          headers:
+            location:
+              description: Where to find the newly added key.
+              schema:
+                type: string
           description: |
             Successful import of a private key.
             The response contains a Location header,
@@ -239,14 +244,15 @@ paths:
       description: |
         Import a private key into NetHSM and let NetHSM generate a KeyID.
         The public key will be automatically derived.
+        The parameters of the key can be passed as a PEM file or a JSON object.
       requestBody:
         content:
-          application/x-pem-file:
-            schema:
-              $ref: "#/components/schemas/PemPrivateKey"
           application/json:
             schema:
               $ref: "#/components/schemas/PrivateKey"
+          application/x-pem-file:
+            schema:
+              $ref: "#/components/schemas/PemPrivateKey"
         required: true
       parameters:
         - name: mechanisms
@@ -274,6 +280,11 @@ paths:
           description: |
             Successful creation of new public and private key pair.
             Set Location header to the new KeyID.
+          headers:
+            location:
+              description: Where to find the newly added key.
+              schema:
+                type: string
         "400":
           description: Bad request (specified properties are invalid).
         "401":
@@ -396,6 +407,7 @@ paths:
       description: |
         Import a private key into NetHSM and store it under the *KeyID* path.
         The public key will be automatically derived.
+        The parameters of the key can be passed as a PEM file or a JSON object.
       requestBody:
         description: |
           For request body with content type `application/json`:
@@ -406,9 +418,6 @@ paths:
           * *Curve25519* uses the `data` property.
             Keys are the raw (little endian) key.
         content:
-          application/x-pem-file:
-            schema:
-              $ref: "#/components/schemas/PemPrivateKey"
           application/json:
             schema:
               $ref: "#/components/schemas/PrivateKey"
@@ -448,6 +457,9 @@ paths:
                   restrictions:
                     tags:
                       - berlin
+          application/x-pem-file:
+            schema:
+              $ref: "#/components/schemas/PemPrivateKey"
         required: true
       parameters:
         - name: mechanisms
@@ -1913,6 +1925,7 @@ components:
         - mechanisms
         - type
         - restrictions
+        - key
         - operations
     KeyPublicData:
       description: |
