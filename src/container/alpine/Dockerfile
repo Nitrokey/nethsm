@@ -46,19 +46,8 @@ WORKDIR /home/opam/nethsm
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   cp -a src/container/static/ src/s_keyfender/htdocs
-  mkdir -p src/s_keyfender/htdocs/api_docs
-  cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/
-  curl -sSL "https://github.com/swagger-api/swagger-ui/archive/master.tar.gz" -o /tmp/swagger-ui.tar.gz
-  mkdir -p /tmp/swagger-ui
-  tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
-  # Sets NetHSM API specification file
-  sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/nethsm-api.yaml"\,/g' \
-    /tmp/swagger-ui/dist/swagger-initializer.js
-  # Removes the SwaggerUI top bar
-  sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' \
-    /tmp/swagger-ui/dist/swagger-initializer.js
-  cp -a /tmp/swagger-ui/dist/* src/s_keyfender/htdocs/api_docs/
 EOF
+COPY src/s_keyfender/htdocs/api_docs src/s_keyfender/htdocs/api_docs
 
 RUN <<EOF
   mkdir -p -m 0700 ~/.ssh
