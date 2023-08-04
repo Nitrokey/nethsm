@@ -739,6 +739,12 @@ paths:
         "200":
           description: ""
           content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemCert"
+            application/x-x509-ca-cert:
+              schema:
+                type: string
             application/pgp-keys:
               schema:
                 $ref: "#/components/schemas/PGPPrivateKey"
