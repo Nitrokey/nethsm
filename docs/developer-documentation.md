@@ -49,6 +49,7 @@ The image can be flashed as follows.
 #### Disabling CSME in firmware
 
 It is assumed that the firmware image contains CSME version 12. Other versions have not been tested and verified.
+Please note that the following instructions are not working from firmware version `6.00` on.
 
 ##### Reading the entire firmware from using a Linux OS
 
