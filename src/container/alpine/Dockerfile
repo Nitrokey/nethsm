@@ -44,10 +44,7 @@ EOF
 
 WORKDIR /home/opam/nethsm
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
-  cp -a src/container/static/ src/s_keyfender/htdocs
-EOF
-COPY src/s_keyfender/htdocs/api_docs src/s_keyfender/htdocs/api_docs
+COPY src/s_keyfender/htdocs src/s_keyfender/htdocs
 
 RUN <<EOF
   mkdir -p -m 0700 ~/.ssh
