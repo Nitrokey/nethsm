@@ -1,27 +1,5 @@
 % NetHSM Operator Manual
 
-# Initial Installation on Hardware {#sec-iih}
-
-To perform initial installation on a stock hardware unit, follow these steps:
-
-1. Download the build you would like to install from the NetHSM builds [repository][builds].
-2. Flash `coreboot.rom` from the build to the unit with an external programmer.
-3. Attach the SSD to your machine, e.g. using an USB to SATA adapter, and note down the block device `/dev/sdX` of the SSD.
-4. Ensure you have the following system packages installed:
-    - `cgpt`
-    - `e2fsprogs`
-5. As root, run the installer [script][installer] using `/dev/sdX` and the `system.img.cpio` from the build.
-6. Insert the SSD into the hardware unit, making sure that it is connected to the **first** SATA controller.
-
-See [System Console](#sec-sc) for details on how to access the console of the unit.
-
-[builds]: https://git.nitrokey.com/nitrokey/nethsm/ci-builds
-[installer]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/raw/master/tools/nethsm-install.sh
-
-Alternatively, for development purposes, if you have a Debian 10 host system (**not a container**) available to build it with, you can also install the System Software by booting a signed "development" installer based on Debian Live from USB. See the [README.md][usbinstaller] for details.
-
-[usbinstaller]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/blob/master/src/installer/README.md
-
 # System Software Update Signing {#sec-ssus}
 
 A _System Software_ update image must be signed twice, once for the verified boot (the boot key signature), and once including the ChangeLog with the software update key. The public software update key is passed to the keyfender library during `Hsm.boot`. By default, the unikernel copies `src/keyfender/test/public.pem` (private part is `src/keyfender/test/key.pem`) to `src/s_keyfender/update_key_store/key.pem`, which is embedded into the unikernel at build time. It must be a PEM encoded RSA public key. By default, builds are all automatically signed with test keys. If the Makefile variable `UPDATE_KEY_SMARTCARD` is set, the public key is extracted from the Nitrokey to be embedded into the unikernel. In addition, the Nitrokey is used for signing the update image (using `bin/sign_update.exe`).
