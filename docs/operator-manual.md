@@ -97,13 +97,3 @@ The following instructions assume the current work directory is the cloned NetHS
 11. Make sure to build the shadowed private key cache in the `keys/smartcard/private/private-keys-v1.d/` directory by running `gpg --homedir keys/smartcard/private --card-status`. Afterwards run `gpgconf --homedir keys/smartcard/private--kill all` to end all GnuPG processes.
 12. In the `Makefile.sub` set the variables `BOOT_KEY_SMARTCARD` and  `UPDATE_KEY_SMARTCARD` to `1`, i.e. `UPDATE_KEY_SMARTCARD ?= 1`, to enable the build with signing keys from the Nitrokey. Set the PIN in `UPDATE_KEY_SMARTCARD_USER_PIN` accordingly.
 13. Start the build with `make OPAMJOBS=$(nproc) -j$(nproc) artifacts`.
-
-# Reset to Factory Defaults {#sec-rtfd}
-
-Until this feature is implemented, you can use the following method to reset a unit to factory defaults if the unlock passphrase is lost:
-
-Disassemble hardware, attach SSD to a computer. Wipe the data partition (assuming "sdb" is the disk):
-
-    | mkdir -p /tmp/empty /tmp/data/git
-    | git init --bare --template=/tmp/empty /tmp/data/git/keyfender-data.git
-    | MKE2FS_CONFIG=src/u-root/etc/mke2fs.conf mke2fs -t ext4 -E discard -F -m0 -L data -d /tmp/data /dev/sdb3
