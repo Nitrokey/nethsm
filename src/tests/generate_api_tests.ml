@@ -158,6 +158,7 @@ let make_post_data req =
       let example = example_of_type json in
       header ^ "--data " ^ escape @@ Ezjsonm.value_to_string example
     in
+    let mediatypes = List.rev mediatypes in
     List.map f mediatypes
 
 (* Extracted metadata a specific endpoint *)
