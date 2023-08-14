@@ -22,14 +22,6 @@ Alternatively, for development purposes, if you have a Debian 10 host system (**
 
 [usbinstaller]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/blob/master/src/installer/README.md
 
-# System Software Update {#sec-update}
-
-During the build process, the version number from the toplevel CHANGES.md file is used. The version number is MAJOR.MINOR. Downgrades are only allowed in the same MAJOR line.
-
-For example to release a new version 42.5, add the following to the top of CHANGES.md: "# 42.5 (2022-02-27)"
-
-Add the changes (as a markdown list) before the previous release marker. This will be taken as user-visible changes in the update image.
-
 # System Software Update Signing {#sec-ssus}
 
 A _System Software_ update image must be signed twice, once for the verified boot (the boot key signature), and once including the ChangeLog with the software update key. The public software update key is passed to the keyfender library during `Hsm.boot`. By default, the unikernel copies `src/keyfender/test/public.pem` (private part is `src/keyfender/test/key.pem`) to `src/s_keyfender/update_key_store/key.pem`, which is embedded into the unikernel at build time. It must be a PEM encoded RSA public key. By default, builds are all automatically signed with test keys. If the Makefile variable `UPDATE_KEY_SMARTCARD` is set, the public key is extracted from the Nitrokey to be embedded into the unikernel. In addition, the Nitrokey is used for signing the update image (using `bin/sign_update.exe`).
