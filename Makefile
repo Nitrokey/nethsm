@@ -65,7 +65,7 @@ local-container-enter:
 	    --device=/dev/net/tun:/dev/net/tun \
 	    $(HAVE_KVM) $(HAVE_KVM_GROUP) \
 	    --mount type=bind,src=$(abspath .),dst=/builds/nitrokey/nethsm \
-	    --mount type=tmpfs,dst=/tmp \
+	    --tmpfs /tmp \
 	    $(DOCKER_IMAGE_NAME)
 
 .PHONY: local-container-setup
