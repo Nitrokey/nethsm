@@ -46,6 +46,7 @@ distclean:
 	$(MAKE) -f Makefile.sub distclean
 	$(RM) .stamp-mode
 
+CONTAINER_EXECUTOR ?= docker
 HOST_UID := $(shell id -u)
 HAVE_KVM := $(shell test -w /dev/kvm && echo "--device=/dev/kvm:/dev/kvm")
 ifneq ($(HAVE_KVM),)
@@ -58,7 +59,7 @@ endif
 DOCKER_IMAGE_NAME ?= registry.git.nitrokey.com/nitrokey/nethsm/nethsm/builder
 .PHONY: local-container-enter
 local-container-enter:
-	docker run --rm -ti \
+	$(CONTAINER_EXECUTOR) run --rm -ti \
 	    --net=host \
 	    --cap-add NET_ADMIN \
 	    --device=/dev/net/tun:/dev/net/tun \

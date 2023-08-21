@@ -4,7 +4,7 @@
 Available targets:
 
 local-container-enter:
-                    Run the local Docker container for building
+                    Run the local Docker/Podman container for building
 local-container-setup:
                     When using a local Docker container, run this once before
                     using any other targets

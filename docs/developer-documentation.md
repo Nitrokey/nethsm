@@ -346,9 +346,13 @@ Produces
 
 For initial provisioning, you can run `src/tests/provision_test.sh`. See the other scripts in that directory for more end to end tests.
 
-### Build with Docker
+### Build with builder container
 
-1. To enter the Docker container, run:
+The following uses the makefile target `local-container-enter`.
+This target uses Docker as the container executor.
+The default can be overwritten by setting `CONTAINER_EXECUTOR` and appending it to the command, e.g. `make local-container-enter CONTAINER_EXECUTOR=podman`.
+
+1. To enter the container, run:
 
     ```
     make local-container-enter
@@ -370,8 +374,8 @@ For initial provisioning, you can run `src/tests/provision_test.sh`. See the oth
 
 Notes:
 
-- The Docker container will bind mount your checked out NetHSM repository as `/builds/nitrokey/nethsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
-- The Docker container is run with `--net=host`. This is intentional, so that you can talk to a running NetHSM from the host.
+- The container will bind mount your checked out NetHSM repository as `/builds/nitrokey/nethsm` in the container. `make local-container-setup` attempts to fix permissions on `$HOME` in the container if your UID is not `1000`.
+- The container is run with `--net=host`. This is intentional, so that you can talk to a running NetHSM from the host.
 - `/dev/net/tun` and `/dev/kvm` (if present and the host user can access it) are passed through to the container.
 - Due to the above, `make local-container-enter` will work only on a Linux host (i.e. not Docker for Mac, for example).
 
