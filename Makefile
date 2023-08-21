@@ -64,6 +64,7 @@ local-container-enter:
 	    --cap-add NET_ADMIN \
 	    --device=/dev/net/tun:/dev/net/tun \
 	    $(HAVE_KVM) $(HAVE_KVM_GROUP) \
+	    --security-opt="label=disable" \
 	    -v $(abspath .):/builds/nitrokey/nethsm \
 	    --tmpfs /tmp \
 	    $(DOCKER_IMAGE_NAME)
