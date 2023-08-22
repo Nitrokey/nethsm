@@ -224,13 +224,7 @@ build_api_spec_docs:
     - curl -sSL "https://github.com/swagger-api/swagger-ui/archive/master.tar.gz" -o /tmp/swagger-ui.tar.gz
     - mkdir -p /tmp/swagger-ui
     - tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
-    # Sets NetHSM API specification file
-    - >
-      sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/nethsm-api.yaml"\,/g' /tmp/swagger-ui/dist/swagger-initializer.js
-    # Removes the SwaggerUI top bar
-    - >
-      sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' /tmp/swagger-ui/dist/swagger-initializer.js
-    - cp -a /tmp/swagger-ui/dist/* ${API_DOCS}
+    - cp -an /tmp/swagger-ui/dist/* ${API_DOCS}
 
 build_dev:
   rules:
