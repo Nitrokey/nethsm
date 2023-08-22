@@ -56,6 +56,12 @@ HAVE_KVM_GROUP := --group-add=$(KVM_GID)
 endif
 endif
 
+ifeq ($(CONTAINER_EXECUTOR),podman)
+ifneq ($(HOST_UID),1000)
+HAVE_DIFFERENT_UID := --userns keep-id:uid=1000,gid=1000
+endif
+endif
+
 DOCKER_IMAGE_NAME ?= registry.git.nitrokey.com/nitrokey/nethsm/nethsm/builder
 .PHONY: local-container-enter
 local-container-enter:
@@ -64,6 +70,7 @@ local-container-enter:
 	    --cap-add NET_ADMIN \
 	    --device=/dev/net/tun:/dev/net/tun \
 	    $(HAVE_KVM) $(HAVE_KVM_GROUP) \
+	    $(HAVE_DIFFERENT_UID) \
 	    --security-opt="label=disable" \
 	    -v $(abspath .):/builds/nitrokey/nethsm \
 	    --tmpfs /tmp \
