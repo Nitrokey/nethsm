@@ -142,7 +142,7 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   mkdir -p /nethsm-tools/coreboot
-  git clone --depth 50 -b nethsm git@git.nitrokey.com:nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot
+  git clone --depth 50 -b nethsm-btg-4.20 git@git.nitrokey.com:nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot
   cd /nethsm-tools/coreboot
   git remote set-url origin https://github.com/coreboot/coreboot.git
   git submodule update --checkout --init --depth 50
