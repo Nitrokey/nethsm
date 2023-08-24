@@ -48,29 +48,49 @@ The image can be flashed as follows.
 
 #### Disabling CSME in firmware
 
-It is assumed that the firmware image contains CSME version 12. Other versions have not been tested and verified.
-Please note that the following instructions are not working from firmware version `6.00` on.
+It is assumed that the firmware image contains CSME version 12. Other versions
+have not been tested and verified.
 
-##### Reading the entire firmware from using a Linux OS
+###### Manually patching the firmware image
 
-1. Flash the `.swu` (using the BMC), which should be read out
-2. Boot into a Linux OS and pass `nopat iomem=relaxed` as cmdline argument to the linux kernel to allow internal SPI access for the firmware flash
-3. Use `flashrom -p internal -r raw-firmware.rom` to read out the entire firmware
+Open the `.swu` file with hex editor and search for the `"""""""""""""` string:
 
-##### Disable CSME for the image
+```
+00000d40: 0000 0000 0002 0000 5c00 0000 0000 0000  ........\.......
+00000d50: 0004 0000 0100 0000 c003 0000 c003 0000  ................
+00000d60: 2222 2222 2222 2222 2222 2222 2200 0000  """""""""""""...
+00000d70: 4700 0000 0000 ff00 1000 00b6 4586 0005  G...........E...
+00000d80: 0000 0000 0002 5c00 0000 5000 0018 0000  ......\...P.....
+00000d90: 0000 0000 0000 0000 0000 0000 001c 0000  ................
+00000da0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000db0: 0000 0000 001c 0000 0000 0000 1900 0000  ................
+00000dc0: b801 1280 0001 0000 0000 0000 0000 0000  ................
+          ^^^^^^^^^
+00000dd0: 0000 0000 0000 0100 0101 0000 0000 0000  ................
+00000de0: 0000 0000 0000 0000 0000 0300 0101 6100  ..............a.
+00000df0: 0000 0000 0000 0000 0000 0000 0000 0200  ................
+```
 
-1. Get a patched version of `me_cleaner` from [here](https://github.com/dt-zero/me_cleaner/tree/master) to work with CSME12
-2. Create a backup of your original `raw-firmware.rom`
-3. Run `python me_cleaner.py -S raw-firmware.rom`
-4. compare both firmwares, a single bit should be swapped (check the issue below for an example)
+`0x60` bytes after there is a sequence `b8011280`. Set bit 0 of the 3rd byte,
+that is, change the 12 to 13, which is the HAP bit for ME.
+
+If can also be done in the shell:
+```
+$ strings -o $FILE | grep -F '"""""""""""""'
+   3424 """""""""""""
+$ echo -n '\x13' | dd bs=1 seek=$((3424+98)) of=$FILE conv=notrunc
+```
+
 
 ###### Verify that CSME has been disabled
 
-1. Coreboot contains a tool called [`intelmetool`](https://github.com/coreboot/coreboot/tree/master/util/intelmetool)
-2. Just compile it and run it inside a Linux OS to verify that CSME is soft-disabled.
-
-A more thorough history and description can be found in [this issue](https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/issues/136#note_14862).
-
+```
+$ dd bs=1 skip=$((3424+96)) if=$FILE count=4 | xxd
+4+0 records in
+4+0 records out
+4 bytes transferred in 0.000013 secs (307692 bytes/sec)
+00000000: b801 1380                                ....
+```
 
 #### Install NetHSM system software
 
