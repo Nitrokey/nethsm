@@ -42,9 +42,8 @@ let software_update_key =
 let platform = {
   Keyfender.Json.deviceId = "0000000000" ;
   deviceKey = "test dispatch" ;
-  pcr = "" ;
-  akPubP256 = "" ;
-  akPubP384 = "" ;
+  pcr = [] ;
+  akPub = [] ;
 }
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =

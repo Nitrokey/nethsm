@@ -2191,8 +2191,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       buildTag = build_tag ;
       deviceId = platform.deviceId ;
       pcr = platform.pcr ;
-      akPubP256 = platform.akPubP256 ;
-      akPubP384 = platform.akPubP384 ;
+      akPub = platform.akPub ;
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()

@@ -468,24 +468,39 @@ let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
 let version_to_yojson v = `String (version_to_string v)
 let version_of_yojson _ = Error "Cannot convert version"
 
+type assoc_list = (string * string) list
+
+let assoc_list_to_yojson l =
+    let f (k, v) = (k, `String v) in
+    `Assoc (List.map f l)
+
+let assoc_list_of_yojson = function
+  | `Assoc l ->
+    let rec map l acc = match l with
+    | [] -> Ok (List.rev acc)
+    | (k, `String v) :: tl -> map tl ((k, v) :: acc)
+    | _ -> Error "Expected only string values in JSON object"
+    in
+    map l []
+  | _ -> Error "Expected JSON object"
+
 type system_info = {
-  firmwareVersion : string ;
   softwareVersion : version ;
+  firmwareVersion : string ;
   hardwareVersion : string ;
   buildTag : string ;
   deviceId : string ;
-  pcr : string ;
-  akPubP256 : string ;
-  akPubP384 : string ;
+  akPub : assoc_list ;
+  pcr : assoc_list ;
 }[@@deriving yojson]
+
 
 (* must be in sync with platformData in src/u-root/uinit/tpm.go *)
 type platform_data = {
   deviceId : string ;
   deviceKey : string ;
-  pcr : string ;
-  akPubP256 : string ;
-  akPubP384 : string ;
+  akPub : assoc_list ;
+  pcr : assoc_list ;
 }[@@deriving yojson]
 
 let parse_platform_data s =

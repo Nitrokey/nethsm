@@ -361,7 +361,7 @@ paths:
                       tags:
                         - berlin
                     key:
-                     data: htnjTKRUz3XnLys5YD2+bKvzXZuu9cvXKwsCnWdzR+4=
+                      data: htnjTKRUz3XnLys5YD2+bKvzXZuu9cvXKwsCnWdzR+4=
                 generic:
                   summary: Generic
                   value:
@@ -2278,9 +2278,12 @@ components:
         hardwareVersion: N/A
         buildTag: TAG-NN-g1234567-dirty
         deviceId: 5UMIP364R2
-        pcr: c23c41509273dec732676aea195b983bd5755126874d054325e9e1b1869c47c7
-        akPubP256: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEup7z8QYvkzkBuLryG1SgVQjlPhSFW3PzYn1l3uLNd+pSBxX0OBpslcbnmPFr5wSs/iP46+H8MFlEAYUkYv6uuQ==
-        akPubP384: MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEfQiurLvEmjsAmumRtIqu70HKehRo8A/nVrqQGiR8Rcr+SUujwgtQByORX5BoRtv4sZNJW4FyLGqvXCIF9IV1puob2+9Qq5oEjz4x4malLbFdyXDmQK8o2NpvcbgOr215
+        pcr:
+          0: 0f6064779fba55b102a6ecc20498c2020deaf2aebef23716ec293b25873647f8
+          2: 2b0d25a4a92b4df5205742954243db9d306a4c3277a6b6958bcbaf3d47def26f
+        akPub:
+          P256: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEup7z8QYvkzkBuLryG1SgVQjlPhSFW3PzYn1l3uLNd+pSBxX0OBpslcbnmPFr5wSs/iP46+H8MFlEAYUkYv6uuQ==
+          P384: MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEfQiurLvEmjsAmumRtIqu70HKehRo8A/nVrqQGiR8Rcr+SUujwgtQByORX5BoRtv4sZNJW4FyLGqvXCIF9IV1puob2+9Qq5oEjz4x4malLbFdyXDmQK8o2NpvcbgOr215
       type: object
       properties:
         firmwareVersion:
@@ -2294,11 +2297,9 @@ components:
         deviceId:
           type: string
         pcr:
-          type: string
-        akPubP256:
-          type: string
-        akPubP384:
-          type: string
+          type: object
+        akPub:
+          type: object
       required:
         - firmwareVersion
         - softwareVersion
@@ -2306,8 +2307,7 @@ components:
         - buildTag
         - deviceId
         - pcr
-        - akPubP256
-        - akPubP384
+        - akPub
     SystemUpdateData:
       example:
         releaseNotes: Some new feature is available.

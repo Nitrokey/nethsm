@@ -30,9 +30,8 @@ let update_key =
 let platform = {
   Keyfender.Json.deviceId = "0000000000" ;
   deviceKey = "test stream" ;
-  pcr = "" ;
-  akPubP256 = "" ;
-  akPubP384 = "" ;
+  pcr = [] ;
+  akPub = [] ;
 }
 
 let unprovisioned_mock () =

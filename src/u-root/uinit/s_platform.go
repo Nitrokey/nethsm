@@ -269,8 +269,8 @@ func sPlatformActions() {
 	}
 
 	G.s.Logf("NetHSM Device ID: %s\n", ak.DeviceId)
-	G.s.Logf("Assertion Public Key P-256:\n%s\n", ak.AKPubP256)
-	G.s.Logf("Assertion Public Key P-384:\n%s\n", ak.AKPubP384)
+	akPubJson, _ := json.MarshalIndent(ak.AKPub, "", "    ")
+	G.s.Logf("Attestation Public Keys: %v\n", string(akPubJson))
 
 	c := make(chan string)
 	startTask("Platform Listener", func() { platformListener(c) })

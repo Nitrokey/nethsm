@@ -12,6 +12,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,24 +28,25 @@ import (
 )
 
 const (
-	// PCR index for sealing
-	pcrIdx = 2
-
 	sealedDeviceKeyFile = "/data/sealedDeviceKey"
 )
 
 var (
+	// PCR index for sealing
+	pcrIdxs = tpm2.PCRSelect{0, 2}
+
+	zeros = make([]byte, 32)
+
 	tpmCtxInstance *tpm2.TPMContext
 	tpmCtxMutex    sync.Mutex
 )
 
 // must be in sync with platform_data in src/keyfender/json.ml
 type platformData struct {
-	DeviceId  string `json:"deviceId"`
-	DeviceKey string `json:"deviceKey"`
-	PCR       string `json:"pcr"`
-	AKPubP256 string `json:"akPubP256"`
-	AKPubP384 string `json:"akPubP384"`
+	DeviceId  string            `json:"deviceId"`
+	DeviceKey string            `json:"deviceKey"`
+	PCR       map[int]string    `json:"pcr"`
+	AKPub     map[string]string `json:"akPub"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -96,7 +98,7 @@ func getDerFromAk(akPub *tpm2.Public) (string, error) {
 	return base64.StdEncoding.EncodeToString(akDer), nil
 }
 
-var akData platformData
+var akData = platformData{PCR: make(map[int]string), AKPub: make(map[string]string)}
 
 func tpmGetAKData() (platformData, error) {
 	var err error
@@ -129,18 +131,19 @@ func tpmGetAKData() (platformData, error) {
 			}
 
 			akData.DeviceId = getIdFromAk(ak256Pub)
-			akData.AKPubP256 = ak256Der
-			akData.AKPubP384 = ak384Der
+			akData.AKPub["P256"] = ak256Der
+			akData.AKPub["P384"] = ak384Der
 			return nil
 		})
 	}
 	return akData, err
 }
 
-// tpmGetDeviceKey returns the 256-bit "Device Key" of the NetHSM.
+// tpmGetPlatformData returns TPM derived data of the NetHSM.
 //
-// The Device Key is sealed against PCR-2 with an SRK on the TPM and stored on
-// the harddisk. If the Device Key does not exist, a new one is created.
+// The Device Key is sealed against PCR-0 and PCR-2 with an SRK on the TPM and
+// stored on the harddisk. If the Device Key does not exist, a new one is
+// created.
 func tpmGetPlatformData() (platformData, error) {
 	var data platformData
 
@@ -153,8 +156,19 @@ func tpmGetPlatformData() (platformData, error) {
 		}
 		defer tpm.FlushContext(srkCtx)
 
-		// Select PCR index in the SHA256 bank
-		pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{pcrIdx}}}
+		// Select PCR indexes in the SHA256 bank
+		pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: pcrIdxs}}
+
+		_, pcrValues, err := tpm.PCRRead(pcrSelection)
+		if err != nil {
+			return fmt.Errorf("reading PCR values failed: %w", err)
+		}
+
+		for _, i := range pcrIdxs {
+			if bytes.Equal(pcrValues[tpm2.HashAlgorithmSHA256][i], zeros) {
+				return fmt.Errorf("PCR-%d is empty!", i)
+			}
+		}
 
 		key, err := unsealDeviceKey(tpm, srkCtx)
 		if err != nil {
@@ -190,24 +204,32 @@ func tpmGetPlatformData() (platformData, error) {
 
 		data.DeviceKey = hex.EncodeToString(key)
 
-		_, pcrValues, err := tpm.PCRRead(pcrSelection)
-		if err != nil {
-			return fmt.Errorf("reading PCR value failed: %w", err)
+		// cap PCRs afterwards to inhibit unsealing the Device Key again
+		for _, i := range pcrIdxs {
+			tpm.PCRExtend(tpm.PCRHandleContext(i),
+				tpm2.NewTaggedHashListBuilder().
+					Append(tpm2.HashAlgorithmSHA256, zeros).
+					MustFinish(),
+				nil)
 		}
-		data.PCR = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][pcrIdx])
-
-		// invalidate PCR afterwards to inhibit unsealing the Device Key again
-		tpm.PCRExtend(tpm.PCRHandleContext(pcrIdx),
-			tpm2.NewTaggedHashListBuilder().
-				Append(tpm2.HashAlgorithmSHA256, make([]byte, 32)).
-				MustFinish(),
-			nil)
 		_, err = unsealDeviceKey(tpm, srkCtx)
 		if tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, tpm2.AnySessionIndex) {
-			log.Printf("Successfully invalidated PCR value.")
+			log.Printf("Successfully capped PCR values.")
 		} else {
-			return fmt.Errorf("invalidating PCR value failed: %w", err)
+			return fmt.Errorf("capping PCR values failed: %w", err)
 		}
+
+		_, pcrValues, err = tpm.PCRRead(pcrSelection)
+		if err != nil {
+			return fmt.Errorf("reading PCR values failed: %w", err)
+		}
+
+		for _, i := range pcrIdxs {
+			data.PCR[i] = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][i])
+		}
+
+		pcrJson, _ := json.MarshalIndent(data.PCR, "", "    ")
+		log.Printf("PCRs: %v\n", string(pcrJson))
 
 		return nil
 	})

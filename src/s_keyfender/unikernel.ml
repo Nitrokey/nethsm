@@ -194,9 +194,8 @@ struct
 let dummy_platform = {
   Keyfender.Json.deviceId = "0000000000" ;
   deviceKey = "no platform" ;
-  pcr = "" ;
-  akPubP256 = "" ;
-  akPubP384 = "" ;
+  pcr = [] ;
+  akPub = [] ;
 }
 
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
@@ -237,7 +236,7 @@ let dummy_platform = {
         | Ok data ->
         match (Keyfender.Json.parse_platform_data data) with
         | Error e ->
-          Log.err (fun m -> m "couldn't parse platform data: %s" e);
+          Log.err (fun m -> m "couldn't parse platform data: %s\ndata: %s" e data);
           Lwt.fail_with "failed to parse platform data from platform"
         | Ok x -> Lwt.return x) >>= fun platform ->
       (Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
