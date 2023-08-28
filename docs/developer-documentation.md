@@ -124,15 +124,15 @@ The installer can be run as follows.
 ##### Operation
 
 We are using BootGuard 1.0 in order to generate an Intel authorized Locality 3
-PCR-0 measurement of the bootblock, which is the self-measured root of trust for
-the PCR-2 measruements of Coreboot. That is, we are not using its verification
+PCR-0 measurement of the boot block, which is the self-measured root of trust for
+the PCR-2 measurements of Coreboot. That is, we are not using its verification
 feature, which would require to fuse the chip. Because there is no BootGuard
 profile without verification, we still have to use a dummy OEM Key for signing
 both the Key Manifest and the Boot Policy Manifest, so that we can get the PCR-0
 measurement, but the OEM Key does not have to be kept secret. Because the
 Locality 3 measurement can only be done by Intel-signed ACMs, no adversary can
 reproduce the same PCR-0 measurements with any modification of the flash.
-(Hardware modifications are out of scope for the thread model.) The device key
+(Hardware modifications are out of scope for the threat model.) The device key
 is sealed against both PCR-0 and PCR-2, and can't be accessed with any modified
 flash.
 
@@ -151,20 +151,20 @@ are required:
 * Key Manifest signed by OEM Key stored in CBFS
 * Boot Policy Manifest stored in CBFS with
   * signed with key from Key Manifest
-  * IBB section for the coreboot booblock
-  * IBB hash of the coreboot bootblock
+  * IBB section for the Coreboot boot block
+  * IBB hash of the Coreboot boot block
   * IBB SE Flag 0x02: (Locality 3 Startup: Issue TPM Start-up from Locality 3)
 * FIT entries for:
   * Startup ACM
   * Key Manifest
   * Boot Policy Manifest
 
-Most of these things are taken care of by coreboot tooling in the CI, and the
+Most of these things are taken care of by Coreboot tooling in the CI and the
 required files are stored in the repostitory. However, the first two points
 (modification of the base FW image) must be done manually, whenever it is
 updated. (See next section.)
 
-##### Manually patching the Firmware
+##### Manually Patching the Firmware
 
 The Firmware can be manually patched with a hex editor. Open the original CSME
 firmware image (at the time of this writing
@@ -227,11 +227,11 @@ For BootGuard profile 3 the following values must be set:
 * Of the FPF bits, byte 4 must be set to `0x78` (all three occurences).
   Difference to profile 5: FACB not set.
 
-###### 2. Store the OEM Key hash
+###### 2. Store the OEM Key Hash
 
-The Hash of the dummy OEM Key must be stored at offsets `0x90`, `0x120` and
+The hash of the dummy OEM Key must be stored at offsets `0x90`, `0x120` and
 `0x1B0`. If the OEM Key has been changed, you need to re-calculate the hash. The
-easiest way to do that is to build coreboot in the builder container, and then
+easiest way to do that is to build Coreboot in the builder container and then
 execute:
 
 ```
