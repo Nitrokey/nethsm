@@ -26,6 +26,8 @@ let platform = {
   deviceKey = "test server" ;
   pcr = [] ;
   akPub = [] ;
+  hardwareVersion = "N/A";
+  firmwareVersion = "N/A";
 }
 
 let () =

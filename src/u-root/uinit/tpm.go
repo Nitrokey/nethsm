@@ -43,10 +43,12 @@ var (
 
 // must be in sync with platform_data in src/keyfender/json.ml
 type platformData struct {
-	DeviceId  string            `json:"deviceId"`
-	DeviceKey string            `json:"deviceKey"`
-	PCR       map[int]string    `json:"pcr"`
-	AKPub     map[string]string `json:"akPub"`
+	DeviceId        string            `json:"deviceId"`
+	DeviceKey       string            `json:"deviceKey"`
+	PCR             map[int]string    `json:"pcr"`
+	AKPub           map[string]string `json:"akPub"`
+	HardwareVersion string            `json:"hardwareVersion"`
+	FirmwareVersion string            `json:"firmwareVersion"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -98,45 +100,38 @@ func getDerFromAk(akPub *tpm2.Public) (string, error) {
 	return base64.StdEncoding.EncodeToString(akDer), nil
 }
 
-var akData = platformData{PCR: make(map[int]string), AKPub: make(map[string]string)}
-
-func tpmGetAKData() (platformData, error) {
-	var err error
-	if akData.DeviceId == "" {
-		err = withTPMContext(func(tpm *tpm2.TPMContext) error {
-			ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-				templates.NewRestrictedECCSigningKeyWithDefaults(),
-				nil, nil, nil)
-			if err != nil {
-				return fmt.Errorf("create AK: %v", err)
-			}
-			defer tpm.FlushContext(ak256Ctx)
-
-			ak256Der, err := getDerFromAk(ak256Pub)
-			if err != nil {
-				return fmt.Errorf("mashall AK256: %v", err)
-			}
-
-			ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-				templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
-				nil, nil, nil)
-			if err != nil {
-				return fmt.Errorf("create AK: %v", err)
-			}
-			defer tpm.FlushContext(ak384Ctx)
-
-			ak384Der, err := getDerFromAk(ak384Pub)
-			if err != nil {
-				return fmt.Errorf("mashall AK384: %v", err)
-			}
-
-			akData.DeviceId = getIdFromAk(ak256Pub)
-			akData.AKPub["P256"] = ak256Der
-			akData.AKPub["P384"] = ak384Der
-			return nil
-		})
+func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string]string, error) {
+	ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+		templates.NewRestrictedECCSigningKeyWithDefaults(),
+		nil, nil, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("create AK: %v", err)
 	}
-	return akData, err
+	defer tpm.FlushContext(ak256Ctx)
+
+	ak256Der, err := getDerFromAk(ak256Pub)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal AK256: %v", err)
+	}
+
+	ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+		templates.NewRestrictedECCSigningKey(tpm2.HashAlgorithmSHA384, nil, tpm2.ECCCurveNIST_P384),
+		nil, nil, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("create AK: %v", err)
+	}
+	defer tpm.FlushContext(ak384Ctx)
+
+	ak384Der, err := getDerFromAk(ak384Pub)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal AK384: %v", err)
+	}
+
+	deviceId := getIdFromAk(ak256Pub)
+	akPub := make(map[string]string)
+	akPub["P256"] = ak256Der
+	akPub["P384"] = ak384Der
+	return deviceId, akPub, nil
 }
 
 // tpmGetPlatformData returns TPM derived data of the NetHSM.
@@ -170,18 +165,18 @@ func tpmGetPlatformData() (platformData, error) {
 			}
 		}
 
-		key, err := unsealDeviceKey(tpm, srkCtx)
+		deviceKey, err := unsealDeviceKey(tpm, srkCtx)
 		if err != nil {
 			return fmt.Errorf("Unsealing Device Key failed: %w\n", err)
 		}
-		if len(key) == 0 {
+		if len(deviceKey) == 0 {
 			if !randIsFullySeeded() {
 				return fmt.Errorf("waiting for TRNG seeding timed out.")
 			}
-			key = make([]byte, 32)
-			crand.Read(key)
+			deviceKey = make([]byte, 32)
+			crand.Read(deviceKey)
 
-			err = sealDeviceKey(tpm, srkCtx, key, pcrSelection)
+			err = sealDeviceKey(tpm, srkCtx, deviceKey, pcrSelection)
 			if err != nil {
 				return fmt.Errorf("sealing new key failed: %w", err)
 			}
@@ -189,20 +184,13 @@ func tpmGetPlatformData() (platformData, error) {
 			if err != nil {
 				return fmt.Errorf("unsealing new key failed: %w", err)
 			}
-			if !bytes.Equal(key, key2) {
+			if !bytes.Equal(deviceKey, key2) {
 				return fmt.Errorf("unsealed key does not match generated key.")
 			}
 			log.Printf("Created and sealed new Device Key\n")
 		} else {
 			log.Printf("Sucessfully unsealed Device Key\n")
 		}
-
-		data, err = tpmGetAKData()
-		if err != nil {
-			return fmt.Errorf("getting AK data failed: %w", err)
-		}
-
-		data.DeviceKey = hex.EncodeToString(key)
 
 		// cap PCRs afterwards to inhibit unsealing the Device Key again
 		for _, i := range pcrIdxs {
@@ -224,12 +212,24 @@ func tpmGetPlatformData() (platformData, error) {
 			return fmt.Errorf("reading PCR values failed: %w", err)
 		}
 
+		data.PCR = make(map[int]string)
 		for _, i := range pcrIdxs {
 			data.PCR[i] = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][i])
 		}
 
-		pcrJson, _ := json.MarshalIndent(data.PCR, "", "    ")
-		log.Printf("PCRs: %v\n", string(pcrJson))
+		data.DeviceId, data.AKPub, err = tpmGetAKData(tpm)
+		if err != nil {
+			return fmt.Errorf("getting AK data failed: %w", err)
+		}
+
+		data.FirmwareVersion = getFirmwareVersion(data.PCR)
+
+		data.HardwareVersion = hardwareVersion
+
+		platformDataJson, _ := json.MarshalIndent(data, "", "    ")
+		log.Printf("Platform Data: %v\n", string(platformDataJson))
+
+		data.DeviceKey = hex.EncodeToString(deviceKey)
 
 		return nil
 	})

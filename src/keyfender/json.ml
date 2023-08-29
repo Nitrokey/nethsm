@@ -486,9 +486,9 @@ let assoc_list_of_yojson = function
 
 type system_info = {
   softwareVersion : version ;
+  softwareBuild : string ;
   firmwareVersion : string ;
   hardwareVersion : string ;
-  buildTag : string ;
   deviceId : string ;
   akPub : assoc_list ;
   pcr : assoc_list ;
@@ -499,8 +499,10 @@ type system_info = {
 type platform_data = {
   deviceId : string ;
   deviceKey : string ;
-  akPub : assoc_list ;
   pcr : assoc_list ;
+  akPub : assoc_list ;
+  hardwareVersion : string ;
+  firmwareVersion : string ;
 }[@@deriving yojson]
 
 let parse_platform_data s =

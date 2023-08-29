@@ -263,15 +263,6 @@ func sPlatformActions() {
 		return
 	}
 
-	ak, err := tpmGetAKData()
-	if err != nil {
-		log.Printf("Couldn't read AK: %v", err)
-	}
-
-	G.s.Logf("NetHSM Device ID: %s\n", ak.DeviceId)
-	akPubJson, _ := json.MarshalIndent(ak.AKPub, "", "    ")
-	G.s.Logf("Attestation Public Keys: %v\n", string(akPubJson))
-
 	c := make(chan string)
 	startTask("Platform Listener", func() { platformListener(c) })
 

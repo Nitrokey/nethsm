@@ -573,6 +573,7 @@ OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_SRC := /nethsm-tools/u-root
 U_ROOT_UINIT := $(TOP_DIR)/src/u-root/uinit
 U_ROOT_BUILD_TAG := $(U_ROOT_UINIT)/.build_tag
+U_ROOT_HW_VERSION := $(U_ROOT_UINIT)/.hardware_version
 # XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
 U_ROOT_PKGS := ./cmds/core/init \
     ./cmds/core/cpio \
@@ -588,10 +589,13 @@ U_ROOT_PKGS := ./cmds/core/init \
 $(U_ROOT_BUILD_TAG):
 	echo -n "$(BUILD_TAG)" >$@
 
+$(U_ROOT_HW_VERSION):
+	echo -n "$(MUEN_HARDWARE)" >$@
+
 INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_ETC_DIR) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)
 
-$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG)
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG) $(U_ROOT_HW_VERSION)
 	$(U_ROOT_SRC)/u-root -format=cpio -build=bb \
 	    -o $(OBJ_INITRAMFS_CPIO) \
 	    -defaultsh="" \

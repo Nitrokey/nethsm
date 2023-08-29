@@ -2292,7 +2292,7 @@ components:
           type: string
         hardwareVersion:
           type: string
-        buildTag:
+        softwareBuild:
           type: string
         deviceId:
           type: string

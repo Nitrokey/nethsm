@@ -44,6 +44,8 @@ let platform = {
   deviceKey = "test dispatch" ;
   pcr = [] ;
   akPub = [] ;
+  hardwareVersion = "N/A";
+  firmwareVersion = "N/A";
 }
 
 let request ?hsm_state ?(body = `Empty) ?(meth = `GET) ?(headers = Header.init ()) ?(content_type = "application/json") ?query ?(ip = Ipaddr.V4.any) endpoint =

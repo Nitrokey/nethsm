@@ -24,6 +24,9 @@ import (
 //go:embed .build_tag
 var buildTag string
 
+//go:embed .hardware_version
+var hardwareVersion string
+
 // globalState encapsulates global variables shared across the uinit codebase.
 // With the exception of s, which mutates, all of these are essentially
 // constants intended to be set up once in main(). There are definitely better,

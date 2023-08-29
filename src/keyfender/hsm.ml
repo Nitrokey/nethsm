@@ -2185,13 +2185,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let info = { Json.vendor = "Nitrokey GmbH" ; product = "NetHSM" }
     and device_key = platform.Json.deviceKey
     and system_info = {
-      Json.firmwareVersion = "N/A" ;
-      softwareVersion ;
-      hardwareVersion = "N/A";
-      buildTag = build_tag ;
+      Json.softwareVersion ;
+      softwareBuild = build_tag ;
+      firmwareVersion = platform.firmwareVersion ;
+      hardwareVersion = platform.hardwareVersion ;
       deviceId = platform.deviceId ;
-      pcr = platform.pcr ;
       akPub = platform.akPub ;
+      pcr = platform.pcr ;
     }
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()

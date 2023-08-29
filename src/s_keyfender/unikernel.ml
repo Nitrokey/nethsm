@@ -191,11 +191,13 @@ struct
     evict_delay_s = 10.;
   }
 
-let dummy_platform = {
+let dummy_platform : Keyfender.Json.platform_data = {
   Keyfender.Json.deviceId = "0000000000" ;
   deviceKey = "no platform" ;
   pcr = [] ;
   akPub = [] ;
+  hardwareVersion = "N/A";
+  firmwareVersion = "N/A";
 }
 
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =

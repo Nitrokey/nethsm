@@ -32,6 +32,8 @@ let platform = {
   deviceKey = "test stream" ;
   pcr = [] ;
   akPub = [] ;
+  hardwareVersion = "N/A";
+  firmwareVersion = "N/A";
 }
 
 let unprovisioned_mock () =
