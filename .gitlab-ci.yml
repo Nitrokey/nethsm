@@ -24,7 +24,6 @@ variables:
   - git config --global --add safe.directory /nethsm-tools
   - sudo chmod 01777 /downloads
   - mkdir -p /downloads/opam
-  - rm -rf ~/.opam/download-cache
   - ln -s /downloads/opam ~/.opam/download-cache
   - eval $(ssh-agent)
   - cat $VENDOR_KEY | ssh-add -

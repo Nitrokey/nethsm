@@ -199,6 +199,8 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   opam update
   OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
 EOF
+# Remove opam cache directory
+RUN rmdir /home/opam/.opam/download-cache
 
 COPY --link --chown=1000:1000 --from=mke2fs /nethsm-tools/bin/mke2fs /nethsm-tools/bin/
 COPY --link --chown=1000:1000 --from=sfdisk /nethsm-tools/bin/sfdisk /nethsm-tools/bin/
