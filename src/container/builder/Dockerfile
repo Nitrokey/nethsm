@@ -58,6 +58,11 @@ EOF
 
 USER opam
 
+RUN <<EOF
+  mkdir -p -m 0700 /home/opam/.ssh
+  ssh-keyscan git.nitrokey.com >> /home/opam/.ssh/known_hosts
+EOF
+
 FROM base AS musl
 # NetHSM: Install musl-cross toolchain
 # TODO: Verify hash of downloaded toolchain
@@ -135,11 +140,6 @@ COPY --chown=1000:1000 muennet-tailroom.patch /nethsm-tools/muen/components/linu
 RUN patch -d /nethsm-tools/muen/components/linux/modules/muennet -i muennet-tailroom.patch
 
 FROM ada AS coreboot
-RUN <<EOF
-  mkdir -p -m 0700 ~/.ssh
-  ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
-EOF
-
 RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
   mkdir -p /nethsm-tools/coreboot
   git clone --depth 50 -b nethsm-btg-4.20 git@git.nitrokey.com:nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot

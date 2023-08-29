@@ -27,8 +27,6 @@ variables:
   - ln -s /downloads/opam ~/.opam/download-cache
   - eval $(ssh-agent)
   - cat $VENDOR_KEY | ssh-add -
-  - mkdir -p -m 0700 ~/.ssh
-  - ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
 
 .setup_job_buildkit: &setup_job_buildkit
   - mkdir -p $HOME/.docker
