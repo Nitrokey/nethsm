@@ -1595,6 +1595,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemUpdateData"
+        "400":
+          description: Update malformed.
         "401":
           description: Authentication required but none provided.
         "403":
