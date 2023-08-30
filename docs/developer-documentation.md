@@ -4,10 +4,10 @@
 
 ### Prodrive Hermes
 
-To deploy NetHSM onto a Prodrive Hermes system the following steps are to be taken:
+To deploy NetHSM onto a Prodrive Hermes hardware the following steps are to be taken:
 
 - Flash coreboot firmware.
-- Install the NetHSM system image and data on a hard drive.
+- Install the NetHSM software image and data on a hard drive.
 
 This guide assumes that the full repository with Prodrive Hermes as the hardware plattform
 was compiled. The build artifacts from the `objs` directory must be available.
@@ -32,7 +32,7 @@ The image can be flashed as follows.
 4. Connect the bootable USB device. To interact with the system the BMC remote console shall be used.
 5. Before booting into the system make sure the linux commandline arguments contain: `nopat iomem=relaxed` in order to enable flashing the NAND using `flashrom`.
 6. Once inside the Linux system, start `sshd` and copy over the `coreboot.rom` into the running system.
-7. Flash the (bios region) of the NAND using the command `flashrom --ifd -i bios -p internal --noverify-all -w coreboot.rom`.
+7. Flash the (BIOS region) of the NAND using the command `flashrom --ifd -i bios -p internal --noverify-all -w coreboot.rom`.
 8. Once this is done, shut off the system completely.
 
 ##### Flashing with firmware update file
@@ -92,9 +92,9 @@ $ dd bs=1 skip=$((3424+96)) if=$FILE count=4 | xxd
 00000000: b801 1380                                ....
 ```
 
-#### Install NetHSM system software
+#### Install NetHSM Software
 
-The NetHSM system software can be either installed manually on a hard disk drive, or with the guided installer.
+The NetHSM software can be either installed manually on a hard disk drive or with the guided installer.
 
 ##### Installing manually on hard disk drive
 
@@ -102,7 +102,7 @@ The following instructions need the `system.img.cpio` file, and the `cgpt` and `
 
 1. Connect a hard-drive to your computer (any data on the device will be deleted!)
 2. The following steps assume your hard-drive is available as `/dev/sdb`, please adapt accordingly!
-3. Install the *NetHSM System Image* with the command `tools/nethsm-install.sh /dev/sdb objs/system.img.cpio`.
+3. Install the *NetHSM Software Image* with the command `tools/nethsm-install.sh /dev/sdb objs/system.img.cpio`.
 4. Make sure to properly eject/umount the partitions.
 5. Connect the hard disk drive with the Prodrive Hermes.
 6. Turn on the NetHSM.

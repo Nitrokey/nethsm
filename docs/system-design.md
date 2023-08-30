@@ -1,6 +1,6 @@
 % NetHSM System Design
 % Hannes Mehnert; Martin Lucina; Stefanie Schirmer; Sven Anderson; Jan Suhr
-% Robur.io, Nitrokey GmbH, 20th November 2020
+% Nitrokey GmbH, 30th August 2023
 
 # Introduction {#sec-i}
 
