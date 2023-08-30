@@ -1266,6 +1266,8 @@ paths:
       responses:
         "201":
           description: Successfully set certificate.
+        "400":
+          description: Certificate malformed.
         "401":
           description: Authentication required but none provided.
         "403":
