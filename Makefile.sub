@@ -556,7 +556,7 @@ $(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
 	cd $(OBJ_DATA_DIR) && \
 	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
 # Workaround for https://github.com/u-root/u-root/issues/1838
-	echo dummy > $(OBJ_DATA_DIR)/initialised-v1
+	echo $(BUILD_TAG) > $(OBJ_DATA_DIR)/initialised-v1
 	cd $(OBJ_DATA_DIR) && \
 	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
 
