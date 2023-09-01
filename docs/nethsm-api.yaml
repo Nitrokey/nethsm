@@ -2273,41 +2273,41 @@ components:
         - time
     SystemInfo:
       example:
-        firmwareVersion: N/A
         softwareVersion: "1.7"
-        hardwareVersion: N/A
-        buildTag: TAG-NN-g1234567-dirty
+        softwareBuild: f3f6292
+        firmwareVersion: 1.0-devel
+        hardwareVersion: prodrive-hermes-1.0
         deviceId: 5UMIP364R2
-        pcr:
-          0: 0f6064779fba55b102a6ecc20498c2020deaf2aebef23716ec293b25873647f8
-          2: 2b0d25a4a92b4df5205742954243db9d306a4c3277a6b6958bcbaf3d47def26f
         akPub:
           P256: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEup7z8QYvkzkBuLryG1SgVQjlPhSFW3PzYn1l3uLNd+pSBxX0OBpslcbnmPFr5wSs/iP46+H8MFlEAYUkYv6uuQ==
           P384: MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEfQiurLvEmjsAmumRtIqu70HKehRo8A/nVrqQGiR8Rcr+SUujwgtQByORX5BoRtv4sZNJW4FyLGqvXCIF9IV1puob2+9Qq5oEjz4x4malLbFdyXDmQK8o2NpvcbgOr215
+        pcr:
+          0: 0f6064779fba55b102a6ecc20498c2020deaf2aebef23716ec293b25873647f8
+          2: 2b0d25a4a92b4df5205742954243db9d306a4c3277a6b6958bcbaf3d47def26f
       type: object
       properties:
-        firmwareVersion:
-          type: string
         softwareVersion:
-          type: string
-        hardwareVersion:
           type: string
         softwareBuild:
           type: string
+        firmwareVersion:
+          type: string
+        hardwareVersion:
+          type: string
         deviceId:
           type: string
-        pcr:
-          type: object
         akPub:
           type: object
+        pcr:
+          type: object
       required:
-        - firmwareVersion
         - softwareVersion
+        - softwareBuild
+        - firmwareVersion
         - hardwareVersion
-        - buildTag
         - deviceId
-        - pcr
         - akPub
+        - pcr
     SystemUpdateData:
       example:
         releaseNotes: Some new feature is available.
