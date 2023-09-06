@@ -652,10 +652,29 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     internal_server_error Write "Write time offset" KV.pp_write_error
       (Config_store.set kv Time_offset span)
 
-  let prepare_keys kv slot unlock_key =
+  let decrypt_with_pass_key encrypted ~pass_key =
+    let key = Crypto.GCM.of_secret pass_key in
+    let adata = Cstruct.of_string "passphrase" in
+    Lwt_result.map_error (fun e -> Forbidden, Fmt.str "%a" Crypto.pp_decryption_error e)
+      (Lwt.return @@ Crypto.decrypt ~key ~adata encrypted)
+
+  let encrypt_with_pass_key data ~pass_key =
+    let key = Crypto.GCM.of_secret pass_key in
+    let adata = Cstruct.of_string "passphrase" in
+    Crypto.encrypt Rng.generate ~key ~adata data
+
+  let prepare_keys kv device_key pass_key =
     let open Lwt_result.Infix in
+    let slot = Stores.Domain_key_store.(if Option.is_none pass_key
+      then Device_key else Passphrase)
+    in
     Lwt_result.map_error (function `Msg m -> Forbidden, m)
-      (Domain_key_store.get kv slot ~unlock_key) >|= fun domain_key ->
+      (Domain_key_store.get kv slot ~encryption_key:device_key)
+    >>= fun data ->
+    (match pass_key with
+    | None -> Lwt.return_ok data
+    | Some k -> decrypt_with_pass_key data ~pass_key:k)
+    >|= fun domain_key ->
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
     in
@@ -675,10 +694,10 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         | `Kv store -> Lwt.return @@ Ok store
 
   (* credential is passphrase or device key, depending on boot mode *)
-  let unlock ~cache_settings kv slot unlock_key =
+  let unlock ?pass_key kv ~cache_settings ~device_key  =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    prepare_keys kv slot unlock_key >>= fun (domain_key, as_key, ks_key) ->
+    prepare_keys kv device_key pass_key >>= fun (domain_key, as_key, ks_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
     let auth_store = User_store.connect ~settings:cache_settings auth_store in
@@ -686,18 +705,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let keys = { domain_key ; auth_store ; key_store } in
     Operational keys
 
-  let unlock_with_device_key kv ~device_key = unlock kv Device_key device_key
-
-  let unlock_key_of_passphrase passphrase salt device_key =
-    let pass_hash = Crypto.key_of_passphrase ~salt passphrase in
-    Mirage_crypto.Hash.SHA256.digest (Cstruct.append pass_hash device_key)
+  let unlock_with_device_key kv ~device_key = unlock kv ~device_key
 
   let unlock_with_passphrase t ~passphrase =
     let open Lwt_result.Infix in
     internal_server_error Read "Get passphrase salt" Config_store.pp_error
     (Config_store.get t.kv Config_store.Unlock_salt) >>= fun salt ->
-    let unlock_key = unlock_key_of_passphrase passphrase salt t.device_key in
-    unlock ~cache_settings:t.cache_settings t.kv Passphrase unlock_key >|= fun state' ->
+    let pass_key = Crypto.key_of_passphrase ~salt passphrase in
+    let device_key = t.device_key in
+    unlock t.kv ~cache_settings:t.cache_settings ~device_key ~pass_key >|= fun state' ->
     t.state <- state'
 
   let generate_cert priv =
@@ -1483,7 +1499,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     (* state already checked in Handler_provision.service_available *)
     assert (state t = `Unprovisioned);
     let unlock_salt = Rng.generate Crypto.salt_len in
-    let unlock_key = unlock_key_of_passphrase unlock unlock_salt t.device_key in
+    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
     let domain_key = Rng.generate (Crypto.key_len * 2) in
     let auth_store_key, key_store_key =
       Cstruct.split domain_key Crypto.key_len
@@ -1533,11 +1549,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
               Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name) value
             in
-            internal_server_error Write "set Administrator user" KV.pp_write_error
+            internal_server_error Write "Write Administrator user" KV.pp_write_error
               (KV.set b admin_k admin_v) >>= fun () ->
-            internal_server_error Write "set domain key" KV.pp_write_error
-              (Domain_key_store.set b Passphrase ~unlock_key domain_key) >>= fun () ->
-            internal_server_error Write "set unlock-salt" KV.pp_write_error
+            let enc_dk = encrypt_with_pass_key domain_key ~pass_key:unlock_key in
+            let encryption_key = t.device_key in
+            internal_server_error Write "Write passphrase domain key" KV.pp_write_error
+              (Domain_key_store.set b Passphrase ~encryption_key enc_dk) >>= fun () ->
+            internal_server_error Write "Write unlock-salt" KV.pp_write_error
               (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
             set_time_offset b time))
 
@@ -1547,14 +1565,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       match t.state with
       | Operational keys ->
         let open Lwt_result.Infix in
-        let unlock_salt = Rng.generate Crypto.salt_len in
-        let unlock_key = unlock_key_of_passphrase passphrase unlock_salt t.device_key in
+        let salt = Rng.generate Crypto.salt_len in
+        let pass_key = Crypto.key_of_passphrase ~salt passphrase in
         with_write_lock (fun () ->
             KV.batch t.kv (fun b ->
                 internal_server_error Write "Write unlock salt" KV.pp_write_error
-                  (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
-                internal_server_error Write "Write passphrase" KV.pp_write_error
-                  (Domain_key_store.set b Passphrase ~unlock_key keys.domain_key)))
+                  (Config_store.set b Unlock_salt salt) >>= fun () ->
+                let enc_dk = encrypt_with_pass_key keys.domain_key ~pass_key in
+                let encryption_key = t.device_key in
+                internal_server_error Write "Write passphrase domain key" KV.pp_write_error
+                  (Domain_key_store.set b Passphrase enc_dk ~encryption_key)))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
@@ -1566,8 +1586,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let set_unattended_boot t status =
       let open Lwt_result.Infix in
       (* (a) change setting in configuration store *)
-      (* (b) add or remove salt in configuration store *)
-      (* (c) add or remove to domain_key store *)
+      (* (b) add or remove to domain_key store *)
       match t.state with
       | Operational keys ->
         with_write_lock (fun () ->
@@ -1575,11 +1594,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               (Config_store.set t.kv Unattended_boot status) >>= fun () ->
             if status then begin
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Write Device Key" KV.pp_write_error
-                    (Domain_key_store.set b Device_key ~unlock_key:t.device_key keys.domain_key))
+                  let encryption_key = t.device_key in
+                  internal_server_error Write "Write unattended Domain Key" KV.pp_write_error
+                    (Domain_key_store.set b Device_key ~encryption_key keys.domain_key))
             end else begin
               KV.batch t.kv (fun b ->
-                  internal_server_error Write "Remove Device Key" KV.pp_write_error
+                  internal_server_error Write "Remove unattended Domain Key" KV.pp_write_error
                     (Domain_key_store.remove b Device_key))
         end)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
@@ -1914,7 +1934,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     (* the backup format is at the moment:
        - length of salt (encoded in 3 bytes); salt
-       - length of (AES-GCM encrypted version); AES-GCM encrypted version [adata = backup-version]
+       - length of ...; AES-GCM encrypted version [adata = backup-version]
+       - length of ...; passphrase encrypted domain key
        - indivial key, value entries of the store:
          - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
 
@@ -1953,7 +1974,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       Config_store.get_opt t.kv Backup_key >>= function
       | Error e ->
         Log.err (fun m -> m "Error %a while reading backup key." Config_store.pp_error e);
-        Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
+        Lwt.return (Error (Internal_server_error, "Corrupted database."))
       | Ok None -> Lwt.return (Error (Precondition_failed, "Please configure backup key before doing a backup."))
       | Ok Some backup_key ->
         (* iterate over keys in KV store *)
@@ -1961,7 +1982,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         Config_store.get t.kv Backup_salt >>= function
         | Error e ->
           Log.err (fun m -> m "error %a while reading backup salt" Config_store.pp_error e);
-          Lwt.return (Error (Internal_server_error, "Corrupted disk. Check hardware."))
+          Lwt.return (Error (Internal_server_error, "Corrupted database."))
         | Ok backup_salt ->
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
           let encrypted_version =
@@ -1971,6 +1992,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             Crypto.encrypt Rng.generate ~key:backup_key' ~adata data
           in
           push (Some (prefix_len (Cstruct.to_string encrypted_version)));
+          let encryption_key = t.device_key in
+          Domain_key_store.get t.kv Passphrase ~encryption_key >>= function
+          | Error e ->
+            Log.err (fun m -> m "error %a while reading encrypted domain key" Config_store.pp_error e);
+            Lwt.return (Error (Internal_server_error, "Corrupted database."))
+          | Ok encrypted_domkey ->
+          push (Some (prefix_len (Cstruct.to_string encrypted_domkey)));
           backup_directory t.kv push backup_key' Mirage_kv.Key.empty >|= fun () ->
           push None;
           Ok ()
@@ -2113,7 +2141,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok version ->
         match Version.of_string (Cstruct.to_string version) with
         | Ok v when Version.compare backup_version v = `Equal ->
-
+          let** (encrypted_domain_key, stream''') = decode_value stream'' in
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   begin
@@ -2122,7 +2150,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                     let backup_keys = ref KeySet.empty in
                     let** () =
                       (* while the stream has content *)
-                      stream_while stream''
+                      stream_while stream'''
                         (restore_key ~is_operational ~backup_keys ~key ~kv:b)
                     in
                     let** () =
@@ -2140,6 +2168,17 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                       User_store.clear_cache v.auth_store;
                       Key_store.clear_cache v.key_store
                     | _ -> ());
+                    let** () =
+                      (* the domain key might have changed if restored to a
+                         fresh or different device, so refresh the store *)
+                      let encryption_key = t.device_key in
+                      Lwt.Infix.(Domain_key_store.get b Passphrase ~encryption_key >>= function
+                      | Error _ ->
+                        Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
+                        internal_server_error Write "Write passphrase domain key" KV.pp_write_error
+                         (Domain_key_store.set b Passphrase ~encryption_key (Cstruct.of_string encrypted_domain_key))
+                      | _ -> Lwt_result.return ())
+                    in
                     let `Raw stop_ts = Clock.now_raw () in
                     match new_time with
                     | None -> Lwt.return_ok ()
