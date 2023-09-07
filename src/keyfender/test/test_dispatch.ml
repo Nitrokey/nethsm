@@ -552,6 +552,39 @@ let system_backup_and_restore_ok =
     | _ -> false
   end
 
+
+let system_backup_and_restore_changed_devkey =
+  "a request for /system/restore succeeds"
+@? fun () ->
+    begin
+    let backup_passphrase = "backup passphrase" in
+    let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+    match admin_put_request ~body:(`String passphrase) "/config/backup-passphrase" with
+    | hsm_state, Some (`No_content, _, _, _) ->
+      let headers = auth_header "backup" "test3Passphrase" in
+      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+        | _hsm_state, Some (`OK, _, `Stream s, _) ->
+          let content_type = "application/octet-stream" in
+          let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
+          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+          let platform = { platform with deviceKey="//////////////////////////////////////////8=" } in
+          let hsm_state_2 = Lwt_main.run (Kv_mem.connect () >>= Hsm.boot ~platform software_update_key >|= fun (y, _, _) -> y) in
+          begin match request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state:hsm_state_2 "/system/restore" with
+            | hsm_state', Some (`No_content, _, _, _) ->
+              assert (Hsm.state hsm_state' = `Locked);
+              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+              begin match request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state' "/unlock" with
+                | _, Some (`No_content, _, _, _) ->
+                  Hsm.state hsm_state' = `Operational && not (Lwt_main.run (Hsm.equal hsm_state hsm_state'))
+                | _ -> false
+              end
+            | _ -> false
+          end
+        | _ -> false
+      end
+    | _ -> false
+  end
+
 let system_backup_and_restore_operational =
   Alcotest.test_case
     "a request for /system/restore succeeds while operational"
@@ -2953,6 +2986,7 @@ let () =
     "/system/update from binary file", [ system_update_from_file_ok ];
     "/system/update signing", [ sign_update_ok ];
     "/system/backup", [ system_backup_and_restore_ok ;
+                        system_backup_and_restore_changed_devkey ;
                         system_backup_and_restore_operational ;
                         system_backup_post_accept_header ];
     "/unlock", [ unlock_ok ;
