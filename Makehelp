@@ -5,10 +5,6 @@ Available targets:
 
 local-container-enter:
                     Run the local Docker/Podman container for building
-local-container-setup:
-                    When using a local Docker container, run this once before
-                    using any other targets
-
 fetch-submodules:   Initialise and check out Git submodules
 prepare:            build and install keyfender OPAM dependencies, Coreboot toolchain
 build:              Build full system

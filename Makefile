@@ -77,15 +77,6 @@ local-container-enter:
 	    --name nethsm-builder \
 	    $(DOCKER_IMAGE_NAME)
 
-.PHONY: local-container-setup
-local-container-setup:
-ifneq ($(HOST_UID),1000)
-	sudo chown -R $(HOST_UID) /home/opam
-endif
-	git -C /home/opam/opam-repository fetch origin --depth=1 $$(cat $(abspath .)/.opam-repository-commit)
-	git -C /home/opam/opam-repository reset --hard FETCH_HEAD
-	opam update
-
 # This rule passes through any target not defined above to Makefile.sub.
 %:: check-mode
 	$(MAKE) -f Makefile.sub $@
