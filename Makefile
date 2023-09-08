@@ -74,6 +74,7 @@ local-container-enter:
 	    --security-opt="label=disable" \
 	    -v $(abspath .):/builds/nitrokey/nethsm \
 	    --tmpfs /tmp \
+	    --name nethsm-builder \
 	    $(DOCKER_IMAGE_NAME)
 
 .PHONY: local-container-setup
