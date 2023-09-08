@@ -666,7 +666,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   let prepare_keys kv device_key pass_key =
     let open Lwt_result.Infix in
     let slot = Stores.Domain_key_store.(if Option.is_none pass_key
-      then Device_key else Passphrase)
+      then Unattended else Attended)
     in
     Lwt_result.map_error (function `Msg m -> Forbidden, m)
       (Domain_key_store.get kv slot ~encryption_key:device_key)
@@ -1554,7 +1554,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
             let enc_dk = encrypt_with_pass_key domain_key ~pass_key:unlock_key in
             let encryption_key = t.device_key in
             internal_server_error Write "Write passphrase domain key" KV.pp_write_error
-              (Domain_key_store.set b Passphrase ~encryption_key enc_dk) >>= fun () ->
+              (Domain_key_store.set b Attended ~encryption_key enc_dk) >>= fun () ->
             internal_server_error Write "Write unlock-salt" KV.pp_write_error
               (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
             set_time_offset b time))
@@ -1574,7 +1574,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                 let enc_dk = encrypt_with_pass_key keys.domain_key ~pass_key in
                 let encryption_key = t.device_key in
                 internal_server_error Write "Write passphrase domain key" KV.pp_write_error
-                  (Domain_key_store.set b Passphrase enc_dk ~encryption_key)))
+                  (Domain_key_store.set b Attended enc_dk ~encryption_key)))
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
@@ -1596,11 +1596,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               KV.batch t.kv (fun b ->
                   let encryption_key = t.device_key in
                   internal_server_error Write "Write unattended Domain Key" KV.pp_write_error
-                    (Domain_key_store.set b Device_key ~encryption_key keys.domain_key))
+                    (Domain_key_store.set b Unattended ~encryption_key keys.domain_key))
             end else begin
               KV.batch t.kv (fun b ->
                   internal_server_error Write "Remove unattended Domain Key" KV.pp_write_error
-                    (Domain_key_store.remove b Device_key))
+                    (Domain_key_store.remove b Unattended))
         end)
       | _ -> assert false (* Handler_config.service_available checked that we are operational *)
 
@@ -1993,7 +1993,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           in
           push (Some (prefix_len (Cstruct.to_string encrypted_version)));
           let encryption_key = t.device_key in
-          Domain_key_store.get t.kv Passphrase ~encryption_key >>= function
+          Domain_key_store.get t.kv Attended ~encryption_key >>= function
           | Error e ->
             Log.err (fun m -> m "error %a while reading encrypted domain key" Config_store.pp_error e);
             Lwt.return (Error (Internal_server_error, "Corrupted database."))
@@ -2172,11 +2172,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                       (* the domain key might have changed if restored to a
                          fresh or different device, so refresh the store *)
                       let encryption_key = t.device_key in
-                      Lwt.Infix.(Domain_key_store.get b Passphrase ~encryption_key >>= function
+                      Lwt.Infix.(Domain_key_store.get b Attended ~encryption_key >>= function
                       | Error _ ->
                         Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
                         internal_server_error Write "Write passphrase domain key" KV.pp_write_error
-                         (Domain_key_store.set b Passphrase ~encryption_key (Cstruct.of_string encrypted_domain_key))
+                         (Domain_key_store.set b Attended ~encryption_key (Cstruct.of_string encrypted_domain_key))
                       | _ -> Lwt_result.return ())
                     in
                     let `Raw stop_ts = Clock.now_raw () in
