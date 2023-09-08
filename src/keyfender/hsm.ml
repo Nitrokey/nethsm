@@ -663,7 +663,14 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     let adata = Cstruct.of_string "passphrase" in
     Crypto.encrypt Rng.generate ~key ~adata data
 
-  let prepare_keys kv device_key pass_key =
+  let make_store_keys dk =
+    let extend k t =
+      let t' = Cstruct.of_string t in
+      Mirage_crypto.Hash.SHA256.digest (Cstruct.append k t')
+    in
+    extend dk "auth_store", extend dk "key_store"
+
+  let load_keys kv device_key pass_key =
     let open Lwt_result.Infix in
     let slot = Stores.Domain_key_store.(if Option.is_none pass_key
       then Unattended else Attended)
@@ -675,9 +682,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | None -> Lwt.return_ok data
     | Some k -> decrypt_with_pass_key data ~pass_key:k)
     >|= fun domain_key ->
-    let auth_store_key, key_store_key =
-      Cstruct.split domain_key Crypto.key_len
-    in
+    let auth_store_key, key_store_key = make_store_keys domain_key in
     (domain_key, auth_store_key, key_store_key)
 
   let unlock_store kv slot key =
@@ -693,11 +698,11 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Lwt.return @@ Error (Internal_server_error, Fmt.str "%s store too old (%a), no migration code" slot_str Version.pp stored)
         | `Kv store -> Lwt.return @@ Ok store
 
-  (* credential is passphrase or device key, depending on boot mode *)
+  (* credential is device key with or without pass_key, depending on boot mode *)
   let unlock ?pass_key kv ~cache_settings ~device_key  =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    prepare_keys kv device_key pass_key >>= fun (domain_key, as_key, ks_key) ->
+    load_keys kv device_key pass_key >>= fun (domain_key, as_key, ks_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >|= fun key_store ->
     let auth_store = User_store.connect ~settings:cache_settings auth_store in
@@ -1500,10 +1505,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     assert (state t = `Unprovisioned);
     let unlock_salt = Rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-    let domain_key = Rng.generate (Crypto.key_len * 2) in
-    let auth_store_key, key_store_key =
-      Cstruct.split domain_key Crypto.key_len
-    in
+    let domain_key = Rng.generate Crypto.key_len in
+    let auth_store_key, key_store_key = make_store_keys domain_key in
     with_write_lock (fun () ->
         KV.batch t.kv (fun b ->
             internal_server_error Write
