@@ -2053,14 +2053,12 @@ components:
         - mechanisms
         - type
         - restrictions
-        - key
         - operations
     KeyPublicData:
       description: |
         The public key data is either a *modulus* and a *publicExponent* or
         a *data* field. The *data* field is used for EC keys.
         This field is null for Generic keys.
-      nullable: true
       type: object
       properties:
         modulus:

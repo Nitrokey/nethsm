@@ -295,7 +295,7 @@ type public_key = {
   mechanisms : MS.t;
   typ : key_type [@key "type"];
   operations : int;
-  key : Yojson.Safe.t;
+  key : (Yojson.Safe.t [@default `Null]);
   restrictions : restrictions;
 } [@@deriving to_yojson]
 
