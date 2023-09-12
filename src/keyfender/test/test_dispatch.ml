@@ -409,7 +409,7 @@ let system_backup_and_restore_ok =
 
 
 let system_backup_and_restore_changed_devkey =
-  "a request for /system/restore succeeds"
+  "/system/restore with changed device key and unlock -> operational"
 @? fun () ->
     begin
     let backup_passphrase = "backup passphrase" in
@@ -439,6 +439,76 @@ let system_backup_and_restore_changed_devkey =
       end
     | _ -> false
   end
+
+let system_backup_and_restore_unattended =
+  Alcotest.test_case
+    "/system/restore with unattended mode -> operational"
+    `Quick
+  @@ fun () ->
+  let hsm_state = hsm_with_key () in
+  let* hsm_state =
+    admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state "/config/unattended-boot"
+    |> Expect.no_content
+  in
+  let backup_passphrase = "backup passphrase" in
+  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let* hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase) "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let headers = auth_header "backup" "test3Passphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup"
+    |> Expect.stream
+  in
+  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  (* restore *)
+  let hsm_state, store = Lwt_main.run (Kv_mem.connect () >>= fun store -> Hsm.boot ~platform software_update_key store >|= fun (y, _, _) -> y, store) in
+  let* hsm_state =
+    let content_type = "application/octet-stream" in
+    let query = [ ("backupPassphrase", [ backup_passphrase ]); ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
+    request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state "/system/restore"
+    |> Expect.no_content
+  in
+  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (x, _, _) -> x) in
+  Alcotest.(check string) "operational" "operational" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
+let system_backup_and_restore_unattended_changed_devkey =
+  Alcotest.test_case
+    "/system/restore with unattended mode and new device key -> locked"
+    `Quick
+  @@ fun () ->
+  let hsm_state = hsm_with_key () in
+  let* hsm_state =
+    admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state "/config/unattended-boot"
+    |> Expect.no_content
+  in
+  let backup_passphrase = "backup passphrase" in
+  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let* hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase) "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let headers = auth_header "backup" "test3Passphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup"
+    |> Expect.stream
+  in
+  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  (* restore *)
+  let platform = { platform with deviceKey="//////////////////////////////////////////8=" } in
+  let hsm_state, store = Lwt_main.run (Kv_mem.connect () >>= fun store -> Hsm.boot ~platform software_update_key store >|= fun (y, _, _) -> y, store) in
+  let* hsm_state =
+    let content_type = "application/octet-stream" in
+    let query = [ ("backupPassphrase", [ backup_passphrase ]); ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
+    request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state "/system/restore"
+    |> Expect.no_content
+  in
+  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (x, _, _) -> x) in
+  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
 
 let system_backup_and_restore_operational =
   Alcotest.test_case
@@ -2841,6 +2911,8 @@ let () =
     "/system/update from binary file", [ system_update_from_file_ok ];
     "/system/update signing", [ sign_update_ok ];
     "/system/backup", [ system_backup_and_restore_ok ;
+                        system_backup_and_restore_unattended ;
+                        system_backup_and_restore_unattended_changed_devkey ;
                         system_backup_and_restore_changed_devkey ;
                         system_backup_and_restore_operational ;
                         system_backup_post_accept_header ];
