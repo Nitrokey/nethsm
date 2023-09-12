@@ -1,23 +1,16 @@
-(test
+(tests
   (libraries logs.fmt fmt.tty mirage-crypto-rng.unix lwt.unix mirage-clock-unix mirage-random-test mirage-kv-mem keyfender alcotest)
-  (modules test_dispatch test_dispatch_helpers)
+  (modules test_dispatch test_export_backup test_dispatch_helpers test_utils)
   (preprocessor_deps public.pem)
   (preprocess (pps ppx_blob))
-  (deps update.bin ../bin/sign_update.exe key.pem changes version)
-  (name test_dispatch)
+  (deps update.bin ../bin/sign_update.exe key.pem changes version my_backup.bin ../bin/export_backup.exe)
+  (names test_dispatch test_export_backup)
   (package keyfender))
 
 (test
   (libraries logs.fmt fmt.tty keyfender mirage-random-test alcotest)
   (modules test_crypto)
   (name test_crypto)
-  (package keyfender))
-
-(test
-  (libraries unix)
-  (modules test_export_backup)
-  (deps my_backup.bin ../bin/export_backup.exe)
-  (name test_export_backup)
   (package keyfender))
 
 (executable

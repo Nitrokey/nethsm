@@ -10,8 +10,8 @@ let (let*) v f =
 
 module Expect = struct
 
-  type cohttp_response = 
-    Cohttp.Code.status_code * 
+  type cohttp_response =
+    Cohttp.Code.status_code *
     Cohttp.Header.t *
     Cohttp_lwt.Body.t *
     string list
@@ -42,26 +42,26 @@ module Expect = struct
       | (_, _, `Empty, _) -> `Empty) r
 
   let code c (hsm, response) =
-    Alcotest.(check status) 
-    "Response code"  
+    Alcotest.(check status)
+    "Response code"
     (Some c)
     (status_of_response response);
     match response with
     | Some (s, _, _, _) when s = c -> Some hsm
     | _ -> None
-  
-  let no_content v = code `No_content v 
+
+  let no_content v = code `No_content v
 
   let not_found v = code `Not_found v
 
   let ok v = code `OK v
-    
+
   let stream (hsm, response) =
-    Alcotest.(check status) 
+    Alcotest.(check status)
       "Response code"
       (Some `OK)
       (status_of_response response);
-    Alcotest.(check body_type) 
+    Alcotest.(check body_type)
       "Response body type"
       (Some `Stream)
       (body_type_of_response response);
@@ -70,18 +70,18 @@ module Expect = struct
     | _ -> None
 
   let string expected (hsm, response) =
-    Alcotest.(check status) 
+    Alcotest.(check status)
       "Response code"
       (Some `OK)
       (status_of_response response);
-    Alcotest.(check body_type) 
+    Alcotest.(check body_type)
       "Response body type"
       (Some `String)
       (body_type_of_response response);
     match response with
-    | Some (`OK, _, `String s, _) -> 
+    | Some (`OK, _, `String s, _) ->
       Alcotest.(check string) "Response string" expected s;
       Some hsm
     | _ -> None
-  
+
 end

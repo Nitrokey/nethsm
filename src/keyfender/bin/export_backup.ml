@@ -105,6 +105,7 @@ let export passphrase backup_image_filename output =
   | Ok backup_version ->
     if String.equal version (Cstruct.to_string backup_version) then
       begin
+        let domain_key, backup_data''' = get_field backup_data'' in
         let rec next acc backup_data =
           if backup_data = "" then Ok acc else
           let item, rest = get_field backup_data in
@@ -118,7 +119,7 @@ let export passphrase backup_image_filename output =
           let key, value = get_field (Cstruct.to_string key_value_pair) in
           next ((key, value) :: acc) rest
         in
-        match next [] backup_data'' with
+        match next ["domain-key", domain_key] backup_data''' with
         | Error e -> Error e
         | Ok kvs ->
           let fd = match output with
@@ -129,7 +130,7 @@ let export passphrase backup_image_filename output =
              else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
           in
           let channel = Unix.out_channel_of_descr fd in
-          let json = `Assoc (List.map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
+          let json = `Assoc (List.rev_map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
           Yojson.Basic.pretty_to_channel channel json;
           Unix.close fd;
           Ok ()
