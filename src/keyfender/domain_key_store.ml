@@ -13,8 +13,8 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   type slot = Attended | Unattended
 
   let name = function
-    | Attended -> "0"
-    | Unattended -> "1"
+    | Attended -> "attended"
+    | Unattended -> "unattended"
 
   let key_path slot = Mirage_kv.Key.(add (v dk_prefix) (name slot))
 
