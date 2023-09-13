@@ -2167,8 +2167,9 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
                     remove_extra_keys ~kv:b !backup_keys
                   else
                     (* unprovisioned: end state is locked *)
-                    (t.state <- Locked;
-                    Lwt_result.return ())
+                    let** new_state = boot_config_store ~cache_settings:t.cache_settings b t.device_key in
+                    t.state <- new_state;
+                    Lwt_result.return ()
                 in
                 (match t.state with
                 | Operational v ->

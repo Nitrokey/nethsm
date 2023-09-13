@@ -470,9 +470,9 @@ let system_backup_and_restore_unattended =
     request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state "/system/restore"
     |> Expect.no_content
   in
-  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  Alcotest.(check string) "state" "operational" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
   let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (x, _, _) -> x) in
-  Alcotest.(check string) "operational" "operational" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+  Alcotest.(check string) "state" "operational" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
 
 let system_backup_and_restore_unattended_changed_devkey =
   Alcotest.test_case
@@ -505,9 +505,9 @@ let system_backup_and_restore_unattended_changed_devkey =
     request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state "/system/restore"
     |> Expect.no_content
   in
-  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  Alcotest.(check string) "state" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
   let hsm_state = Lwt_main.run (Hsm.boot ~platform software_update_key store >|= fun (x, _, _) -> x) in
-  Alcotest.(check string) "locked" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+  Alcotest.(check string) "state" "locked" (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
 
 
 let system_backup_and_restore_operational =
