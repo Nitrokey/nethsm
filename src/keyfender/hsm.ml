@@ -1998,9 +1998,13 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           let encryption_key = t.device_key in
           Domain_key_store.get t.kv Attended ~encryption_key >>= function
           | Error e ->
-            Log.err (fun m -> m "error %a while reading encrypted domain key" Config_store.pp_error e);
+            Log.err (fun m -> m "error %a while reading attended domain key" Config_store.pp_error e);
             Lwt.return (Error (Internal_server_error, "Corrupted database."))
-          | Ok encrypted_domkey ->
+          | Ok locked_domkey ->
+          let encrypted_domkey =
+            let adata = Cstruct.of_string "domain-key" in
+            Crypto.encrypt Rng.generate ~key:backup_key' ~adata locked_domkey
+          in
           push (Some (prefix_len (Cstruct.to_string encrypted_domkey)));
           backup_directory t.kv push backup_key' Mirage_kv.Key.empty >|= fun () ->
           push None;
@@ -2020,19 +2024,21 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
         let value = String.sub data val_start (String.length data - val_start) in
         Ok (key, value)
 
-    let read_and_decrypt stream key =
-      let open Lwt.Infix in
-      decode_value stream >|= function
-      | Error e -> Error e
-      | Ok (encrypted_data, stream') ->
-        let adata = Cstruct.of_string "backup" in
-        match Crypto.decrypt ~key ~adata (Cstruct.of_string encrypted_data) with
-        | Error `Insufficient_data -> Error (Bad_request, "Could not decrypt backup. Backup incomplete, try another one.")
-        | Error `Not_authenticated -> Error (Bad_request, "Could not decrypt backup, authentication failed. Is the passphrase correct?")
-        | Ok kv -> match split_kv (Cstruct.to_string kv) with
-          | Ok kv' -> Ok (kv', stream')
-          | Error e -> Error e
+    let decrypt_backup ~key ~adata data =
+      Lwt.return @@ match Crypto.decrypt ~key ~adata (Cstruct.of_string data) with
+      | Error `Insufficient_data ->
+        Error (Bad_request, "Could not decrypt " ^ (Cstruct.to_string adata) ^ ". Backup incomplete, try another one.")
+      | Error `Not_authenticated ->
+        Error (Bad_request, "Could not decrypt " ^ (Cstruct.to_string adata) ^ ", authentication failed. Is the passphrase correct?")
+      | Ok x -> Ok x
 
+    let read_and_decrypt stream key =
+      let (let**) = Lwt_result.bind in
+      let** (encrypted_data, stream) = decode_value stream in
+      let adata = Cstruct.of_string "backup" in
+      let** kv = decrypt_backup ~key ~adata encrypted_data in
+      let** kv = Lwt.return @@ split_kv (Cstruct.to_string kv) in
+      Lwt.return_ok (kv, stream)
 
     let get_timestamp_opt uri =
       match Uri.get_query_param uri "systemTime" with
@@ -2129,77 +2135,76 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let** (new_time, backup_passphrase) =
         Lwt.return (get_query_parameters uri)
       in
-      let** (backup_salt, stream') = decode_value stream in
-      let** (version, stream'') = decode_value stream' in
+      let** (backup_salt, stream) = decode_value stream in
+      let** (version, stream) = decode_value stream in
       let backup_key =
         Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
       in
       let key = Crypto.GCM.of_secret backup_key in
       let adata = Cstruct.of_string "backup-version" in
-      match Crypto.decrypt ~key ~adata (Cstruct.of_string version) with
-      | Error `Insufficient_data ->
-        Lwt.return @@ Error (Bad_request, "Could not decrypt backup version. Backup incomplete, try another one.")
-      | Error `Not_authenticated ->
-        Lwt.return @@ Error (Bad_request, "Could not decrypt backup version, authentication failed. Is the passphrase correct?")
-      | Ok version ->
-        match Version.of_string (Cstruct.to_string version) with
-        | Ok v when Version.compare backup_version v = `Equal ->
-          let** (encrypted_domain_key, stream''') = decode_value stream'' in
+      let** version = decrypt_backup ~key ~adata version in
+      match Version.of_string (Cstruct.to_string version) with
+      | Ok v when Version.compare backup_version v = `Equal ->
+        begin
+          let** (encrypted_domain_key, stream) = decode_value stream in
+          let adata = Cstruct.of_string "domain-key" in
+          let** locked_domain_key = decrypt_backup ~key ~adata encrypted_domain_key in
           with_write_lock (fun () ->
-              KV.batch t.kv (fun b ->
-                  begin
-                    (* when the mode is operational, we have to clear
-                       user and keys that are not in the backup. *)
-                    let backup_keys = ref KeySet.empty in
-                    let** () =
-                      (* while the stream has content *)
-                      stream_while stream'''
-                        (restore_key ~is_operational ~backup_keys ~key ~kv:b)
-                    in
-                    let** () =
-                      if is_operational then
-                        (* we remove keys and users that not present in the
-                           backup *)
-                        remove_extra_keys ~kv:b !backup_keys
-                      else
-                        (* unprovisioned: end state is locked *)
-                       (t.state <- Locked;
-                        Lwt_result.return ())
-                    in
-                    (match t.state with
-                    | Operational v ->
-                      User_store.clear_cache v.auth_store;
-                      Key_store.clear_cache v.key_store
-                    | _ -> ());
-                    let** () =
-                      (* the domain key might have changed if restored to a
-                         fresh or different device, so refresh the store *)
-                      let encryption_key = t.device_key in
-                      Lwt.Infix.(Domain_key_store.get b Attended ~encryption_key >>= function
-                      | Error _ ->
-                        Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
-                        internal_server_error Write "Write passphrase domain key" KV.pp_write_error
-                         (Domain_key_store.set b Attended ~encryption_key (Cstruct.of_string encrypted_domain_key))
-                      | _ -> Lwt_result.return ())
-                    in
-                    let `Raw stop_ts = Clock.now_raw () in
-                    match new_time with
-                    | None -> Lwt.return_ok ()
-                    | Some new_time ->
-                      let elapsed = Ptime.diff stop_ts start_ts in
-                      match Ptime.add_span new_time elapsed with
-                      | Some ts -> set_time_offset b ts
-                      | None ->
-                        t.state <- initial_state;
-                        Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
-                  end))
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "Version mismatch on restore, provided backup version is %s, server expects %s"
-              (Cstruct.to_string version) (Version.to_string backup_version)
-          in
-          Lwt.return @@ Error (Bad_request, msg)
+            KV.batch t.kv (fun b ->
+              begin
+                (* when the mode is operational, we have to clear
+                    user and keys that are not in the backup. *)
+                let backup_keys = ref KeySet.empty in
+                let** () =
+                  (* while the stream has content *)
+                  stream_while stream
+                    (restore_key ~is_operational ~backup_keys ~key ~kv:b)
+                in
+                let** () =
+                  if is_operational then
+                    (* we remove keys and users that not present in the
+                        backup *)
+                    remove_extra_keys ~kv:b !backup_keys
+                  else
+                    (* unprovisioned: end state is locked *)
+                    (t.state <- Locked;
+                    Lwt_result.return ())
+                in
+                (match t.state with
+                | Operational v ->
+                  User_store.clear_cache v.auth_store;
+                  Key_store.clear_cache v.key_store
+                | _ -> ());
+                let** () =
+                  (* the domain key might have changed if restored to a
+                      fresh or different device, so refresh the store *)
+                  let encryption_key = t.device_key in
+                  Lwt.Infix.(Domain_key_store.get b Attended ~encryption_key >>= function
+                  | Error _ ->
+                    Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
+                    internal_server_error Write "Write passphrase domain key" KV.pp_write_error
+                      (Domain_key_store.set b Attended ~encryption_key locked_domain_key)
+                  | _ -> Lwt_result.return ())
+                in
+                let `Raw stop_ts = Clock.now_raw () in
+                match new_time with
+                | None -> Lwt.return_ok ()
+                | Some new_time ->
+                  let elapsed = Ptime.diff stop_ts start_ts in
+                  match Ptime.add_span new_time elapsed with
+                  | Some ts -> set_time_offset b ts
+                  | None ->
+                    t.state <- initial_state;
+                    Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+              end))
+        end
+      | _ ->
+        let msg =
+          Printf.sprintf
+            "Version mismatch on restore, provided backup version is %s, server expects %s"
+            (Cstruct.to_string version) (Version.to_string backup_version)
+        in
+        Lwt.return @@ Error (Bad_request, msg)
   end
 
   let default_cache_settings = {
