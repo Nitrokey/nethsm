@@ -185,6 +185,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RandomData"
+        "400":
+          description: Bad request (invalid length).
         "401":
           description: Authentication required but none provided.
         "403":
@@ -397,6 +399,8 @@ paths:
                     restrictions:
                       tags:
                         - berlin
+        "400":
+          description: Invalid character in the KeyID.
         "401":
           description: Authentication required but none provided.
         "403":
@@ -548,6 +552,8 @@ paths:
             application/x-pem-file:
               schema:
                 $ref: "#/components/schemas/PemPublicKey"
+        "400":
+          description: Invalid character in the KeyID.
         "401":
           description: Authentication required but none provided.
         "403":
@@ -582,6 +588,8 @@ paths:
             application/x-pem-file:
               schema:
                 $ref: "#/components/schemas/PemCSR"
+        "400":
+          description: Bad request (specified properties are invalid).
         "401":
           description: Authentication required but none provided.
         "403":
@@ -788,6 +796,8 @@ paths:
             application/pgp-keys:
               schema:
                 $ref: "#/components/schemas/PGPPrivateKey"
+        "400":
+          description: Invalid character in the KeyID.
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1004,6 +1014,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserData"
+        
+        "400":
+          description: Invalid character in the UserID.
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1128,6 +1141,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagList"
+        "400":
+          description: Invalid character in the UserID.
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1335,6 +1350,8 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
+        "415":
+          description: Content type in Accept header not supported or not present.
       description: Get certificate for NetHSMs https API.
       security:
         - basic: []
