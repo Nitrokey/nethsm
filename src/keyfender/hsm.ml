@@ -1936,13 +1936,15 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Some _changes -> t.has_changes <- None; Ok ()
 
     (* the backup format is at the moment:
+       - header "_NETHSM_BACKUP_" + 1 byte version
        - length of salt (encoded in 3 bytes); salt
        - length of ...; AES-GCM encrypted version [adata = backup-version]
        - length of ...; passphrase encrypted domain key
        - indivial key, value entries of the store:
          - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
 
-    let backup_version = Version.V0
+    let backup_header = "_NETHSM_BACKUP_"
+    let backup_version_v0 = Char.chr 0
 
     let rec backup_directory kv push backup_key path =
       let open Lwt.Infix in
@@ -1987,11 +1989,12 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           Log.err (fun m -> m "error %a while reading backup salt" Config_store.pp_error e);
           Lwt.return (Error (Internal_server_error, "Corrupted database."))
         | Ok backup_salt ->
+          let version_str = String.make 1 backup_version_v0 in
+          push (Some (backup_header ^ version_str));
           push (Some (prefix_len (Cstruct.to_string backup_salt)));
           let encrypted_version =
-            let data = Cstruct.of_string (Version.to_string backup_version)
-            and adata = Cstruct.of_string "backup-version"
-            in
+            let data = Cstruct.of_string version_str in
+            let adata = Cstruct.of_string "backup-version" in
             Crypto.encrypt Rng.generate ~key:backup_key' ~adata data
           in
           push (Some (prefix_len (Cstruct.to_string encrypted_version)));
@@ -2135,78 +2138,88 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let** (new_time, backup_passphrase) =
         Lwt.return (get_query_parameters uri)
       in
+      let** header, stream = read_n stream (String.length backup_header + 1) in
+      let** () =
+        Lwt.return @@ if String.(equal (sub header 0 (length backup_header)) backup_header) then
+          Ok ()
+        else
+          Error (Bad_request, "Not a NetHSM backup file")
+      in
+      let version = String.(get header (length backup_header)) in
+      let** () =
+        Lwt.return @@ match version with
+        | x when x = backup_version_v0 -> Ok ()
+        | _ ->
+          let msg =
+            Printf.sprintf
+              "Version mismatch on restore, provided backup version is %d, server expects %d"
+              (Char.code version) (Char.code backup_version_v0)
+          in
+          Error (Bad_request, msg)
+      in
       let** (backup_salt, stream) = decode_value stream in
-      let** (version, stream) = decode_value stream in
       let backup_key =
         Crypto.key_of_passphrase ~salt:(Cstruct.of_string backup_salt) backup_passphrase
       in
       let key = Crypto.GCM.of_secret backup_key in
+      let** (version_int, stream) = decode_value stream in
       let adata = Cstruct.of_string "backup-version" in
-      let** version = decrypt_backup ~key ~adata version in
-      match Version.of_string (Cstruct.to_string version) with
-      | Ok v when Version.compare backup_version v = `Equal ->
-        begin
-          let** (encrypted_domain_key, stream) = decode_value stream in
-          let adata = Cstruct.of_string "domain-key" in
-          let** locked_domain_key = decrypt_backup ~key ~adata encrypted_domain_key in
-          with_write_lock (fun () ->
-            KV.batch t.kv (fun b ->
-              begin
-                (* when the mode is operational, we have to clear
-                    user and keys that are not in the backup. *)
-                let backup_keys = ref KeySet.empty in
-                let** () =
-                  (* while the stream has content *)
-                  stream_while stream
-                    (restore_key ~is_operational ~backup_keys ~key ~kv:b)
-                in
-                let** () =
-                  if is_operational then
-                    (* we remove keys and users that not present in the
-                        backup *)
-                    remove_extra_keys ~kv:b !backup_keys
-                  else
-                    (* unprovisioned: end state is locked *)
-                    let** new_state = boot_config_store ~cache_settings:t.cache_settings b t.device_key in
-                    t.state <- new_state;
-                    Lwt_result.return ()
-                in
-                (match t.state with
-                | Operational v ->
-                  User_store.clear_cache v.auth_store;
-                  Key_store.clear_cache v.key_store
-                | _ -> ());
-                let** () =
-                  (* the domain key might have changed if restored to a
-                      fresh or different device, so refresh the store *)
-                  let encryption_key = t.device_key in
-                  Lwt.Infix.(Domain_key_store.get b Attended ~encryption_key >>= function
-                  | Error _ ->
-                    Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
-                    internal_server_error Write "Write passphrase domain key" KV.pp_write_error
-                      (Domain_key_store.set b Attended ~encryption_key locked_domain_key)
-                  | _ -> Lwt_result.return ())
-                in
-                let `Raw stop_ts = Clock.now_raw () in
-                match new_time with
-                | None -> Lwt.return_ok ()
-                | Some new_time ->
-                  let elapsed = Ptime.diff stop_ts start_ts in
-                  match Ptime.add_span new_time elapsed with
-                  | Some ts -> set_time_offset b ts
-                  | None ->
-                    t.state <- initial_state;
-                    Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
-              end))
-        end
-      | _ ->
-        let msg =
-          Printf.sprintf
-            "Version mismatch on restore, provided backup version is %s, server expects %s"
-            (Cstruct.to_string version) (Version.to_string backup_version)
+      let** version_int = decrypt_backup ~key ~adata version_int in
+      let** () = Lwt.return @@ if version = (Cstruct.get_char version_int 0) then
+          Ok ()
+        else
+          Error (Bad_request, "Internal and external version mismatch.")
+      in
+      let** (encrypted_domain_key, stream) = decode_value stream in
+      let adata = Cstruct.of_string "domain-key" in
+      let** locked_domain_key = decrypt_backup ~key ~adata encrypted_domain_key in
+      with_write_lock (fun () -> KV.batch t.kv (fun b ->
+        (* when the mode is operational, we have to clear
+            user and keys that are not in the backup. *)
+        let backup_keys = ref KeySet.empty in
+        let** () =
+          (* while the stream has content *)
+          stream_while stream (restore_key ~is_operational ~backup_keys ~key ~kv:b)
         in
-        Lwt.return @@ Error (Bad_request, msg)
-  end
+        let** () =
+          if is_operational then
+            (* we remove keys and users that not present in the
+                backup *)
+            remove_extra_keys ~kv:b !backup_keys
+          else
+            (* unprovisioned: end state is locked *)
+            let** new_state = boot_config_store ~cache_settings:t.cache_settings b t.device_key in
+            t.state <- new_state;
+            Lwt_result.return ()
+        in
+        (match t.state with
+        | Operational v ->
+          User_store.clear_cache v.auth_store;
+          Key_store.clear_cache v.key_store
+        | _ -> ());
+        let** () =
+          (* the domain key might have changed if restored to a
+              fresh or different device, so refresh the store *)
+          let encryption_key = t.device_key in
+          Lwt.Infix.(Domain_key_store.get b Attended ~encryption_key >>= function
+          | Error _ ->
+            Log.info (fun m -> m "Device Key changed. Refreshing stored Domain Key.");
+            internal_server_error Write "Write passphrase domain key" KV.pp_write_error
+              (Domain_key_store.set b Attended ~encryption_key locked_domain_key)
+          | _ -> Lwt_result.return ())
+        in
+        let `Raw stop_ts = Clock.now_raw () in
+        match new_time with
+        | None -> Lwt.return_ok ()
+        | Some new_time ->
+          let elapsed = Ptime.diff stop_ts start_ts in
+          match Ptime.add_span new_time elapsed with
+          | Some ts -> set_time_offset b ts
+          | None ->
+            t.state <- initial_state;
+            Lwt.return @@ Error (Bad_request, "Invalid system time in restore request")
+      ))
+  end (* module System *)
 
   let default_cache_settings = {
     Cached_store.cache_size = 256;

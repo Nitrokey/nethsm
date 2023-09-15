@@ -95,10 +95,34 @@ let decrypt ~key ~adata data =
     Error ("Could not decrypt stored " ^ (Cstruct.to_string adata) ^ ". Authentication failed midway. Backup is corrupted?")
   | Ok x -> Ok x
 
+let backup_header = "_NETHSM_BACKUP_"
+let backup_version_v0 = Char.chr 0
+
 let export passphrase backup_image_filename output =
   let (let*) = Result.bind in
   err_to_msg @@
   let backup_data = read_file backup_image_filename in
+  let header_len = String.length backup_header in
+  let header = String.sub backup_data 0 header_len in
+  let version = String.get backup_data header_len in
+  let backup_data = String.(sub backup_data (header_len+1) (length backup_data - header_len - 1)) in
+  let* () =
+    if String.(equal (sub header 0 (length backup_header)) backup_header) then
+      Ok ()
+    else
+      Error "Not a NetHSM backup file"
+  in
+  let* () =
+    match version with
+    | x when x = backup_version_v0 -> Ok ()
+    | _ ->
+      let msg =
+        Printf.sprintf
+          "Version mismatch on restore, provided backup version is %d, server expects %d"
+          (Char.code version) (Char.code backup_version_v0)
+      in
+      Error msg
+  in
   let salt, backup_data = get_field backup_data in
   let backup_key =
     Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase
@@ -106,45 +130,39 @@ let export passphrase backup_image_filename output =
   let key = Crypto.GCM.of_secret backup_key in
   let encrypted_version, backup_data = get_field backup_data in
   let adata = Cstruct.of_string "backup-version" in
-  let* backup_version = decrypt ~key ~adata encrypted_version in
-  if String.equal version (Cstruct.to_string backup_version) then
-    begin
-      let encrypted_domain_key, backup_data = get_field backup_data in
-      let adata = Cstruct.of_string "domain-key" in
-      let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
-      let rec next acc rest =
-        if rest = "" then Ok acc else
-        let item, rest = get_field rest in
-        let adata = Cstruct.of_string "backup" in
-        let* key_value_pair = decrypt ~key ~adata item in
-        let key, value = get_field (Cstruct.to_string key_value_pair) in
-        next ((key, value) :: acc) rest
-      in
-      let init = [".locked-domain-key", Cstruct.to_string locked_domain_key] in
-      match next init backup_data with
-      | Error e -> Error e
-      | Ok kvs ->
-        let fd = match output with
-          | None -> Unix.stdout
-          | Some filename ->
-            if Sys.file_exists filename
-            then invalid_arg "Output file already exists"
-            else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
-        in
-        let channel = Unix.out_channel_of_descr fd in
-        let json = `Assoc (List.rev_map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
-        Yojson.Basic.pretty_to_channel channel json;
-        Unix.close fd;
-        Ok ()
-    end
-  else
-    let msg =
-      Printf.sprintf
-        "Backup version mismatch, provided backup image version is %s, tool expects %s"
-        (Cstruct.to_string backup_version) version
+  let* version_int = decrypt ~key ~adata encrypted_version in
+  let* () = if version = (Cstruct.get_char version_int 0) then
+      Ok ()
+    else
+      Error "Internal and external version mismatch."
+  in
+  let encrypted_domain_key, backup_data = get_field backup_data in
+  let adata = Cstruct.of_string "domain-key" in
+  let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
+  let rec next acc rest =
+    if rest = "" then Ok acc else
+    let item, rest = get_field rest in
+    let adata = Cstruct.of_string "backup" in
+    let* key_value_pair = decrypt ~key ~adata item in
+    let key, value = get_field (Cstruct.to_string key_value_pair) in
+    next ((key, value) :: acc) rest
+  in
+  let init = [".locked-domain-key", Cstruct.to_string locked_domain_key] in
+  match next init backup_data with
+  | Error e -> Error e
+  | Ok kvs ->
+    let fd = match output with
+      | None -> Unix.stdout
+      | Some filename ->
+        if Sys.file_exists filename
+        then invalid_arg "Output file already exists"
+        else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
     in
-    Error msg
-
+    let channel = Unix.out_channel_of_descr fd in
+    let json = `Assoc (List.rev_map (fun (k, v) -> k, `String (Base64.encode_string v)) kvs) in
+    Yojson.Basic.pretty_to_channel channel json;
+    Unix.close fd;
+    Ok ()
 
 open Cmdliner
 
