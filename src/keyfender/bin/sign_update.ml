@@ -2,6 +2,8 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
+let update_header = Bytes.of_string "_NETHSM_UPDATE_\x00"
+
 let write_len length =
   let len_buf = Cstruct.create 3 in
   assert (length < 1 lsl 24); (* TODO *)
@@ -120,6 +122,7 @@ let sign flags key_file changelog_file version_file image_file output_file =
     let written = Unix.write fd bytes 0 (Bytes.length bytes) in
     assert (written = Bytes.length bytes)
   in
+  write_chunk () @@ update_header;
   write_chunk () @@ signature;
   read_file_chunked changelog_file () true write_chunk;
   write_chunk () @@ prepend_len (Bytes.unsafe_of_string version);

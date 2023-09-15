@@ -1846,6 +1846,8 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
 
     let update_mutex = Lwt_mutex.create ()
 
+    let update_header = "_NETHSM_UPDATE_\x00"
+
     let update t s =
       match t.has_changes with
       | Some _ -> Lwt.return (Error (Conflict, "Update already in progress."))
@@ -1854,12 +1856,16 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
           (fun () ->
              let open Lwt_result.Infix in
              (* stream contains:
+                - header '_NETHSM_UPDATE_\x00'
                 - signature (hash of the rest)
                 - changelog
                 - version number
                 - 32bit size (in blocks of 512 bytes)
                 - software image,
                 first four are prefixed by 4 byte length *)
+             read_n s 16 >>= fun (header, s) ->
+             (if header = update_header then Lwt.return_ok ()
+               else Lwt.return_error (Bad_request, "Invalid update file")) >>= fun () ->
              get_field s >>= fun (signature, s) ->
              let hash = Hash.empty in
              get_field s >>= fun (changes, s) ->

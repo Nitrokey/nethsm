@@ -218,7 +218,7 @@ let sign_update u =
   let len_buf = Cstruct.create 3 in
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-  Cstruct.to_string (Cstruct.append len_buf signature)
+  "_NETHSM_UPDATE_\x00" ^ Cstruct.(to_string (append len_buf signature))
 
 let system_update_ok =
   "a request for /system/update with authenticated user returns 200"
@@ -2881,7 +2881,8 @@ let crypto_aes_cbc_decrypt () =
 let () =
   let open Alcotest in
   let tests = [
-    "/", [ empty ];
+    (* the spaces trigger alcotest to do long line output*)
+    "/                                               ", [ empty ];
     "/health/alive", [ health_alive_ok ];
     "/health/ready", [ health_ready_ok ;
                        health_ready_error_precondition_failed ];
