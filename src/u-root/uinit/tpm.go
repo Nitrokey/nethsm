@@ -92,30 +92,30 @@ func getIdFromAk(akPub *tpm2.Public) string {
 }
 
 func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
-	ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+	ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil,
 		templates.NewRestrictedECCSigningKeyWithDefaults(),
 		nil, nil, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("create AK256: %v", err)
+		return "", nil, fmt.Errorf("create AK256: %w", err)
 	}
 	defer tpm.FlushContext(ak256Ctx)
 
 	ak256Der, err := x509.MarshalPKIXPublicKey(ak256Pub.Public())
 	if err != nil {
-		return "", nil, fmt.Errorf("marshal AK256: %v", err)
+		return "", nil, fmt.Errorf("marshal AK256: %w", err)
 	}
 
-	ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
+	ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil,
 		templates.NewRestrictedECCSigningKey(tpm2.HashAlgorithmSHA384, nil, tpm2.ECCCurveNIST_P384),
 		nil, nil, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("create AK384: %v", err)
+		return "", nil, fmt.Errorf("create AK384: %w", err)
 	}
 	defer tpm.FlushContext(ak384Ctx)
 
 	ak384Der, err := x509.MarshalPKIXPublicKey(ak384Pub.Public())
 	if err != nil {
-		return "", nil, fmt.Errorf("marshal AK384: %v", err)
+		return "", nil, fmt.Errorf("marshal AK384: %w", err)
 	}
 
 	deviceId := getIdFromAk(ak256Pub)
@@ -135,10 +135,10 @@ func tpmGetPlatformData() (platformData, error) {
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 192, tpm2.ECCCurveNIST_P384),
+			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 256, tpm2.ECCCurveNIST_P384),
 			nil, nil, nil)
 		if err != nil {
-			return fmt.Errorf("create SRK: %v", err)
+			return fmt.Errorf("create SRK: %w", err)
 		}
 		defer tpm.FlushContext(srkCtx)
 
@@ -165,22 +165,25 @@ func tpmGetPlatformData() (platformData, error) {
 				return fmt.Errorf("waiting for TRNG seeding timed out.")
 			}
 			deviceKey = make([]byte, 32)
-			crand.Read(deviceKey)
+			_, err = crand.Read(deviceKey)
+			if err != nil {
+				return fmt.Errorf("creating new Device Key failed: %w", err)
+			}
 
 			err = sealDeviceKey(tpm, srkCtx, deviceKey, pcrSelection)
 			if err != nil {
-				return fmt.Errorf("sealing new key failed: %w", err)
+				return fmt.Errorf("sealing new Device Key failed: %w", err)
 			}
 			key2, err := unsealDeviceKey(tpm, srkCtx)
 			if err != nil {
-				return fmt.Errorf("unsealing new key failed: %w", err)
+				return fmt.Errorf("unsealing new Device Key failed: %w", err)
 			}
 			if !bytes.Equal(deviceKey, key2) {
-				return fmt.Errorf("unsealed key does not match generated key.")
+				return fmt.Errorf("unsealed Device Key does not match generated key.")
 			}
 			log.Printf("Created and sealed new Device Key\n")
 		} else {
-			log.Printf("Sucessfully unsealed Device Key\n")
+			log.Printf("Successfully unsealed Device Key\n")
 		}
 
 		// cap PCRs afterwards to inhibit unsealing the Device Key again
@@ -239,7 +242,7 @@ func sealDeviceKey(
 ) error {
 	f, err := os.Create(sealedDeviceKeyFile)
 	if err != nil {
-		return fmt.Errorf("create sealed Device Key file: %v", err)
+		return fmt.Errorf("create sealed Device Key file: %w", err)
 	}
 	defer f.Close()
 
@@ -267,8 +270,14 @@ func sealDeviceKey(
 
 	sensitive := &tpm2.SensitiveCreate{Data: secret}
 
+	encSession, err := encryptionSession(tpm, srk, encryptCommand)
+	if err != nil {
+		return err
+	}
+	defer tpm.FlushContext(encSession)
+
 	// Create the sealed object
-	priv, pub, _, _, _, err := tpm.Create(srk, sensitive, template, nil, nil, nil)
+	priv, pub, _, _, _, err := tpm.Create(srk, sensitive, template, nil, nil, nil, encSession)
 	if err != nil {
 		return err
 	}
@@ -285,7 +294,7 @@ func unsealDeviceKey(tpm *tpm2.TPMContext, srk tpm2.ResourceContext) ([]byte, er
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("cannot open sealed device key file: %v", err)
+		return nil, fmt.Errorf("cannot open sealed device key file: %w", err)
 	}
 	defer f.Close()
 
@@ -304,25 +313,59 @@ func unsealDeviceKey(tpm *tpm2.TPMContext, srk tpm2.ResourceContext) ([]byte, er
 	}
 	defer tpm.FlushContext(object)
 
-	// Settings for symmetric parameter encryption
-	AesCfb := tpm2.SymDef{
-		Algorithm: tpm2.SymAlgorithmAES,
-		KeyBits:   &tpm2.SymKeyBitsU{Sym: 192},
-		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
-	}
-
-	// Start a parameter encrypted policy session with PCR assertion.
-	// The first parameter (tpmKey) must be set, else the parameter encryption
-	// is not secure, because the session key can be reconstructed.
-	session, err := tpm.StartAuthSession(srk, nil, tpm2.SessionTypePolicy, &AesCfb, tpm2.HashAlgorithmSHA384)
+	encSession, err := encryptionSession(tpm, srk, encryptResponse)
 	if err != nil {
 		return nil, err
 	}
-	defer tpm.FlushContext(session)
+	defer tpm.FlushContext(encSession)
 
-	if err := tpm.PolicyPCR(session, nil, pcrSelection); err != nil {
+	// Start a policy policySession with PCR assertion.
+	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA384)
+	if err != nil {
+		return nil, err
+	}
+	defer tpm.FlushContext(policySession)
+
+	if err := tpm.PolicyPCR(policySession, nil, pcrSelection); err != nil {
 		return nil, err
 	}
 
-	return tpm.Unseal(object, session)
+	return tpm.Unseal(object, policySession, encSession)
+}
+
+type encryptedSessionType byte
+
+const (
+	encryptCommand = encryptedSessionType(iota)
+	encryptResponse
+)
+
+func encryptionSession(
+	tpm *tpm2.TPMContext,
+	tpmKey tpm2.ResourceContext,
+	mode encryptedSessionType,
+) (tpm2.SessionContext, error) {
+	symmetric := tpm2.SymDef{
+		Algorithm: tpm2.SymAlgorithmAES,
+		KeyBits:   &tpm2.SymKeyBitsU{Sym: 256},
+		Mode:      &tpm2.SymModeU{Sym: tpm2.SymModeCFB},
+	}
+	// Start a parameter encrypted HMAC session.
+	// The first parameter (tpmKey) must be set, else the parameter encryption
+	// is not secure, because the session key can be reconstructed.
+	session, err := tpm.StartAuthSession(tpmKey, nil, tpm2.SessionTypeHMAC, &symmetric, tpm2.HashAlgorithmSHA384)
+	if err != nil {
+		return nil, err
+	}
+
+	switch mode {
+	case encryptCommand:
+		session.SetAttrs(tpm2.AttrCommandEncrypt)
+	case encryptResponse:
+		session.SetAttrs(tpm2.AttrResponseEncrypt)
+	default:
+		return nil, fmt.Errorf("unknown encryption session type")
+	}
+
+	return session, nil
 }
