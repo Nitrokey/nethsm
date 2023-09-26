@@ -311,6 +311,8 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
     make -j$(nproc) build
     ```
 
+For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
+
 #### Running
 
 To run the local development system on your local machine, first ensure that you have set up the required network interfaces _on the host_ by running:
@@ -352,7 +354,7 @@ The following uses the makefile target `local-container-enter`.
 This target uses Docker as the container executor.
 The default can be overwritten by setting `CONTAINER_EXECUTOR` and appending it to the command, e.g. `make local-container-enter CONTAINER_EXECUTOR=podman`.
 
-1. To enter the container, run:
+1. Enter the Docker container with:
 
     ```
     make local-container-enter
@@ -360,11 +362,15 @@ The default can be overwritten by setting `CONTAINER_EXECUTOR` and appending it 
     # make DOCKER_IMAGE_NAME=nethsm-builder local-container-enter
     ```
 
+The build process inside the builder container needs access to the repositories on *git.nitrokey.com*. Make sure to have a working SSH configuration inside the container.
+
 2. Build the system with:
 
     ```
     make -j$(nproc) build
     ```
+
+For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
 
 Notes:
 
