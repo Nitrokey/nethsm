@@ -1739,6 +1739,7 @@ paths:
         content:
           application/octet-stream:
             schema:
+              format: binary
               type: string
         required: true
       security:
@@ -1796,6 +1797,11 @@ paths:
       responses:
         "200":
           description: Successful retrieval of backup data.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1833,6 +1839,7 @@ paths:
         content:
           application/octet-stream:
             schema:
+              format: binary
               type: string
         required: true
       parameters:
