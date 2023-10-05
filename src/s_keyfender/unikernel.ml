@@ -15,6 +15,15 @@ let _print_banner =
 let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
+module Stack_nodelay (Stack : Tcpip.Stack.V4V6) = struct
+  include Stack
+  module TCP = struct
+    include Stack.TCP
+    let write = Stack.TCP.write_nodelay
+    let writev = Stack.TCP.writev_nodelay
+  end
+end
+
 module Main
     (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
@@ -27,7 +36,7 @@ struct
   module Time = OS.Time
   module Ext_stack = Ext_reconfigurable_stack.Stack
 
-  module Conduit = Conduit_mirage.TCP(Ext_stack)
+  module Conduit = Conduit_mirage.TCP(Stack_nodelay(Ext_stack))
   module Conduit_tls = Conduit_mirage.TLS(Conduit)
   module Http = Cohttp_mirage.Server.Make(Conduit_tls)
 
