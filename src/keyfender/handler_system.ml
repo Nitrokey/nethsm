@@ -74,13 +74,11 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) = stru
     method! process_post rd =
       let body = rd.Webmachine.Rd.req_body in
       let content = Cohttp_lwt.Body.to_stream body in
-      let add_content_type h = Cohttp.Header.add h "Content-Type" "application/json" in
       Hsm.System.update hsm_state content >>= function
       | Ok changes ->
         let json = Yojson.Safe.to_string (`Assoc [ "releaseNotes", `String changes ]) in
-        let rd' = Webmachine.Rd.with_resp_headers add_content_type rd in
-        let rd'' = { rd' with resp_body = `String json } in
-        Wm.continue true rd''
+        let rd' = { rd with resp_body = `String json } in
+        Wm.continue true rd'
       | Error e -> Endpoint.respond_error e rd
 
     method! content_types_accepted =
