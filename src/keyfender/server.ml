@@ -133,7 +133,7 @@ module Make (R : Mirage_random.S) (Http: Server) (Hsm : Hsm.S) = struct
                          (Astring.String.concat ~sep:", " path)) ;
     Hsm.Metrics.http_status status;
     Hsm.Metrics.http_response_time (Ptime.Span.to_float_s diff);
-    Http.respond ~headers ~body ~status ()
+    Http.respond ~flush:false ~headers ~body ~status ()
 
   (* Redirect to https *)
   let redirect port _ip request _body =
@@ -144,7 +144,7 @@ module Make (R : Mirage_random.S) (Http: Server) (Hsm : Hsm.S) = struct
                       (Uri.to_string uri) (Uri.to_string new_uri)
                   );
     let headers = Cohttp.Header.init_with "location" (Uri.to_string new_uri) in
-    Http.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
+    Http.respond ~flush:false ~headers ~status:`Moved_permanently ~body:`Empty ()
 
   let serve cb =
     let callback (_, cid) ip request body =

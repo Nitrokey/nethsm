@@ -45,7 +45,7 @@ struct
   (* module Client = H2_mirage.Client(Int_conduit.Flow) *)
 
   module Hsm_clock = Keyfender.Hsm_clock.Make(Pclock)
-  module KV_store = Etcd_store.KV_RW(Internal_stack)
+  module KV_store = Etcd_store.KV_RW(Stack_nodelay(Internal_stack))
 
   module Hsm = Keyfender.Hsm.Make(Rng)(KV_store)(Time)(Mclock)(Hsm_clock)
   module Webserver = Keyfender.Server.Make(Rng)(Http)(Hsm)
@@ -71,7 +71,7 @@ struct
     | Ok data ->
       let mime_type = Magic_mime.lookup path in
       let headers = Cohttp.Header.init_with "content-type" mime_type in
-      Http.respond ~headers ~status:`OK ~body:(`String data) ()
+      Http.respond ~flush:false ~headers ~status:`OK ~body:(`String data) ()
     | _ -> next ip request body
 
   module T = Internal_stack.TCP

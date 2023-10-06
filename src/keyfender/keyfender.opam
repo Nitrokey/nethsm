@@ -61,9 +61,9 @@ depends: [
 synopsis: "Keyfender library"
 pin-depends: [
   ["conduit-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#e65c4d8ae35cad32dcec5658e8c0f9860ffcc1f8"]
-  ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
-  ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
-  ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#d8760c660ec1021ba51488fde391d2623aea7498"]
+  ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
 ]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for
