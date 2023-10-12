@@ -19,7 +19,7 @@ module type BACKEND = sig
 end
 
 
-module UnixApp  = struct 
+module UnixApp  = struct
 
 
   type t = {
@@ -34,15 +34,15 @@ module UnixApp  = struct
   let tail fd =
     let rec loop () =
       match input_line fd with
-      | line -> 
+      | line ->
         Printf.eprintf "%s\n%!" line;
         loop ()
-      | exception End_of_file -> ()
+      | exception End_of_file | exception Sys_error _ -> ()
     in
     loop ()
 
   (* wait until the server is ready, by listening on the server's standard error
-  and waiting for the "listening on 8080" message. Then, a thread is spawned to 
+  and waiting for the "listening on 8080" message. Then, a thread is spawned to
   continue printing the server's logs while the function returns.  *)
   let wait_until_ready ~message (_, _, proc_stderr) =
     let rec wait () =
@@ -51,12 +51,12 @@ module UnixApp  = struct
       if Astring.String.is_infix ~affix:message line then
         Thread.create tail proc_stderr
       else
-        wait () 
+        wait ()
     in
     wait ()
 
   let start ~process ?(args=[||]) ~message () =
-    let server_process = Unix.open_process_args_full 
+    let server_process = Unix.open_process_args_full
       process
       args
       (Unix.environment ())
@@ -70,10 +70,9 @@ module UnixApp  = struct
     Unix.kill server_pid Sys.sigterm;
     Unix.close_process_full server_process |> ignore;
     Thread.join thread
-
 end
 
-module KeyfenderApp : BACKEND = struct 
+module KeyfenderApp : BACKEND = struct
   type ctx = unit
 
   let init () = ()
@@ -84,7 +83,7 @@ module KeyfenderApp : BACKEND = struct
   type t = UnixApp.t
 
   let start () =
-    UnixApp.start 
+    UnixApp.start
       ~process:"../../../keyfender/_build/default/test/test_server.exe"
       ~message:"listening on 8080" ()
 
@@ -101,13 +100,13 @@ module KeyfenderUnikernel : BACKEND = struct
 
   type t = UnixApp.t
 
-  let init () = 
+  let init () =
     let open Bos.OS in
     let run_dir = Fpath.v "../../run" in
     let etcd_dir = Fpath.(run_dir / "default.etcd") in
     Dir.create etcd_dir |> Result.get_ok |> ignore;
 
-    let etcd_process = Unix.open_process_args_full 
+    let etcd_process = Unix.open_process_args_full
       "../../etcd-download/etcd" [|
         "etcd";
         "--log-level=warn";
@@ -131,14 +130,14 @@ module KeyfenderUnikernel : BACKEND = struct
     Thread.join log_thread
 
   let env = Astring.String.Map.singleton "ETCDCTL_API" "3"
-  
-  let start () = 
+
+  let start () =
     let open Bos.OS in
     Cmd.run ~env @@ Bos.Cmd.(v "../../../../etcd-download/etcdctl" % "del" % "" % "--from-key=true") |> Result.get_ok;
-    UnixApp.start 
+    UnixApp.start
     ~process:"../../../s_keyfender/main.native"
     ~args:[|
-      "main.native"; 
+      "main.native";
       "--platform=127.0.0.1";
       "--http=8080";
       "--https=8443"|]
@@ -155,7 +154,7 @@ end
 let in_dir directory fn =
   let old = Unix.getcwd () in
   Unix.chdir directory;
-  Fun.protect 
+  Fun.protect
     ~finally:(fun () -> Unix.chdir old)
     fn
 
@@ -170,17 +169,17 @@ let ls dir =
   ls []
   |> List.sort String.compare
 
-let (let*) = Result.bind 
+let (let*) = Result.bind
 let (let+) a f = Result.map f a
 
 let command_suffix = "_cmd.sh"
 
 let command_suffix_len = String.length command_suffix
 
-(* 
-parse the output header file to obtain the response code. 
+(*
+parse the output header file to obtain the response code.
 
-example: if the content is 
+example: if the content is
 """
 HTTP/1.1 400 Bad Request
 content-length: 83
@@ -194,19 +193,19 @@ the output is "400"
 let actual_code file =
   let* content = Bos.OS.File.read_lines file in
   List.find_map (fun line ->
-    if Astring.String.is_prefix ~affix:"HTTP" line then 
+    if Astring.String.is_prefix ~affix:"HTTP" line then
       match String.split_on_char ' ' line with
       | _::code::_ -> Some code
-      | _ -> None 
+      | _ -> None
     else None
   ) content
   |> Option.to_result ~none:(`Msg ("actual_code of " ^ Fpath.to_string file))
 
-(* 
+(*
 extract the expected code from the file name:
 
 expected_code "400_wrong_json_headers.out" => "400" *)
-let expected_code v = 
+let expected_code v =
   match String.split_on_char '_' v with
   | code::_ -> Ok code
   | _ -> Error (`Msg "expected_code: unknown")
@@ -214,7 +213,7 @@ let expected_code v =
 (* perform the API output test *)
 let test_error test =
   let open Bos in
-  let* () = 
+  let* () =
     OS.Cmd.run Cmd.(v ("./"^test^command_suffix))
   in
   let headers_file = Fpath.v (test^"_headers.out") in
@@ -223,16 +222,15 @@ let test_error test =
   Alcotest.(check string) (test^": code matches") expected_code actual_code;
   Ok ()
 
-(* expected to be run from a "generated/XXX" folder, this function 
+(* expected to be run from a "generated/XXX" folder, this function
 tests a specific endpoint. *)
 let tests_endpoint (module B: BACKEND) () =
   (* 1: start the server*)
-  let module B = B in
   let server = B.start () in
   Fun.protect ~finally:(fun () -> B.stop server) @@ fun () ->
   (* 3: perform endpoint-specific setup *)
   let () =
-    Bos.(OS.Cmd.run Cmd.(v "./setup.sh")) 
+    Bos.(OS.Cmd.run Cmd.(v "./setup.sh"))
     |> function
     | Ok () -> ()
     | Error (`Msg e) -> Alcotest.fail ("setup: "^e)
@@ -254,7 +252,7 @@ let tests_endpoint (module B: BACKEND) () =
   let () =
     if Bos.OS.Path.exists (Fpath.v "cmd.sh") |> Result.get_ok then
       begin
-        let* () = 
+        let* () =
           Bos.(OS.Cmd.run Cmd.(v ("./cmd.sh")))
         in
         let* expected_code = actual_code Fpath.(v "headers.expected") in
@@ -277,17 +275,16 @@ let tests_endpoint (module B: BACKEND) () =
 
 let tests (module B: BACKEND) =
   ls "generated"
-  |> 
-  List.map (fun endpoint -> 
-    endpoint, 
+  |>
+  List.map (fun endpoint ->
+    endpoint,
     [
-      Alcotest.test_case "OK" `Quick @@ fun () -> 
+      Alcotest.test_case "OK" `Quick @@ fun () ->
       in_dir ("generated/"^endpoint) (tests_endpoint (module B))
     ])
 
 let main (module B: BACKEND) =
-  let module B = B in
-  let ctx = B.init () in 
+  let ctx = B.init () in
   try
     Fun.protect ~finally:(fun () -> B.finish ctx) @@ fun () ->
     Alcotest.run ~and_exit:false ~argv:Sys.argv "api" (tests (module B))
