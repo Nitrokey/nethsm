@@ -19,6 +19,7 @@ module type S = sig
     | Precondition_failed
     | Conflict
     | Too_many_requests
+    | Not_found
 
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -411,6 +412,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Precondition_failed
     | Conflict
     | Too_many_requests
+    | Not_found
 
   (* string is the body, which may contain error message *)
   type error = status_code * string
@@ -423,6 +425,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
     | Precondition_failed -> `Precondition_failed
     | Conflict -> `Conflict
     | Too_many_requests -> `Too_many_requests
+    | Not_found -> `Not_found
     in
     Cohttp.Code.code_of_status status
 
@@ -1282,7 +1285,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let open Lwt_result.Infix in
       get_key t id >>= fun key ->
       match key.cert with
-      | None -> Lwt.return (Error (Conflict, "Key does not contains a certificate"))
+      | None -> Lwt.return (Error (Not_found, "There is no certificate for this KeyID."))
       | Some _ ->
         let key' = { key with cert = None } in
         encode_and_write t id key'

@@ -867,11 +867,9 @@ paths:
         "403":
           description: Access denied.
         "404":
-          description: Certificate with this KeyID not found.
+          description: There is no certificate for this KeyID.
         "406":
           description: Content type in Accept header not supported.
-        "409":
-          description: Certificate for key not found.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete the certificate.
