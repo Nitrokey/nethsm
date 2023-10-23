@@ -1962,7 +1962,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       | Ok entries ->
         (* for each key, retrieve value and call push *)
         Lwt_list.iter_s (fun (subpath, kind) ->
-            let key = Mirage_kv.Key.(path / subpath) in
+            let key = Mirage_kv.Key.(path // (v subpath)) in
             match kind with
             | `Value ->
               begin

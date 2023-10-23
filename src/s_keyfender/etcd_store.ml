@@ -309,10 +309,13 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | _ -> Error (`Not_found k))
 
   let list t k =
-    let key = Bytes.of_string (Key.to_string k ^ "/") in
+    let key = Bytes.of_string (match Key.to_string k with
+      | "/" -> "/"
+      | s -> s ^ "/")
+    in
     let range_end = end_of_prefix key in
     let prefix_len = Bytes.length key in
-    let request = RangeRequest.make ~key ~range_end ~keys_only:true () in
+    let request = RangeRequest.(make ~key ~range_end ~keys_only:true ~sort_order:DESCEND ()) in
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         let rec acc_keys acc kvs =
