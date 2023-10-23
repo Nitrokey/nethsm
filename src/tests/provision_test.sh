@@ -58,6 +58,13 @@ USERS=$(GET_admin /v1/users)
 echo $USERS # should be admin, operator, backup, metrics
 echo
 
+# set backup passphrase
+PUT_admin /v1/config/backup-passphrase <<EOM
+{
+  "passphrase": "backupPassphrase"
+}
+EOM
+
 # put a sign decrypt key
 PUT_admin /v1/keys/myKey1 <<EOM
 {
@@ -83,4 +90,3 @@ PUT_admin /v1/keys/MyAESKey <<EOM
 EOM
 
 echo "Setup complete."
-
