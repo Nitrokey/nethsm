@@ -50,6 +50,8 @@ depends: [
   "metrics-lwt" {>= "0.2.0"}
   "mirage-time"
   "duration"
+  "multipart_form"
+  "multipart_form-lwt"
   "io-page" {>= "2.4.0"} #{with-test}
   "conduit-mirage" {>= "5.0.0"} #{with-test}
   "cohttp-mirage" {= "5.0.0"} #{with-test}

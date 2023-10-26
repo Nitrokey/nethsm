@@ -152,15 +152,53 @@ struct
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
+      val mutable content_type = None
+
+      method! known_content_type rd =
+          match Cohttp.Header.get rd.req_headers "Content-Type" with
+          | None -> Logs.err (fun m -> m "There seems to be no header field Content-Type. A Content-Type must be provided.") ; Wm.continue false rd
+          | Some v ->
+              (* 
+                 Must end with "\r\n". To be on the safe side, we add it.
+                 See https://discuss.ocaml.org/t/multipart-form-data/8411/3
+              *)
+              begin match (Multipart_form.Content_type.of_string (v ^ "\r\n") ) with
+              | Error(`Msg err) -> Logs.err (fun m -> m "Parsing Content-Type failed with: %s" err) ; Wm.continue false rd
+              | Ok v -> content_type <- Some v ; Wm.continue true rd
+              end
+
       method! process_post rd =
         let body = rd.Webmachine.Rd.req_body in
         let content = Cohttp_lwt.Body.to_stream body in
-        Hsm.System.restore hsm_state rd.Webmachine.Rd.uri content >>= function
-        | Error e -> Endpoint.respond_error e rd
-        | Ok () -> Wm.continue true rd
 
-      method! content_types_accepted =
-        Wm.continue [ ("application/octet-stream", self#process_post) ]
+        let identify _ = "" in
+        (* As web machine ensures that known_content_type is executed first, we can be sure that content_type is Some _ and not None.*)
+        let `Parse th, stream = Multipart_form_lwt.stream ~identify content (content_type |> Option.get) in
+        Lwt.dont_wait (fun () -> th >|= fun _ -> ()) (fun _ -> ()) ;
+        let handle () =
+          Lwt_stream.get stream >>= function
+          | None -> Endpoint.respond_error (Bad_request, "Body cannot be empty.") rd
+          | Some (_, _, metadata) ->
+          let rec read_all s acc =
+            if (String.length acc) > 1024 then
+              Lwt.return_error (Hsm.Bad_request, "Meta data is too large.") 
+            else
+              Lwt_stream.get s >>= function
+              | None -> Lwt.return_ok acc
+              | Some x -> read_all s (acc ^ x)
+          in
+          read_all metadata "" >>= function
+          | Error e -> Endpoint.respond_error e rd
+          | Ok json ->
+          Lwt_stream.get stream >>= function
+          | None -> Endpoint.respond_error (Bad_request, "Backup data cannot be empty.") rd
+          | Some (_, _, backup) ->
+          Hsm.System.restore hsm_state json backup >>= fun result ->
+          match result with
+          | Error e -> Endpoint.respond_error e rd
+          | Ok () -> Wm.continue true rd
+        in
+        handle () >|= fun result -> Lwt.cancel th; result
 
       method! is_authorized rd =
         match Hsm.state hsm_state with

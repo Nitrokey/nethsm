@@ -98,9 +98,8 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
-
-    val restore :
-      t -> Uri.t -> string Lwt_stream.t -> (unit, error) result Lwt.t
+    val restore : t -> string -> string Lwt_stream.t ->
+      (unit, error) result Lwt.t
   end
 
   module User : sig
@@ -2258,22 +2257,6 @@ struct
       let** kv = Lwt.return @@ split_kv (Cstruct.to_string kv) in
       Lwt.return_ok (kv, stream)
 
-    let get_timestamp_opt uri =
-      match Uri.get_query_param uri "systemTime" with
-      | None -> Ok None
-      | Some timestamp -> (
-          match Json.decode_time timestamp with
-          | Error e -> Error (Bad_request, "Request parse error: " ^ e ^ ".")
-          | Ok timestamp -> Ok (Some timestamp))
-
-    let get_query_parameters uri =
-      match get_timestamp_opt uri with
-      | Error e -> Error e
-      | Ok timestamp_opt -> (
-          match Uri.get_query_param uri "backupPassphrase" with
-          | None -> Error (Bad_request, "Request is missing backup passphrase.")
-          | Some backup_passphrase -> Ok (timestamp_opt, backup_passphrase))
-
     (* runs the function while the stream has items *)
     let rec stream_while stream fn =
       let open Lwt.Infix in
@@ -2341,15 +2324,16 @@ struct
                    (KV.remove kv k))
            (Ok ())
 
-    let restore t uri stream =
-      let ( let** ) = Lwt_result.bind in
-      let (`Raw start_ts) = Clock.now_raw () in
+    let restore t json stream =
+      let (let**) = Lwt_result.bind in
+      let `Raw start_ts = Clock.now_raw () in
       let initial_state = t.state in
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
-      let** new_time, backup_passphrase =
-        Lwt.return (get_query_parameters uri)
+      let** (new_time, backup_passphrase) = match Json.decode_restore_req json with
+        | Error e -> Lwt.return_error (Bad_request, e)
+        | Ok x -> Lwt.return_ok x
       in
       let** header, stream = read_n stream (String.length backup_header + 1) in
       let** () =

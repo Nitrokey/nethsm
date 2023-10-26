@@ -114,6 +114,18 @@ let decode_provision_req json =
   decode_time b.systemTime >>| fun time ->
   (b.unlockPassphrase, b.adminPassphrase, time)
 
+type restore_req = {
+  backupPassphrase : string;
+  systemTime : (string option [@default None]);
+}[@@deriving yojson]
+
+let decode_restore_req json =
+  decode restore_req_of_yojson json >>= fun b ->
+  (match b.systemTime with
+  | None -> Ok None
+  | Some t -> decode_time t >>| fun t -> Some t) >>| fun time ->
+  (time, b.backupPassphrase)
+
 type ip = Ipaddr.V4.t
 
 let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
