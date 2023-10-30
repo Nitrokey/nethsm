@@ -65,7 +65,7 @@ def export(passphrase, backup_image_filename, output):
 
     scrypt_n = 16384
     scrypt_r = 8
-    scrypt_p = 1
+    scrypt_p = 16
     salt_bytes = salt
     key = scrypt.hash(passphrase.encode(), salt_bytes,
                       scrypt_n, scrypt_r, scrypt_p, 32)

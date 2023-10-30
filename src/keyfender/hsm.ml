@@ -1502,6 +1502,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
   let provision t ~unlock ~admin time =
     let open Lwt_result.Infix in
     (* state already checked in Handler_provision.service_available *)
+    let start = now () in
     assert (state t = `Unprovisioned);
     let unlock_salt = Rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
@@ -1560,6 +1561,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
               (Domain_key_store.set b Attended ~encryption_key enc_dk) >>= fun () ->
             internal_server_error Write "Write unlock-salt" KV.pp_write_error
               (Config_store.set b Unlock_salt unlock_salt) >>= fun () ->
+            let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
             set_time_offset b time))
 
   module Config = struct

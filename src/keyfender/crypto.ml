@@ -7,7 +7,7 @@ module GCM = Mirage_crypto.Cipher_block.AES.GCM
 (* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
 let scrypt_n = 16384
 let scrypt_r = 8
-let scrypt_p = 1
+let scrypt_p = 16
 let salt_len = 16
 
 (* key length for AES256 is 32 byte = 256 bit *)
