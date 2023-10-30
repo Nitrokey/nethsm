@@ -67,7 +67,9 @@ module UnixApp  = struct
     {thread; server_pid; server_process}
 
   let stop {server_pid; thread; server_process} =
+    Unix.sleep 1;
     Unix.kill server_pid Sys.sigterm;
+    Unix.sleep 1;
     Unix.close_process_full server_process |> ignore;
     Thread.join thread
 end
