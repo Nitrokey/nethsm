@@ -374,8 +374,8 @@ test_muen_prodrive_hermes:
       echo "done."
     - cd src/tests
     - NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh
+    - NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
     - |-
-      curl -s -k -f https://backup:BackupBackup@${NETHSM_IP}/api/v1/system/backup -X POST -o /tmp/backup.bin
       echo "Backup dump:"
       python3 ../keyfender/bin/export_backup.py backupPassphrase /tmp/backup.bin
     - >-

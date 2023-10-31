@@ -44,9 +44,20 @@ power_on ()
       https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset
 }
 
-echo "waiting for power off"
-while is_on; do printf "." ; sleep 5; done
-echo
+power_off ()
+{
+    local state=$1
+    curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
+      -d '{"ResetType": "ForceOff"}' \
+      https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset
+}
+
+if is_on; then
+    echo "switching off"
+    power_off
+    while is_on; do printf "." ; sleep 1; done
+    echo
+fi
 
 if is_inserted; then
     echo "ejecting media"

@@ -1809,7 +1809,7 @@ module Make (Rng : Mirage_random.S) (KV : Mirage_kv.RW) (Time : Mirage_time.S) (
       let rec read prefix =
         let open Lwt.Infix in
         Lwt_stream.get stream >>= function
-        | None -> Lwt.return @@ Error (Bad_request, "Malformed update")
+        | None -> Lwt.return @@ Error (Bad_request, "Malformed data")
         | Some data ->
           let str = prefix ^ data in
           if String.length str >= n
