@@ -139,10 +139,10 @@ let subst_prefix_len = String.length subst_prefix
 
 let req_substs req =
   Ezjsonm.get_dict req
-  |> List.filter_map (fun (k, v) -> 
+  |> List.filter_map (fun (k, v) ->
     if Astring.String.is_prefix ~affix:subst_prefix k then
-      let match' = 
-        String.sub k subst_prefix_len (String.length k - subst_prefix_len) 
+      let match' =
+        String.sub k subst_prefix_len (String.length k - subst_prefix_len)
       in
       match v with
       | `String s -> Some (match',  s)
@@ -225,7 +225,7 @@ let make_resp_data raml_meth =
 
 let has_match cmd match' =
   let regex = Str.regexp_string ("{" ^ match' ^ "}") in
-  Str.string_match regex cmd 0 
+  Str.string_match regex cmd 0
 
 let match_replace_by cmd (match', replace) =
   let regex = Str.regexp_string ("{" ^ match' ^ "}") in
@@ -235,10 +235,10 @@ let check_cmd_is_ready cmd =
   let regex = Str.regexp (".*{\\(.*\\)}.*") in
   let match' = Str.string_match regex cmd 0 in
   if match' then
-    failwith 
+    failwith
       ("Request path has an unsubstituted field: {"^ (Str.matched_group 1 cmd)^"}")
 
-let tests_for_states meth path cmd (response_code, response_body) 
+let tests_for_states meth path cmd (response_code, response_body)
                             {test_res; state; role; auth_header = req; substs} =
   let (outdir, test_file) = path_to_filename state meth path in
   ignore (Sys.command("mkdir -p " ^ outdir));
@@ -253,13 +253,13 @@ let tests_for_states meth path cmd (response_code, response_body)
   if test_res = `Pos then
   begin
     (* tests for wrong IDs (in {KeyID}, {UserID}, {Tag}) *)
-    List.iter (fun (match', _) -> 
+    List.iter (fun (match', _) ->
       if has_match cmd match' then
         begin
           let wrong_key = match_replace_by cmd (match', "bogus") in
           let wrong_key_cmd = Printf.sprintf "%s %s  -D 404_wrong_%s_headers.out -o /dev/null \n\n" wrong_key req match' in
           write_cmd (outdir ^ "/404_wrong_" ^ match' ^ "_cmd.sh") wrong_key_cmd
-        end 
+        end
       ) substs;
 
     (* if request contains --data json, prepare a wrong example *)
@@ -322,7 +322,7 @@ let tests_for_states meth path cmd (response_code, response_body)
 
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =
-    if path = "/system/shutdown" then "exit 1" else
+    if path = "/system/shutdown" then "sleep 1; exit 1" else
     {|NETHSM_URL="http://localhost:8080/api" ../../shutdown_from_any_state.sh|}
   in
   write_cmd shutdown_file shutdown_cmd;
@@ -349,7 +349,7 @@ let tests_for_states meth path cmd (response_code, response_body)
   end
 
 let print_method path (meth, req) =
-  if 
+  if
     List.mem meth allowed_methods (* skips descriptions *)
   then begin
     let reqs = make_req_data req meth in

@@ -228,7 +228,7 @@ build-keyfender: $(S_KEYFENDER)
 test-keyfender-lib: $(KEYFENDER)
 	cd src/keyfender && $(DUNE) runtest $(DUNE_ARGS)
 ifeq ($(XMODE),test)
-	sleep 5
+	sleep 1
 	bisect-ppx-report summary --coverage-path=src/keyfender
 endif
 
@@ -311,7 +311,7 @@ ifeq ($(XMODE),test)
 	# Coverage files get saved in the working directory test_server.exe was
 	# run in, for this test we only want those in src/tests, not any in
 	# src/tests/generated.
-	sleep 5
+	sleep 1
 	bisect-ppx-report summary src/tests/*.coverage
 endif
 
@@ -377,7 +377,7 @@ test-keyfender-api: $(S_KEYFENDER) | $(ETCD_DIR)
 	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
 	# For this test we want to consider ALL coverage files under
 	# src/tests/generated
-	sleep 5
+	sleep 1
 	bisect-ppx-report summary --coverage-path=src/tests/generated
 
 .PHONY: build

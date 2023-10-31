@@ -37,7 +37,8 @@ module UnixApp  = struct
       | line ->
         Printf.eprintf "%s\n%!" line;
         loop ()
-      | exception End_of_file | exception Sys_error _ -> ()
+      | exception End_of_file -> ()
+      | exception Sys_error s -> Printf.printf "Sys_error: %s\n%!" s
     in
     loop ()
 
@@ -66,10 +67,8 @@ module UnixApp  = struct
     let thread = wait_until_ready ~message server_process in
     {thread; server_pid; server_process}
 
-  let stop {server_pid; thread; server_process} =
-    Unix.sleep 1;
+  let stop {thread; server_pid; server_process} =
     Unix.kill server_pid Sys.sigterm;
-    Unix.sleep 1;
     Unix.close_process_full server_process |> ignore;
     Thread.join thread
 end
