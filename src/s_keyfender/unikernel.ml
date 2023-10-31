@@ -210,6 +210,7 @@ let dummy_platform : Keyfender.Json.platform_data = {
 }
 
   let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
+      if Key_gen.no_scrypt () then Keyfender.Crypto.set_test_params ();
       let entropy_port = 4444 in
       startTrngListener internal_stack entropy_port >>= fun () ->
       let sleep e =

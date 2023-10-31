@@ -12,7 +12,8 @@ let () =
   Printexc.record_backtrace true;
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
-  Logs.set_level (Some Debug)
+  Logs.set_level (Some Debug);
+  Keyfender.Crypto.set_test_params ()
 
 let (@?) name fn =
   Alcotest.test_case name `Quick

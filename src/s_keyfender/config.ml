@@ -61,6 +61,14 @@ let memtrace =
   in
   Key.(create "memtrace" Arg.(opt (some int) None doc))
 
+let no_scrypt =
+  let doc =
+    Key.Arg.info ~doc:"Use fast insecure scrypt parameters for testing."
+      ["no-scrypt"]
+  in
+  Key.(create "no-scrypt" Arg.(opt bool false doc))
+
+
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
    cannot yet connect the ip stack, but have to manually do that in the
@@ -123,11 +131,11 @@ let single_interface =
 let external_reconfigurable_stack =
   if_impl (Key.value single_interface)
     (pre_configured_stack $ internal_stack)
-    (reconfigurable_stack_direct 
-    $ default_random 
-    $ default_monotonic_clock 
-    $ external_netif 
-    $ external_eth 
+    (reconfigurable_stack_direct
+    $ default_random
+    $ default_monotonic_clock
+    $ external_netif
+    $ external_eth
     $ external_arp)
 
 let malloc_metrics_conf =
@@ -157,8 +165,8 @@ let bisect_ppx_conf =
     method module_name = ""
     method name = "bisect_ppx"
     method! keys = [ Key.abstract bisect_key ]
-    method! packages = 
-      Key.if_ 
+    method! packages =
+      Key.if_
         (Key.value bisect_key)
         [ package "bisect_ppx" ]
         []
@@ -188,12 +196,12 @@ let main =
       abstract remote;
       abstract retry ;
       abstract no_platform ; abstract platform ; abstract platform_port ;
-      abstract memtrace ;
+      abstract memtrace ; abstract no_scrypt
     ]
   in
   foreign
     ~packages ~keys ~deps:[malloc_metrics_conf; bisect_ppx_conf]
-    
+
     "Unikernel.Main"
     (console @-> random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
      stackv4v6 @->

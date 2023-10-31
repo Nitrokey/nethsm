@@ -71,12 +71,12 @@ let create_operational_mock mbox =
     Hsm.User.add state ~id:"operator2" ~role:`Operator ~passphrase:"test4Passphrase" ~name:"operator2" >|= fun _ ->
     state)
 
-let operational_mock = create_operational_mock good_platform
+let operational_mock = lazy (create_operational_mock good_platform)
 
 let operational_mock ?(mbox = good_platform) () =
   let t =
     if mbox == good_platform then
-      copy operational_mock
+      copy (Lazy.force operational_mock)
     else
       create_operational_mock mbox
   in
@@ -94,10 +94,10 @@ let create_locked_mock () =
     assert (r = Ok ());
     Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
 
-let locked_mock = create_locked_mock ()
+let locked_mock = lazy (create_locked_mock ())
 
 let locked_mock () =
-  let t = copy locked_mock in
+  let t = copy (Lazy.force locked_mock) in
   Hsm.reset_rate_limit ();
   t
 

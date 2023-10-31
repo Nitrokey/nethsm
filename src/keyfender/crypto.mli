@@ -13,6 +13,9 @@ module GCM : Mirage_crypto.Cipher_block.S.GCM
 val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t
 (** Derive a symmetric key from a passphrase, using SCRYPT. *)
 
+val set_test_params : unit -> unit
+(** Sets the scrypt parameters. (for tests only) *)
+
 val passphrase_salt_len : int
 (** The length of the salt used for storing the passphrase. *)
 

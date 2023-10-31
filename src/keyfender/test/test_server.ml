@@ -31,6 +31,7 @@ let platform = {
 }
 
 let () =
+  Keyfender.Crypto.set_test_params ();
   let update_key =
     match X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string) with
     | Ok `RSA key -> key

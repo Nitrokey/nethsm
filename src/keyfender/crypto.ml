@@ -4,10 +4,32 @@
 
 module GCM = Mirage_crypto.Cipher_block.AES.GCM
 
+
 (* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
-let scrypt_n = 16384
-let scrypt_r = 8
-let scrypt_p = 16
+(* uses 128 * r * n = 16MB RAM *)
+
+type scrypt_params_t = {
+  n : int;
+  r : int;
+  p : int;
+}
+
+let scrypt_params = ref {
+  n = 16384;
+  r = 8;
+  p = 16;
+}
+
+let scrypt_test_params = {
+  n = 2;
+  r = 1;
+  p = 1;
+}
+
+let set_test_params () =
+  Logs.warn (fun m -> m "Setting insecure Scrypt parameters for testing");
+  scrypt_params := scrypt_test_params
+
 let salt_len = 16
 
 (* key length for AES256 is 32 byte = 256 bit *)
@@ -16,7 +38,7 @@ let key_len = 32
 let key_of_passphrase ~salt password =
   Scrypt_kdf.scrypt_kdf
     ~password:(Cstruct.of_string password)
-    ~salt ~n:scrypt_n ~r:scrypt_r ~p:scrypt_p ~dk_len:(Int32.of_int key_len)
+    ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r ~p:!scrypt_params.p ~dk_len:(Int32.of_int key_len)
 
 let passphrase_salt_len = 16
 

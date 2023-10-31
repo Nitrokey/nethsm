@@ -136,6 +136,7 @@ let system_restore chunk_size chunks =
     | _ -> assert false
 
 let () =
+  Keyfender.Crypto.set_test_params ();
   Printexc.record_backtrace true;
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
