@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/linux"
@@ -240,12 +241,6 @@ func sealDeviceKey(
 	secret []byte,
 	pcrSelection tpm2.PCRSelectionList,
 ) error {
-	f, err := os.Create(sealedDeviceKeyFile)
-	if err != nil {
-		return fmt.Errorf("create sealed Device Key file: %w", err)
-	}
-	defer f.Close()
-
 	// Build the sealed object template
 	template := templates.NewSealedObject(tpm2.HashAlgorithmSHA384)
 
@@ -283,7 +278,18 @@ func sealDeviceKey(
 	}
 
 	// Encode the sealed object
-	_, err = mu.MarshalToWriter(f, priv, pub, pcrSelection)
+	sealedDeviceKey, err := mu.MarshalToBytes(priv, pub, pcrSelection)
+
+	err = os.WriteFile(sealedDeviceKeyFile+".tmp", sealedDeviceKey, 0o666)
+	if err != nil {
+		return fmt.Errorf("create sealed Device Key file: %w", err)
+	}
+	os.Rename(sealedDeviceKeyFile+".tmp", sealedDeviceKeyFile)
+	if err != nil {
+		return fmt.Errorf("rename sealed Device Key file: %w", err)
+	}
+	syscall.Sync()
+
 	return err
 }
 
