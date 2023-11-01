@@ -233,7 +233,7 @@ ifeq ($(XMODE),test)
 endif
 
 test-keyfender-e2e: $(KEYFENDER)
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -243,7 +243,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" REQUESTS=1 CONNECTIONS=1 ./load_test.sh
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -251,7 +251,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_gen
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -259,7 +259,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_gen
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -267,7 +267,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_gen
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -275,7 +275,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_sign
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -283,7 +283,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_sign
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -291,7 +291,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_sign
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
@@ -299,7 +299,7 @@ test-keyfender-e2e: $(KEYFENDER)
 	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_decrypt
 	cd src/tests && \
 	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
-	pkill test_server.exe || true
+	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
 	sleep 1
