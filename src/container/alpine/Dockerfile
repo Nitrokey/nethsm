@@ -4,7 +4,7 @@ FROM ${distro_version} AS builder
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add curl openssl rsync git mercurial make gcc patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
-    coreutils unzip bubblewrap sudo openssh-client
+    coreutils unzip bubblewrap sudo openssh-client bash
   cd /tmp
   curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh -s -- --download-only
   install opam-2* /usr/local/bin/opam

@@ -80,7 +80,7 @@ module Make_IO (Flow : Mirage_flow.S) :
         | Ok (`Data buf) ->
             Bigstringaf.blit buf.Cstruct.buffer ~src_off:buf.Cstruct.off
               bigstring ~dst_off:off ~len:buf.Cstruct.len;
-            `Ok buf.Cstruct.len
+            buf.Cstruct.len
         | Ok `Eof -> failwith "FLOW_EOF"
         | Error error -> failwith (Format.asprintf "%a" Flow.pp_error error))
       (fun exn -> shutdown sock >>= fun () -> Lwt.fail exn)

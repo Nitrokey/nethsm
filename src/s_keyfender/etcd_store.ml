@@ -315,7 +315,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     in
     let range_end = end_of_prefix key in
     let prefix_len = Bytes.length key in
-    let request = RangeRequest.(make ~key ~range_end ~keys_only:true ~sort_order:DESCEND ()) in
+    let request = RangeRequest.(make ~key ~range_end ~keys_only:true ~sort_order:SortOrder.DESCEND ()) in
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         let rec acc_keys acc kvs =

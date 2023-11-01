@@ -25,7 +25,6 @@ module Stack_nodelay (Stack : Tcpip.Stack.V4V6) = struct
 end
 
 module Main
-    (Console: Mirage_console.S)
     (Rng: Mirage_random.S) (Pclock: Mirage_clock.PCLOCK) (Mclock: Mirage_clock.MCLOCK)
     (Update_key: Mirage_kv.RO)
     (Static_assets: Mirage_kv.RO)
@@ -59,7 +58,7 @@ struct
   end
 
   module Log_reporter = Mirage_logs.Make(HsmClock)
-  module Syslog = Logs_syslog_mirage.Udp(Console)(HsmClock)(Ext_stack)
+  module Syslog = Logs_syslog_mirage.Udp(HsmClock)(Ext_stack)
 
   let opt_static_file assets next ip request body =
     let uri = Cohttp.Request.uri request in
@@ -209,7 +208,7 @@ let dummy_platform : Keyfender.Json.platform_data = {
   firmwareVersion = "N/A";
 }
 
-  let start console _entropy () () update_key_store assets internal_stack ext_stack () () =
+  let start _entropy () () update_key_store assets internal_stack ext_stack () () =
       if Key_gen.no_scrypt () then Keyfender.Crypto.set_test_params ();
       let entropy_port = 4444 in
       startTrngListener internal_stack entropy_port >>= fun () ->
@@ -271,7 +270,7 @@ let dummy_platform : Keyfender.Json.platform_data = {
         then
           let reporter =
             let port = log.Keyfender.Json.port in
-            Syslog.create console stack ~hostname:"keyfender"
+            Syslog.create stack ~hostname:"keyfender"
               (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
           in
           Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)

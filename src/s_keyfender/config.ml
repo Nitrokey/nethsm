@@ -203,13 +203,13 @@ let main =
     ~packages ~keys ~deps:[malloc_metrics_conf; bisect_ppx_conf]
 
     "Unikernel.Main"
-    (console @-> random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
+    (random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @->
      stackv4v6 @->
      reconfigurable_stack @->
      job)
 
 let () =
   register "keyfender"
-    [ main $ default_console $ default_random $ default_posix_clock $ default_monotonic_clock $ update_key_store $ htdocs $
+    [ main $ default_random $ default_posix_clock $ default_monotonic_clock $ update_key_store $ htdocs $
       internal_stack $ external_reconfigurable_stack
     ]
