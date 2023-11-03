@@ -394,21 +394,42 @@ let system_backup_and_restore_ok =
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       let headers = auth_header "backup" "test3Passphrase" in
-      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let content_type = "application/octet-stream" in
-          let query =
-            [
-              ("backupPassphrase", [ backup_passphrase ]);
-              ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]);
-            ]
-          in
+      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+        | _hsm_state, Some (`OK, _, `Stream s, _) ->
+          (* let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
+          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in *)
+       
+          (* TODO check that body is unique *)
+          (* Use statically generated boundary. Multipart_form has no support for this *)
+          let boundary = "--------------------------f0a25fbdb9174d46" ^ "\r\n" in
+          let content_type = "multipart/form-data; boundary=" ^ boundary in
+          let arguments = Printf.sprintf {|{ "backupPassphrase": "%s", "systemTime": "%s"}|} backup_passphrase (Ptime.to_rfc3339 Ptime.epoch) in
           let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
-          match
-            request ~meth:`POST ~content_type ~query ~body:(`String data)
-              "/system/restore"
-          with
-          | hsm_state', Some (`No_content, _, _, _) -> (
+          (* let string_of_stream s = fun () -> Some (s, 0, (String.length s)) in
+          let part_arguments = Multipart_form.part ~disposition:((Multipart_form.Content_disposition.of_string "application/json") |> Result.get_ok) ~encoding:(`Binary) (string_of_stream arguments) in
+          let part_data = Multipart_form.part ~disposition:((Multipart_form.Content_disposition.of_string "application/json") |> Result.get_ok) ~encoding:(`Binary) (string_of_stream data) in
+          let rng_stub ?(g = "") (_ : int) = g |> fun _ -> () ; "" in
+          let mp_request = Multipart_form.multipart ~rng:rng_stub ~boundary:(boundary) [part_arguments ; part_data] in
+          let _, body_stream = Multipart_form.to_stream mp_request in
+          let body = match body_stream () with
+          | Some (data, _, _) -> data
+          | None -> assert false (* TODO How to handle this case *)
+          in *)
+
+          let body = Printf.sprintf {|Content-Type: multipart/form-data; boundary=%s
+          --%s
+          Content-Disposition: form-data; name="arguments"
+          Content-Type: application/json
+          %s
+          --%s
+          Content-Disposition: form-data; name="backup_data"
+          Content-Type: application/octet-stream
+          %s
+          --
+          |} boundary boundary arguments boundary data in
+          let body = Printf.sprintf "Content-Length: %s\n%s" (String.length body |> string_of_int) body in
+          begin match request ~meth:`POST ~content_type ~query:[] ~body:(`String body) "/system/restore" with
+            | hsm_state', Some (`No_content, _, _, _) ->
               assert (Hsm.state hsm_state' = `Locked);
               let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
               match

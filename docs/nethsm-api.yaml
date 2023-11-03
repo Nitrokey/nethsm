@@ -1822,22 +1822,21 @@ paths:
         *Unprovisioned*, then the configuration is restored.
       requestBody:
         content:
-          application/octet-stream:
+          multiform/form-data:
             schema:
-              format: binary
-              type: string
-        required: true
-      parameters:
-        - name: backupPassphrase
-          in: query
-          required: true
-          schema:
-            $ref: "#/components/schemas/Passphrase"
-        - name: systemTime
-          in: query
-          schema:
-            type: string
-            format: date-time
+              type: object
+              properties:
+                arguments:
+                  type: object
+                  properties:
+                    backupPassphrase:
+                      $ref: "#/components/schemas/Passphrase"
+                    systemTime:
+                      type: string
+                      format: date-time
+                backup_file:
+                  type: string
+                  format: binary
       x-annotation-role:
         - Public
       x-annotation-state:
