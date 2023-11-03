@@ -2466,12 +2466,13 @@ let keys_key_cert_get =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"foo/bar" "data")
+      (Hsm.Key.set_cert hsm_state ~id:"keyID"
+         ~content_type:"application/octet-stream" "data")
   in
   match request ~headers:operator_headers ~hsm_state "/keys/keyID/cert" with
   | _, Some (`OK, headers, `String data, _) -> (
       match Cohttp.Header.get headers "content-type" with
-      | Some "foo/bar" -> String.equal data "data"
+      | Some "application/octet-stream" -> String.equal data "data"
       | _ -> false)
   | _ -> false
 
@@ -2497,34 +2498,25 @@ let keys_key_cert_get_accept_header =
   let _ =
     Lwt_main.run
       (Hsm.Key.set_cert hsm_state ~id:"keyID"
-         ~content_type:"application/x-pem-file" "data")
+         ~content_type:"application/octet-stream" "data")
   in
   let headers_with_accept accept =
     Header.add operator_headers "Accept" accept
   in
   Alcotest.(check bool)
-    "application/* is OK" true
+    "application/octet-stream is OK" true
     (match
        request
-         ~headers:(headers_with_accept "application/*")
+         ~headers:(headers_with_accept "application/octet-stream")
          ~hsm_state "/keys/keyID/cert"
      with
     | _, Some (`OK, _, _, _) -> true
     | _ -> false);
   Alcotest.(check bool)
-    "application/x-pem-file is OK" true
+    "application/json fails" true
     (match
        request
-         ~headers:(headers_with_accept "application/x-pem-file")
-         ~hsm_state "/keys/keyID/cert"
-     with
-    | _, Some (`OK, _, _, _) -> true
-    | _ -> false);
-  Alcotest.(check bool)
-    "application/x-unknown is Not Acceptable" true
-    (match
-       request
-         ~headers:(headers_with_accept "application/x-unknown")
+         ~headers:(headers_with_accept "application/json")
          ~hsm_state "/keys/keyID/cert"
      with
     | _, Some (`Not_acceptable, _, _, _) -> true
@@ -2534,7 +2526,8 @@ let keys_key_cert_put =
   "PUT on /keys/keyID/cert succeeds" @? fun () ->
   let hsm_state = hsm_with_key () in
   match
-    admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID/cert"
+    admin_put_request ~content_type:"application/octet-stream"
+      ~body:(`String "data") ~hsm_state "/keys/keyID/cert"
   with
   | _, Some (`Created, _, _, _) -> true
   | _ -> false
@@ -2546,14 +2539,15 @@ let keys_key_cert_put_fails =
     admin_put_request ~content_type:"text/html" ~body:(`String "data")
       ~hsm_state "/keys/keyID/cert"
   with
-  | _, Some (`Bad_request, _, _, _) -> true
+  | _, Some (`Unsupported_media_type, _, _, _) -> true
   | _ -> false
 
 let keys_key_cert_put_not_found =
   "PUT on /keys/keyID/cert fails (ID not found)" @? fun () ->
   let hsm_state = hsm_with_key () in
   match
-    admin_put_request ~body:(`String "data") ~hsm_state "/keys/keyID2/cert"
+    admin_put_request ~content_type:"application/octet-stream"
+      ~body:(`String "data") ~hsm_state "/keys/keyID2/cert"
   with
   | _, Some (`Not_found, _, _, _) -> true
   | _ -> false
@@ -2561,7 +2555,10 @@ let keys_key_cert_put_not_found =
 let keys_key_cert_put_invalid_id =
   "PUT on /keys/keyID/cert fails (invalid ID)" @? fun () ->
   let hsm_state = hsm_with_key () in
-  match admin_put_request ~body:(`String "data") ~hsm_state "/keys//cert" with
+  match
+    admin_put_request ~content_type:"application/octet-stream"
+      ~body:(`String "data") ~hsm_state "/keys//cert"
+  with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -2570,7 +2567,8 @@ let keys_key_cert_delete =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:"keyID" ~content_type:"text/plain" "data")
+      (Hsm.Key.set_cert hsm_state ~id:"keyID"
+         ~content_type:"application/octet-stream" "data")
   in
   match
     request ~meth:`DELETE ~headers:admin_headers ~hsm_state "/keys/keyID/cert"
@@ -2618,7 +2616,8 @@ let keys_key_version_cert_get_fails =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data")
+      (Hsm.Key.set_cert hsm_state ~id:".version"
+         ~content_type:"application/octet-stream" "data")
   in
   match request ~headers:operator_headers ~hsm_state "/keys/.version/cert" with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -2628,7 +2627,8 @@ let keys_key_version_cert_put_fails =
   "PUT on /keys/.version/cert fails" @? fun () ->
   let hsm_state = hsm_with_key () in
   match
-    admin_put_request ~body:(`String "data") ~hsm_state "/keys/.version/cert"
+    admin_put_request ~content_type:"application/octet-stream"
+      ~body:(`String "data") ~hsm_state "/keys/.version/cert"
   with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
@@ -2638,7 +2638,8 @@ let keys_key_version_cert_delete_fails =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:".version" ~content_type:"foo/bar" "data")
+      (Hsm.Key.set_cert hsm_state ~id:".version"
+         ~content_type:"application/octet-stream" "data")
   in
   match
     request ~meth:`DELETE ~headers:admin_headers ~hsm_state

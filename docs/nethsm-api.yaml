@@ -787,15 +787,10 @@ paths:
         "200":
           description: ""
           content:
-            application/x-pem-file:
+            application/octet-stream:
               schema:
-                $ref: "#/components/schemas/PemCert"
-            application/x-x509-ca-cert:
-              schema:
+                format: binary
                 type: string
-            application/pgp-keys:
-              schema:
-                $ref: "#/components/schemas/PGPPrivateKey"
         "400":
           description: Invalid character in the KeyID.
         "401":
@@ -805,12 +800,11 @@ paths:
         "404":
           description: Certificate for KeyID not found.
         "406":
-          description: Content type in Accept header not supported.
+          description: Content-Type in Accept header is not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
-        Retrieve stored certificate.
-        The content-type header will display the media type of the stored data.
+        Retrieve a stored certificate in the exact format it was stored.
       security:
         - basic: []
       x-annotation-role:
@@ -836,20 +830,13 @@ paths:
       description: |
         Store a certificate.
         Maximum size 1MB.
-        The content-type header provides the media type.
-        Only application/json, application/x-pem-file, application/x-x509-ca-cert,
-        application/octet-stream, text/plain and application/pgp-keys is allowed.
+        The Content-Type must be application/octet-stream.
       requestBody:
         content:
-          application/x-pem-file:
+          application/octet-stream:
             schema:
-              $ref: "#/components/schemas/PemCert"
-          application/x-x509-ca-cert:
-            schema:
+              format: binary
               type: string
-          application/pgp-keys:
-            schema:
-              $ref: "#/components/schemas/PGPPrivateKey"
         required: true
       security:
         - basic: []
@@ -2551,39 +2538,6 @@ components:
         3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
         35mqzHn+FjWq0eAtpzhO5Q==
         -----END CERTIFICATE-----
-      type: string
-    PGPPrivateKey:
-      example: |
-        -----BEGIN PGP PRIVATE KEY BLOCK-----
-        Version: GnuPG v2
-
-        MIIEvDCCAqQCCQCZ9VKHZSKydDANBgkqhkiG9w0BAQsFADAgMQ4wDAYDVQQIDAVo
-        ZWxsbzEOMAwGA1UEBwwFaGVsbG8wHhcNMTgxMDMwMTI0MDQ3WhcNMTkxMDMwMTI0
-        MDQ3WjAgMQ4wDAYDVQQIDAVoZWxsbzEOMAwGA1UEBwwFaGVsbG8wggIiMA0GCSqG
-        SIb3DQEBAQUAA4ICDwAwggIKAoICAQC8WRImgeu4U6Yg5q0/SvoieQL5JwPHaCrN
-        6Cc0mj8pnzTBu/f0QYNentcnu0EclD99kla6/gdiJnt0b/IT23o37+t2n0BvEgVQ
-        MJxJ/BjIqSZCykq4SWHKia1OS7tJKE2Q/hgGq/RQJ0zecWKA9SuafXDt0plw0saz
-        P8ZosFyToMYnPB54SzXj4qeD5t2L2dOamTTyziw/GJDGdwssImEDfeWyMRRyHcIa
-        u9HNGaTxjCdBGzCR+PEX3ZHhGzl5iMlgtZUICgXMgAvFZHHEYNtyCW9ZzUB2ZKE2
-        nMbu8hbl7GXRCdJaAqlJfKiGp/WvbmrLhCzcwqhu4UnqGXOxeEQryrkPAbiLafqb
-        fPLHB7dr8OEGlUzp1SCHR1JxwdBVohuO2lL+O5nMD3ZVdVnh2F5Et6I9lO4w9+5n
-        aI6pmO4oy9PsqKvUjxVnEeo1Ee1n9o/4T6fe6XBIQLPqEmy2IXynZP0eJn1Yu9SF
-        TkTSmJ+jRiU7EMaagQrM4Ds5seVNVWKOvUjDQCV+QRZaaPcrkMoFtjLCVMhLgy7M
-        /Dfl63qCcdVkPwdbI/apjfG8qMrez4k3qAZDYgS3fujyuq9wv7xbq2+o0Ck4Ono2
-        mMAA6JDSZr8XwR3ac/UK1KGv+weh1fOVO+c6mSN9M+W1MtkJS+i4/Aj2yDCJzVk3
-        GZpd5/E6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAB+8+1dk20P6R+RvDRs1mo
-        e1CegaPH2bl9t1WVuXJIUkrIGDceVr5f19pcaNQRYwZuoQd8VQXCZUpWbo//TWxl
-        ItS3prQgcrfcTi7gCzp1+q1bZk6H21tzESDJTXPFp019/ypdUB4Jsty7qQL73sE3
-        nj67DH+srPCknAhfFag0dPOOjAY19IrIomtBMlvYNpb5XupEUAQFCjk6VdLVAzzl
-        M5Swj+kmLA0OUHTF2zAwj2k+B9RAkbetu/lXLwUiiQNG00j8YP03lErxDd29m2jl
-        NFlSn8YYsgzmihF5fUFTJXP5tS7lF4FnLNbw9pfdeVZBT1uTOcckmFv6n6edttZS
-        FhC70hBB8tFFtemGFquZ0N7w8O7DmIYI936n283rzxyuWdi+JqOUQ0KzpGbFOP3t
-        AOdVcx/JW8kjDdWRcRDr85M4MnkG6HEzW4uzGBtxBplL7KH0L8LX+lx6ySjIrbRD
-        QtwBxwZGtHZJAqskO6vobzzybCKuVUaQwkPrQsK5iLA6Nn1Yxu6XmtlvoPeNIc63
-        Pa3ix8vNFbBTtS6iBdbOPse5qgRV0DC94ocedzKw4QzQRa5REIniJ2X8hVoVAcBh
-        3nQKyZApl2I/pZMlbZ0Cg5yxjhBaxKwci7jyoMerMMo2EdbZN87gP+2x6tKuY1MO
-        35mqzHn+FjWq0eAtpzhO5Q==
-        -----END PGP PRIVATE KEY BLOCK-----
       type: string
   responses: {}
   parameters: {}

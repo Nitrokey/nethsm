@@ -178,6 +178,115 @@ struct
         Wm.continue [ ("application/json", self#set_json) ] rd
     end
 
+  class handler_cert hsm_state ip =
+    object (self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.role_operator_get hsm_state ip
+      method! allowed_methods rd = Wm.continue [ `PUT; `GET; `DELETE ] rd
+
+      method! known_content_type rd =
+        match rd.meth with
+        | `PUT -> (
+            match Cohttp.Header.get rd.req_headers "Content-Type" with
+            (* Convert to lower case, as mime types are case insensitive.
+               From https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
+               MIME types are case-insensitive but are traditionally written in lowercase. The parameter values can be case-sensitive.
+            *)
+            | Some v ->
+                Wm.continue
+                  (v |> String.lowercase_ascii = "application/octet-stream")
+                  rd
+            | None -> Wm.continue false rd)
+        | _ -> Wm.continue true rd
+
+      method content_types_provided rd =
+        (*
+           Execution of this callback for a get request is assured by webmachines, version 3, states C3 and C4. State Machine Diagram: https://raw.githubusercontent.com/webmachine/webmachine/develop/docs/http-headers-status-v3.png
+           If the client provides the Accept header, it is checked if it matches one of the Content-Types from content_types_provided.
+           If so, this callback is called to encode the body, otherwise the call fails.
+           If no Accept header is provided, the first value of the list returned by content_type_provided is assumed.
+        *)
+        Wm.continue [ ("application/octet-stream", self#get_cert) ] rd
+
+      method content_types_accepted rd =
+        Wm.continue [ ("application/octet-stream", self#process_put) ] rd
+
+      method! generate_etag rd =
+        let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
+        Hsm.Key.digest hsm_state ~id >>= fun digest -> Wm.continue digest rd
+
+      method! resource_exists rd =
+        let ok id =
+          Hsm.Key.exists hsm_state ~id >>= function
+          | Ok does_exist -> Wm.continue does_exist rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Endpoint.lookup_path_info ok "id" rd
+
+      method private process_put rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        let ok id =
+          Hsm.Key.exists hsm_state ~id >>= function
+          | Error e -> Endpoint.respond_error e rd
+          | Ok does_exist -> (
+              if not does_exist then
+                let cc hdr =
+                  Cohttp.Header.replace hdr "content-type" "application/json"
+                in
+                let rd' = Webmachine.Rd.with_resp_headers cc rd in
+                Wm.respond
+                  ~body:(`String (Json.error "keyID not found"))
+                  404 rd'
+              else
+                match Cohttp.Header.get rd.req_headers "content-type" with
+                | Some "application/octet-stream" -> (
+                    (*
+                        For now, the only allowed Content-Type is application/octet-stream.
+                        It was decided to also store the Content-Type, to easily add more content types later.
+                    *)
+                    Hsm.Key.set_cert hsm_state ~id
+                      ~content_type:"application/octet-stream" content
+                    >>= function
+                    | Ok () ->
+                        Wm.respond (Cohttp.Code.code_of_status `Created) rd
+                    | Error e -> Endpoint.respond_error e rd)
+                | Some _ ->
+                    Endpoint.respond_error
+                      ( Bad_request,
+                        "Content-Type must be application/octet-stream." )
+                      rd
+                | None ->
+                    Endpoint.respond_error
+                      (Bad_request, "Missing Content-Type in header.")
+                      rd)
+        in
+        Endpoint.lookup_path_info ok "id" rd
+
+      method private get_cert rd =
+        let ok id =
+          Hsm.Key.get_cert hsm_state ~id >>= function
+          | Error e -> Endpoint.respond_error e rd
+          | Ok None -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
+          | Ok (Some (content_type, data)) ->
+              let add_ct headers =
+                Cohttp.Header.replace headers "Content-Type" content_type
+              in
+              Wm.continue (`String data)
+                (Webmachine.Rd.with_resp_headers add_ct rd)
+        in
+        Endpoint.lookup_path_info ok "id" rd
+
+      method! delete_resource rd =
+        let ok id =
+          Hsm.Key.remove_cert hsm_state ~id >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Endpoint.lookup_path_info ok "id" rd
+    end
+
   class handler hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
@@ -491,112 +600,6 @@ struct
 
       method content_types_accepted rd =
         Wm.continue [ ("application/json", self#sign) ] rd
-    end
-
-  let allowed_content_types =
-    [
-      "application/json";
-      (* Arbitrary JSON data *)
-      "application/x-pem-file";
-      (* Certificate in PEM format *)
-      "application/x-x509-ca-cert";
-      (* Certificate in DER format *)
-      "application/octet-stream";
-      (* arbitrary binary keys *)
-      "text/plain";
-      (* base64 encoded keys, arbitrary "configuration data" *)
-      "application/pgp-keys" (* OpenPGP keys *);
-    ]
-
-  class handler_cert hsm_state ip =
-    object (self)
-      inherit Endpoint.base_with_body_length
-      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role_operator_get hsm_state ip
-
-      method private get_cert rd =
-        let ok id =
-          Hsm.Key.get_cert hsm_state ~id >>= function
-          | Error e -> Endpoint.respond_error e rd
-          | Ok None -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
-          | Ok (Some (content_type, data)) ->
-              let add_ct headers =
-                Cohttp.Header.replace headers "content-type" content_type
-              in
-              Wm.continue (`String data)
-                (Webmachine.Rd.with_resp_headers add_ct rd)
-        in
-        Endpoint.lookup_path_info ok "id" rd
-
-      method! resource_exists rd =
-        let ok id =
-          Hsm.Key.exists hsm_state ~id >>= function
-          | Ok does_exist -> Wm.continue does_exist rd
-          | Error e -> Endpoint.respond_error e rd
-        in
-        Endpoint.lookup_path_info ok "id" rd
-
-      method! delete_resource rd =
-        let ok id =
-          Hsm.Key.remove_cert hsm_state ~id >>= function
-          | Ok () -> Wm.continue true rd
-          | Error e -> Endpoint.respond_error e rd
-        in
-        Endpoint.lookup_path_info ok "id" rd
-
-      method! allowed_methods rd = Wm.continue [ `PUT; `GET; `DELETE ] rd
-
-      method content_types_provided rd =
-        (* The provided content-type depends on the certificate's content-type. *)
-        let ok id =
-          Hsm.Key.get_cert hsm_state ~id >>= function
-          | Error _ | Ok None -> Wm.continue [ ("text/html", self#get_cert) ] rd
-          | Ok (Some (content_type, _)) ->
-              Wm.continue [ (content_type, self#get_cert) ] rd
-        in
-        Endpoint.lookup_path_info ok "id" rd
-
-      method content_types_accepted rd =
-        (* Allow all content types provided by the client, which is not intended
-           use of webmachine. We send a response immediately instead of returning
-           control to webmachine. *)
-        let body = rd.Webmachine.Rd.req_body in
-        Cohttp_lwt.Body.to_string body >>= fun content ->
-        let ok id =
-          Hsm.Key.exists hsm_state ~id >>= function
-          | Error e -> Endpoint.respond_error e rd
-          | Ok does_exist -> (
-              if not does_exist then
-                let cc hdr =
-                  Cohttp.Header.replace hdr "content-type" "application/json"
-                in
-                let rd' = Webmachine.Rd.with_resp_headers cc rd in
-                Wm.respond
-                  ~body:(`String (Json.error "keyID not found"))
-                  404 rd'
-              else
-                match Cohttp.Header.get rd.req_headers "content-type" with
-                | None ->
-                    Endpoint.respond_error
-                      (Bad_request, "Missing content-type header.")
-                      rd
-                | Some content_type ->
-                    if List.mem content_type allowed_content_types then
-                      Hsm.Key.set_cert hsm_state ~id ~content_type content
-                      >>= function
-                      | Ok () ->
-                          Wm.respond (Cohttp.Code.code_of_status `Created) rd
-                      | Error e -> Endpoint.respond_error e rd
-                    else
-                      Endpoint.respond_error
-                        (Bad_request, "disallowed content-type")
-                        rd)
-        in
-        Endpoint.lookup_path_info ok "id" rd
-
-      method! generate_etag rd =
-        let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
-        Hsm.Key.digest hsm_state ~id >>= fun digest -> Wm.continue digest rd
     end
 
   class handler_restrictions_tags hsm_state ip =
