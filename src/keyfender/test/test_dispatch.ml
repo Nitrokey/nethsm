@@ -394,42 +394,40 @@ let system_backup_and_restore_ok =
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       let headers = auth_header "backup" "test3Passphrase" in
-      begin match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-        | _hsm_state, Some (`OK, _, `Stream s, _) ->
-          (* let query = [ ("backupPassphrase", [ backup_passphrase ]) ; ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]) ] in
-          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in *)
-       
-          (* TODO check that body is unique *)
-          (* Use statically generated boundary. Multipart_form has no support for this *)
-          let boundary = "--------------------------f0a25fbdb9174d46" ^ "\r\n" in
-          let content_type = "multipart/form-data; boundary=" ^ boundary in
-          let arguments = Printf.sprintf {|{ "backupPassphrase": "%s", "systemTime": "%s"}|} backup_passphrase (Ptime.to_rfc3339 Ptime.epoch) in
-          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
-          (* let string_of_stream s = fun () -> Some (s, 0, (String.length s)) in
-          let part_arguments = Multipart_form.part ~disposition:((Multipart_form.Content_disposition.of_string "application/json") |> Result.get_ok) ~encoding:(`Binary) (string_of_stream arguments) in
-          let part_data = Multipart_form.part ~disposition:((Multipart_form.Content_disposition.of_string "application/json") |> Result.get_ok) ~encoding:(`Binary) (string_of_stream data) in
-          let rng_stub ?(g = "") (_ : int) = g |> fun _ -> () ; "" in
-          let mp_request = Multipart_form.multipart ~rng:rng_stub ~boundary:(boundary) [part_arguments ; part_data] in
-          let _, body_stream = Multipart_form.to_stream mp_request in
-          let body = match body_stream () with
-          | Some (data, _, _) -> data
-          | None -> assert false (* TODO How to handle this case *)
-          in *)
-
-          let body = Printf.sprintf {|Content-Type: multipart/form-data; boundary=%s
-          --%s
-          Content-Disposition: form-data; name="arguments"
-          Content-Type: application/json
-          %s
-          --%s
-          Content-Disposition: form-data; name="backup_data"
-          Content-Type: application/octet-stream
-          %s
-          --
-          |} boundary boundary arguments boundary data in
-          let body = Printf.sprintf "Content-Length: %s\n%s" (String.length body |> string_of_int) body in
-          begin match request ~meth:`POST ~content_type ~query:[] ~body:(`String body) "/system/restore" with
-            | hsm_state', Some (`No_content, _, _, _) ->
+      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
+          let arguments =
+            Yojson.Safe.to_string
+              (Keyfender.Json.restore_req_to_yojson
+                 ({
+                    backupPassphrase = backup_passphrase;
+                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+                  }
+                   : Keyfender.Json.restore_req))
+          in
+          let backup_data =
+            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
+          in
+          let content_type, body =
+            create_multipart_request
+              [ ("arguments", arguments); ("backup_data", backup_data) ]
+          in
+          let expect =
+            {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+|}
+          in
+          match
+            request ~expect ~meth:`POST ~content_type ~body:(`String body)
+              "/system/restore"
+          with
+          | hsm_state', Some (`No_content, _, _, _) -> (
               assert (Hsm.state hsm_state' = `Locked);
               let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
               match
@@ -456,14 +454,22 @@ let system_backup_and_restore_changed_devkey =
       let headers = auth_header "backup" "test3Passphrase" in
       match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
       | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let content_type = "application/octet-stream" in
-          let query =
-            [
-              ("backupPassphrase", [ backup_passphrase ]);
-              ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]);
-            ]
+          let arguments =
+            Yojson.Safe.to_string
+              (Keyfender.Json.restore_req_to_yojson
+                 ({
+                    backupPassphrase = backup_passphrase;
+                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+                  }
+                   : Keyfender.Json.restore_req))
           in
-          let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+          let backup_data =
+            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
+          in
+          let content_type, body =
+            create_multipart_request
+              [ ("arguments", arguments); ("backup_data", backup_data) ]
+          in
           let platform =
             {
               platform with
@@ -476,11 +482,20 @@ let system_backup_and_restore_changed_devkey =
               >|= fun (y, _, _) -> y )
           in
           let expect =
-            info "Device Key changed. Refreshing stored Domain Key."
+            {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+test_dispatch.exe: [INFO] Device Key changed. Refreshing stored Domain Key.
+|}
           in
           match
-            request ~expect ~meth:`POST ~content_type ~query
-              ~body:(`String data) ~hsm_state:hsm_state_2 "/system/restore"
+            request ~expect ~meth:`POST ~content_type ~body:(`String body)
+              ~hsm_state:hsm_state_2 "/system/restore"
           with
           | hsm_state', Some (`No_content, _, _, _) -> (
               assert (Hsm.state hsm_state' = `Locked);
@@ -518,7 +533,6 @@ let system_backup_and_restore_unattended =
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
-  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* restore *)
   let hsm_state, store =
     Lwt_main.run
@@ -527,14 +541,32 @@ let system_backup_and_restore_unattended =
         (y, store) )
   in
   let* hsm_state =
-    let content_type = "application/octet-stream" in
-    let query =
-      [
-        ("backupPassphrase", [ backup_passphrase ]);
-        ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]);
-      ]
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
     in
-    request ~meth:`POST ~content_type ~query ~body:(`String data) ~hsm_state
+    let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    let expect =
+      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+|}
+    in
+    request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
       "/system/restore"
     |> Expect.no_content
   in
@@ -570,7 +602,6 @@ let system_backup_and_restore_unattended_changed_devkey =
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
-  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* restore *)
   let platform =
     { platform with deviceKey = "//////////////////////////////////////////8=" }
@@ -582,19 +613,35 @@ let system_backup_and_restore_unattended_changed_devkey =
         (y, store) )
   in
   let* hsm_state =
-    let content_type = "application/octet-stream" in
-    let query =
-      [
-        ("backupPassphrase", [ backup_passphrase ]);
-        ("systemTime", [ Ptime.to_rfc3339 Ptime.epoch ]);
-      ]
-    in
     let expect =
-      error "unattended boot failed with not authenticated"
-      ^ info "Device Key changed. Refreshing stored Domain Key."
+      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+test_dispatch.exe: [ERROR] unattended boot failed with not authenticated
+test_dispatch.exe: [INFO] Device Key changed. Refreshing stored Domain Key.
+|}
     in
-    request ~expect ~meth:`POST ~content_type ~query ~body:(`String data)
-      ~hsm_state "/system/restore"
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
+      "/system/restore"
     |> Expect.no_content
   in
   Alcotest.(check string)
@@ -624,7 +671,6 @@ let system_backup_and_restore_operational =
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
-  let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* backup is done, let's remove a key and try to restore it *)
   let* hsm_state =
     let expect = info "removed (keyID)" in
@@ -648,11 +694,35 @@ let system_backup_and_restore_operational =
   in
   (* restore *)
   let* hsm_state =
-    let expect = info "removing: /key/newKeyID\n" in
-    let content_type = "application/octet-stream" in
-    let query = [ ("backupPassphrase", [ backup_passphrase ]) ] in
+    let expect =
+      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+test_dispatch.exe: [INFO] removing: /key/newKeyID
+
+|}
+    in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
     request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
-      ~query ~body:(`String data) "/system/restore"
+      ~body:(`String body) "/system/restore"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Operational);

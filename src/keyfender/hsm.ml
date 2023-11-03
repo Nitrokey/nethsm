@@ -98,8 +98,9 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
-    val restore : t -> string -> string Lwt_stream.t ->
-      (unit, error) result Lwt.t
+
+    val restore :
+      t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
   end
 
   module User : sig
@@ -2325,13 +2326,14 @@ struct
            (Ok ())
 
     let restore t json stream =
-      let (let**) = Lwt_result.bind in
-      let `Raw start_ts = Clock.now_raw () in
+      let ( let** ) = Lwt_result.bind in
+      let (`Raw start_ts) = Clock.now_raw () in
       let initial_state = t.state in
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
-      let** (new_time, backup_passphrase) = match Json.decode_restore_req json with
+      let** new_time, backup_passphrase =
+        match Json.decode_restore_req json with
         | Error e -> Lwt.return_error (Bad_request, e)
         | Ok x -> Lwt.return_ok x
       in

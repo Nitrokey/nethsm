@@ -98,8 +98,9 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
-    val restore : t -> string -> string Lwt_stream.t ->
-      (unit, error) result Lwt.t
+
+    val restore :
+      t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
   end
 
   module User : sig

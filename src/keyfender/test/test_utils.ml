@@ -204,3 +204,62 @@ let admin_post_request ?expect ?(hsm_state = operational_mock ())
   let headers = admin_headers in
   request ?expect ~meth:`POST ~hsm_state ~headers ~body ?content_type ?query
     path
+
+let create_multipart_request (parts : (string * string) list) : string * string
+    =
+  match parts with
+  | [] ->
+      invalid_arg
+        "At least one part must be provided to create a multipart request."
+  | _ ->
+      (*
+      multipart_form defines a intern data type stream as follows.  
+      type 'a stream = unit -> 'a option
+      However, it does not expose any functionallity to convert such a stream to and from string.
+      Therefore its intern functions for that are borrowed
+      stream_of_string: https://github.com/dinosaure/multipart_form/blob/a794239b8fc9601540ffea489b2c470227216c5e/test/test.ml#L158C5-L158C21
+      string_of_stream: https://github.com/dinosaure/multipart_form/blob/a794239b8fc9601540ffea489b2c470227216c5e/test/test.ml#L180C5-L180C21
+    *)
+      let stream_of_string x =
+        let once = ref false in
+        let go () =
+          if !once then None
+          else (
+            once := true;
+            Some (x, 0, String.length x))
+        in
+        go
+      in
+      let string_of_stream s =
+        let buf = Buffer.create 0x100 in
+        let rec go () =
+          match s () with
+          | None -> Buffer.contents buf
+          | Some (str, off, len) ->
+              Buffer.add_substring buf str off len;
+              go ()
+        in
+        go ()
+      in
+      let parsed_parts =
+        List.map
+          (fun (name, content) ->
+            Multipart_form.part
+              ~disposition:
+                (Multipart_form.Content_disposition.v
+                   ~size:(String.length content) name)
+              (stream_of_string content))
+          parts
+      in
+      (* TODO For now lets assume that the boundary is unique *)
+      let boundary = "------------------------eb790219f130e103" in
+      let multipart_request =
+        Multipart_form.multipart ~rng:(fun ?g:_ _ -> "") ~boundary parsed_parts
+      in
+      let header, body_stream = Multipart_form.to_stream multipart_request in
+      let content_type =
+        Multipart_form.Header.content_type header
+        |> Multipart_form.Content_type.to_string
+      in
+      let body = string_of_stream body_stream in
+      (content_type, body)

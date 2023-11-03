@@ -1822,7 +1822,7 @@ paths:
         *Unprovisioned*, then the configuration is restored.
       requestBody:
         content:
-          multiform/form-data:
+          multipart/form-data:
             schema:
               type: object
               properties:

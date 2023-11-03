@@ -55,8 +55,9 @@ if [[ "$STATE" != *Unprovisioned* ]] ; then
 fi
 
 echo "restoring backup"
-${CURL} -X POST -H "Content-Type: application/octet-stream" --data-binary @/tmp/backup.bin \
-  https://${NETHSM_IP}/api/v1/system/restore?backupPassphrase=backupPassphrase || exit 1
+${CURL} -X POST -F arguments='{"backupPassphrase": "backupPassphrase"}' -F backup=@/tmp/backup.bin \
+  https://${NETHSM_IP}/api/v1/system/restore || exit 1
+
 
 STATE=$(GET /v1/health/state)
 if [[ "$STATE" != *Locked* ]] ; then
