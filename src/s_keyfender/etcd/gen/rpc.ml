@@ -20,7 +20,9 @@
 open Ocaml_protoc_plugin.Runtime [@@warning "-33"]
 open Stubs [@@warning "-33"]
 open Google_types [@@warning "-33"]
+
 (**/**)
+
 module Imported'modules = struct
   module Gogo = Gogo
   module Kv = Kv
@@ -28,104 +30,186 @@ module Imported'modules = struct
   module Version = Version
   module Annotations = Annotations
 end
+
 (**/**)
+
 module Etcdserverpb = struct
   module rec AlarmType : sig
-    type t = NONE | NOSPACE | CORRUPT [@@deriving show { with_path = false}]
-    val to_int: t -> int
-    val from_int: int -> (t, [> Runtime'.Result.error]) result
-  end = struct 
-    type t = NONE | NOSPACE | CORRUPT [@@deriving show { with_path = false}]
-    let to_int = function
-      | NONE -> 0
-      | NOSPACE -> 1
-      | CORRUPT -> 2
-    
+    type t = NONE | NOSPACE | CORRUPT [@@deriving show { with_path = false }]
+
+    val to_int : t -> int
+    val from_int : int -> (t, [> Runtime'.Result.error ]) result
+  end = struct
+    type t = NONE | NOSPACE | CORRUPT [@@deriving show { with_path = false }]
+
+    let to_int = function NONE -> 0 | NOSPACE -> 1 | CORRUPT -> 2
+
     let from_int = function
       | 0 -> Ok NONE
       | 1 -> Ok NOSPACE
       | 2 -> Ok CORRUPT
       | n -> Error (`Unknown_enum_value n)
-    
   end
+
   and ResponseHeader : sig
-    val name': unit -> string
-    type t = { cluster_id: int; member_id: int; revision: int; raft_term: int } [@@deriving show { with_path = false}]
-    val make : ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      cluster_id : int;
+      member_id : int;
+      revision : int;
+      raft_term : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?cluster_id:int ->
+      ?member_id:int ->
+      ?revision:int ->
+      ?raft_term:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.ResponseHeader"
-    type t = { cluster_id: int; member_id: int; revision: int; raft_term: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?cluster_id ?member_id ?revision ?raft_term () -> 
+
+    type t = {
+      cluster_id : int;
+      member_id : int;
+      revision : int;
+      raft_term : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?cluster_id ?member_id ?revision ?raft_term () =
       let cluster_id = match cluster_id with Some v -> v | None -> 0 in
       let member_id = match member_id with Some v -> v | None -> 0 in
       let revision = match revision with Some v -> v | None -> 0 in
       let raft_term = match raft_term with Some v -> v | None -> 0 in
       { cluster_id; member_id; revision; raft_term }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { cluster_id; member_id; revision; raft_term } -> f' [] cluster_id member_id revision raft_term in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, uint64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, uint64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { cluster_id; member_id; revision; raft_term } =
+        f' [] cluster_id member_id revision raft_term
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, uint64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions cluster_id member_id revision raft_term -> { cluster_id; member_id; revision; raft_term } in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, uint64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, uint64_int, proto3) ^:: nil ) in
+      let constructor _extensions cluster_id member_id revision raft_term =
+        { cluster_id; member_id; revision; raft_term }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, uint64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and RangeRequest : sig
     module rec SortOrder : sig
-      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
+
     and SortTarget : sig
-      type t = KEY | VERSION | CREATE | MOD | VALUE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = KEY | VERSION | CREATE | MOD | VALUE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { key: bytes; range_end: bytes; limit: int; revision: int; sort_order: RangeRequest.SortOrder.t; sort_target: RangeRequest.SortTarget.t; serializable: bool; keys_only: bool; count_only: bool; min_mod_revision: int; max_mod_revision: int; min_create_revision: int; max_create_revision: int } [@@deriving show { with_path = false}]
-    val make : ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:RangeRequest.SortOrder.t -> ?sort_target:RangeRequest.SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = {
+      key : bytes;
+      range_end : bytes;
+      limit : int;
+      revision : int;
+      sort_order : RangeRequest.SortOrder.t;
+      sort_target : RangeRequest.SortTarget.t;
+      serializable : bool;
+      keys_only : bool;
+      count_only : bool;
+      min_mod_revision : int;
+      max_mod_revision : int;
+      min_create_revision : int;
+      max_create_revision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?key:bytes ->
+      ?range_end:bytes ->
+      ?limit:int ->
+      ?revision:int ->
+      ?sort_order:RangeRequest.SortOrder.t ->
+      ?sort_target:RangeRequest.SortTarget.t ->
+      ?serializable:bool ->
+      ?keys_only:bool ->
+      ?count_only:bool ->
+      ?min_mod_revision:int ->
+      ?max_mod_revision:int ->
+      ?min_create_revision:int ->
+      ?max_create_revision:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec SortOrder : sig
-      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false}]
-      let to_int = function
-        | NONE -> 0
-        | ASCEND -> 1
-        | DESCEND -> 2
-      
+      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = NONE | ASCEND | DESCEND [@@deriving show { with_path = false }]
+
+      let to_int = function NONE -> 0 | ASCEND -> 1 | DESCEND -> 2
+
       let from_int = function
         | 0 -> Ok NONE
         | 1 -> Ok ASCEND
         | 2 -> Ok DESCEND
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     and SortTarget : sig
-      type t = KEY | VERSION | CREATE | MOD | VALUE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = KEY | VERSION | CREATE | MOD | VALUE [@@deriving show { with_path = false}]
+      type t = KEY | VERSION | CREATE | MOD | VALUE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = KEY | VERSION | CREATE | MOD | VALUE
+      [@@deriving show { with_path = false }]
+
       let to_int = function
         | KEY -> 0
         | VERSION -> 1
         | CREATE -> 2
         | MOD -> 3
         | VALUE -> 4
-      
+
       let from_int = function
         | 0 -> Ok KEY
         | 1 -> Ok VERSION
@@ -133,289 +217,779 @@ module Etcdserverpb = struct
         | 3 -> Ok MOD
         | 4 -> Ok VALUE
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "rpc.etcdserverpb.RangeRequest"
-    type t = { key: bytes; range_end: bytes; limit: int; revision: int; sort_order: RangeRequest.SortOrder.t; sort_target: RangeRequest.SortTarget.t; serializable: bool; keys_only: bool; count_only: bool; min_mod_revision: int; max_mod_revision: int; min_create_revision: int; max_create_revision: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?key ?range_end ?limit ?revision ?sort_order ?sort_target ?serializable ?keys_only ?count_only ?min_mod_revision ?max_mod_revision ?min_create_revision ?max_create_revision () -> 
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let range_end = match range_end with Some v -> v | None -> (Bytes.of_string {||}) in
+
+    type t = {
+      key : bytes;
+      range_end : bytes;
+      limit : int;
+      revision : int;
+      sort_order : RangeRequest.SortOrder.t;
+      sort_target : RangeRequest.SortTarget.t;
+      serializable : bool;
+      keys_only : bool;
+      count_only : bool;
+      min_mod_revision : int;
+      max_mod_revision : int;
+      min_create_revision : int;
+      max_create_revision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?key ?range_end ?limit ?revision ?sort_order ?sort_target
+        ?serializable ?keys_only ?count_only ?min_mod_revision ?max_mod_revision
+        ?min_create_revision ?max_create_revision () =
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let range_end =
+        match range_end with Some v -> v | None -> Bytes.of_string {||}
+      in
       let limit = match limit with Some v -> v | None -> 0 in
       let revision = match revision with Some v -> v | None -> 0 in
-      let sort_order = match sort_order with Some v -> v | None -> (RangeRequest.SortOrder.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
-      let sort_target = match sort_target with Some v -> v | None -> (RangeRequest.SortTarget.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
-      let serializable = match serializable with Some v -> v | None -> false in
+      let sort_order =
+        match sort_order with
+        | Some v -> v
+        | None ->
+            RangeRequest.SortOrder.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
+      let sort_target =
+        match sort_target with
+        | Some v -> v
+        | None ->
+            RangeRequest.SortTarget.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
+      let serializable =
+        match serializable with Some v -> v | None -> false
+      in
       let keys_only = match keys_only with Some v -> v | None -> false in
       let count_only = match count_only with Some v -> v | None -> false in
-      let min_mod_revision = match min_mod_revision with Some v -> v | None -> 0 in
-      let max_mod_revision = match max_mod_revision with Some v -> v | None -> 0 in
-      let min_create_revision = match min_create_revision with Some v -> v | None -> 0 in
-      let max_create_revision = match max_create_revision with Some v -> v | None -> 0 in
-      { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision }
-    
+      let min_mod_revision =
+        match min_mod_revision with Some v -> v | None -> 0
+      in
+      let max_mod_revision =
+        match max_mod_revision with Some v -> v | None -> 0
+      in
+      let min_create_revision =
+        match min_create_revision with Some v -> v | None -> 0
+      in
+      let max_create_revision =
+        match max_create_revision with Some v -> v | None -> 0
+      in
+      {
+        key;
+        range_end;
+        limit;
+        revision;
+        sort_order;
+        sort_target;
+        serializable;
+        keys_only;
+        count_only;
+        min_mod_revision;
+        max_mod_revision;
+        min_create_revision;
+        max_create_revision;
+      }
+
     let to_proto =
-      let apply = fun ~f:f' { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision } -> f' [] key range_end limit revision sort_order sort_target serializable keys_only count_only min_mod_revision max_mod_revision min_create_revision max_create_revision in
-      let spec = Runtime'.Serialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: basic (5, (enum RangeRequest.SortOrder.to_int), proto3) ^:: basic (6, (enum RangeRequest.SortTarget.to_int), proto3) ^:: basic (7, bool, proto3) ^:: basic (8, bool, proto3) ^:: basic (9, bool, proto3) ^:: basic (10, int64_int, proto3) ^:: basic (11, int64_int, proto3) ^:: basic (12, int64_int, proto3) ^:: basic (13, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f'
+          {
+            key;
+            range_end;
+            limit;
+            revision;
+            sort_order;
+            sort_target;
+            serializable;
+            keys_only;
+            count_only;
+            min_mod_revision;
+            max_mod_revision;
+            min_create_revision;
+            max_create_revision;
+          } =
+        f' [] key range_end limit revision sort_order sort_target serializable
+          keys_only count_only min_mod_revision max_mod_revision
+          min_create_revision max_create_revision
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: basic (5, enum RangeRequest.SortOrder.to_int, proto3)
+          ^:: basic (6, enum RangeRequest.SortTarget.to_int, proto3)
+          ^:: basic (7, bool, proto3)
+          ^:: basic (8, bool, proto3)
+          ^:: basic (9, bool, proto3)
+          ^:: basic (10, int64_int, proto3)
+          ^:: basic (11, int64_int, proto3)
+          ^:: basic (12, int64_int, proto3)
+          ^:: basic (13, int64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions key range_end limit revision sort_order sort_target serializable keys_only count_only min_mod_revision max_mod_revision min_create_revision max_create_revision -> { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision } in
-      let spec = Runtime'.Deserialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: basic (5, (enum RangeRequest.SortOrder.from_int), proto3) ^:: basic (6, (enum RangeRequest.SortTarget.from_int), proto3) ^:: basic (7, bool, proto3) ^:: basic (8, bool, proto3) ^:: basic (9, bool, proto3) ^:: basic (10, int64_int, proto3) ^:: basic (11, int64_int, proto3) ^:: basic (12, int64_int, proto3) ^:: basic (13, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions key range_end limit revision sort_order
+          sort_target serializable keys_only count_only min_mod_revision
+          max_mod_revision min_create_revision max_create_revision =
+        {
+          key;
+          range_end;
+          limit;
+          revision;
+          sort_order;
+          sort_target;
+          serializable;
+          keys_only;
+          count_only;
+          min_mod_revision;
+          max_mod_revision;
+          min_create_revision;
+          max_create_revision;
+        }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: basic (5, enum RangeRequest.SortOrder.from_int, proto3)
+          ^:: basic (6, enum RangeRequest.SortTarget.from_int, proto3)
+          ^:: basic (7, bool, proto3)
+          ^:: basic (8, bool, proto3)
+          ^:: basic (9, bool, proto3)
+          ^:: basic (10, int64_int, proto3)
+          ^:: basic (11, int64_int, proto3)
+          ^:: basic (12, int64_int, proto3)
+          ^:: basic (13, int64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and RangeResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list; more: bool; count: int } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      kvs : Imported'modules.Kv.Mvccpb.KeyValue.t list;
+      more : bool;
+      count : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list ->
+      ?more:bool ->
+      ?count:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.RangeResponse"
-    type t = { header: ResponseHeader.t option; kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list; more: bool; count: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?kvs ?more ?count () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      kvs : Imported'modules.Kv.Mvccpb.KeyValue.t list;
+      more : bool;
+      count : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?kvs ?more ?count () =
       let kvs = match kvs with Some v -> v | None -> [] in
       let more = match more with Some v -> v | None -> false in
       let count = match count with Some v -> v | None -> 0 in
       { header; kvs; more; count }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; kvs; more; count } -> f' [] header kvs more count in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.to_proto t)), not_packed) ^:: basic (3, bool, proto3) ^:: basic (4, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; kvs; more; count } =
+        f' [] header kvs more count
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.to_proto t),
+                  not_packed )
+          ^:: basic (3, bool, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header kvs more count -> { header; kvs; more; count } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.from_proto t)), not_packed) ^:: basic (3, bool, proto3) ^:: basic (4, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions header kvs more count =
+        { header; kvs; more; count }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.from_proto t),
+                  not_packed )
+          ^:: basic (3, bool, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and PutRequest : sig
-    val name': unit -> string
-    type t = { key: bytes; value: bytes; lease: int; prev_kv: bool; ignore_value: bool; ignore_lease: bool } [@@deriving show { with_path = false}]
-    val make : ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      key : bytes;
+      value : bytes;
+      lease : int;
+      prev_kv : bool;
+      ignore_value : bool;
+      ignore_lease : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?key:bytes ->
+      ?value:bytes ->
+      ?lease:int ->
+      ?prev_kv:bool ->
+      ?ignore_value:bool ->
+      ?ignore_lease:bool ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.PutRequest"
-    type t = { key: bytes; value: bytes; lease: int; prev_kv: bool; ignore_value: bool; ignore_lease: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?key ?value ?lease ?prev_kv ?ignore_value ?ignore_lease () -> 
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let value = match value with Some v -> v | None -> (Bytes.of_string {||}) in
+
+    type t = {
+      key : bytes;
+      value : bytes;
+      lease : int;
+      prev_kv : bool;
+      ignore_value : bool;
+      ignore_lease : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?key ?value ?lease ?prev_kv ?ignore_value ?ignore_lease () =
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let value =
+        match value with Some v -> v | None -> Bytes.of_string {||}
+      in
       let lease = match lease with Some v -> v | None -> 0 in
       let prev_kv = match prev_kv with Some v -> v | None -> false in
-      let ignore_value = match ignore_value with Some v -> v | None -> false in
-      let ignore_lease = match ignore_lease with Some v -> v | None -> false in
+      let ignore_value =
+        match ignore_value with Some v -> v | None -> false
+      in
+      let ignore_lease =
+        match ignore_lease with Some v -> v | None -> false
+      in
       { key; value; lease; prev_kv; ignore_value; ignore_lease }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { key; value; lease; prev_kv; ignore_value; ignore_lease } -> f' [] key value lease prev_kv ignore_value ignore_lease in
-      let spec = Runtime'.Serialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, bool, proto3) ^:: basic (5, bool, proto3) ^:: basic (6, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { key; value; lease; prev_kv; ignore_value; ignore_lease }
+          =
+        f' [] key value lease prev_kv ignore_value ignore_lease
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: basic (5, bool, proto3)
+          ^:: basic (6, bool, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions key value lease prev_kv ignore_value ignore_lease -> { key; value; lease; prev_kv; ignore_value; ignore_lease } in
-      let spec = Runtime'.Deserialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, bool, proto3) ^:: basic (5, bool, proto3) ^:: basic (6, bool, proto3) ^:: nil ) in
+      let constructor _extensions key value lease prev_kv ignore_value
+          ignore_lease =
+        { key; value; lease; prev_kv; ignore_value; ignore_lease }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: basic (5, bool, proto3)
+          ^:: basic (6, bool, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and PutResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; prev_kv: Imported'modules.Kv.Mvccpb.KeyValue.t option } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?prev_kv:Imported'modules.Kv.Mvccpb.KeyValue.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      prev_kv : Imported'modules.Kv.Mvccpb.KeyValue.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?prev_kv:Imported'modules.Kv.Mvccpb.KeyValue.t ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.PutResponse"
-    type t = { header: ResponseHeader.t option; prev_kv: Imported'modules.Kv.Mvccpb.KeyValue.t option }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?prev_kv () -> 
-      
-      { header; prev_kv }
-    
+
+    type t = {
+      header : ResponseHeader.t option;
+      prev_kv : Imported'modules.Kv.Mvccpb.KeyValue.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?prev_kv () = { header; prev_kv }
+
     let to_proto =
-      let apply = fun ~f:f' { header; prev_kv } -> f' [] header prev_kv in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic_opt (2, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; prev_kv } = f' [] header prev_kv in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic_opt
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.to_proto t) )
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header prev_kv -> { header; prev_kv } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic_opt (2, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.from_proto t))) ^:: nil ) in
+      let constructor _extensions header prev_kv = { header; prev_kv } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic_opt
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.from_proto t) )
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DeleteRangeRequest : sig
-    val name': unit -> string
-    type t = { key: bytes; range_end: bytes; prev_kv: bool } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { key : bytes; range_end : bytes; prev_kv : bool }
+    [@@deriving show { with_path = false }]
+
     val make : ?key:bytes -> ?range_end:bytes -> ?prev_kv:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.DeleteRangeRequest"
-    type t = { key: bytes; range_end: bytes; prev_kv: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?key ?range_end ?prev_kv () -> 
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let range_end = match range_end with Some v -> v | None -> (Bytes.of_string {||}) in
+
+    type t = { key : bytes; range_end : bytes; prev_kv : bool }
+    [@@deriving show { with_path = false }]
+
+    let make ?key ?range_end ?prev_kv () =
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let range_end =
+        match range_end with Some v -> v | None -> Bytes.of_string {||}
+      in
       let prev_kv = match prev_kv with Some v -> v | None -> false in
       { key; range_end; prev_kv }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { key; range_end; prev_kv } -> f' [] key range_end prev_kv in
-      let spec = Runtime'.Serialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { key; range_end; prev_kv } =
+        f' [] key range_end prev_kv
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, bool, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions key range_end prev_kv -> { key; range_end; prev_kv } in
-      let spec = Runtime'.Deserialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, bool, proto3) ^:: nil ) in
+      let constructor _extensions key range_end prev_kv =
+        { key; range_end; prev_kv }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, bool, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DeleteRangeResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; deleted: int; prev_kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      deleted : int;
+      prev_kvs : Imported'modules.Kv.Mvccpb.KeyValue.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?deleted:int ->
+      ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.DeleteRangeResponse"
-    type t = { header: ResponseHeader.t option; deleted: int; prev_kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?deleted ?prev_kvs () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      deleted : int;
+      prev_kvs : Imported'modules.Kv.Mvccpb.KeyValue.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?deleted ?prev_kvs () =
       let deleted = match deleted with Some v -> v | None -> 0 in
       let prev_kvs = match prev_kvs with Some v -> v | None -> [] in
       { header; deleted; prev_kvs }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; deleted; prev_kvs } -> f' [] header deleted prev_kvs in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, int64_int, proto3) ^:: repeated (3, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; deleted; prev_kvs } =
+        f' [] header deleted prev_kvs
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: repeated
+                ( 3,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.to_proto t),
+                  not_packed )
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header deleted prev_kvs -> { header; deleted; prev_kvs } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, int64_int, proto3) ^:: repeated (3, (message (fun t -> Imported'modules.Kv.Mvccpb.KeyValue.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header deleted prev_kvs =
+        { header; deleted; prev_kvs }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: repeated
+                ( 3,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.KeyValue.from_proto t),
+                  not_packed )
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and RequestOp : sig
-    val name': unit -> string
-    type t = [ `not_set | `Request_range of RangeRequest.t | `Request_put of PutRequest.t | `Request_delete_range of DeleteRangeRequest.t | `Request_txn of TxnRequest.t ] [@@deriving show { with_path = false}]
-    val make : ?request:[ `not_set | `Request_range of RangeRequest.t | `Request_put of PutRequest.t | `Request_delete_range of DeleteRangeRequest.t | `Request_txn of TxnRequest.t ] -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t =
+      [ `not_set
+      | `Request_range of RangeRequest.t
+      | `Request_put of PutRequest.t
+      | `Request_delete_range of DeleteRangeRequest.t
+      | `Request_txn of TxnRequest.t ]
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?request:
+        [ `not_set
+        | `Request_range of RangeRequest.t
+        | `Request_put of PutRequest.t
+        | `Request_delete_range of DeleteRangeRequest.t
+        | `Request_txn of TxnRequest.t ] ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.RequestOp"
-    type t = [ `not_set | `Request_range of RangeRequest.t | `Request_put of PutRequest.t | `Request_delete_range of DeleteRangeRequest.t | `Request_txn of TxnRequest.t ][@@deriving show { with_path = false}]
-    let make =
-      fun ?request () -> 
+
+    type t =
+      [ `not_set
+      | `Request_range of RangeRequest.t
+      | `Request_put of PutRequest.t
+      | `Request_delete_range of DeleteRangeRequest.t
+      | `Request_txn of TxnRequest.t ]
+    [@@deriving show { with_path = false }]
+
+    let make ?request () =
       let request = match request with Some v -> v | None -> `not_set in
       request
-    
+
     let to_proto =
-      let apply = fun ~f:f' request -> f' [] request in
-      let spec = Runtime'.Serialize.C.( oneof ((function | `not_set -> failwith "This case should never _ever_ happen" | `Request_range v -> oneof_elem (1, (message (fun t -> RangeRequest.to_proto t)), v) | `Request_put v -> oneof_elem (2, (message (fun t -> PutRequest.to_proto t)), v) | `Request_delete_range v -> oneof_elem (3, (message (fun t -> DeleteRangeRequest.to_proto t)), v) | `Request_txn v -> oneof_elem (4, (message (fun t -> TxnRequest.to_proto t)), v))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' request = f' [] request in
+      let spec =
+        Runtime'.Serialize.C.(
+          oneof (function
+            | `not_set -> failwith "This case should never _ever_ happen"
+            | `Request_range v ->
+                oneof_elem (1, message (fun t -> RangeRequest.to_proto t), v)
+            | `Request_put v ->
+                oneof_elem (2, message (fun t -> PutRequest.to_proto t), v)
+            | `Request_delete_range v ->
+                oneof_elem
+                  (3, message (fun t -> DeleteRangeRequest.to_proto t), v)
+            | `Request_txn v ->
+                oneof_elem (4, message (fun t -> TxnRequest.to_proto t), v))
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions request -> request in
-      let spec = Runtime'.Deserialize.C.( oneof ([ oneof_elem (1, (message (fun t -> RangeRequest.from_proto t)), fun v -> `Request_range v); oneof_elem (2, (message (fun t -> PutRequest.from_proto t)), fun v -> `Request_put v); oneof_elem (3, (message (fun t -> DeleteRangeRequest.from_proto t)), fun v -> `Request_delete_range v); oneof_elem (4, (message (fun t -> TxnRequest.from_proto t)), fun v -> `Request_txn v) ]) ^:: nil ) in
+      let constructor _extensions request = request in
+      let spec =
+        Runtime'.Deserialize.C.(
+          oneof
+            [
+              oneof_elem
+                ( 1,
+                  message (fun t -> RangeRequest.from_proto t),
+                  fun v -> `Request_range v );
+              oneof_elem
+                ( 2,
+                  message (fun t -> PutRequest.from_proto t),
+                  fun v -> `Request_put v );
+              oneof_elem
+                ( 3,
+                  message (fun t -> DeleteRangeRequest.from_proto t),
+                  fun v -> `Request_delete_range v );
+              oneof_elem
+                ( 4,
+                  message (fun t -> TxnRequest.from_proto t),
+                  fun v -> `Request_txn v );
+            ]
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and ResponseOp : sig
-    val name': unit -> string
-    type t = [ `not_set | `Response_range of RangeResponse.t | `Response_put of PutResponse.t | `Response_delete_range of DeleteRangeResponse.t | `Response_txn of TxnResponse.t ] [@@deriving show { with_path = false}]
-    val make : ?response:[ `not_set | `Response_range of RangeResponse.t | `Response_put of PutResponse.t | `Response_delete_range of DeleteRangeResponse.t | `Response_txn of TxnResponse.t ] -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t =
+      [ `not_set
+      | `Response_range of RangeResponse.t
+      | `Response_put of PutResponse.t
+      | `Response_delete_range of DeleteRangeResponse.t
+      | `Response_txn of TxnResponse.t ]
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?response:
+        [ `not_set
+        | `Response_range of RangeResponse.t
+        | `Response_put of PutResponse.t
+        | `Response_delete_range of DeleteRangeResponse.t
+        | `Response_txn of TxnResponse.t ] ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.ResponseOp"
-    type t = [ `not_set | `Response_range of RangeResponse.t | `Response_put of PutResponse.t | `Response_delete_range of DeleteRangeResponse.t | `Response_txn of TxnResponse.t ][@@deriving show { with_path = false}]
-    let make =
-      fun ?response () -> 
+
+    type t =
+      [ `not_set
+      | `Response_range of RangeResponse.t
+      | `Response_put of PutResponse.t
+      | `Response_delete_range of DeleteRangeResponse.t
+      | `Response_txn of TxnResponse.t ]
+    [@@deriving show { with_path = false }]
+
+    let make ?response () =
       let response = match response with Some v -> v | None -> `not_set in
       response
-    
+
     let to_proto =
-      let apply = fun ~f:f' response -> f' [] response in
-      let spec = Runtime'.Serialize.C.( oneof ((function | `not_set -> failwith "This case should never _ever_ happen" | `Response_range v -> oneof_elem (1, (message (fun t -> RangeResponse.to_proto t)), v) | `Response_put v -> oneof_elem (2, (message (fun t -> PutResponse.to_proto t)), v) | `Response_delete_range v -> oneof_elem (3, (message (fun t -> DeleteRangeResponse.to_proto t)), v) | `Response_txn v -> oneof_elem (4, (message (fun t -> TxnResponse.to_proto t)), v))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' response = f' [] response in
+      let spec =
+        Runtime'.Serialize.C.(
+          oneof (function
+            | `not_set -> failwith "This case should never _ever_ happen"
+            | `Response_range v ->
+                oneof_elem (1, message (fun t -> RangeResponse.to_proto t), v)
+            | `Response_put v ->
+                oneof_elem (2, message (fun t -> PutResponse.to_proto t), v)
+            | `Response_delete_range v ->
+                oneof_elem
+                  (3, message (fun t -> DeleteRangeResponse.to_proto t), v)
+            | `Response_txn v ->
+                oneof_elem (4, message (fun t -> TxnResponse.to_proto t), v))
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions response -> response in
-      let spec = Runtime'.Deserialize.C.( oneof ([ oneof_elem (1, (message (fun t -> RangeResponse.from_proto t)), fun v -> `Response_range v); oneof_elem (2, (message (fun t -> PutResponse.from_proto t)), fun v -> `Response_put v); oneof_elem (3, (message (fun t -> DeleteRangeResponse.from_proto t)), fun v -> `Response_delete_range v); oneof_elem (4, (message (fun t -> TxnResponse.from_proto t)), fun v -> `Response_txn v) ]) ^:: nil ) in
+      let constructor _extensions response = response in
+      let spec =
+        Runtime'.Deserialize.C.(
+          oneof
+            [
+              oneof_elem
+                ( 1,
+                  message (fun t -> RangeResponse.from_proto t),
+                  fun v -> `Response_range v );
+              oneof_elem
+                ( 2,
+                  message (fun t -> PutResponse.from_proto t),
+                  fun v -> `Response_put v );
+              oneof_elem
+                ( 3,
+                  message (fun t -> DeleteRangeResponse.from_proto t),
+                  fun v -> `Response_delete_range v );
+              oneof_elem
+                ( 4,
+                  message (fun t -> TxnResponse.from_proto t),
+                  fun v -> `Response_txn v );
+            ]
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and Compare : sig
     module rec CompareResult : sig
-      type t = EQUAL | GREATER | LESS | NOT_EQUAL [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = EQUAL | GREATER | LESS | NOT_EQUAL
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
+
     and CompareTarget : sig
-      type t = VERSION | CREATE | MOD | VALUE | LEASE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = VERSION | CREATE | MOD | VALUE | LEASE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { result: Compare.CompareResult.t; target: Compare.CompareTarget.t; key: bytes; target_union: [ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ]; range_end: bytes } [@@deriving show { with_path = false}]
-    val make : ?result:Compare.CompareResult.t -> ?target:Compare.CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = {
+      result : Compare.CompareResult.t;
+      target : Compare.CompareTarget.t;
+      key : bytes;
+      target_union :
+        [ `not_set
+        | `Version of int
+        | `Create_revision of int
+        | `Mod_revision of int
+        | `Value of bytes
+        | `Lease of int ];
+      range_end : bytes;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?result:Compare.CompareResult.t ->
+      ?target:Compare.CompareTarget.t ->
+      ?key:bytes ->
+      ?target_union:
+        [ `not_set
+        | `Version of int
+        | `Create_revision of int
+        | `Mod_revision of int
+        | `Value of bytes
+        | `Lease of int ] ->
+      ?range_end:bytes ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec CompareResult : sig
-      type t = EQUAL | GREATER | LESS | NOT_EQUAL [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = EQUAL | GREATER | LESS | NOT_EQUAL [@@deriving show { with_path = false}]
+      type t = EQUAL | GREATER | LESS | NOT_EQUAL
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = EQUAL | GREATER | LESS | NOT_EQUAL
+      [@@deriving show { with_path = false }]
+
       let to_int = function
         | EQUAL -> 0
         | GREATER -> 1
         | LESS -> 2
         | NOT_EQUAL -> 3
-      
+
       let from_int = function
         | 0 -> Ok EQUAL
         | 1 -> Ok GREATER
         | 2 -> Ok LESS
         | 3 -> Ok NOT_EQUAL
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     and CompareTarget : sig
-      type t = VERSION | CREATE | MOD | VALUE | LEASE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = VERSION | CREATE | MOD | VALUE | LEASE [@@deriving show { with_path = false}]
+      type t = VERSION | CREATE | MOD | VALUE | LEASE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = VERSION | CREATE | MOD | VALUE | LEASE
+      [@@deriving show { with_path = false }]
+
       let to_int = function
         | VERSION -> 0
         | CREATE -> 1
         | MOD -> 2
         | VALUE -> 3
         | LEASE -> 4
-      
+
       let from_int = function
         | 0 -> Ok VERSION
         | 1 -> Ok CREATE
@@ -423,2584 +997,4233 @@ module Etcdserverpb = struct
         | 3 -> Ok VALUE
         | 4 -> Ok LEASE
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "rpc.etcdserverpb.Compare"
-    type t = { result: Compare.CompareResult.t; target: Compare.CompareTarget.t; key: bytes; target_union: [ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ]; range_end: bytes }[@@deriving show { with_path = false}]
-    let make =
-      fun ?result ?target ?key ?target_union ?range_end () -> 
-      let result = match result with Some v -> v | None -> (Compare.CompareResult.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
-      let target = match target with Some v -> v | None -> (Compare.CompareTarget.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let target_union = match target_union with Some v -> v | None -> `not_set in
-      let range_end = match range_end with Some v -> v | None -> (Bytes.of_string {||}) in
+
+    type t = {
+      result : Compare.CompareResult.t;
+      target : Compare.CompareTarget.t;
+      key : bytes;
+      target_union :
+        [ `not_set
+        | `Version of int
+        | `Create_revision of int
+        | `Mod_revision of int
+        | `Value of bytes
+        | `Lease of int ];
+      range_end : bytes;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?result ?target ?key ?target_union ?range_end () =
+      let result =
+        match result with
+        | Some v -> v
+        | None ->
+            Compare.CompareResult.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
+      let target =
+        match target with
+        | Some v -> v
+        | None ->
+            Compare.CompareTarget.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let target_union =
+        match target_union with Some v -> v | None -> `not_set
+      in
+      let range_end =
+        match range_end with Some v -> v | None -> Bytes.of_string {||}
+      in
       { result; target; key; target_union; range_end }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { result; target; key; target_union; range_end } -> f' [] result target key target_union range_end in
-      let spec = Runtime'.Serialize.C.( basic (1, (enum Compare.CompareResult.to_int), proto3) ^:: basic (2, (enum Compare.CompareTarget.to_int), proto3) ^:: basic (3, bytes, proto3) ^:: oneof ((function | `not_set -> failwith "This case should never _ever_ happen" | `Version v -> oneof_elem (4, int64_int, v) | `Create_revision v -> oneof_elem (5, int64_int, v) | `Mod_revision v -> oneof_elem (6, int64_int, v) | `Value v -> oneof_elem (7, bytes, v) | `Lease v -> oneof_elem (8, int64_int, v))) ^:: basic (64, bytes, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { result; target; key; target_union; range_end } =
+        f' [] result target key target_union range_end
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, enum Compare.CompareResult.to_int, proto3)
+          ^:: basic (2, enum Compare.CompareTarget.to_int, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: oneof (function
+                | `not_set -> failwith "This case should never _ever_ happen"
+                | `Version v -> oneof_elem (4, int64_int, v)
+                | `Create_revision v -> oneof_elem (5, int64_int, v)
+                | `Mod_revision v -> oneof_elem (6, int64_int, v)
+                | `Value v -> oneof_elem (7, bytes, v)
+                | `Lease v -> oneof_elem (8, int64_int, v))
+          ^:: basic (64, bytes, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions result target key target_union range_end -> { result; target; key; target_union; range_end } in
-      let spec = Runtime'.Deserialize.C.( basic (1, (enum Compare.CompareResult.from_int), proto3) ^:: basic (2, (enum Compare.CompareTarget.from_int), proto3) ^:: basic (3, bytes, proto3) ^:: oneof ([ oneof_elem (4, int64_int, fun v -> `Version v); oneof_elem (5, int64_int, fun v -> `Create_revision v); oneof_elem (6, int64_int, fun v -> `Mod_revision v); oneof_elem (7, bytes, fun v -> `Value v); oneof_elem (8, int64_int, fun v -> `Lease v) ]) ^:: basic (64, bytes, proto3) ^:: nil ) in
+      let constructor _extensions result target key target_union range_end =
+        { result; target; key; target_union; range_end }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, enum Compare.CompareResult.from_int, proto3)
+          ^:: basic (2, enum Compare.CompareTarget.from_int, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: oneof
+                [
+                  oneof_elem (4, int64_int, fun v -> `Version v);
+                  oneof_elem (5, int64_int, fun v -> `Create_revision v);
+                  oneof_elem (6, int64_int, fun v -> `Mod_revision v);
+                  oneof_elem (7, bytes, fun v -> `Value v);
+                  oneof_elem (8, int64_int, fun v -> `Lease v);
+                ]
+          ^:: basic (64, bytes, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and TxnRequest : sig
-    val name': unit -> string
-    type t = { compare: Compare.t list; success: RequestOp.t list; failure: RequestOp.t list } [@@deriving show { with_path = false}]
-    val make : ?compare:Compare.t list -> ?success:RequestOp.t list -> ?failure:RequestOp.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      compare : Compare.t list;
+      success : RequestOp.t list;
+      failure : RequestOp.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?compare:Compare.t list ->
+      ?success:RequestOp.t list ->
+      ?failure:RequestOp.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.TxnRequest"
-    type t = { compare: Compare.t list; success: RequestOp.t list; failure: RequestOp.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?compare ?success ?failure () -> 
+
+    type t = {
+      compare : Compare.t list;
+      success : RequestOp.t list;
+      failure : RequestOp.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?compare ?success ?failure () =
       let compare = match compare with Some v -> v | None -> [] in
       let success = match success with Some v -> v | None -> [] in
       let failure = match failure with Some v -> v | None -> [] in
       { compare; success; failure }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { compare; success; failure } -> f' [] compare success failure in
-      let spec = Runtime'.Serialize.C.( repeated (1, (message (fun t -> Compare.to_proto t)), not_packed) ^:: repeated (2, (message (fun t -> RequestOp.to_proto t)), not_packed) ^:: repeated (3, (message (fun t -> RequestOp.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { compare; success; failure } =
+        f' [] compare success failure
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          repeated (1, message (fun t -> Compare.to_proto t), not_packed)
+          ^:: repeated (2, message (fun t -> RequestOp.to_proto t), not_packed)
+          ^:: repeated (3, message (fun t -> RequestOp.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions compare success failure -> { compare; success; failure } in
-      let spec = Runtime'.Deserialize.C.( repeated (1, (message (fun t -> Compare.from_proto t)), not_packed) ^:: repeated (2, (message (fun t -> RequestOp.from_proto t)), not_packed) ^:: repeated (3, (message (fun t -> RequestOp.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions compare success failure =
+        { compare; success; failure }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          repeated (1, message (fun t -> Compare.from_proto t), not_packed)
+          ^:: repeated (2, message (fun t -> RequestOp.from_proto t), not_packed)
+          ^:: repeated (3, message (fun t -> RequestOp.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and TxnResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; succeeded: bool; responses: ResponseOp.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?succeeded:bool -> ?responses:ResponseOp.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      succeeded : bool;
+      responses : ResponseOp.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?succeeded:bool ->
+      ?responses:ResponseOp.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.TxnResponse"
-    type t = { header: ResponseHeader.t option; succeeded: bool; responses: ResponseOp.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?succeeded ?responses () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      succeeded : bool;
+      responses : ResponseOp.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?succeeded ?responses () =
       let succeeded = match succeeded with Some v -> v | None -> false in
       let responses = match responses with Some v -> v | None -> [] in
       { header; succeeded; responses }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; succeeded; responses } -> f' [] header succeeded responses in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, bool, proto3) ^:: repeated (3, (message (fun t -> ResponseOp.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; succeeded; responses } =
+        f' [] header succeeded responses
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, bool, proto3)
+          ^:: repeated (3, message (fun t -> ResponseOp.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header succeeded responses -> { header; succeeded; responses } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, bool, proto3) ^:: repeated (3, (message (fun t -> ResponseOp.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header succeeded responses =
+        { header; succeeded; responses }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, bool, proto3)
+          ^:: repeated
+                (3, message (fun t -> ResponseOp.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and CompactionRequest : sig
-    val name': unit -> string
-    type t = { revision: int; physical: bool } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { revision : int; physical : bool }
+    [@@deriving show { with_path = false }]
+
     val make : ?revision:int -> ?physical:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.CompactionRequest"
-    type t = { revision: int; physical: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?revision ?physical () -> 
+
+    type t = { revision : int; physical : bool }
+    [@@deriving show { with_path = false }]
+
+    let make ?revision ?physical () =
       let revision = match revision with Some v -> v | None -> 0 in
       let physical = match physical with Some v -> v | None -> false in
       { revision; physical }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { revision; physical } -> f' [] revision physical in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { revision; physical } = f' [] revision physical in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions revision physical -> { revision; physical } in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil ) in
+      let constructor _extensions revision physical = { revision; physical } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and CompactionResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.CompactionResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and HashRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.HashRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and HashKVRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?revision:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.HashKVRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?revision () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?revision () =
       let revision = match revision with Some v -> v | None -> 0 in
       revision
-    
+
     let to_proto =
-      let apply = fun ~f:f' revision -> f' [] revision in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' revision = f' [] revision in
+      let spec = Runtime'.Serialize.C.(basic (1, int64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions revision -> revision in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions revision = revision in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and HashKVResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; hash: int; compact_revision: int } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      hash : int;
+      compact_revision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?hash:int ->
+      ?compact_revision:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.HashKVResponse"
-    type t = { header: ResponseHeader.t option; hash: int; compact_revision: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?hash ?compact_revision () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      hash : int;
+      compact_revision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?hash ?compact_revision () =
       let hash = match hash with Some v -> v | None -> 0 in
-      let compact_revision = match compact_revision with Some v -> v | None -> 0 in
+      let compact_revision =
+        match compact_revision with Some v -> v | None -> 0
+      in
       { header; hash; compact_revision }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; hash; compact_revision } -> f' [] header hash compact_revision in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, uint32_int, proto3) ^:: basic (3, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; hash; compact_revision } =
+        f' [] header hash compact_revision
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, uint32_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header hash compact_revision -> { header; hash; compact_revision } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, uint32_int, proto3) ^:: basic (3, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions header hash compact_revision =
+        { header; hash; compact_revision }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, uint32_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and HashResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; hash: int } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; hash : int }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?hash:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.HashResponse"
-    type t = { header: ResponseHeader.t option; hash: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?hash () -> 
+
+    type t = { header : ResponseHeader.t option; hash : int }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?hash () =
       let hash = match hash with Some v -> v | None -> 0 in
       { header; hash }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; hash } -> f' [] header hash in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, uint32_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; hash } = f' [] header hash in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, uint32_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header hash -> { header; hash } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, uint32_int, proto3) ^:: nil ) in
+      let constructor _extensions header hash = { header; hash } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, uint32_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and SnapshotRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.SnapshotRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and SnapshotResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; remaining_bytes: int; blob: bytes; version: string } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      remaining_bytes : int;
+      blob : bytes;
+      version : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?remaining_bytes:int ->
+      ?blob:bytes ->
+      ?version:string ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.SnapshotResponse"
-    type t = { header: ResponseHeader.t option; remaining_bytes: int; blob: bytes; version: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?remaining_bytes ?blob ?version () -> 
-      let remaining_bytes = match remaining_bytes with Some v -> v | None -> 0 in
-      let blob = match blob with Some v -> v | None -> (Bytes.of_string {||}) in
+
+    type t = {
+      header : ResponseHeader.t option;
+      remaining_bytes : int;
+      blob : bytes;
+      version : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?remaining_bytes ?blob ?version () =
+      let remaining_bytes =
+        match remaining_bytes with Some v -> v | None -> 0
+      in
+      let blob = match blob with Some v -> v | None -> Bytes.of_string {||} in
       let version = match version with Some v -> v | None -> {||} in
       { header; remaining_bytes; blob; version }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; remaining_bytes; blob; version } -> f' [] header remaining_bytes blob version in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, uint64_int, proto3) ^:: basic (3, bytes, proto3) ^:: basic (4, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; remaining_bytes; blob; version } =
+        f' [] header remaining_bytes blob version
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header remaining_bytes blob version -> { header; remaining_bytes; blob; version } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, uint64_int, proto3) ^:: basic (3, bytes, proto3) ^:: basic (4, string, proto3) ^:: nil ) in
+      let constructor _extensions header remaining_bytes blob version =
+        { header; remaining_bytes; blob; version }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and WatchRequest : sig
-    val name': unit -> string
-    type t = [ `not_set | `Create_request of WatchCreateRequest.t | `Cancel_request of WatchCancelRequest.t | `Progress_request of WatchProgressRequest.t ] [@@deriving show { with_path = false}]
-    val make : ?request_union:[ `not_set | `Create_request of WatchCreateRequest.t | `Cancel_request of WatchCancelRequest.t | `Progress_request of WatchProgressRequest.t ] -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t =
+      [ `not_set
+      | `Create_request of WatchCreateRequest.t
+      | `Cancel_request of WatchCancelRequest.t
+      | `Progress_request of WatchProgressRequest.t ]
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?request_union:
+        [ `not_set
+        | `Create_request of WatchCreateRequest.t
+        | `Cancel_request of WatchCancelRequest.t
+        | `Progress_request of WatchProgressRequest.t ] ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.WatchRequest"
-    type t = [ `not_set | `Create_request of WatchCreateRequest.t | `Cancel_request of WatchCancelRequest.t | `Progress_request of WatchProgressRequest.t ][@@deriving show { with_path = false}]
-    let make =
-      fun ?request_union () -> 
-      let request_union = match request_union with Some v -> v | None -> `not_set in
+
+    type t =
+      [ `not_set
+      | `Create_request of WatchCreateRequest.t
+      | `Cancel_request of WatchCancelRequest.t
+      | `Progress_request of WatchProgressRequest.t ]
+    [@@deriving show { with_path = false }]
+
+    let make ?request_union () =
+      let request_union =
+        match request_union with Some v -> v | None -> `not_set
+      in
       request_union
-    
+
     let to_proto =
-      let apply = fun ~f:f' request_union -> f' [] request_union in
-      let spec = Runtime'.Serialize.C.( oneof ((function | `not_set -> failwith "This case should never _ever_ happen" | `Create_request v -> oneof_elem (1, (message (fun t -> WatchCreateRequest.to_proto t)), v) | `Cancel_request v -> oneof_elem (2, (message (fun t -> WatchCancelRequest.to_proto t)), v) | `Progress_request v -> oneof_elem (3, (message (fun t -> WatchProgressRequest.to_proto t)), v))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' request_union = f' [] request_union in
+      let spec =
+        Runtime'.Serialize.C.(
+          oneof (function
+            | `not_set -> failwith "This case should never _ever_ happen"
+            | `Create_request v ->
+                oneof_elem
+                  (1, message (fun t -> WatchCreateRequest.to_proto t), v)
+            | `Cancel_request v ->
+                oneof_elem
+                  (2, message (fun t -> WatchCancelRequest.to_proto t), v)
+            | `Progress_request v ->
+                oneof_elem
+                  (3, message (fun t -> WatchProgressRequest.to_proto t), v))
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions request_union -> request_union in
-      let spec = Runtime'.Deserialize.C.( oneof ([ oneof_elem (1, (message (fun t -> WatchCreateRequest.from_proto t)), fun v -> `Create_request v); oneof_elem (2, (message (fun t -> WatchCancelRequest.from_proto t)), fun v -> `Cancel_request v); oneof_elem (3, (message (fun t -> WatchProgressRequest.from_proto t)), fun v -> `Progress_request v) ]) ^:: nil ) in
+      let constructor _extensions request_union = request_union in
+      let spec =
+        Runtime'.Deserialize.C.(
+          oneof
+            [
+              oneof_elem
+                ( 1,
+                  message (fun t -> WatchCreateRequest.from_proto t),
+                  fun v -> `Create_request v );
+              oneof_elem
+                ( 2,
+                  message (fun t -> WatchCancelRequest.from_proto t),
+                  fun v -> `Cancel_request v );
+              oneof_elem
+                ( 3,
+                  message (fun t -> WatchProgressRequest.from_proto t),
+                  fun v -> `Progress_request v );
+            ]
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and WatchCreateRequest : sig
     module rec FilterType : sig
-      type t = NOPUT | NODELETE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = NOPUT | NODELETE [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { key: bytes; range_end: bytes; start_revision: int; progress_notify: bool; filters: WatchCreateRequest.FilterType.t list; prev_kv: bool; watch_id: int; fragment: bool } [@@deriving show { with_path = false}]
-    val make : ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:WatchCreateRequest.FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = {
+      key : bytes;
+      range_end : bytes;
+      start_revision : int;
+      progress_notify : bool;
+      filters : WatchCreateRequest.FilterType.t list;
+      prev_kv : bool;
+      watch_id : int;
+      fragment : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?key:bytes ->
+      ?range_end:bytes ->
+      ?start_revision:int ->
+      ?progress_notify:bool ->
+      ?filters:WatchCreateRequest.FilterType.t list ->
+      ?prev_kv:bool ->
+      ?watch_id:int ->
+      ?fragment:bool ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec FilterType : sig
-      type t = NOPUT | NODELETE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = NOPUT | NODELETE [@@deriving show { with_path = false}]
-      let to_int = function
-        | NOPUT -> 0
-        | NODELETE -> 1
-      
+      type t = NOPUT | NODELETE [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = NOPUT | NODELETE [@@deriving show { with_path = false }]
+
+      let to_int = function NOPUT -> 0 | NODELETE -> 1
+
       let from_int = function
         | 0 -> Ok NOPUT
         | 1 -> Ok NODELETE
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "rpc.etcdserverpb.WatchCreateRequest"
-    type t = { key: bytes; range_end: bytes; start_revision: int; progress_notify: bool; filters: WatchCreateRequest.FilterType.t list; prev_kv: bool; watch_id: int; fragment: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?key ?range_end ?start_revision ?progress_notify ?filters ?prev_kv ?watch_id ?fragment () -> 
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let range_end = match range_end with Some v -> v | None -> (Bytes.of_string {||}) in
-      let start_revision = match start_revision with Some v -> v | None -> 0 in
-      let progress_notify = match progress_notify with Some v -> v | None -> false in
+
+    type t = {
+      key : bytes;
+      range_end : bytes;
+      start_revision : int;
+      progress_notify : bool;
+      filters : WatchCreateRequest.FilterType.t list;
+      prev_kv : bool;
+      watch_id : int;
+      fragment : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?key ?range_end ?start_revision ?progress_notify ?filters ?prev_kv
+        ?watch_id ?fragment () =
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let range_end =
+        match range_end with Some v -> v | None -> Bytes.of_string {||}
+      in
+      let start_revision =
+        match start_revision with Some v -> v | None -> 0
+      in
+      let progress_notify =
+        match progress_notify with Some v -> v | None -> false
+      in
       let filters = match filters with Some v -> v | None -> [] in
       let prev_kv = match prev_kv with Some v -> v | None -> false in
       let watch_id = match watch_id with Some v -> v | None -> 0 in
       let fragment = match fragment with Some v -> v | None -> false in
-      { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment }
-    
+      {
+        key;
+        range_end;
+        start_revision;
+        progress_notify;
+        filters;
+        prev_kv;
+        watch_id;
+        fragment;
+      }
+
     let to_proto =
-      let apply = fun ~f:f' { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment } -> f' [] key range_end start_revision progress_notify filters prev_kv watch_id fragment in
-      let spec = Runtime'.Serialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, bool, proto3) ^:: repeated (5, (enum WatchCreateRequest.FilterType.to_int), packed) ^:: basic (6, bool, proto3) ^:: basic (7, int64_int, proto3) ^:: basic (8, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f'
+          {
+            key;
+            range_end;
+            start_revision;
+            progress_notify;
+            filters;
+            prev_kv;
+            watch_id;
+            fragment;
+          } =
+        f' [] key range_end start_revision progress_notify filters prev_kv
+          watch_id fragment
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: repeated (5, enum WatchCreateRequest.FilterType.to_int, packed)
+          ^:: basic (6, bool, proto3)
+          ^:: basic (7, int64_int, proto3)
+          ^:: basic (8, bool, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions key range_end start_revision progress_notify filters prev_kv watch_id fragment -> { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment } in
-      let spec = Runtime'.Deserialize.C.( basic (1, bytes, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, bool, proto3) ^:: repeated (5, (enum WatchCreateRequest.FilterType.from_int), packed) ^:: basic (6, bool, proto3) ^:: basic (7, int64_int, proto3) ^:: basic (8, bool, proto3) ^:: nil ) in
+      let constructor _extensions key range_end start_revision progress_notify
+          filters prev_kv watch_id fragment =
+        {
+          key;
+          range_end;
+          start_revision;
+          progress_notify;
+          filters;
+          prev_kv;
+          watch_id;
+          fragment;
+        }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: repeated (5, enum WatchCreateRequest.FilterType.from_int, packed)
+          ^:: basic (6, bool, proto3)
+          ^:: basic (7, int64_int, proto3)
+          ^:: basic (8, bool, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and WatchCancelRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?watch_id:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.WatchCancelRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?watch_id () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?watch_id () =
       let watch_id = match watch_id with Some v -> v | None -> 0 in
       watch_id
-    
+
     let to_proto =
-      let apply = fun ~f:f' watch_id -> f' [] watch_id in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' watch_id = f' [] watch_id in
+      let spec = Runtime'.Serialize.C.(basic (1, int64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions watch_id -> watch_id in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions watch_id = watch_id in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and WatchProgressRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.WatchProgressRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and WatchResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; watch_id: int; created: bool; canceled: bool; compact_revision: int; cancel_reason: string; fragment: bool; events: Imported'modules.Kv.Mvccpb.Event.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      watch_id : int;
+      created : bool;
+      canceled : bool;
+      compact_revision : int;
+      cancel_reason : string;
+      fragment : bool;
+      events : Imported'modules.Kv.Mvccpb.Event.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?watch_id:int ->
+      ?created:bool ->
+      ?canceled:bool ->
+      ?compact_revision:int ->
+      ?cancel_reason:string ->
+      ?fragment:bool ->
+      ?events:Imported'modules.Kv.Mvccpb.Event.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.WatchResponse"
-    type t = { header: ResponseHeader.t option; watch_id: int; created: bool; canceled: bool; compact_revision: int; cancel_reason: string; fragment: bool; events: Imported'modules.Kv.Mvccpb.Event.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?watch_id ?created ?canceled ?compact_revision ?cancel_reason ?fragment ?events () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      watch_id : int;
+      created : bool;
+      canceled : bool;
+      compact_revision : int;
+      cancel_reason : string;
+      fragment : bool;
+      events : Imported'modules.Kv.Mvccpb.Event.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?watch_id ?created ?canceled ?compact_revision
+        ?cancel_reason ?fragment ?events () =
       let watch_id = match watch_id with Some v -> v | None -> 0 in
       let created = match created with Some v -> v | None -> false in
       let canceled = match canceled with Some v -> v | None -> false in
-      let compact_revision = match compact_revision with Some v -> v | None -> 0 in
-      let cancel_reason = match cancel_reason with Some v -> v | None -> {||} in
+      let compact_revision =
+        match compact_revision with Some v -> v | None -> 0
+      in
+      let cancel_reason =
+        match cancel_reason with Some v -> v | None -> {||}
+      in
       let fragment = match fragment with Some v -> v | None -> false in
       let events = match events with Some v -> v | None -> [] in
-      { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events }
-    
+      {
+        header;
+        watch_id;
+        created;
+        canceled;
+        compact_revision;
+        cancel_reason;
+        fragment;
+        events;
+      }
+
     let to_proto =
-      let apply = fun ~f:f' { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events } -> f' [] header watch_id created canceled compact_revision cancel_reason fragment events in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, bool, proto3) ^:: basic (4, bool, proto3) ^:: basic (5, int64_int, proto3) ^:: basic (6, string, proto3) ^:: basic (7, bool, proto3) ^:: repeated (11, (message (fun t -> Imported'modules.Kv.Mvccpb.Event.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f'
+          {
+            header;
+            watch_id;
+            created;
+            canceled;
+            compact_revision;
+            cancel_reason;
+            fragment;
+            events;
+          } =
+        f' [] header watch_id created canceled compact_revision cancel_reason
+          fragment events
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, bool, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: basic (5, int64_int, proto3)
+          ^:: basic (6, string, proto3)
+          ^:: basic (7, bool, proto3)
+          ^:: repeated
+                ( 11,
+                  message (fun t -> Imported'modules.Kv.Mvccpb.Event.to_proto t),
+                  not_packed )
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header watch_id created canceled compact_revision cancel_reason fragment events -> { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, bool, proto3) ^:: basic (4, bool, proto3) ^:: basic (5, int64_int, proto3) ^:: basic (6, string, proto3) ^:: basic (7, bool, proto3) ^:: repeated (11, (message (fun t -> Imported'modules.Kv.Mvccpb.Event.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header watch_id created canceled
+          compact_revision cancel_reason fragment events =
+        {
+          header;
+          watch_id;
+          created;
+          canceled;
+          compact_revision;
+          cancel_reason;
+          fragment;
+          events;
+        }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, bool, proto3)
+          ^:: basic (4, bool, proto3)
+          ^:: basic (5, int64_int, proto3)
+          ^:: basic (6, string, proto3)
+          ^:: basic (7, bool, proto3)
+          ^:: repeated
+                ( 11,
+                  message (fun t ->
+                      Imported'modules.Kv.Mvccpb.Event.from_proto t),
+                  not_packed )
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseGrantRequest : sig
-    val name': unit -> string
-    type t = { tTL: int; iD: int } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { tTL : int; iD : int } [@@deriving show { with_path = false }]
+
     val make : ?tTL:int -> ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseGrantRequest"
-    type t = { tTL: int; iD: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?tTL ?iD () -> 
+
+    type t = { tTL : int; iD : int } [@@deriving show { with_path = false }]
+
+    let make ?tTL ?iD () =
       let tTL = match tTL with Some v -> v | None -> 0 in
       let iD = match iD with Some v -> v | None -> 0 in
       { tTL; iD }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { tTL; iD } -> f' [] tTL iD in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { tTL; iD } = f' [] tTL iD in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions tTL iD -> { tTL; iD } in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions tTL iD = { tTL; iD } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseGrantResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int; error: string } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      iD : int;
+      tTL : int;
+      error : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?iD:int ->
+      ?tTL:int ->
+      ?error:string ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseGrantResponse"
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int; error: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?iD ?tTL ?error () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      iD : int;
+      tTL : int;
+      error : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?iD ?tTL ?error () =
       let iD = match iD with Some v -> v | None -> 0 in
       let tTL = match tTL with Some v -> v | None -> 0 in
       let error = match error with Some v -> v | None -> {||} in
       { header; iD; tTL; error }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; iD; tTL; error } -> f' [] header iD tTL error in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; iD; tTL; error } = f' [] header iD tTL error in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header iD tTL error -> { header; iD; tTL; error } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, string, proto3) ^:: nil ) in
+      let constructor _extensions header iD tTL error =
+        { header; iD; tTL; error }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseRevokeRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseRevokeRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?iD () =
       let iD = match iD with Some v -> v | None -> 0 in
       iD
-    
+
     let to_proto =
-      let apply = fun ~f:f' iD -> f' [] iD in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' iD = f' [] iD in
+      let spec = Runtime'.Serialize.C.(basic (1, int64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD -> iD in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD = iD in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseRevokeResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseRevokeResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseCheckpoint : sig
-    val name': unit -> string
-    type t = { iD: int; remaining_TTL: int } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { iD : int; remaining_TTL : int }
+    [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> ?remaining_TTL:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseCheckpoint"
-    type t = { iD: int; remaining_TTL: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD ?remaining_TTL () -> 
+
+    type t = { iD : int; remaining_TTL : int }
+    [@@deriving show { with_path = false }]
+
+    let make ?iD ?remaining_TTL () =
       let iD = match iD with Some v -> v | None -> 0 in
       let remaining_TTL = match remaining_TTL with Some v -> v | None -> 0 in
       { iD; remaining_TTL }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { iD; remaining_TTL } -> f' [] iD remaining_TTL in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { iD; remaining_TTL } = f' [] iD remaining_TTL in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD remaining_TTL -> { iD; remaining_TTL } in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD remaining_TTL = { iD; remaining_TTL } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseCheckpointRequest : sig
-    val name': unit -> string
-    type t = LeaseCheckpoint.t list [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = LeaseCheckpoint.t list [@@deriving show { with_path = false }]
+
     val make : ?checkpoints:LeaseCheckpoint.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseCheckpointRequest"
-    type t = LeaseCheckpoint.t list[@@deriving show { with_path = false}]
-    let make =
-      fun ?checkpoints () -> 
+
+    type t = LeaseCheckpoint.t list [@@deriving show { with_path = false }]
+
+    let make ?checkpoints () =
       let checkpoints = match checkpoints with Some v -> v | None -> [] in
       checkpoints
-    
+
     let to_proto =
-      let apply = fun ~f:f' checkpoints -> f' [] checkpoints in
-      let spec = Runtime'.Serialize.C.( repeated (1, (message (fun t -> LeaseCheckpoint.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' checkpoints = f' [] checkpoints in
+      let spec =
+        Runtime'.Serialize.C.(
+          repeated (1, message (fun t -> LeaseCheckpoint.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions checkpoints -> checkpoints in
-      let spec = Runtime'.Deserialize.C.( repeated (1, (message (fun t -> LeaseCheckpoint.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions checkpoints = checkpoints in
+      let spec =
+        Runtime'.Deserialize.C.(
+          repeated
+            (1, message (fun t -> LeaseCheckpoint.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseCheckpointResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseCheckpointResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseKeepAliveRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseKeepAliveRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?iD () =
       let iD = match iD with Some v -> v | None -> 0 in
       iD
-    
+
     let to_proto =
-      let apply = fun ~f:f' iD -> f' [] iD in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' iD = f' [] iD in
+      let spec = Runtime'.Serialize.C.(basic (1, int64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD -> iD in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD = iD in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseKeepAliveResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; iD : int; tTL : int }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseKeepAliveResponse"
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?iD ?tTL () -> 
+
+    type t = { header : ResponseHeader.t option; iD : int; tTL : int }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?iD ?tTL () =
       let iD = match iD with Some v -> v | None -> 0 in
       let tTL = match tTL with Some v -> v | None -> 0 in
       { header; iD; tTL }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; iD; tTL } -> f' [] header iD tTL in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; iD; tTL } = f' [] header iD tTL in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header iD tTL -> { header; iD; tTL } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions header iD tTL = { header; iD; tTL } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseTimeToLiveRequest : sig
-    val name': unit -> string
-    type t = { iD: int; keys: bool } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { iD : int; keys : bool } [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> ?keys:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseTimeToLiveRequest"
-    type t = { iD: int; keys: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD ?keys () -> 
+
+    type t = { iD : int; keys : bool } [@@deriving show { with_path = false }]
+
+    let make ?iD ?keys () =
       let iD = match iD with Some v -> v | None -> 0 in
       let keys = match keys with Some v -> v | None -> false in
       { iD; keys }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { iD; keys } -> f' [] iD keys in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { iD; keys } = f' [] iD keys in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD keys -> { iD; keys } in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil ) in
+      let constructor _extensions iD keys = { iD; keys } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, int64_int, proto3) ^:: basic (2, bool, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseTimeToLiveResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int; grantedTTL: int; keys: bytes list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      iD : int;
+      tTL : int;
+      grantedTTL : int;
+      keys : bytes list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?iD:int ->
+      ?tTL:int ->
+      ?grantedTTL:int ->
+      ?keys:bytes list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseTimeToLiveResponse"
-    type t = { header: ResponseHeader.t option; iD: int; tTL: int; grantedTTL: int; keys: bytes list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?iD ?tTL ?grantedTTL ?keys () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      iD : int;
+      tTL : int;
+      grantedTTL : int;
+      keys : bytes list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?iD ?tTL ?grantedTTL ?keys () =
       let iD = match iD with Some v -> v | None -> 0 in
       let tTL = match tTL with Some v -> v | None -> 0 in
       let grantedTTL = match grantedTTL with Some v -> v | None -> 0 in
       let keys = match keys with Some v -> v | None -> [] in
       { header; iD; tTL; grantedTTL; keys }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; iD; tTL; grantedTTL; keys } -> f' [] header iD tTL grantedTTL keys in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: repeated (5, bytes, packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; iD; tTL; grantedTTL; keys } =
+        f' [] header iD tTL grantedTTL keys
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: repeated (5, bytes, packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header iD tTL grantedTTL keys -> { header; iD; tTL; grantedTTL; keys } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: repeated (5, bytes, packed) ^:: nil ) in
+      let constructor _extensions header iD tTL grantedTTL keys =
+        { header; iD; tTL; grantedTTL; keys }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: repeated (5, bytes, packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseLeasesRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseLeasesRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseStatus : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseStatus"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?iD () =
       let iD = match iD with Some v -> v | None -> 0 in
       iD
-    
+
     let to_proto =
-      let apply = fun ~f:f' iD -> f' [] iD in
-      let spec = Runtime'.Serialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' iD = f' [] iD in
+      let spec = Runtime'.Serialize.C.(basic (1, int64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD -> iD in
-      let spec = Runtime'.Deserialize.C.( basic (1, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD = iD in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, int64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and LeaseLeasesResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; leases: LeaseStatus.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?leases:LeaseStatus.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; leases : LeaseStatus.t list }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t -> ?leases:LeaseStatus.t list -> unit -> t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.LeaseLeasesResponse"
-    type t = { header: ResponseHeader.t option; leases: LeaseStatus.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?leases () -> 
+
+    type t = { header : ResponseHeader.t option; leases : LeaseStatus.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?leases () =
       let leases = match leases with Some v -> v | None -> [] in
       { header; leases }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; leases } -> f' [] header leases in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> LeaseStatus.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; leases } = f' [] header leases in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> LeaseStatus.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header leases -> { header; leases } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> LeaseStatus.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header leases = { header; leases } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated
+                (2, message (fun t -> LeaseStatus.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and Member : sig
-    val name': unit -> string
-    type t = { iD: int; name: string; peerURLs: string list; clientURLs: string list; isLearner: bool } [@@deriving show { with_path = false}]
-    val make : ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      iD : int;
+      name : string;
+      peerURLs : string list;
+      clientURLs : string list;
+      isLearner : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?iD:int ->
+      ?name:string ->
+      ?peerURLs:string list ->
+      ?clientURLs:string list ->
+      ?isLearner:bool ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.Member"
-    type t = { iD: int; name: string; peerURLs: string list; clientURLs: string list; isLearner: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD ?name ?peerURLs ?clientURLs ?isLearner () -> 
+
+    type t = {
+      iD : int;
+      name : string;
+      peerURLs : string list;
+      clientURLs : string list;
+      isLearner : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?iD ?name ?peerURLs ?clientURLs ?isLearner () =
       let iD = match iD with Some v -> v | None -> 0 in
       let name = match name with Some v -> v | None -> {||} in
       let peerURLs = match peerURLs with Some v -> v | None -> [] in
       let clientURLs = match clientURLs with Some v -> v | None -> [] in
       let isLearner = match isLearner with Some v -> v | None -> false in
       { iD; name; peerURLs; clientURLs; isLearner }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { iD; name; peerURLs; clientURLs; isLearner } -> f' [] iD name peerURLs clientURLs isLearner in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, string, proto3) ^:: repeated (3, string, packed) ^:: repeated (4, string, packed) ^:: basic (5, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { iD; name; peerURLs; clientURLs; isLearner } =
+        f' [] iD name peerURLs clientURLs isLearner
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: repeated (3, string, packed)
+          ^:: repeated (4, string, packed)
+          ^:: basic (5, bool, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD name peerURLs clientURLs isLearner -> { iD; name; peerURLs; clientURLs; isLearner } in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, string, proto3) ^:: repeated (3, string, packed) ^:: repeated (4, string, packed) ^:: basic (5, bool, proto3) ^:: nil ) in
+      let constructor _extensions iD name peerURLs clientURLs isLearner =
+        { iD; name; peerURLs; clientURLs; isLearner }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: repeated (3, string, packed)
+          ^:: repeated (4, string, packed)
+          ^:: basic (5, bool, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberAddRequest : sig
-    val name': unit -> string
-    type t = { peerURLs: string list; isLearner: bool } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { peerURLs : string list; isLearner : bool }
+    [@@deriving show { with_path = false }]
+
     val make : ?peerURLs:string list -> ?isLearner:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberAddRequest"
-    type t = { peerURLs: string list; isLearner: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?peerURLs ?isLearner () -> 
+
+    type t = { peerURLs : string list; isLearner : bool }
+    [@@deriving show { with_path = false }]
+
+    let make ?peerURLs ?isLearner () =
       let peerURLs = match peerURLs with Some v -> v | None -> [] in
       let isLearner = match isLearner with Some v -> v | None -> false in
       { peerURLs; isLearner }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { peerURLs; isLearner } -> f' [] peerURLs isLearner in
-      let spec = Runtime'.Serialize.C.( repeated (1, string, packed) ^:: basic (2, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { peerURLs; isLearner } = f' [] peerURLs isLearner in
+      let spec =
+        Runtime'.Serialize.C.(
+          repeated (1, string, packed) ^:: basic (2, bool, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions peerURLs isLearner -> { peerURLs; isLearner } in
-      let spec = Runtime'.Deserialize.C.( repeated (1, string, packed) ^:: basic (2, bool, proto3) ^:: nil ) in
+      let constructor _extensions peerURLs isLearner =
+        { peerURLs; isLearner }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          repeated (1, string, packed) ^:: basic (2, bool, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberAddResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; member: Member.t option; members: Member.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?member:Member.t -> ?members:Member.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      member : Member.t option;
+      members : Member.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?member:Member.t ->
+      ?members:Member.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberAddResponse"
-    type t = { header: ResponseHeader.t option; member: Member.t option; members: Member.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?member ?members () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      member : Member.t option;
+      members : Member.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?member ?members () =
       let members = match members with Some v -> v | None -> [] in
       { header; member; members }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; member; members } -> f' [] header member members in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic_opt (2, (message (fun t -> Member.to_proto t))) ^:: repeated (3, (message (fun t -> Member.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; member; members } =
+        f' [] header member members
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic_opt (2, message (fun t -> Member.to_proto t))
+          ^:: repeated (3, message (fun t -> Member.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header member members -> { header; member; members } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic_opt (2, (message (fun t -> Member.from_proto t))) ^:: repeated (3, (message (fun t -> Member.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header member members =
+        { header; member; members }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic_opt (2, message (fun t -> Member.from_proto t))
+          ^:: repeated (3, message (fun t -> Member.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberRemoveRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberRemoveRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?iD () =
       let iD = match iD with Some v -> v | None -> 0 in
       iD
-    
+
     let to_proto =
-      let apply = fun ~f:f' iD -> f' [] iD in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' iD = f' [] iD in
+      let spec = Runtime'.Serialize.C.(basic (1, uint64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD -> iD in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD = iD in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, uint64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberRemoveResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; members: Member.t list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?members:Member.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberRemoveResponse"
-    type t = { header: ResponseHeader.t option; members: Member.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?members () -> 
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?members () =
       let members = match members with Some v -> v | None -> [] in
       { header; members }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; members } -> f' [] header members in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Member.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; members } = f' [] header members in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> Member.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header members -> { header; members } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Member.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header members = { header; members } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, message (fun t -> Member.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberUpdateRequest : sig
-    val name': unit -> string
-    type t = { iD: int; peerURLs: string list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { iD : int; peerURLs : string list }
+    [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> ?peerURLs:string list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberUpdateRequest"
-    type t = { iD: int; peerURLs: string list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD ?peerURLs () -> 
+
+    type t = { iD : int; peerURLs : string list }
+    [@@deriving show { with_path = false }]
+
+    let make ?iD ?peerURLs () =
       let iD = match iD with Some v -> v | None -> 0 in
       let peerURLs = match peerURLs with Some v -> v | None -> [] in
       { iD; peerURLs }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { iD; peerURLs } -> f' [] iD peerURLs in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: repeated (2, string, packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { iD; peerURLs } = f' [] iD peerURLs in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, uint64_int, proto3) ^:: repeated (2, string, packed) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD peerURLs -> { iD; peerURLs } in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: repeated (2, string, packed) ^:: nil ) in
+      let constructor _extensions iD peerURLs = { iD; peerURLs } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, uint64_int, proto3) ^:: repeated (2, string, packed) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberUpdateResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; members: Member.t list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?members:Member.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberUpdateResponse"
-    type t = { header: ResponseHeader.t option; members: Member.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?members () -> 
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?members () =
       let members = match members with Some v -> v | None -> [] in
       { header; members }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; members } -> f' [] header members in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Member.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; members } = f' [] header members in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> Member.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header members -> { header; members } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Member.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header members = { header; members } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, message (fun t -> Member.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberListRequest : sig
-    val name': unit -> string
-    type t = bool [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = bool [@@deriving show { with_path = false }]
+
     val make : ?linearizable:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberListRequest"
-    type t = bool[@@deriving show { with_path = false}]
-    let make =
-      fun ?linearizable () -> 
-      let linearizable = match linearizable with Some v -> v | None -> false in
+
+    type t = bool [@@deriving show { with_path = false }]
+
+    let make ?linearizable () =
+      let linearizable =
+        match linearizable with Some v -> v | None -> false
+      in
       linearizable
-    
+
     let to_proto =
-      let apply = fun ~f:f' linearizable -> f' [] linearizable in
-      let spec = Runtime'.Serialize.C.( basic (1, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' linearizable = f' [] linearizable in
+      let spec = Runtime'.Serialize.C.(basic (1, bool, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions linearizable -> linearizable in
-      let spec = Runtime'.Deserialize.C.( basic (1, bool, proto3) ^:: nil ) in
+      let constructor _extensions linearizable = linearizable in
+      let spec = Runtime'.Deserialize.C.(basic (1, bool, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberListResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; members: Member.t list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?members:Member.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberListResponse"
-    type t = { header: ResponseHeader.t option; members: Member.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?members () -> 
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?members () =
       let members = match members with Some v -> v | None -> [] in
       { header; members }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; members } -> f' [] header members in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Member.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; members } = f' [] header members in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> Member.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header members -> { header; members } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Member.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header members = { header; members } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, message (fun t -> Member.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberPromoteRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?iD:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberPromoteRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?iD () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?iD () =
       let iD = match iD with Some v -> v | None -> 0 in
       iD
-    
+
     let to_proto =
-      let apply = fun ~f:f' iD -> f' [] iD in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' iD = f' [] iD in
+      let spec = Runtime'.Serialize.C.(basic (1, uint64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions iD -> iD in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
+      let constructor _extensions iD = iD in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, uint64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MemberPromoteResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; members: Member.t list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?members:Member.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MemberPromoteResponse"
-    type t = { header: ResponseHeader.t option; members: Member.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?members () -> 
+
+    type t = { header : ResponseHeader.t option; members : Member.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?members () =
       let members = match members with Some v -> v | None -> [] in
       { header; members }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; members } -> f' [] header members in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Member.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; members } = f' [] header members in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> Member.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header members -> { header; members } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Member.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header members = { header; members } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, message (fun t -> Member.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DefragmentRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.DefragmentRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DefragmentResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.DefragmentResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MoveLeaderRequest : sig
-    val name': unit -> string
-    type t = int [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = int [@@deriving show { with_path = false }]
+
     val make : ?targetID:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MoveLeaderRequest"
-    type t = int[@@deriving show { with_path = false}]
-    let make =
-      fun ?targetID () -> 
+
+    type t = int [@@deriving show { with_path = false }]
+
+    let make ?targetID () =
       let targetID = match targetID with Some v -> v | None -> 0 in
       targetID
-    
+
     let to_proto =
-      let apply = fun ~f:f' targetID -> f' [] targetID in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' targetID = f' [] targetID in
+      let spec = Runtime'.Serialize.C.(basic (1, uint64_int, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions targetID -> targetID in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: nil ) in
+      let constructor _extensions targetID = targetID in
+      let spec =
+        Runtime'.Deserialize.C.(basic (1, uint64_int, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and MoveLeaderResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.MoveLeaderResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AlarmRequest : sig
     module rec AlarmAction : sig
-      type t = GET | ACTIVATE | DEACTIVATE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = GET | ACTIVATE | DEACTIVATE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { action: AlarmRequest.AlarmAction.t; memberID: int; alarm: AlarmType.t } [@@deriving show { with_path = false}]
-    val make : ?action:AlarmRequest.AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = {
+      action : AlarmRequest.AlarmAction.t;
+      memberID : int;
+      alarm : AlarmType.t;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?action:AlarmRequest.AlarmAction.t ->
+      ?memberID:int ->
+      ?alarm:AlarmType.t ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec AlarmAction : sig
-      type t = GET | ACTIVATE | DEACTIVATE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = GET | ACTIVATE | DEACTIVATE [@@deriving show { with_path = false}]
-      let to_int = function
-        | GET -> 0
-        | ACTIVATE -> 1
-        | DEACTIVATE -> 2
-      
+      type t = GET | ACTIVATE | DEACTIVATE
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = GET | ACTIVATE | DEACTIVATE
+      [@@deriving show { with_path = false }]
+
+      let to_int = function GET -> 0 | ACTIVATE -> 1 | DEACTIVATE -> 2
+
       let from_int = function
         | 0 -> Ok GET
         | 1 -> Ok ACTIVATE
         | 2 -> Ok DEACTIVATE
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "rpc.etcdserverpb.AlarmRequest"
-    type t = { action: AlarmRequest.AlarmAction.t; memberID: int; alarm: AlarmType.t }[@@deriving show { with_path = false}]
-    let make =
-      fun ?action ?memberID ?alarm () -> 
-      let action = match action with Some v -> v | None -> (AlarmRequest.AlarmAction.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
+
+    type t = {
+      action : AlarmRequest.AlarmAction.t;
+      memberID : int;
+      alarm : AlarmType.t;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?action ?memberID ?alarm () =
+      let action =
+        match action with
+        | Some v -> v
+        | None ->
+            AlarmRequest.AlarmAction.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
       let memberID = match memberID with Some v -> v | None -> 0 in
-      let alarm = match alarm with Some v -> v | None -> (AlarmType.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
+      let alarm =
+        match alarm with
+        | Some v -> v
+        | None ->
+            AlarmType.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error"
+      in
       { action; memberID; alarm }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { action; memberID; alarm } -> f' [] action memberID alarm in
-      let spec = Runtime'.Serialize.C.( basic (1, (enum AlarmRequest.AlarmAction.to_int), proto3) ^:: basic (2, uint64_int, proto3) ^:: basic (3, (enum AlarmType.to_int), proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { action; memberID; alarm } =
+        f' [] action memberID alarm
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, enum AlarmRequest.AlarmAction.to_int, proto3)
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, enum AlarmType.to_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions action memberID alarm -> { action; memberID; alarm } in
-      let spec = Runtime'.Deserialize.C.( basic (1, (enum AlarmRequest.AlarmAction.from_int), proto3) ^:: basic (2, uint64_int, proto3) ^:: basic (3, (enum AlarmType.from_int), proto3) ^:: nil ) in
+      let constructor _extensions action memberID alarm =
+        { action; memberID; alarm }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, enum AlarmRequest.AlarmAction.from_int, proto3)
+          ^:: basic (2, uint64_int, proto3)
+          ^:: basic (3, enum AlarmType.from_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AlarmMember : sig
-    val name': unit -> string
-    type t = { memberID: int; alarm: AlarmType.t } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { memberID : int; alarm : AlarmType.t }
+    [@@deriving show { with_path = false }]
+
     val make : ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AlarmMember"
-    type t = { memberID: int; alarm: AlarmType.t }[@@deriving show { with_path = false}]
-    let make =
-      fun ?memberID ?alarm () -> 
+
+    type t = { memberID : int; alarm : AlarmType.t }
+    [@@deriving show { with_path = false }]
+
+    let make ?memberID ?alarm () =
       let memberID = match memberID with Some v -> v | None -> 0 in
-      let alarm = match alarm with Some v -> v | None -> (AlarmType.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
+      let alarm =
+        match alarm with
+        | Some v -> v
+        | None ->
+            AlarmType.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error"
+      in
       { memberID; alarm }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { memberID; alarm } -> f' [] memberID alarm in
-      let spec = Runtime'.Serialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, (enum AlarmType.to_int), proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { memberID; alarm } = f' [] memberID alarm in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, enum AlarmType.to_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions memberID alarm -> { memberID; alarm } in
-      let spec = Runtime'.Deserialize.C.( basic (1, uint64_int, proto3) ^:: basic (2, (enum AlarmType.from_int), proto3) ^:: nil ) in
+      let constructor _extensions memberID alarm = { memberID; alarm } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, uint64_int, proto3)
+          ^:: basic (2, enum AlarmType.from_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AlarmResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; alarms: AlarmMember.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?alarms:AlarmMember.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; alarms : AlarmMember.t list }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t -> ?alarms:AlarmMember.t list -> unit -> t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AlarmResponse"
-    type t = { header: ResponseHeader.t option; alarms: AlarmMember.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?alarms () -> 
+
+    type t = { header : ResponseHeader.t option; alarms : AlarmMember.t list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?alarms () =
       let alarms = match alarms with Some v -> v | None -> [] in
       { header; alarms }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; alarms } -> f' [] header alarms in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> AlarmMember.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; alarms } = f' [] header alarms in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, message (fun t -> AlarmMember.to_proto t), not_packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header alarms -> { header; alarms } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> AlarmMember.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header alarms = { header; alarms } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated
+                (2, message (fun t -> AlarmMember.from_proto t), not_packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DowngradeRequest : sig
     module rec DowngradeAction : sig
-      type t = VALIDATE | ENABLE | CANCEL [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = VALIDATE | ENABLE | CANCEL
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { action: DowngradeRequest.DowngradeAction.t; version: string } [@@deriving show { with_path = false}]
-    val make : ?action:DowngradeRequest.DowngradeAction.t -> ?version:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = { action : DowngradeRequest.DowngradeAction.t; version : string }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?action:DowngradeRequest.DowngradeAction.t -> ?version:string -> unit -> t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec DowngradeAction : sig
-      type t = VALIDATE | ENABLE | CANCEL [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = VALIDATE | ENABLE | CANCEL [@@deriving show { with_path = false}]
-      let to_int = function
-        | VALIDATE -> 0
-        | ENABLE -> 1
-        | CANCEL -> 2
-      
+      type t = VALIDATE | ENABLE | CANCEL
+      [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = VALIDATE | ENABLE | CANCEL
+      [@@deriving show { with_path = false }]
+
+      let to_int = function VALIDATE -> 0 | ENABLE -> 1 | CANCEL -> 2
+
       let from_int = function
         | 0 -> Ok VALIDATE
         | 1 -> Ok ENABLE
         | 2 -> Ok CANCEL
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "rpc.etcdserverpb.DowngradeRequest"
-    type t = { action: DowngradeRequest.DowngradeAction.t; version: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?action ?version () -> 
-      let action = match action with Some v -> v | None -> (DowngradeRequest.DowngradeAction.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
+
+    type t = { action : DowngradeRequest.DowngradeAction.t; version : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?action ?version () =
+      let action =
+        match action with
+        | Some v -> v
+        | None ->
+            DowngradeRequest.DowngradeAction.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
       let version = match version with Some v -> v | None -> {||} in
       { action; version }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { action; version } -> f' [] action version in
-      let spec = Runtime'.Serialize.C.( basic (1, (enum DowngradeRequest.DowngradeAction.to_int), proto3) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { action; version } = f' [] action version in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, enum DowngradeRequest.DowngradeAction.to_int, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions action version -> { action; version } in
-      let spec = Runtime'.Deserialize.C.( basic (1, (enum DowngradeRequest.DowngradeAction.from_int), proto3) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions action version = { action; version } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, enum DowngradeRequest.DowngradeAction.from_int, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and DowngradeResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; version: string } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; version : string }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?version:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.DowngradeResponse"
-    type t = { header: ResponseHeader.t option; version: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?version () -> 
+
+    type t = { header : ResponseHeader.t option; version : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?version () =
       let version = match version with Some v -> v | None -> {||} in
       { header; version }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; version } -> f' [] header version in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; version } = f' [] header version in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header version -> { header; version } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions header version = { header; version } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and StatusRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.StatusRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and StatusResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; version: string; dbSize: int; leader: int; raftIndex: int; raftTerm: int; raftAppliedIndex: int; errors: string list; dbSizeInUse: int; isLearner: bool } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      version : string;
+      dbSize : int;
+      leader : int;
+      raftIndex : int;
+      raftTerm : int;
+      raftAppliedIndex : int;
+      errors : string list;
+      dbSizeInUse : int;
+      isLearner : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?version:string ->
+      ?dbSize:int ->
+      ?leader:int ->
+      ?raftIndex:int ->
+      ?raftTerm:int ->
+      ?raftAppliedIndex:int ->
+      ?errors:string list ->
+      ?dbSizeInUse:int ->
+      ?isLearner:bool ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.StatusResponse"
-    type t = { header: ResponseHeader.t option; version: string; dbSize: int; leader: int; raftIndex: int; raftTerm: int; raftAppliedIndex: int; errors: string list; dbSizeInUse: int; isLearner: bool }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?version ?dbSize ?leader ?raftIndex ?raftTerm ?raftAppliedIndex ?errors ?dbSizeInUse ?isLearner () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      version : string;
+      dbSize : int;
+      leader : int;
+      raftIndex : int;
+      raftTerm : int;
+      raftAppliedIndex : int;
+      errors : string list;
+      dbSizeInUse : int;
+      isLearner : bool;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?version ?dbSize ?leader ?raftIndex ?raftTerm
+        ?raftAppliedIndex ?errors ?dbSizeInUse ?isLearner () =
       let version = match version with Some v -> v | None -> {||} in
       let dbSize = match dbSize with Some v -> v | None -> 0 in
       let leader = match leader with Some v -> v | None -> 0 in
       let raftIndex = match raftIndex with Some v -> v | None -> 0 in
       let raftTerm = match raftTerm with Some v -> v | None -> 0 in
-      let raftAppliedIndex = match raftAppliedIndex with Some v -> v | None -> 0 in
+      let raftAppliedIndex =
+        match raftAppliedIndex with Some v -> v | None -> 0
+      in
       let errors = match errors with Some v -> v | None -> [] in
       let dbSizeInUse = match dbSizeInUse with Some v -> v | None -> 0 in
       let isLearner = match isLearner with Some v -> v | None -> false in
-      { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner }
-    
+      {
+        header;
+        version;
+        dbSize;
+        leader;
+        raftIndex;
+        raftTerm;
+        raftAppliedIndex;
+        errors;
+        dbSizeInUse;
+        isLearner;
+      }
+
     let to_proto =
-      let apply = fun ~f:f' { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner } -> f' [] header version dbSize leader raftIndex raftTerm raftAppliedIndex errors dbSizeInUse isLearner in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, string, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, uint64_int, proto3) ^:: basic (5, uint64_int, proto3) ^:: basic (6, uint64_int, proto3) ^:: basic (7, uint64_int, proto3) ^:: repeated (8, string, packed) ^:: basic (9, int64_int, proto3) ^:: basic (10, bool, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f'
+          {
+            header;
+            version;
+            dbSize;
+            leader;
+            raftIndex;
+            raftTerm;
+            raftAppliedIndex;
+            errors;
+            dbSizeInUse;
+            isLearner;
+          } =
+        f' [] header version dbSize leader raftIndex raftTerm raftAppliedIndex
+          errors dbSizeInUse isLearner
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, uint64_int, proto3)
+          ^:: basic (5, uint64_int, proto3)
+          ^:: basic (6, uint64_int, proto3)
+          ^:: basic (7, uint64_int, proto3)
+          ^:: repeated (8, string, packed)
+          ^:: basic (9, int64_int, proto3)
+          ^:: basic (10, bool, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header version dbSize leader raftIndex raftTerm raftAppliedIndex errors dbSizeInUse isLearner -> { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, string, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, uint64_int, proto3) ^:: basic (5, uint64_int, proto3) ^:: basic (6, uint64_int, proto3) ^:: basic (7, uint64_int, proto3) ^:: repeated (8, string, packed) ^:: basic (9, int64_int, proto3) ^:: basic (10, bool, proto3) ^:: nil ) in
+      let constructor _extensions header version dbSize leader raftIndex
+          raftTerm raftAppliedIndex errors dbSizeInUse isLearner =
+        {
+          header;
+          version;
+          dbSize;
+          leader;
+          raftIndex;
+          raftTerm;
+          raftAppliedIndex;
+          errors;
+          dbSizeInUse;
+          isLearner;
+        }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, uint64_int, proto3)
+          ^:: basic (5, uint64_int, proto3)
+          ^:: basic (6, uint64_int, proto3)
+          ^:: basic (7, uint64_int, proto3)
+          ^:: repeated (8, string, packed)
+          ^:: basic (9, int64_int, proto3)
+          ^:: basic (10, bool, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthEnableRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthEnableRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthDisableRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthDisableRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthStatusRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthStatusRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthenticateRequest : sig
-    val name': unit -> string
-    type t = { name: string; password: string } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { name : string; password : string }
+    [@@deriving show { with_path = false }]
+
     val make : ?name:string -> ?password:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthenticateRequest"
-    type t = { name: string; password: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?name ?password () -> 
+
+    type t = { name : string; password : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?name ?password () =
       let name = match name with Some v -> v | None -> {||} in
       let password = match password with Some v -> v | None -> {||} in
       { name; password }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { name; password } -> f' [] name password in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { name; password } = f' [] name password in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name password -> { name; password } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions name password = { name; password } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserAddRequest : sig
-    val name': unit -> string
-    type t = { name: string; password: string; options: Imported'modules.Auth.Authpb.UserAddOptions.t option; hashedPassword: string } [@@deriving show { with_path = false}]
-    val make : ?name:string -> ?password:string -> ?options:Imported'modules.Auth.Authpb.UserAddOptions.t -> ?hashedPassword:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      name : string;
+      password : string;
+      options : Imported'modules.Auth.Authpb.UserAddOptions.t option;
+      hashedPassword : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?name:string ->
+      ?password:string ->
+      ?options:Imported'modules.Auth.Authpb.UserAddOptions.t ->
+      ?hashedPassword:string ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserAddRequest"
-    type t = { name: string; password: string; options: Imported'modules.Auth.Authpb.UserAddOptions.t option; hashedPassword: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?name ?password ?options ?hashedPassword () -> 
+
+    type t = {
+      name : string;
+      password : string;
+      options : Imported'modules.Auth.Authpb.UserAddOptions.t option;
+      hashedPassword : string;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?name ?password ?options ?hashedPassword () =
       let name = match name with Some v -> v | None -> {||} in
       let password = match password with Some v -> v | None -> {||} in
-      let hashedPassword = match hashedPassword with Some v -> v | None -> {||} in
+      let hashedPassword =
+        match hashedPassword with Some v -> v | None -> {||}
+      in
       { name; password; options; hashedPassword }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { name; password; options; hashedPassword } -> f' [] name password options hashedPassword in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: basic_opt (3, (message (fun t -> Imported'modules.Auth.Authpb.UserAddOptions.to_proto t))) ^:: basic (4, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { name; password; options; hashedPassword } =
+        f' [] name password options hashedPassword
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: basic_opt
+                ( 3,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.UserAddOptions.to_proto t) )
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name password options hashedPassword -> { name; password; options; hashedPassword } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: basic_opt (3, (message (fun t -> Imported'modules.Auth.Authpb.UserAddOptions.from_proto t))) ^:: basic (4, string, proto3) ^:: nil ) in
+      let constructor _extensions name password options hashedPassword =
+        { name; password; options; hashedPassword }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: basic_opt
+                ( 3,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.UserAddOptions.from_proto t)
+                )
+          ^:: basic (4, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserGetRequest : sig
-    val name': unit -> string
-    type t = string [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = string [@@deriving show { with_path = false }]
+
     val make : ?name:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserGetRequest"
-    type t = string[@@deriving show { with_path = false}]
-    let make =
-      fun ?name () -> 
+
+    type t = string [@@deriving show { with_path = false }]
+
+    let make ?name () =
       let name = match name with Some v -> v | None -> {||} in
       name
-    
+
     let to_proto =
-      let apply = fun ~f:f' name -> f' [] name in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' name = f' [] name in
+      let spec = Runtime'.Serialize.C.(basic (1, string, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name -> name in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: nil ) in
+      let constructor _extensions name = name in
+      let spec = Runtime'.Deserialize.C.(basic (1, string, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserDeleteRequest : sig
-    val name': unit -> string
-    type t = string [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = string [@@deriving show { with_path = false }]
+
     val make : ?name:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserDeleteRequest"
-    type t = string[@@deriving show { with_path = false}]
-    let make =
-      fun ?name () -> 
+
+    type t = string [@@deriving show { with_path = false }]
+
+    let make ?name () =
       let name = match name with Some v -> v | None -> {||} in
       name
-    
+
     let to_proto =
-      let apply = fun ~f:f' name -> f' [] name in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' name = f' [] name in
+      let spec = Runtime'.Serialize.C.(basic (1, string, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name -> name in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: nil ) in
+      let constructor _extensions name = name in
+      let spec = Runtime'.Deserialize.C.(basic (1, string, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserChangePasswordRequest : sig
-    val name': unit -> string
-    type t = { name: string; password: string; hashedPassword: string } [@@deriving show { with_path = false}]
-    val make : ?name:string -> ?password:string -> ?hashedPassword:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = { name : string; password : string; hashedPassword : string }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?name:string -> ?password:string -> ?hashedPassword:string -> unit -> t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserChangePasswordRequest"
-    type t = { name: string; password: string; hashedPassword: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?name ?password ?hashedPassword () -> 
+
+    type t = { name : string; password : string; hashedPassword : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?name ?password ?hashedPassword () =
       let name = match name with Some v -> v | None -> {||} in
       let password = match password with Some v -> v | None -> {||} in
-      let hashedPassword = match hashedPassword with Some v -> v | None -> {||} in
+      let hashedPassword =
+        match hashedPassword with Some v -> v | None -> {||}
+      in
       { name; password; hashedPassword }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { name; password; hashedPassword } -> f' [] name password hashedPassword in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: basic (3, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { name; password; hashedPassword } =
+        f' [] name password hashedPassword
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: basic (3, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name password hashedPassword -> { name; password; hashedPassword } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: basic (3, string, proto3) ^:: nil ) in
+      let constructor _extensions name password hashedPassword =
+        { name; password; hashedPassword }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, string, proto3)
+          ^:: basic (3, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserGrantRoleRequest : sig
-    val name': unit -> string
-    type t = { user: string; role: string } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { user : string; role : string }
+    [@@deriving show { with_path = false }]
+
     val make : ?user:string -> ?role:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserGrantRoleRequest"
-    type t = { user: string; role: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?user ?role () -> 
+
+    type t = { user : string; role : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?user ?role () =
       let user = match user with Some v -> v | None -> {||} in
       let role = match role with Some v -> v | None -> {||} in
       { user; role }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { user; role } -> f' [] user role in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { user; role } = f' [] user role in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions user role -> { user; role } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions user role = { user; role } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserRevokeRoleRequest : sig
-    val name': unit -> string
-    type t = { name: string; role: string } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { name : string; role : string }
+    [@@deriving show { with_path = false }]
+
     val make : ?name:string -> ?role:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserRevokeRoleRequest"
-    type t = { name: string; role: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?name ?role () -> 
+
+    type t = { name : string; role : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?name ?role () =
       let name = match name with Some v -> v | None -> {||} in
       let role = match role with Some v -> v | None -> {||} in
       { name; role }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { name; role } -> f' [] name role in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { name; role } = f' [] name role in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name role -> { name; role } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions name role = { name; role } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3) ^:: basic (2, string, proto3) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleAddRequest : sig
-    val name': unit -> string
-    type t = string [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = string [@@deriving show { with_path = false }]
+
     val make : ?name:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleAddRequest"
-    type t = string[@@deriving show { with_path = false}]
-    let make =
-      fun ?name () -> 
+
+    type t = string [@@deriving show { with_path = false }]
+
+    let make ?name () =
       let name = match name with Some v -> v | None -> {||} in
       name
-    
+
     let to_proto =
-      let apply = fun ~f:f' name -> f' [] name in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' name = f' [] name in
+      let spec = Runtime'.Serialize.C.(basic (1, string, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name -> name in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: nil ) in
+      let constructor _extensions name = name in
+      let spec = Runtime'.Deserialize.C.(basic (1, string, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleGetRequest : sig
-    val name': unit -> string
-    type t = string [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = string [@@deriving show { with_path = false }]
+
     val make : ?role:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleGetRequest"
-    type t = string[@@deriving show { with_path = false}]
-    let make =
-      fun ?role () -> 
+
+    type t = string [@@deriving show { with_path = false }]
+
+    let make ?role () =
       let role = match role with Some v -> v | None -> {||} in
       role
-    
+
     let to_proto =
-      let apply = fun ~f:f' role -> f' [] role in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' role = f' [] role in
+      let spec = Runtime'.Serialize.C.(basic (1, string, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions role -> role in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: nil ) in
+      let constructor _extensions role = role in
+      let spec = Runtime'.Deserialize.C.(basic (1, string, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserListRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserListRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleListRequest : sig
-    val name': unit -> string
-    type t = unit [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = unit [@@deriving show { with_path = false }]
+
     val make : unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleListRequest"
-    type t = unit[@@deriving show { with_path = false}]
-    let make =
-      fun  () -> 
-      
-      ()
-    
+
+    type t = unit [@@deriving show { with_path = false }]
+
+    let make () = ()
+
     let to_proto =
-      let apply = fun ~f:f' () -> f' []  in
-      let spec = Runtime'.Serialize.C.( nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' () = f' [] in
+      let spec = Runtime'.Serialize.C.(nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions  -> () in
-      let spec = Runtime'.Deserialize.C.( nil ) in
+      let constructor _extensions = () in
+      let spec = Runtime'.Deserialize.C.(nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleDeleteRequest : sig
-    val name': unit -> string
-    type t = string [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = string [@@deriving show { with_path = false }]
+
     val make : ?role:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleDeleteRequest"
-    type t = string[@@deriving show { with_path = false}]
-    let make =
-      fun ?role () -> 
+
+    type t = string [@@deriving show { with_path = false }]
+
+    let make ?role () =
       let role = match role with Some v -> v | None -> {||} in
       role
-    
+
     let to_proto =
-      let apply = fun ~f:f' role -> f' [] role in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' role = f' [] role in
+      let spec = Runtime'.Serialize.C.(basic (1, string, proto3) ^:: nil) in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions role -> role in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: nil ) in
+      let constructor _extensions role = role in
+      let spec = Runtime'.Deserialize.C.(basic (1, string, proto3) ^:: nil) in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleGrantPermissionRequest : sig
-    val name': unit -> string
-    type t = { name: string; perm: Imported'modules.Auth.Authpb.Permission.t option } [@@deriving show { with_path = false}]
-    val make : ?name:string -> ?perm:Imported'modules.Auth.Authpb.Permission.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      name : string;
+      perm : Imported'modules.Auth.Authpb.Permission.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?name:string ->
+      ?perm:Imported'modules.Auth.Authpb.Permission.t ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleGrantPermissionRequest"
-    type t = { name: string; perm: Imported'modules.Auth.Authpb.Permission.t option }[@@deriving show { with_path = false}]
-    let make =
-      fun ?name ?perm () -> 
+
+    type t = {
+      name : string;
+      perm : Imported'modules.Auth.Authpb.Permission.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?name ?perm () =
       let name = match name with Some v -> v | None -> {||} in
       { name; perm }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { name; perm } -> f' [] name perm in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic_opt (2, (message (fun t -> Imported'modules.Auth.Authpb.Permission.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { name; perm } = f' [] name perm in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3)
+          ^:: basic_opt
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.Permission.to_proto t) )
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions name perm -> { name; perm } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic_opt (2, (message (fun t -> Imported'modules.Auth.Authpb.Permission.from_proto t))) ^:: nil ) in
+      let constructor _extensions name perm = { name; perm } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3)
+          ^:: basic_opt
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.Permission.from_proto t) )
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleRevokePermissionRequest : sig
-    val name': unit -> string
-    type t = { role: string; key: bytes; range_end: bytes } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { role : string; key : bytes; range_end : bytes }
+    [@@deriving show { with_path = false }]
+
     val make : ?role:string -> ?key:bytes -> ?range_end:bytes -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleRevokePermissionRequest"
-    type t = { role: string; key: bytes; range_end: bytes }[@@deriving show { with_path = false}]
-    let make =
-      fun ?role ?key ?range_end () -> 
+
+    type t = { role : string; key : bytes; range_end : bytes }
+    [@@deriving show { with_path = false }]
+
+    let make ?role ?key ?range_end () =
       let role = match role with Some v -> v | None -> {||} in
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let range_end = match range_end with Some v -> v | None -> (Bytes.of_string {||}) in
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let range_end =
+        match range_end with Some v -> v | None -> Bytes.of_string {||}
+      in
       { role; key; range_end }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { role; key; range_end } -> f' [] role key range_end in
-      let spec = Runtime'.Serialize.C.( basic (1, string, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, bytes, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { role; key; range_end } = f' [] role key range_end in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions role key range_end -> { role; key; range_end } in
-      let spec = Runtime'.Deserialize.C.( basic (1, string, proto3) ^:: basic (2, bytes, proto3) ^:: basic (3, bytes, proto3) ^:: nil ) in
+      let constructor _extensions role key range_end =
+        { role; key; range_end }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, string, proto3)
+          ^:: basic (2, bytes, proto3)
+          ^:: basic (3, bytes, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthEnableResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthEnableResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthDisableResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthDisableResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthStatusResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; enabled: bool; authRevision: int } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      enabled : bool;
+      authRevision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?enabled:bool ->
+      ?authRevision:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthStatusResponse"
-    type t = { header: ResponseHeader.t option; enabled: bool; authRevision: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?enabled ?authRevision () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      enabled : bool;
+      authRevision : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?enabled ?authRevision () =
       let enabled = match enabled with Some v -> v | None -> false in
       let authRevision = match authRevision with Some v -> v | None -> 0 in
       { header; enabled; authRevision }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; enabled; authRevision } -> f' [] header enabled authRevision in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, bool, proto3) ^:: basic (3, uint64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; enabled; authRevision } =
+        f' [] header enabled authRevision
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, bool, proto3)
+          ^:: basic (3, uint64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header enabled authRevision -> { header; enabled; authRevision } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, bool, proto3) ^:: basic (3, uint64_int, proto3) ^:: nil ) in
+      let constructor _extensions header enabled authRevision =
+        { header; enabled; authRevision }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, bool, proto3)
+          ^:: basic (3, uint64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthenticateResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; token: string } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; token : string }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?token:string -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthenticateResponse"
-    type t = { header: ResponseHeader.t option; token: string }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?token () -> 
+
+    type t = { header : ResponseHeader.t option; token : string }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?token () =
       let token = match token with Some v -> v | None -> {||} in
       { header; token }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; token } -> f' [] header token in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: basic (2, string, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; token } = f' [] header token in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header token -> { header; token } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: basic (2, string, proto3) ^:: nil ) in
+      let constructor _extensions header token = { header; token } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: basic (2, string, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserAddResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserAddResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserGetResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; roles: string list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; roles : string list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?roles:string list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserGetResponse"
-    type t = { header: ResponseHeader.t option; roles: string list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?roles () -> 
+
+    type t = { header : ResponseHeader.t option; roles : string list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?roles () =
       let roles = match roles with Some v -> v | None -> [] in
       { header; roles }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; roles } -> f' [] header roles in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; roles } = f' [] header roles in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header roles -> { header; roles } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
+      let constructor _extensions header roles = { header; roles } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserDeleteResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserDeleteResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserChangePasswordResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserChangePasswordResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserGrantRoleResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserGrantRoleResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserRevokeRoleResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserRevokeRoleResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleAddResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleAddResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleGetResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; perm: Imported'modules.Auth.Authpb.Permission.t list } [@@deriving show { with_path = false}]
-    val make : ?header:ResponseHeader.t -> ?perm:Imported'modules.Auth.Authpb.Permission.t list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      header : ResponseHeader.t option;
+      perm : Imported'modules.Auth.Authpb.Permission.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?header:ResponseHeader.t ->
+      ?perm:Imported'modules.Auth.Authpb.Permission.t list ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleGetResponse"
-    type t = { header: ResponseHeader.t option; perm: Imported'modules.Auth.Authpb.Permission.t list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?perm () -> 
+
+    type t = {
+      header : ResponseHeader.t option;
+      perm : Imported'modules.Auth.Authpb.Permission.t list;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?perm () =
       let perm = match perm with Some v -> v | None -> [] in
       { header; perm }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; perm } -> f' [] header perm in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, (message (fun t -> Imported'modules.Auth.Authpb.Permission.to_proto t)), not_packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; perm } = f' [] header perm in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.Permission.to_proto t),
+                  not_packed )
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header perm -> { header; perm } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, (message (fun t -> Imported'modules.Auth.Authpb.Permission.from_proto t)), not_packed) ^:: nil ) in
+      let constructor _extensions header perm = { header; perm } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated
+                ( 2,
+                  message (fun t ->
+                      Imported'modules.Auth.Authpb.Permission.from_proto t),
+                  not_packed )
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleListResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; roles: string list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; roles : string list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?roles:string list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleListResponse"
-    type t = { header: ResponseHeader.t option; roles: string list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?roles () -> 
+
+    type t = { header : ResponseHeader.t option; roles : string list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?roles () =
       let roles = match roles with Some v -> v | None -> [] in
       { header; roles }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; roles } -> f' [] header roles in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; roles } = f' [] header roles in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header roles -> { header; roles } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
+      let constructor _extensions header roles = { header; roles } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthUserListResponse : sig
-    val name': unit -> string
-    type t = { header: ResponseHeader.t option; users: string list } [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = { header : ResponseHeader.t option; users : string list }
+    [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> ?users:string list -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthUserListResponse"
-    type t = { header: ResponseHeader.t option; users: string list }[@@deriving show { with_path = false}]
-    let make =
-      fun ?header ?users () -> 
+
+    type t = { header : ResponseHeader.t option; users : string list }
+    [@@deriving show { with_path = false }]
+
+    let make ?header ?users () =
       let users = match users with Some v -> v | None -> [] in
       { header; users }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { header; users } -> f' [] header users in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { header; users } = f' [] header users in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header users -> { header; users } in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: repeated (2, string, packed) ^:: nil ) in
+      let constructor _extensions header users = { header; users } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t))
+          ^:: repeated (2, string, packed)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleDeleteResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleDeleteResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleGrantPermissionResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleGrantPermissionResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and AuthRoleRevokePermissionResponse : sig
-    val name': unit -> string
-    type t = ResponseHeader.t option [@@deriving show { with_path = false}]
+    val name' : unit -> string
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
     val make : ?header:ResponseHeader.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "rpc.etcdserverpb.AuthRoleRevokePermissionResponse"
-    type t = ResponseHeader.t option[@@deriving show { with_path = false}]
-    let make =
-      fun ?header () -> 
-      
-      header
-    
+
+    type t = ResponseHeader.t option [@@deriving show { with_path = false }]
+
+    let make ?header () = header
+
     let to_proto =
-      let apply = fun ~f:f' header -> f' [] header in
-      let spec = Runtime'.Serialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' header = f' [] header in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.to_proto t)) ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions header -> header in
-      let spec = Runtime'.Deserialize.C.( basic_opt (1, (message (fun t -> ResponseHeader.from_proto t))) ^:: nil ) in
+      let constructor _extensions header = header in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic_opt (1, message (fun t -> ResponseHeader.from_proto t)) ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   module KV = struct
-    let range = 
-      ( (module RangeRequest : Runtime'.Service.Message with type t = RangeRequest.t ), 
-      (module RangeResponse : Runtime'.Service.Message with type t = RangeResponse.t ) ) 
-    let put = 
-      ( (module PutRequest : Runtime'.Service.Message with type t = PutRequest.t ), 
-      (module PutResponse : Runtime'.Service.Message with type t = PutResponse.t ) ) 
-    let deleteRange = 
-      ( (module DeleteRangeRequest : Runtime'.Service.Message with type t = DeleteRangeRequest.t ), 
-      (module DeleteRangeResponse : Runtime'.Service.Message with type t = DeleteRangeResponse.t ) ) 
-    let txn = 
-      ( (module TxnRequest : Runtime'.Service.Message with type t = TxnRequest.t ), 
-      (module TxnResponse : Runtime'.Service.Message with type t = TxnResponse.t ) ) 
-    let compact = 
-      ( (module CompactionRequest : Runtime'.Service.Message with type t = CompactionRequest.t ), 
-      (module CompactionResponse : Runtime'.Service.Message with type t = CompactionResponse.t ) ) 
+    let range =
+      ( (module RangeRequest : Runtime'.Service.Message
+          with type t = RangeRequest.t),
+        (module RangeResponse : Runtime'.Service.Message
+          with type t = RangeResponse.t) )
+
+    let put =
+      ( (module PutRequest : Runtime'.Service.Message with type t = PutRequest.t),
+        (module PutResponse : Runtime'.Service.Message
+          with type t = PutResponse.t) )
+
+    let deleteRange =
+      ( (module DeleteRangeRequest : Runtime'.Service.Message
+          with type t = DeleteRangeRequest.t),
+        (module DeleteRangeResponse : Runtime'.Service.Message
+          with type t = DeleteRangeResponse.t) )
+
+    let txn =
+      ( (module TxnRequest : Runtime'.Service.Message with type t = TxnRequest.t),
+        (module TxnResponse : Runtime'.Service.Message
+          with type t = TxnResponse.t) )
+
+    let compact =
+      ( (module CompactionRequest : Runtime'.Service.Message
+          with type t = CompactionRequest.t),
+        (module CompactionResponse : Runtime'.Service.Message
+          with type t = CompactionResponse.t) )
   end
+
   module Watch = struct
-    let watch = 
-      ( (module WatchRequest : Runtime'.Service.Message with type t = WatchRequest.t ), 
-      (module WatchResponse : Runtime'.Service.Message with type t = WatchResponse.t ) ) 
+    let watch =
+      ( (module WatchRequest : Runtime'.Service.Message
+          with type t = WatchRequest.t),
+        (module WatchResponse : Runtime'.Service.Message
+          with type t = WatchResponse.t) )
   end
+
   module Lease = struct
-    let leaseGrant = 
-      ( (module LeaseGrantRequest : Runtime'.Service.Message with type t = LeaseGrantRequest.t ), 
-      (module LeaseGrantResponse : Runtime'.Service.Message with type t = LeaseGrantResponse.t ) ) 
-    let leaseRevoke = 
-      ( (module LeaseRevokeRequest : Runtime'.Service.Message with type t = LeaseRevokeRequest.t ), 
-      (module LeaseRevokeResponse : Runtime'.Service.Message with type t = LeaseRevokeResponse.t ) ) 
-    let leaseKeepAlive = 
-      ( (module LeaseKeepAliveRequest : Runtime'.Service.Message with type t = LeaseKeepAliveRequest.t ), 
-      (module LeaseKeepAliveResponse : Runtime'.Service.Message with type t = LeaseKeepAliveResponse.t ) ) 
-    let leaseTimeToLive = 
-      ( (module LeaseTimeToLiveRequest : Runtime'.Service.Message with type t = LeaseTimeToLiveRequest.t ), 
-      (module LeaseTimeToLiveResponse : Runtime'.Service.Message with type t = LeaseTimeToLiveResponse.t ) ) 
-    let leaseLeases = 
-      ( (module LeaseLeasesRequest : Runtime'.Service.Message with type t = LeaseLeasesRequest.t ), 
-      (module LeaseLeasesResponse : Runtime'.Service.Message with type t = LeaseLeasesResponse.t ) ) 
+    let leaseGrant =
+      ( (module LeaseGrantRequest : Runtime'.Service.Message
+          with type t = LeaseGrantRequest.t),
+        (module LeaseGrantResponse : Runtime'.Service.Message
+          with type t = LeaseGrantResponse.t) )
+
+    let leaseRevoke =
+      ( (module LeaseRevokeRequest : Runtime'.Service.Message
+          with type t = LeaseRevokeRequest.t),
+        (module LeaseRevokeResponse : Runtime'.Service.Message
+          with type t = LeaseRevokeResponse.t) )
+
+    let leaseKeepAlive =
+      ( (module LeaseKeepAliveRequest : Runtime'.Service.Message
+          with type t = LeaseKeepAliveRequest.t),
+        (module LeaseKeepAliveResponse : Runtime'.Service.Message
+          with type t = LeaseKeepAliveResponse.t) )
+
+    let leaseTimeToLive =
+      ( (module LeaseTimeToLiveRequest : Runtime'.Service.Message
+          with type t = LeaseTimeToLiveRequest.t),
+        (module LeaseTimeToLiveResponse : Runtime'.Service.Message
+          with type t = LeaseTimeToLiveResponse.t) )
+
+    let leaseLeases =
+      ( (module LeaseLeasesRequest : Runtime'.Service.Message
+          with type t = LeaseLeasesRequest.t),
+        (module LeaseLeasesResponse : Runtime'.Service.Message
+          with type t = LeaseLeasesResponse.t) )
   end
+
   module Cluster = struct
-    let memberAdd = 
-      ( (module MemberAddRequest : Runtime'.Service.Message with type t = MemberAddRequest.t ), 
-      (module MemberAddResponse : Runtime'.Service.Message with type t = MemberAddResponse.t ) ) 
-    let memberRemove = 
-      ( (module MemberRemoveRequest : Runtime'.Service.Message with type t = MemberRemoveRequest.t ), 
-      (module MemberRemoveResponse : Runtime'.Service.Message with type t = MemberRemoveResponse.t ) ) 
-    let memberUpdate = 
-      ( (module MemberUpdateRequest : Runtime'.Service.Message with type t = MemberUpdateRequest.t ), 
-      (module MemberUpdateResponse : Runtime'.Service.Message with type t = MemberUpdateResponse.t ) ) 
-    let memberList = 
-      ( (module MemberListRequest : Runtime'.Service.Message with type t = MemberListRequest.t ), 
-      (module MemberListResponse : Runtime'.Service.Message with type t = MemberListResponse.t ) ) 
-    let memberPromote = 
-      ( (module MemberPromoteRequest : Runtime'.Service.Message with type t = MemberPromoteRequest.t ), 
-      (module MemberPromoteResponse : Runtime'.Service.Message with type t = MemberPromoteResponse.t ) ) 
+    let memberAdd =
+      ( (module MemberAddRequest : Runtime'.Service.Message
+          with type t = MemberAddRequest.t),
+        (module MemberAddResponse : Runtime'.Service.Message
+          with type t = MemberAddResponse.t) )
+
+    let memberRemove =
+      ( (module MemberRemoveRequest : Runtime'.Service.Message
+          with type t = MemberRemoveRequest.t),
+        (module MemberRemoveResponse : Runtime'.Service.Message
+          with type t = MemberRemoveResponse.t) )
+
+    let memberUpdate =
+      ( (module MemberUpdateRequest : Runtime'.Service.Message
+          with type t = MemberUpdateRequest.t),
+        (module MemberUpdateResponse : Runtime'.Service.Message
+          with type t = MemberUpdateResponse.t) )
+
+    let memberList =
+      ( (module MemberListRequest : Runtime'.Service.Message
+          with type t = MemberListRequest.t),
+        (module MemberListResponse : Runtime'.Service.Message
+          with type t = MemberListResponse.t) )
+
+    let memberPromote =
+      ( (module MemberPromoteRequest : Runtime'.Service.Message
+          with type t = MemberPromoteRequest.t),
+        (module MemberPromoteResponse : Runtime'.Service.Message
+          with type t = MemberPromoteResponse.t) )
   end
+
   module Maintenance = struct
-    let alarm = 
-      ( (module AlarmRequest : Runtime'.Service.Message with type t = AlarmRequest.t ), 
-      (module AlarmResponse : Runtime'.Service.Message with type t = AlarmResponse.t ) ) 
-    let status = 
-      ( (module StatusRequest : Runtime'.Service.Message with type t = StatusRequest.t ), 
-      (module StatusResponse : Runtime'.Service.Message with type t = StatusResponse.t ) ) 
-    let defragment = 
-      ( (module DefragmentRequest : Runtime'.Service.Message with type t = DefragmentRequest.t ), 
-      (module DefragmentResponse : Runtime'.Service.Message with type t = DefragmentResponse.t ) ) 
-    let hash = 
-      ( (module HashRequest : Runtime'.Service.Message with type t = HashRequest.t ), 
-      (module HashResponse : Runtime'.Service.Message with type t = HashResponse.t ) ) 
-    let hashKV = 
-      ( (module HashKVRequest : Runtime'.Service.Message with type t = HashKVRequest.t ), 
-      (module HashKVResponse : Runtime'.Service.Message with type t = HashKVResponse.t ) ) 
-    let snapshot = 
-      ( (module SnapshotRequest : Runtime'.Service.Message with type t = SnapshotRequest.t ), 
-      (module SnapshotResponse : Runtime'.Service.Message with type t = SnapshotResponse.t ) ) 
-    let moveLeader = 
-      ( (module MoveLeaderRequest : Runtime'.Service.Message with type t = MoveLeaderRequest.t ), 
-      (module MoveLeaderResponse : Runtime'.Service.Message with type t = MoveLeaderResponse.t ) ) 
-    let downgrade = 
-      ( (module DowngradeRequest : Runtime'.Service.Message with type t = DowngradeRequest.t ), 
-      (module DowngradeResponse : Runtime'.Service.Message with type t = DowngradeResponse.t ) ) 
+    let alarm =
+      ( (module AlarmRequest : Runtime'.Service.Message
+          with type t = AlarmRequest.t),
+        (module AlarmResponse : Runtime'.Service.Message
+          with type t = AlarmResponse.t) )
+
+    let status =
+      ( (module StatusRequest : Runtime'.Service.Message
+          with type t = StatusRequest.t),
+        (module StatusResponse : Runtime'.Service.Message
+          with type t = StatusResponse.t) )
+
+    let defragment =
+      ( (module DefragmentRequest : Runtime'.Service.Message
+          with type t = DefragmentRequest.t),
+        (module DefragmentResponse : Runtime'.Service.Message
+          with type t = DefragmentResponse.t) )
+
+    let hash =
+      ( (module HashRequest : Runtime'.Service.Message
+          with type t = HashRequest.t),
+        (module HashResponse : Runtime'.Service.Message
+          with type t = HashResponse.t) )
+
+    let hashKV =
+      ( (module HashKVRequest : Runtime'.Service.Message
+          with type t = HashKVRequest.t),
+        (module HashKVResponse : Runtime'.Service.Message
+          with type t = HashKVResponse.t) )
+
+    let snapshot =
+      ( (module SnapshotRequest : Runtime'.Service.Message
+          with type t = SnapshotRequest.t),
+        (module SnapshotResponse : Runtime'.Service.Message
+          with type t = SnapshotResponse.t) )
+
+    let moveLeader =
+      ( (module MoveLeaderRequest : Runtime'.Service.Message
+          with type t = MoveLeaderRequest.t),
+        (module MoveLeaderResponse : Runtime'.Service.Message
+          with type t = MoveLeaderResponse.t) )
+
+    let downgrade =
+      ( (module DowngradeRequest : Runtime'.Service.Message
+          with type t = DowngradeRequest.t),
+        (module DowngradeResponse : Runtime'.Service.Message
+          with type t = DowngradeResponse.t) )
   end
+
   module Auth = struct
-    let authEnable = 
-      ( (module AuthEnableRequest : Runtime'.Service.Message with type t = AuthEnableRequest.t ), 
-      (module AuthEnableResponse : Runtime'.Service.Message with type t = AuthEnableResponse.t ) ) 
-    let authDisable = 
-      ( (module AuthDisableRequest : Runtime'.Service.Message with type t = AuthDisableRequest.t ), 
-      (module AuthDisableResponse : Runtime'.Service.Message with type t = AuthDisableResponse.t ) ) 
-    let authStatus = 
-      ( (module AuthStatusRequest : Runtime'.Service.Message with type t = AuthStatusRequest.t ), 
-      (module AuthStatusResponse : Runtime'.Service.Message with type t = AuthStatusResponse.t ) ) 
-    let authenticate = 
-      ( (module AuthenticateRequest : Runtime'.Service.Message with type t = AuthenticateRequest.t ), 
-      (module AuthenticateResponse : Runtime'.Service.Message with type t = AuthenticateResponse.t ) ) 
-    let userAdd = 
-      ( (module AuthUserAddRequest : Runtime'.Service.Message with type t = AuthUserAddRequest.t ), 
-      (module AuthUserAddResponse : Runtime'.Service.Message with type t = AuthUserAddResponse.t ) ) 
-    let userGet = 
-      ( (module AuthUserGetRequest : Runtime'.Service.Message with type t = AuthUserGetRequest.t ), 
-      (module AuthUserGetResponse : Runtime'.Service.Message with type t = AuthUserGetResponse.t ) ) 
-    let userList = 
-      ( (module AuthUserListRequest : Runtime'.Service.Message with type t = AuthUserListRequest.t ), 
-      (module AuthUserListResponse : Runtime'.Service.Message with type t = AuthUserListResponse.t ) ) 
-    let userDelete = 
-      ( (module AuthUserDeleteRequest : Runtime'.Service.Message with type t = AuthUserDeleteRequest.t ), 
-      (module AuthUserDeleteResponse : Runtime'.Service.Message with type t = AuthUserDeleteResponse.t ) ) 
-    let userChangePassword = 
-      ( (module AuthUserChangePasswordRequest : Runtime'.Service.Message with type t = AuthUserChangePasswordRequest.t ), 
-      (module AuthUserChangePasswordResponse : Runtime'.Service.Message with type t = AuthUserChangePasswordResponse.t ) ) 
-    let userGrantRole = 
-      ( (module AuthUserGrantRoleRequest : Runtime'.Service.Message with type t = AuthUserGrantRoleRequest.t ), 
-      (module AuthUserGrantRoleResponse : Runtime'.Service.Message with type t = AuthUserGrantRoleResponse.t ) ) 
-    let userRevokeRole = 
-      ( (module AuthUserRevokeRoleRequest : Runtime'.Service.Message with type t = AuthUserRevokeRoleRequest.t ), 
-      (module AuthUserRevokeRoleResponse : Runtime'.Service.Message with type t = AuthUserRevokeRoleResponse.t ) ) 
-    let roleAdd = 
-      ( (module AuthRoleAddRequest : Runtime'.Service.Message with type t = AuthRoleAddRequest.t ), 
-      (module AuthRoleAddResponse : Runtime'.Service.Message with type t = AuthRoleAddResponse.t ) ) 
-    let roleGet = 
-      ( (module AuthRoleGetRequest : Runtime'.Service.Message with type t = AuthRoleGetRequest.t ), 
-      (module AuthRoleGetResponse : Runtime'.Service.Message with type t = AuthRoleGetResponse.t ) ) 
-    let roleList = 
-      ( (module AuthRoleListRequest : Runtime'.Service.Message with type t = AuthRoleListRequest.t ), 
-      (module AuthRoleListResponse : Runtime'.Service.Message with type t = AuthRoleListResponse.t ) ) 
-    let roleDelete = 
-      ( (module AuthRoleDeleteRequest : Runtime'.Service.Message with type t = AuthRoleDeleteRequest.t ), 
-      (module AuthRoleDeleteResponse : Runtime'.Service.Message with type t = AuthRoleDeleteResponse.t ) ) 
-    let roleGrantPermission = 
-      ( (module AuthRoleGrantPermissionRequest : Runtime'.Service.Message with type t = AuthRoleGrantPermissionRequest.t ), 
-      (module AuthRoleGrantPermissionResponse : Runtime'.Service.Message with type t = AuthRoleGrantPermissionResponse.t ) ) 
-    let roleRevokePermission = 
-      ( (module AuthRoleRevokePermissionRequest : Runtime'.Service.Message with type t = AuthRoleRevokePermissionRequest.t ), 
-      (module AuthRoleRevokePermissionResponse : Runtime'.Service.Message with type t = AuthRoleRevokePermissionResponse.t ) ) 
+    let authEnable =
+      ( (module AuthEnableRequest : Runtime'.Service.Message
+          with type t = AuthEnableRequest.t),
+        (module AuthEnableResponse : Runtime'.Service.Message
+          with type t = AuthEnableResponse.t) )
+
+    let authDisable =
+      ( (module AuthDisableRequest : Runtime'.Service.Message
+          with type t = AuthDisableRequest.t),
+        (module AuthDisableResponse : Runtime'.Service.Message
+          with type t = AuthDisableResponse.t) )
+
+    let authStatus =
+      ( (module AuthStatusRequest : Runtime'.Service.Message
+          with type t = AuthStatusRequest.t),
+        (module AuthStatusResponse : Runtime'.Service.Message
+          with type t = AuthStatusResponse.t) )
+
+    let authenticate =
+      ( (module AuthenticateRequest : Runtime'.Service.Message
+          with type t = AuthenticateRequest.t),
+        (module AuthenticateResponse : Runtime'.Service.Message
+          with type t = AuthenticateResponse.t) )
+
+    let userAdd =
+      ( (module AuthUserAddRequest : Runtime'.Service.Message
+          with type t = AuthUserAddRequest.t),
+        (module AuthUserAddResponse : Runtime'.Service.Message
+          with type t = AuthUserAddResponse.t) )
+
+    let userGet =
+      ( (module AuthUserGetRequest : Runtime'.Service.Message
+          with type t = AuthUserGetRequest.t),
+        (module AuthUserGetResponse : Runtime'.Service.Message
+          with type t = AuthUserGetResponse.t) )
+
+    let userList =
+      ( (module AuthUserListRequest : Runtime'.Service.Message
+          with type t = AuthUserListRequest.t),
+        (module AuthUserListResponse : Runtime'.Service.Message
+          with type t = AuthUserListResponse.t) )
+
+    let userDelete =
+      ( (module AuthUserDeleteRequest : Runtime'.Service.Message
+          with type t = AuthUserDeleteRequest.t),
+        (module AuthUserDeleteResponse : Runtime'.Service.Message
+          with type t = AuthUserDeleteResponse.t) )
+
+    let userChangePassword =
+      ( (module AuthUserChangePasswordRequest : Runtime'.Service.Message
+          with type t = AuthUserChangePasswordRequest.t),
+        (module AuthUserChangePasswordResponse : Runtime'.Service.Message
+          with type t = AuthUserChangePasswordResponse.t) )
+
+    let userGrantRole =
+      ( (module AuthUserGrantRoleRequest : Runtime'.Service.Message
+          with type t = AuthUserGrantRoleRequest.t),
+        (module AuthUserGrantRoleResponse : Runtime'.Service.Message
+          with type t = AuthUserGrantRoleResponse.t) )
+
+    let userRevokeRole =
+      ( (module AuthUserRevokeRoleRequest : Runtime'.Service.Message
+          with type t = AuthUserRevokeRoleRequest.t),
+        (module AuthUserRevokeRoleResponse : Runtime'.Service.Message
+          with type t = AuthUserRevokeRoleResponse.t) )
+
+    let roleAdd =
+      ( (module AuthRoleAddRequest : Runtime'.Service.Message
+          with type t = AuthRoleAddRequest.t),
+        (module AuthRoleAddResponse : Runtime'.Service.Message
+          with type t = AuthRoleAddResponse.t) )
+
+    let roleGet =
+      ( (module AuthRoleGetRequest : Runtime'.Service.Message
+          with type t = AuthRoleGetRequest.t),
+        (module AuthRoleGetResponse : Runtime'.Service.Message
+          with type t = AuthRoleGetResponse.t) )
+
+    let roleList =
+      ( (module AuthRoleListRequest : Runtime'.Service.Message
+          with type t = AuthRoleListRequest.t),
+        (module AuthRoleListResponse : Runtime'.Service.Message
+          with type t = AuthRoleListResponse.t) )
+
+    let roleDelete =
+      ( (module AuthRoleDeleteRequest : Runtime'.Service.Message
+          with type t = AuthRoleDeleteRequest.t),
+        (module AuthRoleDeleteResponse : Runtime'.Service.Message
+          with type t = AuthRoleDeleteResponse.t) )
+
+    let roleGrantPermission =
+      ( (module AuthRoleGrantPermissionRequest : Runtime'.Service.Message
+          with type t = AuthRoleGrantPermissionRequest.t),
+        (module AuthRoleGrantPermissionResponse : Runtime'.Service.Message
+          with type t = AuthRoleGrantPermissionResponse.t) )
+
+    let roleRevokePermission =
+      ( (module AuthRoleRevokePermissionRequest : Runtime'.Service.Message
+          with type t = AuthRoleRevokePermissionRequest.t),
+        (module AuthRoleRevokePermissionResponse : Runtime'.Service.Message
+          with type t = AuthRoleRevokePermissionResponse.t) )
   end
 end

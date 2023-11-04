@@ -3,28 +3,23 @@
 *)
 
 module type Json_encoding = sig
-
   type t
 
   val of_yojson : Yojson.Safe.t -> (t, string) result
-
   val to_yojson : t -> Yojson.Safe.t
-
 end
 
-module Make(KV: Mirage_kv.RW)(J: Json_encoding): Typed_kv.S
-  with
-    type value = J.t and
-    type t = KV.t and
-    type error = KV.error and
-    type write_error = KV.write_error and
-    type read_error = [ `Store of KV.error | `Json_decode of string ]
-= struct
-
+module Make (KV : Mirage_kv.RW) (J : Json_encoding) :
+  Typed_kv.S
+    with type value = J.t
+     and type t = KV.t
+     and type error = KV.error
+     and type write_error = KV.write_error
+     and type read_error = [ `Store of KV.error | `Json_decode of string ] =
+struct
   include KV
 
   type value = J.t
-
   type read_error = [ `Store of error | `Json_decode of string ]
 
   let get store id =
@@ -32,9 +27,9 @@ module Make(KV: Mirage_kv.RW)(J: Json_encoding): Typed_kv.S
     KV.get store id >|= function
     | Error e -> Error (`Store e)
     | Ok data ->
-      Rresult.R.reword_error
-        (fun err -> `Json_decode err)
-        (Json.decode J.of_yojson data)
+        Rresult.R.reword_error
+          (fun err -> `Json_decode err)
+          (Json.decode J.of_yojson data)
 
   let set store id value =
     let value_str = Yojson.Safe.to_string (J.to_yojson value) in

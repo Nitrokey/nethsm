@@ -6,21 +6,20 @@ let update_header = Bytes.of_string "_NETHSM_UPDATE_\x00"
 
 let write_len length =
   let len_buf = Cstruct.create 3 in
-  assert (length < 1 lsl 24); (* TODO *)
+  assert (length < 1 lsl 24);
+  (* TODO *)
   Cstruct.set_uint8 len_buf 0 (length lsr 16);
   Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
   Cstruct.to_bytes len_buf
 
-let prepend_len s =
-  Bytes.cat (write_len (Bytes.length s)) s
+let prepend_len s = Bytes.cat (write_len (Bytes.length s)) s
 
 let read_file filename =
   let filesize = (Unix.stat filename).Unix.st_size in
-  let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
+  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
   let buf = Bytes.create filesize in
   let rec read off =
-    if off = filesize
-    then ()
+    if off = filesize then ()
     else
       let bytes_read = Unix.read fd buf off (filesize - off) in
       read (bytes_read + off)
@@ -31,18 +30,19 @@ let read_file filename =
 
 let openssl_sign pkcs11 key_file data_file =
   let sig_file = Filename.temp_file "sig" "bin" in
-  let cmd = match pkcs11 with
+  let cmd =
+    match pkcs11 with
     | None ->
-      Printf.sprintf "openssl dgst -sha256 -sign %s -out %s %s" key_file sig_file data_file
+        Printf.sprintf "openssl dgst -sha256 -sign %s -out %s %s" key_file
+          sig_file data_file
     | Some pin ->
-      Printf.sprintf "pkcs11-tool -l --pin %s -s --id %s -m SHA256-RSA-PKCS -i %s -o %s"
-        pin key_file data_file sig_file
+        Printf.sprintf
+          "pkcs11-tool -l --pin %s -s --id %s -m SHA256-RSA-PKCS -i %s -o %s"
+          pin key_file data_file sig_file
   in
   let signature =
-    if Sys.command cmd = 0 then
-      read_file sig_file
-    else
-      invalid_arg "openssl returned non-zero exit code"
+    if Sys.command cmd = 0 then read_file sig_file
+    else invalid_arg "openssl returned non-zero exit code"
   in
   Sys.remove sig_file;
   signature
@@ -50,16 +50,13 @@ let openssl_sign pkcs11 key_file data_file =
 let read_file_chunked filename hash prepend_length output =
   let filesize = (Unix.stat filename).Unix.st_size in
   let hash' =
-    if prepend_length
-    then output hash @@ write_len filesize
-    else hash
+    if prepend_length then output hash @@ write_len filesize else hash
   in
   let chunksize = 4096 in
-  let fd = Unix.openfile filename [Unix.O_RDONLY] 0 in
+  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
   let buf = Bytes.create chunksize in
   let rec read hash off =
-    if off = filesize
-    then hash
+    if off = filesize then hash
     else
       let bytes_read = Unix.read fd buf 0 (min chunksize (filesize - off)) in
       let hash' = output hash (Bytes.sub buf 0 bytes_read) in
@@ -73,16 +70,16 @@ let sign flags key_file changelog_file version_file image_file output_file =
   let version = read_file version_file |> String.trim in
   let version_ok =
     match String.split_on_char '.' version with
-    | [ major ; minor ] ->
-      (match int_of_string_opt major, int_of_string_opt minor with
-       | Some _, Some _ -> true
-       | _ -> false)
+    | [ major; minor ] -> (
+        match (int_of_string_opt major, int_of_string_opt minor) with
+        | Some _, Some _ -> true
+        | _ -> false)
     | _ -> false
   in
   if not version_ok then
     invalid_arg "Version file must contain only a version number: MAJOR.MINOR";
   let data_file = Filename.temp_file "data" "bin" in
-  let fd = Unix.openfile data_file [ Unix.O_WRONLY ; Unix.O_CREAT ] 0 in
+  let fd = Unix.openfile data_file [ Unix.O_WRONLY; Unix.O_CREAT ] 0 in
   let write_chunk fd () bytes =
     let written = Unix.write fd bytes 0 (Bytes.length bytes) in
     assert (written = Bytes.length bytes)
@@ -91,13 +88,10 @@ let sign flags key_file changelog_file version_file image_file output_file =
   write_chunk fd () (prepend_len (Bytes.unsafe_of_string version));
   let filesize = (Unix.stat image_file).Unix.st_size in
   let block_size = 512 in
-  let blocks = (filesize + (pred block_size)) / block_size in
+  let blocks = (filesize + pred block_size) / block_size in
   let pad_buf =
     let padding = block_size - (filesize mod block_size) in
-    if padding = block_size then
-      Cstruct.empty
-    else
-      Cstruct.create padding
+    if padding = block_size then Cstruct.empty else Cstruct.create padding
   in
   let blocks_buf =
     let l = Cstruct.create 4 in
@@ -111,12 +105,13 @@ let sign flags key_file changelog_file version_file image_file output_file =
   let signature = openssl_sign flags key_file data_file in
   Sys.remove data_file;
   let signature = prepend_len (Bytes.unsafe_of_string signature) in
-  let fd = match output_file with
-   | None -> Unix.stdout
-   | Some filename ->
-     if Sys.file_exists filename
-     then invalid_arg "Output file already exists"
-     else Unix.openfile filename [Unix.O_WRONLY ; Unix.O_CREAT] 0o400
+  let fd =
+    match output_file with
+    | None -> Unix.stdout
+    | Some filename ->
+        if Sys.file_exists filename then
+          invalid_arg "Output file already exists"
+        else Unix.openfile filename [ Unix.O_WRONLY; Unix.O_CREAT ] 0o400
   in
   let write_chunk () bytes =
     let written = Unix.write fd bytes 0 (Bytes.length bytes) in
@@ -160,9 +155,10 @@ let output =
 
 let command =
   let doc = "Sign a NetHSM software image" in
-  let man = [ `S "BUGS"; `P "Submit bugs";] in
-  Term.(term_result (const sign $ pkcs11_pin $ key $ changelog $ version $ image $ output)),
-  Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
+  let man = [ `S "BUGS"; `P "Submit bugs" ] in
+  ( Term.(
+      term_result
+        (const sign $ pkcs11_pin $ key $ changelog $ version $ image $ output)),
+    Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man )
 
-let () =
-  match Term.eval command with `Ok () -> exit 0 | _ -> exit 1
+let () = match Term.eval command with `Ok () -> exit 0 | _ -> exit 1

@@ -22,8 +22,8 @@ val passphrase_salt_len : int
 val stored_passphrase : salt:Cstruct.t -> Cstruct.t -> Cstruct.t
 (** Computes the stored passphrase from a salt and plain passphrase. *)
 
-val encrypt : (int -> Cstruct.t) -> key:GCM.key -> adata:Cstruct.t ->
-  Cstruct.t -> Cstruct.t
+val encrypt :
+  (int -> Cstruct.t) -> key:GCM.key -> adata:Cstruct.t -> Cstruct.t -> Cstruct.t
 (** [encrypt rng ~key ~adata data] encrypts [data] using AES-GCM with the
     provided [key] and additional data [adata]. The [rng] is used to generate
     the nonce. The result is a concatenation of nonce, tag, encrypted data. *)
@@ -35,7 +35,10 @@ val pp_decryption_error : decrypt_error Fmt.t
 (** [pp_decryption_error ppf de] pretty-prints the decryption error [de] on
     [ppf]. *)
 
-val decrypt : key:GCM.key -> adata:Cstruct.t -> Cstruct.t ->
+val decrypt :
+  key:GCM.key ->
+  adata:Cstruct.t ->
+  Cstruct.t ->
   (Cstruct.t, decrypt_error) result
 (** [decrypt ~key ~adata data] attempts to decrypt [data], which is a
     concatenation of nonce, tag, encrypted data. The [key] and [adata] are used

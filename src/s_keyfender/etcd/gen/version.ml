@@ -20,59 +20,156 @@
 open Ocaml_protoc_plugin.Runtime [@@warning "-33"]
 open Stubs [@@warning "-33"]
 open Google_types [@@warning "-33"]
+
 (**/**)
+
 module Imported'modules = struct
   module Gogo = Gogo
   module Descriptor = Descriptor
 end
+
 (**/**)
+
 module Versionpb = struct
   module rec Etcd_version_msg : sig
-    type t = string option [@@deriving show { with_path = false}]
-    val get: Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t -> (string option, [> Runtime'.Result.error]) result
-    val set: Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t -> string option -> Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t
-  end = struct 
-    type t = string option [@@deriving show { with_path = false}]
-    let get extendee = Runtime'.Extensions.get Runtime'.Deserialize.C.( basic_opt (50000, string) ^:: nil ) (extendee.Imported'modules.Descriptor.Google.Protobuf.MessageOptions.extensions') |> Runtime'.Result.open_error
+    type t = string option [@@deriving show { with_path = false }]
+
+    val get :
+      Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t ->
+      (string option, [> Runtime'.Result.error ]) result
+
+    val set :
+      Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t ->
+      string option ->
+      Imported'modules.Descriptor.Google.Protobuf.MessageOptions.t
+  end = struct
+    type t = string option [@@deriving show { with_path = false }]
+
+    let get extendee =
+      Runtime'.Extensions.get
+        Runtime'.Deserialize.C.(basic_opt (50000, string) ^:: nil)
+        extendee
+          .Imported'modules.Descriptor.Google.Protobuf.MessageOptions
+           .extensions'
+      |> Runtime'.Result.open_error
+
     let set extendee t =
-      let extensions' = Runtime'.Extensions.set (Runtime'.Serialize.C.( basic_opt (50000, string) ^:: nil )) (extendee.Imported'modules.Descriptor.Google.Protobuf.MessageOptions.extensions') t in
-      { extendee with Imported'modules.Descriptor.Google.Protobuf.MessageOptions.extensions' = extensions' }
-    
+      let extensions' =
+        Runtime'.Extensions.set
+          Runtime'.Serialize.C.(basic_opt (50000, string) ^:: nil)
+          extendee
+            .Imported'modules.Descriptor.Google.Protobuf.MessageOptions
+             .extensions' t
+      in
+      {
+        extendee with
+        Imported'modules.Descriptor.Google.Protobuf.MessageOptions.extensions';
+      }
   end
+
   and Etcd_version_field : sig
-    type t = string option [@@deriving show { with_path = false}]
-    val get: Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t -> (string option, [> Runtime'.Result.error]) result
-    val set: Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t -> string option -> Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t
-  end = struct 
-    type t = string option [@@deriving show { with_path = false}]
-    let get extendee = Runtime'.Extensions.get Runtime'.Deserialize.C.( basic_opt (50001, string) ^:: nil ) (extendee.Imported'modules.Descriptor.Google.Protobuf.FieldOptions.extensions') |> Runtime'.Result.open_error
+    type t = string option [@@deriving show { with_path = false }]
+
+    val get :
+      Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t ->
+      (string option, [> Runtime'.Result.error ]) result
+
+    val set :
+      Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t ->
+      string option ->
+      Imported'modules.Descriptor.Google.Protobuf.FieldOptions.t
+  end = struct
+    type t = string option [@@deriving show { with_path = false }]
+
+    let get extendee =
+      Runtime'.Extensions.get
+        Runtime'.Deserialize.C.(basic_opt (50001, string) ^:: nil)
+        extendee
+          .Imported'modules.Descriptor.Google.Protobuf.FieldOptions.extensions'
+      |> Runtime'.Result.open_error
+
     let set extendee t =
-      let extensions' = Runtime'.Extensions.set (Runtime'.Serialize.C.( basic_opt (50001, string) ^:: nil )) (extendee.Imported'modules.Descriptor.Google.Protobuf.FieldOptions.extensions') t in
-      { extendee with Imported'modules.Descriptor.Google.Protobuf.FieldOptions.extensions' = extensions' }
-    
+      let extensions' =
+        Runtime'.Extensions.set
+          Runtime'.Serialize.C.(basic_opt (50001, string) ^:: nil)
+          extendee
+            .Imported'modules.Descriptor.Google.Protobuf.FieldOptions
+             .extensions' t
+      in
+      {
+        extendee with
+        Imported'modules.Descriptor.Google.Protobuf.FieldOptions.extensions';
+      }
   end
+
   and Etcd_version_enum : sig
-    type t = string option [@@deriving show { with_path = false}]
-    val get: Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t -> (string option, [> Runtime'.Result.error]) result
-    val set: Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t -> string option -> Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t
-  end = struct 
-    type t = string option [@@deriving show { with_path = false}]
-    let get extendee = Runtime'.Extensions.get Runtime'.Deserialize.C.( basic_opt (50002, string) ^:: nil ) (extendee.Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions') |> Runtime'.Result.open_error
+    type t = string option [@@deriving show { with_path = false }]
+
+    val get :
+      Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t ->
+      (string option, [> Runtime'.Result.error ]) result
+
+    val set :
+      Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t ->
+      string option ->
+      Imported'modules.Descriptor.Google.Protobuf.EnumOptions.t
+  end = struct
+    type t = string option [@@deriving show { with_path = false }]
+
+    let get extendee =
+      Runtime'.Extensions.get
+        Runtime'.Deserialize.C.(basic_opt (50002, string) ^:: nil)
+        extendee
+          .Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions'
+      |> Runtime'.Result.open_error
+
     let set extendee t =
-      let extensions' = Runtime'.Extensions.set (Runtime'.Serialize.C.( basic_opt (50002, string) ^:: nil )) (extendee.Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions') t in
-      { extendee with Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions' = extensions' }
-    
+      let extensions' =
+        Runtime'.Extensions.set
+          Runtime'.Serialize.C.(basic_opt (50002, string) ^:: nil)
+          extendee
+            .Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions'
+          t
+      in
+      {
+        extendee with
+        Imported'modules.Descriptor.Google.Protobuf.EnumOptions.extensions';
+      }
   end
+
   and Etcd_version_enum_value : sig
-    type t = string option [@@deriving show { with_path = false}]
-    val get: Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t -> (string option, [> Runtime'.Result.error]) result
-    val set: Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t -> string option -> Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t
-  end = struct 
-    type t = string option [@@deriving show { with_path = false}]
-    let get extendee = Runtime'.Extensions.get Runtime'.Deserialize.C.( basic_opt (50003, string) ^:: nil ) (extendee.Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.extensions') |> Runtime'.Result.open_error
+    type t = string option [@@deriving show { with_path = false }]
+
+    val get :
+      Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t ->
+      (string option, [> Runtime'.Result.error ]) result
+
+    val set :
+      Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t ->
+      string option ->
+      Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.t
+  end = struct
+    type t = string option [@@deriving show { with_path = false }]
+
+    let get extendee =
+      Runtime'.Extensions.get
+        Runtime'.Deserialize.C.(basic_opt (50003, string) ^:: nil)
+        extendee
+          .Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions
+           .extensions'
+      |> Runtime'.Result.open_error
+
     let set extendee t =
-      let extensions' = Runtime'.Extensions.set (Runtime'.Serialize.C.( basic_opt (50003, string) ^:: nil )) (extendee.Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.extensions') t in
-      { extendee with Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.extensions' = extensions' }
-    
+      let extensions' =
+        Runtime'.Extensions.set
+          Runtime'.Serialize.C.(basic_opt (50003, string) ^:: nil)
+          extendee
+            .Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions
+             .extensions' t
+      in
+      {
+        extendee with
+        Imported'modules.Descriptor.Google.Protobuf.EnumValueOptions.extensions';
+      }
   end
 end

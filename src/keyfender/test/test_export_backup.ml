@@ -11,7 +11,8 @@ let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug)
 
-let backup_v0 = {|{
+let backup_v0 =
+  {|{
   ".locked-domain-key": "ojOQRFy7R7gBwVt6NgiTu0oO7ra+1XSD+spC+ot9ftg3oGii5066mkX3yhqnChaAYlXB/+IViMExKgYX",
   "/authentication/.version": "uq4MnkirRS2gTpYSpyv3x6eD9qO8PipLx0PkxF8=",
   "/authentication/admin": "oI33pglZ+DkxxYAhmKqixST7hFz75VT1pxkn3TPrqCddOkjuVk929Riqkx7om/MtWMRsYxGWpXylrGQD5JkPDlFxNWMOpQ98B7oyqyhCJw5q4zHZmBDYw+TrIqeTfqo9/ZAZ6WPJWZ422ee2p/v4ak74rbEYil1gAYDtfuzTzXM5si7EK5fq/rer+HEBg14jdEDfwH4E28M87ob4Y5PxuD6g8XprL4/EowX8G/Q=",
@@ -31,44 +32,47 @@ let backup_v0 = {|{
 }|}
 
 let export_backup_current =
-  Alcotest.test_case
-    "current backup format can be handled"
-    `Quick
-  @@ fun () ->
+  Alcotest.test_case "current backup format can be handled" `Quick @@ fun () ->
   let backup_passphrase = "BackupPassphrase" in
   let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
   let hsm_state = hsm_with_key () in
   let* hsm_state =
-    admin_put_request ~hsm_state ~body:(`String passphrase) "/config/backup-passphrase"
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
     |> Expect.no_content
   in
   let headers = auth_header "backup" "test3Passphrase" in
   let* _hsm_state, s =
-    request ~meth:`POST ~hsm_state ~headers "/system/backup"
-    |> Expect.stream
+    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
   let data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   let f = open_out_bin "my_backup_gen.bin" in
   output_string f data;
   close_out f;
-  let returncode = Sys.command "../bin/export_backup.exe BackupPassphrase my_backup_gen.bin --output=my_backup_gen.json" in
+  let returncode =
+    Sys.command
+      "../bin/export_backup.exe BackupPassphrase my_backup_gen.bin \
+       --output=my_backup_gen.json"
+  in
   Alcotest.(check int) "returncode" 0 returncode
 
 let export_backup_v0 =
-  Alcotest.test_case
-    "v0 backup format can be handled"
-    `Quick
-  @@ fun () ->
-  let returncode = Sys.command "../bin/export_backup.exe BackupPassphrase my_backup.bin --output=my_backup.json" in
+  Alcotest.test_case "v0 backup format can be handled" `Quick @@ fun () ->
+  let returncode =
+    Sys.command
+      "../bin/export_backup.exe BackupPassphrase my_backup.bin \
+       --output=my_backup.json"
+  in
   Alcotest.(check int) "returncode" 0 returncode;
   let f = open_in_bin "my_backup.json" in
-  let body =  really_input_string f (in_channel_length f) in
+  let body = really_input_string f (in_channel_length f) in
   close_in f;
   Alcotest.(check string) "json" backup_v0 body
 
 let () =
   let open Alcotest in
-  run "export_backup.exe" [
-      "export_backup_current", [ export_backup_current ];
-      "export_backup_v0", [ export_backup_v0 ];
+  run "export_backup.exe"
+    [
+      ("export_backup_current", [ export_backup_current ]);
+      ("export_backup_v0", [ export_backup_v0 ]);
     ]

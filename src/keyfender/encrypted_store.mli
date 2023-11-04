@@ -12,27 +12,29 @@
     random. The encrypted value stored is a concatenation of the IV, the
     authentication tag, and the encrypted data. *)
 module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
-  include Mirage_kv.RW
-    with type error = [
-        | Mirage_kv.error
+  include
+    Mirage_kv.RW
+      with type error =
+        [ Mirage_kv.error
         | `Kv of KV.error
         | `Crypto of Crypto.decrypt_error
-        | `Invalid_key of KV.key
-      ]
-    and type write_error = [
-        | Mirage_kv.write_error
-        | `Kv of KV.write_error 
-        | `Invalid_key of KV.key
-      ]
+        | `Invalid_key of KV.key ]
+       and type write_error =
+        [ Mirage_kv.write_error
+        | `Kv of KV.write_error
+        | `Invalid_key of KV.key ]
 
   type slot = Authentication | Key
 
   val pp_slot : slot Fmt.t
-
   val slot_to_string : slot -> string
 
-  val initialize : Version.t -> slot ->
-    key:Cstruct.t -> KV.t -> (t, KV.write_error) result Lwt.t
+  val initialize :
+    Version.t ->
+    slot ->
+    key:Cstruct.t ->
+    KV.t ->
+    (t, KV.write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
@@ -53,9 +55,13 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
   val pp_connect_error : connect_error Fmt.t
   (** [pp_connect_error ppf err] pretty-prints the connect error [err] on [ppf]. *)
 
-  val unlock : Version.t -> slot ->
-    key:Cstruct.t -> KV.t ->
-    ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result Lwt.t
+  val unlock :
+    Version.t ->
+    slot ->
+    key:Cstruct.t ->
+    KV.t ->
+    ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result
+    Lwt.t
   (** [unlock version typ ~key kv] connects to a store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
@@ -64,11 +70,9 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
       they are equal [`Kv kv] is returned, if [version] is greater,
       [`Version_greater (stored, t)] is returned. An error otherwise. *)
 
-
   type version_error = [ error | `Msg of string ]
 
   val get_version : t -> (Version.t, version_error) Lwt_result.t
-
   val set_version : t -> Version.t -> (unit, KV.write_error) Lwt_result.t
 
   val slot_of_key : KV.key -> slot option

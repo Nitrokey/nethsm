@@ -4,27 +4,13 @@
 
 module GCM = Mirage_crypto.Cipher_block.AES.GCM
 
-
 (* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
 (* uses 128 * r * n = 16MB RAM *)
 
-type scrypt_params_t = {
-  n : int;
-  r : int;
-  p : int;
-}
+type scrypt_params_t = { n : int; r : int; p : int }
 
-let scrypt_params = ref {
-  n = 16384;
-  r = 8;
-  p = 16;
-}
-
-let scrypt_test_params = {
-  n = 2;
-  r = 1;
-  p = 1;
-}
+let scrypt_params = ref { n = 16384; r = 8; p = 16 }
+let scrypt_test_params = { n = 2; r = 1; p = 1 }
 
 let set_test_params () =
   Logs.warn (fun m -> m "Setting insecure Scrypt parameters for testing");
@@ -38,7 +24,8 @@ let key_len = 32
 let key_of_passphrase ~salt password =
   Scrypt_kdf.scrypt_kdf
     ~password:(Cstruct.of_string password)
-    ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r ~p:!scrypt_params.p ~dk_len:(Int32.of_int key_len)
+    ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r ~p:!scrypt_params.p
+    ~dk_len:(Int32.of_int key_len)
 
 let passphrase_salt_len = 16
 
@@ -59,15 +46,15 @@ type decrypt_error = [ `Insufficient_data | `Not_authenticated ]
 let decrypt ~key ~adata data =
   (* data is a cstruct (IV + encrypted data + tag)
      IV is iv_size long, tag is block_size, and data of at least one byte *)
-  if Cstruct.length data <= iv_size + GCM.tag_size then
-    Error `Insufficient_data
+  if Cstruct.length data <= iv_size + GCM.tag_size then Error `Insufficient_data
   else
     let nonce, data' = Cstruct.split data iv_size in
     match GCM.authenticate_decrypt ~key ~nonce ~adata data' with
     | None -> Error `Not_authenticated
     | Some msg -> Ok msg
 
-let pp_decryption_error ppf e=
-  Fmt.string ppf (match e with
-      | `Insufficient_data -> "insufficient data"
-      | `Not_authenticated -> "not authenticated")
+let pp_decryption_error ppf e =
+  Fmt.string ppf
+    (match e with
+    | `Insufficient_data -> "insufficient data"
+    | `Not_authenticated -> "not authenticated")

@@ -20,90 +20,188 @@
 open Ocaml_protoc_plugin.Runtime [@@warning "-33"]
 open Stubs [@@warning "-33"]
 open Google_types [@@warning "-33"]
+
 (**/**)
+
 module Imported'modules = struct
   module Gogo = Gogo
 end
+
 (**/**)
+
 module Mvccpb = struct
   module rec KeyValue : sig
-    val name': unit -> string
-    type t = { key: bytes; create_revision: int; mod_revision: int; version: int; value: bytes; lease: int } [@@deriving show { with_path = false}]
-    val make : ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+    val name' : unit -> string
+
+    type t = {
+      key : bytes;
+      create_revision : int;
+      mod_revision : int;
+      version : int;
+      value : bytes;
+      lease : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?key:bytes ->
+      ?create_revision:int ->
+      ?mod_revision:int ->
+      ?version:int ->
+      ?value:bytes ->
+      ?lease:int ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     let name' () = "kv.mvccpb.KeyValue"
-    type t = { key: bytes; create_revision: int; mod_revision: int; version: int; value: bytes; lease: int }[@@deriving show { with_path = false}]
-    let make =
-      fun ?key ?create_revision ?mod_revision ?version ?value ?lease () -> 
-      let key = match key with Some v -> v | None -> (Bytes.of_string {||}) in
-      let create_revision = match create_revision with Some v -> v | None -> 0 in
+
+    type t = {
+      key : bytes;
+      create_revision : int;
+      mod_revision : int;
+      version : int;
+      value : bytes;
+      lease : int;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?key ?create_revision ?mod_revision ?version ?value ?lease () =
+      let key = match key with Some v -> v | None -> Bytes.of_string {||} in
+      let create_revision =
+        match create_revision with Some v -> v | None -> 0
+      in
       let mod_revision = match mod_revision with Some v -> v | None -> 0 in
       let version = match version with Some v -> v | None -> 0 in
-      let value = match value with Some v -> v | None -> (Bytes.of_string {||}) in
+      let value =
+        match value with Some v -> v | None -> Bytes.of_string {||}
+      in
       let lease = match lease with Some v -> v | None -> 0 in
       { key; create_revision; mod_revision; version; value; lease }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { key; create_revision; mod_revision; version; value; lease } -> f' [] key create_revision mod_revision version value lease in
-      let spec = Runtime'.Serialize.C.( basic (1, bytes, proto3) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: basic (5, bytes, proto3) ^:: basic (6, int64_int, proto3) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f'
+          { key; create_revision; mod_revision; version; value; lease } =
+        f' [] key create_revision mod_revision version value lease
+      in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: basic (5, bytes, proto3)
+          ^:: basic (6, int64_int, proto3)
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions key create_revision mod_revision version value lease -> { key; create_revision; mod_revision; version; value; lease } in
-      let spec = Runtime'.Deserialize.C.( basic (1, bytes, proto3) ^:: basic (2, int64_int, proto3) ^:: basic (3, int64_int, proto3) ^:: basic (4, int64_int, proto3) ^:: basic (5, bytes, proto3) ^:: basic (6, int64_int, proto3) ^:: nil ) in
+      let constructor _extensions key create_revision mod_revision version value
+          lease =
+        { key; create_revision; mod_revision; version; value; lease }
+      in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, bytes, proto3)
+          ^:: basic (2, int64_int, proto3)
+          ^:: basic (3, int64_int, proto3)
+          ^:: basic (4, int64_int, proto3)
+          ^:: basic (5, bytes, proto3)
+          ^:: basic (6, int64_int, proto3)
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
+
   and Event : sig
     module rec EventType : sig
-      type t = PUT | DELETE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
+      type t = PUT | DELETE [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
     end
-    val name': unit -> string
-    type t = { type': Event.EventType.t; kv: KeyValue.t option; prev_kv: KeyValue.t option } [@@deriving show { with_path = false}]
-    val make : ?type':Event.EventType.t -> ?kv:KeyValue.t -> ?prev_kv:KeyValue.t -> unit -> t
-    val to_proto: t -> Runtime'.Writer.t
-    val from_proto: Runtime'.Reader.t -> (t, [> Runtime'.Result.error]) result
-  end = struct 
+
+    val name' : unit -> string
+
+    type t = {
+      type' : Event.EventType.t;
+      kv : KeyValue.t option;
+      prev_kv : KeyValue.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    val make :
+      ?type':Event.EventType.t ->
+      ?kv:KeyValue.t ->
+      ?prev_kv:KeyValue.t ->
+      unit ->
+      t
+
+    val to_proto : t -> Runtime'.Writer.t
+    val from_proto : Runtime'.Reader.t -> (t, [> Runtime'.Result.error ]) result
+  end = struct
     module rec EventType : sig
-      type t = PUT | DELETE [@@deriving show { with_path = false}]
-      val to_int: t -> int
-      val from_int: int -> (t, [> Runtime'.Result.error]) result
-    end = struct 
-      type t = PUT | DELETE [@@deriving show { with_path = false}]
-      let to_int = function
-        | PUT -> 0
-        | DELETE -> 1
-      
+      type t = PUT | DELETE [@@deriving show { with_path = false }]
+
+      val to_int : t -> int
+      val from_int : int -> (t, [> Runtime'.Result.error ]) result
+    end = struct
+      type t = PUT | DELETE [@@deriving show { with_path = false }]
+
+      let to_int = function PUT -> 0 | DELETE -> 1
+
       let from_int = function
         | 0 -> Ok PUT
         | 1 -> Ok DELETE
         | n -> Error (`Unknown_enum_value n)
-      
     end
+
     let name' () = "kv.mvccpb.Event"
-    type t = { type': Event.EventType.t; kv: KeyValue.t option; prev_kv: KeyValue.t option }[@@deriving show { with_path = false}]
-    let make =
-      fun ?type' ?kv ?prev_kv () -> 
-      let type' = match type' with Some v -> v | None -> (Event.EventType.from_int 0 |> Runtime'.Result.get ~msg:"Code gen error") in
+
+    type t = {
+      type' : Event.EventType.t;
+      kv : KeyValue.t option;
+      prev_kv : KeyValue.t option;
+    }
+    [@@deriving show { with_path = false }]
+
+    let make ?type' ?kv ?prev_kv () =
+      let type' =
+        match type' with
+        | Some v -> v
+        | None ->
+            Event.EventType.from_int 0
+            |> Runtime'.Result.get ~msg:"Code gen error"
+      in
       { type'; kv; prev_kv }
-    
+
     let to_proto =
-      let apply = fun ~f:f' { type'; kv; prev_kv } -> f' [] type' kv prev_kv in
-      let spec = Runtime'.Serialize.C.( basic (1, (enum Event.EventType.to_int), proto3) ^:: basic_opt (2, (message (fun t -> KeyValue.to_proto t))) ^:: basic_opt (3, (message (fun t -> KeyValue.to_proto t))) ^:: nil ) in
-      let serialize = Runtime'.Serialize.serialize [] (spec) in
+      let apply ~f:f' { type'; kv; prev_kv } = f' [] type' kv prev_kv in
+      let spec =
+        Runtime'.Serialize.C.(
+          basic (1, enum Event.EventType.to_int, proto3)
+          ^:: basic_opt (2, message (fun t -> KeyValue.to_proto t))
+          ^:: basic_opt (3, message (fun t -> KeyValue.to_proto t))
+          ^:: nil)
+      in
+      let serialize = Runtime'.Serialize.serialize [] spec in
       fun t -> apply ~f:serialize t
-    
+
     let from_proto =
-      let constructor = fun _extensions type' kv prev_kv -> { type'; kv; prev_kv } in
-      let spec = Runtime'.Deserialize.C.( basic (1, (enum Event.EventType.from_int), proto3) ^:: basic_opt (2, (message (fun t -> KeyValue.from_proto t))) ^:: basic_opt (3, (message (fun t -> KeyValue.from_proto t))) ^:: nil ) in
+      let constructor _extensions type' kv prev_kv = { type'; kv; prev_kv } in
+      let spec =
+        Runtime'.Deserialize.C.(
+          basic (1, enum Event.EventType.from_int, proto3)
+          ^:: basic_opt (2, message (fun t -> KeyValue.from_proto t))
+          ^:: basic_opt (3, message (fun t -> KeyValue.from_proto t))
+          ^:: nil)
+      in
       let deserialize = Runtime'.Deserialize.deserialize [] spec constructor in
       fun writer -> deserialize writer |> Runtime'.Result.open_error
-    
   end
 end
