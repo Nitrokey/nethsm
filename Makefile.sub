@@ -144,10 +144,10 @@ endif
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
 # generate_raml_tests.exe; we only install these when building with MODE=test.
-	opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml ocamlformat
 	opam install -y --deps-only --with-test keyfender
 else
-	opam install -y dune 'mirage>=3.10.4' 'functoria<4'
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4' ocamlformat
 #solo5-bindings-$(TARGET) mirage-solo5
 endif
 	touch $@
@@ -223,6 +223,18 @@ $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
 
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
+
+.PHONE: test-format
+check-format: $(S_KEYFENDER_PREP)
+	cd src/keyfender && $(DUNE) build @fmt
+	cd src/s_keyfender && $(DUNE) build @fmt
+	cd src/tests && $(DUNE) build @fmt
+
+.PHONE: format
+fix-format: $(S_KEYFENDER_PREP)
+	cd src/keyfender && $(DUNE) fmt || true
+	cd src/s_keyfender && $(DUNE) fmt || true
+	cd src/tests && $(DUNE) fmt || true
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib: $(KEYFENDER)

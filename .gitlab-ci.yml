@@ -197,6 +197,7 @@ test_keyfender:
       - "src/keyfender/_build/default/test/_build/_tests/"
   before_script: *setup_job_default
   script:
+    - opam exec -- make check-format || (echo "formatting check failed, please run 'make fix-format'" ; exit 1)
     - opam exec -- make -j$(nproc) coverage-summary
 
 build_api_spec_docs:
