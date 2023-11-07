@@ -224,13 +224,13 @@ $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
 
-.PHONE: test-format
+.PHONY: check-format
 check-format: $(S_KEYFENDER_PREP)
 	cd src/keyfender && $(DUNE) build @fmt
 	cd src/s_keyfender && $(DUNE) build @fmt
 	cd src/tests && $(DUNE) build @fmt
 
-.PHONE: format
+.PHONY: fix-format
 fix-format: $(S_KEYFENDER_PREP)
 	cd src/keyfender && $(DUNE) fmt || true
 	cd src/s_keyfender && $(DUNE) fmt || true
