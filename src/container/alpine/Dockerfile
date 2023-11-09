@@ -32,10 +32,13 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
 EOF
 
 ARG OPAM_REPOSITORY_COMMIT
+COPY --chown=1000:1000 src/keyfender/keyfender.opam.locked /home/opam/
+COPY --chown=1000:1000 src/s_keyfender/mirage-unikernel-keyfender-unix.opam.locked /home/opam/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   opam repository set-url default git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT}
   opam update
-  OPAMJOBS=$(nproc) opam install -y dune 'mirage>=3.10.4' 'functoria<4'
+  OPAMJOBS=$(nproc) opam install -y --deps-only --ignore-pin-depends /home/opam/keyfender.opam.locked
+  OPAMJOBS=$(nproc) opam install -y --deps-only --ignore-pin-depends /home/opam/mirage-unikernel-keyfender-unix.opam.locked
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF

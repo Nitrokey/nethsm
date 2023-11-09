@@ -1,0 +1,212 @@
+opam-version: "2.0"
+name: "mirage-unikernel-keyfender-unix"
+version: "~dev"
+synopsis: "This is a dummy"
+maintainer: "dummy"
+authors: "dummy"
+homepage: "dummy"
+bug-reports: "dummy"
+depends: [
+  "alcotest" {= "1.7.0"}
+  "angstrom" {= "0.15.0"}
+  "arp" {= "3.1.0"}
+  "asn1-combinators" {= "0.2.6"}
+  "astring" {= "0.8.5"}
+  "base" {= "v0.16.3"}
+  "base-bigarray" {= "base"}
+  "base-bytes" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "base64" {= "3.5.1"}
+  "bigstringaf" {= "0.9.1"}
+  "bisect_ppx" {= "2.8.3"}
+  "bos" {= "0.2.1"}
+  "ca-certs" {= "0.2.3"}
+  "ca-certs-nss" {= "3.92"}
+  "cmdliner" {= "1.2.0"}
+  "cohttp" {= "5.0.0"}
+  "cohttp-lwt" {= "5.0.0"}
+  "cohttp-mirage" {= "5.0.0"}
+  "conduit" {= "6.1.0"}
+  "conduit-lwt" {= "6.1.0"}
+  "conduit-mirage" {= "6.1.0"}
+  "conf-gmp" {= "4"}
+  "conf-gmp-powm-sec" {= "3"}
+  "conf-pkg-config" {= "3"}
+  "conf-protoc" {= "4.4.0"}
+  "cppo" {= "1.6.9"}
+  "crunch" {= "3.3.1"}
+  "csexp" {= "1.5.2"}
+  "cstruct" {= "6.2.0"}
+  "cstruct-lwt" {= "6.2.0"}
+  "cstruct-sexp" {= "6.2.0"}
+  "digestif" {= "1.1.4"}
+  "dispatch" {= "0.5.0"}
+  "dns" {= "6.4.1"}
+  "dns-client" {= "6.4.1"}
+  "domain-name" {= "0.4.0"}
+  "dune" {= "3.11.1"}
+  "dune-configurator" {= "3.11.1"}
+  "duration" {= "0.2.1"}
+  "eqaf" {= "0.9"}
+  "ethernet" {= "3.2.0"}
+  "faraday" {= "0.8.2"}
+  "fmt" {= "0.9.0"}
+  "fpath" {= "0.7.3"}
+  "functoria" {= "3.1.2"}
+  "functoria-runtime" {= "3.1.2"}
+  "gluten" {= "0.5.0"}
+  "gluten-lwt" {= "0.5.0"}
+  "gmap" {= "0.3.0"}
+  "happy-eyeballs" {= "0.5.0"}
+  "hex" {= "1.5.0"}
+  "hkdf" {= "1.0.4"}
+  "httpaf" {= "0.7.1"}
+  "io-page" {= "3.0.0"}
+  "ipaddr" {= "5.5.0"}
+  "ipaddr-sexp" {= "5.5.0"}
+  "jsonm" {= "1.0.2"}
+  "logs" {= "0.7.0"}
+  "logs-syslog" {= "0.4.0"}
+  "lru" {= "0.3.1"}
+  "lwt" {= "5.7.0"}
+  "lwt-dllist" {= "1.0.1"}
+  "macaddr" {= "5.5.0"}
+  "macaddr-cstruct" {= "5.5.0"}
+  "magic-mime" {= "1.3.1"}
+  "memtrace-mirage" {= "0.2.1.2.2"}
+  "metrics" {= "0.4.1"}
+  "metrics-lwt" {= "0.4.1"}
+  "mirage" {= "3.10.8"}
+  "mirage-block" {= "3.0.2"}
+  "mirage-bootvar-unix" {= "0.1.0"}
+  "mirage-channel" {= "4.1.0"}
+  "mirage-clock" {= "4.2.0"}
+  "mirage-clock-unix" {= "4.2.0"}
+  "mirage-console" {= "5.1.0"}
+  "mirage-crypto" {= "0.10.7"}
+  "mirage-crypto-ec" {= "0.10.7"}
+  "mirage-crypto-pk" {= "0.10.7"}
+  "mirage-crypto-rng" {= "0.10.7"}
+  "mirage-crypto-rng-mirage" {= "0.10.7"}
+  "mirage-device" {= "2.0.0"}
+  "mirage-flow" {= "3.0.0"}
+  "mirage-flow-combinators" {= "3.0.0"}
+  "mirage-fs" {= "4.0.0"}
+  "mirage-kv" {= "4.0.1"}
+  "mirage-kv-mem" {= "3.0.0"}
+  "mirage-logs" {= "1.3.0"}
+  "mirage-net" {= "4.0.0"}
+  "mirage-no-solo5" {= "1"}
+  "mirage-no-xen" {= "1"}
+  "mirage-profile" {= "0.9.1"}
+  "mirage-protocols" {= "8.0.0"}
+  "mirage-random" {= "3.0.0"}
+  "mirage-random-test" {= "0.1.0"}
+  "mirage-runtime" {= "3.10.8"}
+  "mirage-stack" {= "4.0.0"}
+  "mirage-time" {= "3.0.0"}
+  "mirage-types" {= "3.10.8"}
+  "mirage-types-lwt" {= "3.10.8"}
+  "mirage-unix" {= "4.0.1"}
+  "mtime" {= "2.0.0"}
+  "num" {= "1.4"}
+  "ocaml" {= "4.14.0"}
+  "ocaml-compiler-libs" {= "v0.12.4"}
+  "ocaml-config" {= "2"}
+  "ocaml-option-flambda" {= "1"}
+  "ocaml-protoc-plugin" {= "4.5.0"}
+  "ocaml-syntax-shims" {= "1.0.0"}
+  "ocaml-variants" {= "4.14.0+options"}
+  "ocamlbuild" {= "0.14.2"}
+  "ocamlfind" {= "1.9.6"}
+  "ocamlgraph" {= "2.1.0"}
+  "ocplib-endian" {= "1.2"}
+  "parse-argv" {= "0.3.0"}
+  "parsexp" {= "v0.16.0"}
+  "pbkdf" {= "1.2.0"}
+  "ppx_blob" {= "0.7.2"}
+  "ppx_cstruct" {= "6.2.0"}
+  "ppx_derivers" {= "1.2.1"}
+  "ppx_deriving" {= "5.2.1"}
+  "ppx_deriving_yojson" {= "3.7.0"}
+  "ppx_sexp_conv" {= "v0.16.0"}
+  "ppxlib" {= "0.31.0"}
+  "psq" {= "0.2.1"}
+  "ptime" {= "1.1.0"}
+  "randomconv" {= "0.1.3"}
+  "re" {= "1.11.0"}
+  "result" {= "1.5"}
+  "rresult" {= "0.7.0"}
+  "salsa20-core" {= "1.1.0"}
+  "scrypt-kdf" {= "1.2.0"}
+  "seq" {= "base"}
+  "sexplib" {= "v0.16.0"}
+  "sexplib0" {= "v0.16.0"}
+  "spawn" {= "v0.15.1"}
+  "stdlib-shims" {= "0.3.0"}
+  "stringext" {= "1.6.0"}
+  "syslog-message" {= "1.2.0"}
+  "tcpip" {= "7.1.2"}
+  "tls" {= "0.15.4"}
+  "tls-mirage" {= "0.15.4"}
+  "topkg" {= "1.0.7"}
+  "uri" {= "4.4.0"}
+  "uri-sexp" {= "4.4.0"}
+  "uutf" {= "1.0.3"}
+  "vchan" {= "6.0.1"}
+  "webmachine" {= "0.7.0"}
+  "x509" {= "0.16.5"}
+  "xenstore" {= "2.2.0"}
+  "xenstore_transport" {= "1.3.0"}
+  "yojson" {= "2.1.1"}
+  "zarith" {= "1.13"}
+]
+build: [
+  "sh"
+  "-exc"
+  "cd src/s_keyfender && mirage configure --no-depext -t unix --allocation-policy=best-fit --no-platform=true --single-interface --bisect-ppx --no-scrypt=true && mirage build"
+]
+install: ["cp" "src/s_keyfender/_build/main.native" "%{bin}%/keyfender"]
+dev-repo: "git+https://example.com/nonexistent"
+pin-depends: [
+  [
+    "cohttp.5.0.0"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+  ]
+  [
+    "cohttp-lwt.5.0.0"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+  ]
+  [
+    "cohttp-mirage.5.0.0"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+  ]
+  [
+    "conduit-mirage.6.1.0"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"
+  ]
+  [
+    "grpc.dev"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+  ]
+  [
+    "grpc-lwt.dev"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+  ]
+  [
+    "h2.dev"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+  ]
+  [
+    "h2-lwt.dev"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+  ]
+  [
+    "mirage.3.10.8"
+    "https://github.com/mirage/mirage/releases/download/v3.10.8/mirage-v3.10.8.tbz"
+  ]
+]
+url {
+  src: "ssh://git@git.nitrokey.com/nitrokey/nethsm/nethsm.git#master"
+}
