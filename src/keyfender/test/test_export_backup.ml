@@ -34,7 +34,10 @@ let backup_v0 =
 let export_backup_current =
   Alcotest.test_case "current backup format can be handled" `Quick @@ fun () ->
   let backup_passphrase = "BackupPassphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   let hsm_state = hsm_with_key () in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)

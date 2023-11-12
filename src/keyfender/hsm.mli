@@ -59,8 +59,11 @@ module type S = sig
   val generate_id : unit -> string
 
   module Config : sig
-    val set_unlock_passphrase :
-      t -> passphrase:string -> (unit, error) result Lwt.t
+    val change_unlock_passphrase :
+      t ->
+      new_passphrase:string ->
+      current_passphrase:string ->
+      (unit, error) result Lwt.t
 
     val unattended_boot : t -> (bool, error) result Lwt.t
     val set_unattended_boot : t -> bool -> (unit, error) result Lwt.t
@@ -82,8 +85,11 @@ module type S = sig
     val set_log : t -> Json.log -> (unit, error) result Lwt.t
     val log_digest : t -> string option Lwt.t
 
-    val set_backup_passphrase :
-      t -> passphrase:string -> (unit, error) result Lwt.t
+    val change_backup_passphrase :
+      t ->
+      new_passphrase:string ->
+      current_passphrase:string ->
+      (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t
     val set_time : t -> Ptime.t -> (unit, error) result Lwt.t

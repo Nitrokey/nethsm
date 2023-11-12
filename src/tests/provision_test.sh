@@ -61,7 +61,8 @@ echo
 # set backup passphrase
 PUT_admin /v1/config/backup-passphrase <<EOM
 {
-  "passphrase": "backupPassphrase"
+  "newPassphrase": "backupPassphrase",
+  "currentPassphrase": ""
 }
 EOM
 

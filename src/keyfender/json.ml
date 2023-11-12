@@ -100,6 +100,17 @@ let decode_passphrase json =
   valid_passphrase ~name:"passphrase" passphrase.passphrase >>| fun () ->
   passphrase.passphrase
 
+type passphrase_change_req = {
+  newPassphrase : string;
+  currentPassphrase : string;
+}
+[@@deriving yojson]
+
+let decode_passphrase_change json =
+  to_ocaml passphrase_change_req_of_yojson json >>= fun passphrase ->
+  valid_passphrase ~name:"passphrase" passphrase.newPassphrase >>| fun () ->
+  (passphrase.newPassphrase, passphrase.currentPassphrase)
+
 type provision_req = {
   unlockPassphrase : string;
   adminPassphrase : string;

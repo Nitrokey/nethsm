@@ -129,12 +129,14 @@ struct
       inherit! Endpoint.no_cache
 
       method private of_json json rd =
-        let ok passphrase =
-          Hsm.Config.set_unlock_passphrase hsm_state ~passphrase >>= function
+        let ok (new_passphrase, current_passphrase) =
+          Hsm.Config.change_unlock_passphrase hsm_state ~new_passphrase
+            ~current_passphrase
+          >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
-        Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
+        Json.decode_passphrase_change json |> Endpoint.err_to_bad_request ok rd
     end
 
   class unattended_boot hsm_state ip =
@@ -250,12 +252,14 @@ struct
       inherit! Endpoint.no_cache
 
       method private of_json json rd =
-        let ok passphrase =
-          Hsm.Config.set_backup_passphrase hsm_state ~passphrase >>= function
+        let ok (new_passphrase, current_passphrase) =
+          Hsm.Config.change_backup_passphrase hsm_state ~new_passphrase
+            ~current_passphrase
+          >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
-        Json.decode_passphrase json |> Endpoint.err_to_bad_request ok rd
+        Json.decode_passphrase_change json |> Endpoint.err_to_bad_request ok rd
     end
 
   class time hsm_state ip =

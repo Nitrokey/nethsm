@@ -388,7 +388,10 @@ let system_update_cancel_ok =
 let system_backup_and_restore_ok =
   "a request for /system/restore succeeds" @? fun () ->
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   match
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
@@ -446,7 +449,10 @@ let system_backup_and_restore_changed_devkey =
   "/system/restore with changed device key and unlock -> operational"
   @? fun () ->
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   match
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
@@ -523,7 +529,10 @@ let system_backup_and_restore_unattended =
     |> Expect.no_content
   in
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -592,7 +601,10 @@ let system_backup_and_restore_unattended_changed_devkey =
     |> Expect.no_content
   in
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -660,7 +672,10 @@ let system_backup_and_restore_operational =
     `Quick
   @@ fun () ->
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   let hsm_state = hsm_with_key () in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
@@ -686,7 +701,8 @@ let system_backup_and_restore_operational =
   |> Result.get_ok;
   (* the unlock passphrase is changed, but we don't expect it to be restored *)
   Lwt_main.run
-    (Hsm.Config.set_unlock_passphrase hsm_state ~passphrase:"i am secure")
+    (Hsm.Config.change_unlock_passphrase hsm_state ~new_passphrase:"i am secure"
+       ~current_passphrase:"unlockPassphrase")
   |> Result.get_ok;
   (* the removed key is indeed removed *)
   let* _ =
@@ -742,7 +758,10 @@ let system_backup_post_accept_header =
    succeeds"
   @? fun () ->
   let backup_passphrase = "backup passphrase" in
-  let passphrase = Printf.sprintf "{ \"passphrase\" : %S }" backup_passphrase in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
   match
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
@@ -896,14 +915,19 @@ let lock_failed =
 
 let change_unlock_passphrase =
   "change unlock passphrase succeeds" @? fun () ->
-  let passphrase = {|{ "passphrase" : "new passphrase" }|} in
+  let change_passphrase =
+    {|{ "newPassphrase" : "new passphrase", "currentPassphrase" : "unlockPassphrase" }|}
+  in
+  let unlock_passphrase = {|{ "passphrase" : "new passphrase" }|} in
   match
-    admin_put_request ~body:(`String passphrase) "/config/unlock-passphrase"
+    admin_put_request ~body:(`String change_passphrase)
+      "/config/unlock-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       Hsm.lock hsm_state;
       match
-        request ~meth:`POST ~body:(`String passphrase) ~hsm_state "/unlock"
+        request ~meth:`POST ~body:(`String unlock_passphrase) ~hsm_state
+          "/unlock"
       with
       | hsm_state, Some (`No_content, _, _, _) ->
           Hsm.state hsm_state = `Operational
@@ -1243,18 +1267,20 @@ let config_time_set_fail =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let set_backup_passphrase =
+let change_backup_passphrase =
   "set backup passphrase succeeds" @? fun () ->
-  let passphrase = {|{ "passphrase" : "my backup passphrase" }|} in
+  let passphrase =
+    {|{ "newPassphrase" : "my backup passphrase", "currentPassphrase" : "" }|}
+  in
   match
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
-let set_backup_passphrase_empty =
-  "set empty backup passphrase fails" @? fun () ->
-  let passphrase = {|{ "passphrase" : "" }|} in
+let change_backup_passphrase_empty =
+  "change to empty backup passphrase fails" @? fun () ->
+  let passphrase = {|{ "newPassphrase" : "", "currentPassphrase" : ""}|} in
   match
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
@@ -3362,7 +3388,7 @@ let () =
       ( "/config/time",
         [ config_time_ok; config_time_set_ok; config_time_set_fail ] );
       ( "/config/backup-passphrase",
-        [ set_backup_passphrase; set_backup_passphrase_empty ] );
+        [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
       ("config version but no unlock salt", [ config_version_but_no_salt ]);
       ("/users", [ users_get; users_post ]);

@@ -59,8 +59,11 @@ module type S = sig
   val generate_id : unit -> string
 
   module Config : sig
-    val set_unlock_passphrase :
-      t -> passphrase:string -> (unit, error) result Lwt.t
+    val change_unlock_passphrase :
+      t ->
+      new_passphrase:string ->
+      current_passphrase:string ->
+      (unit, error) result Lwt.t
 
     val unattended_boot : t -> (bool, error) result Lwt.t
     val set_unattended_boot : t -> bool -> (unit, error) result Lwt.t
@@ -82,8 +85,11 @@ module type S = sig
     val set_log : t -> Json.log -> (unit, error) result Lwt.t
     val log_digest : t -> string option Lwt.t
 
-    val set_backup_passphrase :
-      t -> passphrase:string -> (unit, error) result Lwt.t
+    val change_backup_passphrase :
+      t ->
+      new_passphrase:string ->
+      current_passphrase:string ->
+      (unit, error) result Lwt.t
 
     val time : t -> Ptime.t Lwt.t
     val set_time : t -> Ptime.t -> (unit, error) result Lwt.t
@@ -766,6 +772,22 @@ struct
     let device_key = t.device_key in
     unlock t.kv ~cache_settings:t.cache_settings ~device_key ~pass_key
     >|= fun state' -> t.state <- state'
+
+  let check_unlock_passphrase t passphrase =
+    let ( let* ) = Lwt.bind in
+    let ( let** ) = Lwt_result.bind in
+    let** salt =
+      internal_server_error Read "Get passphrase salt" Config_store.pp_error
+        (Config_store.get t.kv Config_store.Unlock_salt)
+    in
+    let pass_key = Crypto.key_of_passphrase ~salt passphrase in
+    let device_key = t.device_key in
+    let* keys = load_keys t.kv device_key (Some pass_key) in
+    match (keys, t.state) with
+    | Ok (dk, _, _), Operational { domain_key = dk'; _ }
+      when Cstruct.equal dk dk' ->
+        Lwt.return_ok ()
+    | _ -> Lwt.return_error (Forbidden, "unlock passphrase is incorrect.")
 
   let generate_cert priv =
     (* this is before provisioning, our posix time may be not accurate *)
@@ -1696,12 +1718,13 @@ struct
             set_time_offset b time))
 
   module Config = struct
-    let set_unlock_passphrase t ~passphrase =
+    let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
       match t.state with
       | Operational keys ->
           let open Lwt_result.Infix in
+          check_unlock_passphrase t current_passphrase >>= fun () ->
           let salt = Rng.generate Crypto.salt_len in
-          let pass_key = Crypto.key_of_passphrase ~salt passphrase in
+          let pass_key = Crypto.key_of_passphrase ~salt new_passphrase in
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
                   internal_server_error Write "Write unlock salt"
@@ -1923,13 +1946,36 @@ struct
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let set_backup_passphrase t ~passphrase =
+    let check_backup_passphrase t passphrase =
+      let ( let** ) = Lwt_result.bind in
+      let** backup_key =
+        internal_server_error Read "Read backup key" Config_store.pp_error
+          (Config_store.get_opt t.kv Backup_key)
+      in
+      let** valid =
+        match backup_key with
+        | None -> Lwt.return_ok (passphrase = "")
+        | Some backup_key ->
+            let** salt =
+              internal_server_error Read "Read backup salt"
+                Config_store.pp_error
+                (Config_store.get t.kv Backup_salt)
+            in
+            Lwt.return_ok
+              (Cstruct.equal backup_key
+                 (Crypto.key_of_passphrase ~salt passphrase))
+      in
+      if valid then Lwt.return_ok ()
+      else Lwt.return_error (Forbidden, "backup passphrase is incorrect.")
+
+    let change_backup_passphrase t ~new_passphrase ~current_passphrase =
       match t.state with
       | Operational _keys ->
           let open Lwt_result.Infix in
+          check_backup_passphrase t current_passphrase >>= fun () ->
           let backup_salt = Rng.generate Crypto.salt_len in
           let backup_key =
-            Crypto.key_of_passphrase ~salt:backup_salt passphrase
+            Crypto.key_of_passphrase ~salt:backup_salt new_passphrase
           in
           with_write_lock (fun () ->
               KV.batch t.kv (fun b ->
