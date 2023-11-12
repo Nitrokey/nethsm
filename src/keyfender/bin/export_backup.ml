@@ -189,12 +189,13 @@ let output =
   let doc = "output filename" in
   Arg.(value & opt (some string) None & info [ "output" ] ~doc)
 
-let command =
+let term = Term.(term_result (const export $ key $ backup_image $ output))
+
+let info_ =
   let doc = "Export a NetHSM backup image to json" in
   let man = [ `S "BUGS"; `P "Submit bugs" ] in
-  ( Term.(term_result (const export $ key $ backup_image $ output)),
-    Term.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man )
+    Cmd.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   Mirage_crypto_rng_unix.initialize ();
-  match Term.eval command with `Ok () -> exit 0 | _ -> exit 1
+  if Cmd.(eval (v info_ term) = Exit.ok) then exit 0 else exit 1

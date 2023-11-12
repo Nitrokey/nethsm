@@ -153,12 +153,13 @@ let output =
   let doc = "output filename" in
   Arg.(value & opt (some string) None & info [ "output" ] ~doc)
 
-let command =
+let term = Term.(
+  term_result
+    (const sign $ pkcs11_pin $ key $ changelog $ version $ image $ output))
+
+let info_ =
   let doc = "Sign a NetHSM software image" in
   let man = [ `S "BUGS"; `P "Submit bugs" ] in
-  ( Term.(
-      term_result
-        (const sign $ pkcs11_pin $ key $ changelog $ version $ image $ output)),
-    Term.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man )
+    Cmd.info "sign_update" ~version:"%%VERSION_NUM%%" ~doc ~man
 
-let () = match Term.eval command with `Ok () -> exit 0 | _ -> exit 1
+let () = if Cmd.(eval (v info_ term) = Exit.ok) then exit 0 else exit 1
