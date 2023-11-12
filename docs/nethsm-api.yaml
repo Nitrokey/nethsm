@@ -121,7 +121,12 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Unprovisioned*).
-      description: Initial provisioning, only available in *Unprovisioned* state.
+      description: |-
+        Initial provisioning, only available in *Unprovisioned* state.
+
+        *WARNING:* The unlock passphrase can't be reset by an admin user without
+        knowing the current value, so if the unlock passphrase is lost, neither
+        can it be reset to a new value nor can the NetHSM be unlocked.
       requestBody:
         content:
           application/json:
@@ -999,7 +1004,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserData"
-        
+
         "400":
           description: Invalid character in the UserID.
         "401":
@@ -1230,7 +1235,12 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Update the unlock passphrase.
+      description: |-
+        Update the unlock passphrase.
+
+        *WARNING:* The unlock passphrase can't be reset by an admin user without
+        knowing the current value, so if the unlock passphrase is lost, neither
+        can it be reset to a new value nor can the NetHSM be unlocked.
       requestBody:
         content:
           application/json:
@@ -1549,7 +1559,14 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Update the backup passphrase.
+      description: |-
+        Update the backup passphrase. If the backup passphrase is not set yet,
+        use "" as currentPassphrase.
+
+        *WARNING:* Like the unlock passphrase, this configuration can't be reset
+        by an admin user without knowing the current value, so if the backup
+        passphrase is lost, neither can it be reset to a new value nor can the
+        created backups be restored.
       requestBody:
         content:
           application/json:
@@ -2330,13 +2347,17 @@ components:
         - passphrase
     UnlockPassphraseConfig:
       example:
-        passphrase: This is my unlock passphrase
+        newPassphrase: This is my new unlock passphrase
+        currentPassphrase: UnlockPassphrase
       type: object
       properties:
-        passphrase:
+        newPassphrase:
+          $ref: "#/components/schemas/Passphrase"
+        currentPassphrase:
           $ref: "#/components/schemas/Passphrase"
       required:
-        - passphrase
+        - newPassphrase
+        - currentPassphrase
     UnattendedBootConfig:
       example:
         status: "off"
@@ -2382,13 +2403,17 @@ components:
         - logLevel
     BackupPassphraseConfig:
       example:
-        passphrase: This is my backup passphrase
+        newPassphrase: This is my new backup passphrase
+        currentPassphrase: backupPassphrase
       type: object
       properties:
-        passphrase:
+        newPassphrase:
+          $ref: "#/components/schemas/Passphrase"
+        currentPassphrase:
           $ref: "#/components/schemas/Passphrase"
       required:
-        - passphrase
+        - newPassphrase
+        - currentPassphrase
     TimeConfig:
       example:
         time: "2018-10-30T11:20:50Z"
