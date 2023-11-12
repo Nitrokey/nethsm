@@ -152,8 +152,8 @@ module Make (KV : Mirage_kv.RW) = struct
         Ipaddr.V4.of_octets netmask_str >>= fun netmask ->
         Ipaddr.V4.Prefix.of_netmask ~netmask ~address >>= fun prefix ->
         (if Ipaddr.V4.compare route Ipaddr.V4.any = 0 then Ok None
-        else if Ipaddr.V4.Prefix.mem route prefix then Ok (Some route)
-        else Error (`Msg "route not on local network"))
+         else if Ipaddr.V4.Prefix.mem route prefix then Ok (Some route)
+         else Error (`Msg "route not on local network"))
         >>| fun route' -> (address, prefix, route')
     | Backup_salt -> Ok (Cstruct.of_string data)
     | Backup_key -> Ok (Cstruct.of_string data)

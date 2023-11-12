@@ -194,7 +194,7 @@ let term = Term.(term_result (const export $ key $ backup_image $ output))
 let info_ =
   let doc = "Export a NetHSM backup image to json" in
   let man = [ `S "BUGS"; `P "Submit bugs" ] in
-    Cmd.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Cmd.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   Mirage_crypto_rng_unix.initialize ();

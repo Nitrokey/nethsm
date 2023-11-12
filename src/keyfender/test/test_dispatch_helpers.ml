@@ -45,12 +45,10 @@ module Expect = struct
 
   let stream (hsm, response) =
     Alcotest.(check status)
-      "Response code"
-      (Some `OK)
+      "Response code" (Some `OK)
       (status_of_response response);
     Alcotest.(check body_type)
-      "Response body type"
-      (Some `Stream)
+      "Response body type" (Some `Stream)
       (body_type_of_response response);
     match response with
     | Some (`OK, _, `Stream s, _) -> Some (hsm, s)
@@ -58,12 +56,10 @@ module Expect = struct
 
   let string expected (hsm, response) =
     Alcotest.(check status)
-      "Response code"
-      (Some `OK)
+      "Response code" (Some `OK)
       (status_of_response response);
     Alcotest.(check body_type)
-      "Response body type"
-      (Some `String)
+      "Response body type" (Some `String)
       (body_type_of_response response);
     match response with
     | Some (`OK, _, `String s, _) ->

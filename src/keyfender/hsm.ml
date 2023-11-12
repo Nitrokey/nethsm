@@ -478,7 +478,7 @@ struct
       | `Unprovisioned -> "unprovisioned"
       | `Operational -> "operational"
       | `Locked -> "locked")
-    [@@coverage off]
+  [@@coverage off]
 
   type cb =
     | Log of Json.log
@@ -1413,74 +1413,75 @@ struct
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
         (let open Rresult.R.Infix in
-        match Base64.decode oneline with
-        | Error (`Msg msg) ->
-            Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
-        | Ok encrypted_data ->
-            if
-              Json.MS.mem
-                (Json.mechanism_of_decrypt_mode decrypt_mode)
-                key_data.mechanisms
-            then (
-              (match key_data.priv with
-              | X509 (`RSA key) -> (
-                  let dec_cs =
-                    let encrypted_cs = Cstruct.of_string encrypted_data in
-                    match decrypt_mode with
-                    | Json.RAW -> (
-                        try
-                          Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
-                        with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
-                    | PKCS1 ->
-                        Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
-                    | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
-                    | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
-                    | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
-                    | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
-                    | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
-                    | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
-                    | AES_CBC -> None
-                  in
-                  match dec_cs with
-                  | None -> Error (Bad_request, "Decryption failure")
-                  | Some cs -> Ok cs)
-              | Generic key -> (
-                  let encrypted_cs = Cstruct.of_string encrypted_data in
-                  match decrypt_mode with
-                  | Json.AES_CBC -> (
-                      match iv with
-                      | None ->
-                          Error (Bad_request, "AES-CBC decrypt requires IV")
-                      | Some iv -> (
-                          try
-                            let iv =
-                              Base64.decode_exn iv |> Cstruct.of_string
-                            in
-                            let key =
-                              Mirage_crypto.Cipher_block.AES.CBC.of_secret
-                              @@ Cstruct.of_string key
-                            in
-                            Ok
-                              (Mirage_crypto.Cipher_block.AES.CBC.decrypt ~key
-                                 ~iv encrypted_cs)
-                          with Invalid_argument err ->
-                            Error (Bad_request, "Decryption failed: " ^ err)))
-                  | _ ->
-                      Error
-                        ( Bad_request,
-                          "decrypt mode not supported by Generic key" ))
-              | _ ->
-                  Error
-                    ( Bad_request,
-                      "Decryption only supported for RSA and Generic keys." ))
-              >>= fun cs ->
-              Metrics.key_op `Decrypt;
-              Hashtbl.replace cached_operations id (succ key_data.operations);
-              Ok (Base64.encode_string (Cstruct.to_string cs)))
-            else
-              Error
-                ( Bad_request,
-                  "Key mechanisms do not allow requested decryption." ))
+         match Base64.decode oneline with
+         | Error (`Msg msg) ->
+             Error
+               (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
+         | Ok encrypted_data ->
+             if
+               Json.MS.mem
+                 (Json.mechanism_of_decrypt_mode decrypt_mode)
+                 key_data.mechanisms
+             then (
+               (match key_data.priv with
+               | X509 (`RSA key) -> (
+                   let dec_cs =
+                     let encrypted_cs = Cstruct.of_string encrypted_data in
+                     match decrypt_mode with
+                     | Json.RAW -> (
+                         try
+                           Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_cs)
+                         with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+                     | PKCS1 ->
+                         Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_cs
+                     | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_cs
+                     | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_cs
+                     | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_cs
+                     | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_cs
+                     | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_cs
+                     | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_cs
+                     | AES_CBC -> None
+                   in
+                   match dec_cs with
+                   | None -> Error (Bad_request, "Decryption failure")
+                   | Some cs -> Ok cs)
+               | Generic key -> (
+                   let encrypted_cs = Cstruct.of_string encrypted_data in
+                   match decrypt_mode with
+                   | Json.AES_CBC -> (
+                       match iv with
+                       | None ->
+                           Error (Bad_request, "AES-CBC decrypt requires IV")
+                       | Some iv -> (
+                           try
+                             let iv =
+                               Base64.decode_exn iv |> Cstruct.of_string
+                             in
+                             let key =
+                               Mirage_crypto.Cipher_block.AES.CBC.of_secret
+                               @@ Cstruct.of_string key
+                             in
+                             Ok
+                               (Mirage_crypto.Cipher_block.AES.CBC.decrypt ~key
+                                  ~iv encrypted_cs)
+                           with Invalid_argument err ->
+                             Error (Bad_request, "Decryption failed: " ^ err)))
+                   | _ ->
+                       Error
+                         ( Bad_request,
+                           "decrypt mode not supported by Generic key" ))
+               | _ ->
+                   Error
+                     ( Bad_request,
+                       "Decryption only supported for RSA and Generic keys." ))
+               >>= fun cs ->
+               Metrics.key_op `Decrypt;
+               Hashtbl.replace cached_operations id (succ key_data.operations);
+               Ok (Base64.encode_string (Cstruct.to_string cs)))
+             else
+               Error
+                 ( Bad_request,
+                   "Key mechanisms do not allow requested decryption." ))
 
     let encrypt t ~id ~user_id ~iv encrypt_mode data =
       let open Lwt_result.Infix in
@@ -1488,51 +1489,53 @@ struct
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
         (let open Rresult.R.Infix in
-        match Base64.decode oneline with
-        | Error (`Msg msg) ->
-            Error (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
-        | Ok message_data ->
-            if
-              Json.MS.mem
-                (Json.mechanism_of_encrypt_mode encrypt_mode)
-                key_data.mechanisms
-            then (
-              (match key_data.priv with
-              | Generic key -> (
-                  let message_cs = Cstruct.of_string message_data in
-                  match encrypt_mode with
-                  | Json.AES_CBC -> (
-                      try
-                        let iv =
-                          match iv with
-                          | None ->
-                              Mirage_crypto_rng.generate
-                                Mirage_crypto.Cipher_block.AES.CBC.block_size
-                          | Some iv -> Base64.decode_exn iv |> Cstruct.of_string
-                        in
-                        let key =
-                          Mirage_crypto.Cipher_block.AES.CBC.of_secret
-                          @@ Cstruct.of_string key
-                        in
-                        Ok
-                          ( Mirage_crypto.Cipher_block.AES.CBC.encrypt ~key ~iv
-                              message_cs
-                            |> Cstruct.to_string |> Base64.encode_string,
-                            Some (Cstruct.to_string iv |> Base64.encode_string)
-                          )
-                      with Invalid_argument err ->
-                        Error (Bad_request, "Encryption failed: " ^ err)))
-              | _ ->
-                  Error
-                    (Bad_request, "Encryption only supported for Generic keys."))
-              >>= fun (cs, iv) ->
-              Metrics.key_op `Encrypt;
-              Hashtbl.replace cached_operations id (succ key_data.operations);
-              Ok (cs, iv))
-            else
-              Error
-                ( Bad_request,
-                  "Key mechanisms do not allow requested encryption." ))
+         match Base64.decode oneline with
+         | Error (`Msg msg) ->
+             Error
+               (Bad_request, "Couldn't decode data from base64: " ^ msg ^ ".")
+         | Ok message_data ->
+             if
+               Json.MS.mem
+                 (Json.mechanism_of_encrypt_mode encrypt_mode)
+                 key_data.mechanisms
+             then (
+               (match key_data.priv with
+               | Generic key -> (
+                   let message_cs = Cstruct.of_string message_data in
+                   match encrypt_mode with
+                   | Json.AES_CBC -> (
+                       try
+                         let iv =
+                           match iv with
+                           | None ->
+                               Mirage_crypto_rng.generate
+                                 Mirage_crypto.Cipher_block.AES.CBC.block_size
+                           | Some iv ->
+                               Base64.decode_exn iv |> Cstruct.of_string
+                         in
+                         let key =
+                           Mirage_crypto.Cipher_block.AES.CBC.of_secret
+                           @@ Cstruct.of_string key
+                         in
+                         Ok
+                           ( Mirage_crypto.Cipher_block.AES.CBC.encrypt ~key ~iv
+                               message_cs
+                             |> Cstruct.to_string |> Base64.encode_string,
+                             Some (Cstruct.to_string iv |> Base64.encode_string)
+                           )
+                       with Invalid_argument err ->
+                         Error (Bad_request, "Encryption failed: " ^ err)))
+               | _ ->
+                   Error
+                     (Bad_request, "Encryption only supported for Generic keys."))
+               >>= fun (cs, iv) ->
+               Metrics.key_op `Encrypt;
+               Hashtbl.replace cached_operations id (succ key_data.operations);
+               Ok (cs, iv))
+             else
+               Error
+                 ( Bad_request,
+                   "Key mechanisms do not allow requested encryption." ))
 
     let sign t ~id ~user_id sign_mode data =
       let open Lwt_result.Infix in
@@ -2023,7 +2026,7 @@ struct
                  first four are prefixed by 4 byte length *)
               read_n s 16 >>= fun (header, s) ->
               (if header = update_header then Lwt.return_ok ()
-              else Lwt.return_error (Bad_request, "Invalid update file"))
+               else Lwt.return_error (Bad_request, "Invalid update file"))
               >>= fun () ->
               get_field s >>= fun (signature, s) ->
               let hash = Hash.empty in
@@ -2061,16 +2064,16 @@ struct
               >>= fun (left, hash) ->
               pushf None;
               (let open Lwt.Infix in
-              Lwt_mvar.take t.res_mbox >|= function
-              | Ok () -> Ok ()
-              | Error msg ->
-                  Log.warn (fun m ->
-                      m "during update, platform reported %s" msg);
-                  Error (Bad_request, "update failed: " ^ msg))
+               Lwt_mvar.take t.res_mbox >|= function
+               | Ok () -> Ok ()
+               | Error msg ->
+                   Log.warn (fun m ->
+                       m "during update, platform reported %s" msg);
+                   Error (Bad_request, "update failed: " ^ msg))
               >>= fun () ->
               Lwt.return
                 (if left = 0 then Ok ()
-                else Error (Bad_request, "unexpected end of data"))
+                 else Error (Bad_request, "unexpected end of data"))
               >>= fun () ->
               let final_hash = Hash.get hash in
               let signature = Cstruct.of_string signature in
@@ -2487,66 +2490,66 @@ struct
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
     (let open Lwt_result.Infix in
-    lwt_error_to_msg ~pp_error:Config_store.pp_error
-      (Config_store.get_opt kv Version)
-    >>= function
-    | None ->
-        (* uninitialized / unprovisioned device *)
-        let priv = X509.Private_key.generate `P256 in
-        let state = Unprovisioned
-        and cert, key = generate_cert priv
-        and chain = [] in
-        let t =
-          {
-            state;
-            has_changes;
-            key;
-            cert;
-            chain;
-            software_update_key;
-            kv;
-            info;
-            system_info;
-            mbox;
-            res_mbox;
-            device_key;
-            cache_settings;
-          }
-        in
-        Lwt.return (Ok t)
-    | Some version -> (
-        match Version.(compare current version) with
-        | `Equal ->
-            boot_config_store ~cache_settings kv device_key >>= fun state ->
-            certificate_chain kv >|= fun (cert, chain, key) ->
-            {
-              state;
-              has_changes;
-              key;
-              cert;
-              chain;
-              software_update_key;
-              kv;
-              info;
-              system_info;
-              mbox;
-              res_mbox;
-              device_key;
-              cache_settings;
-            }
-        | `Smaller ->
-            let msg =
-              "store has higher version than software, please update software \
-               version"
-            in
-            Lwt.return (Error (`Msg msg))
-        | `Greater ->
-            (* here's the place to embed migration code, at least for the
-               configuration store *)
-            let msg =
-              "store has smaller version than software, data will be migrated!"
-            in
-            Lwt.return (Error (`Msg msg))))
+     lwt_error_to_msg ~pp_error:Config_store.pp_error
+       (Config_store.get_opt kv Version)
+     >>= function
+     | None ->
+         (* uninitialized / unprovisioned device *)
+         let priv = X509.Private_key.generate `P256 in
+         let state = Unprovisioned
+         and cert, key = generate_cert priv
+         and chain = [] in
+         let t =
+           {
+             state;
+             has_changes;
+             key;
+             cert;
+             chain;
+             software_update_key;
+             kv;
+             info;
+             system_info;
+             mbox;
+             res_mbox;
+             device_key;
+             cache_settings;
+           }
+         in
+         Lwt.return (Ok t)
+     | Some version -> (
+         match Version.(compare current version) with
+         | `Equal ->
+             boot_config_store ~cache_settings kv device_key >>= fun state ->
+             certificate_chain kv >|= fun (cert, chain, key) ->
+             {
+               state;
+               has_changes;
+               key;
+               cert;
+               chain;
+               software_update_key;
+               kv;
+               info;
+               system_info;
+               mbox;
+               res_mbox;
+               device_key;
+               cache_settings;
+             }
+         | `Smaller ->
+             let msg =
+               "store has higher version than software, please update software \
+                version"
+             in
+             Lwt.return (Error (`Msg msg))
+         | `Greater ->
+             (* here's the place to embed migration code, at least for the
+                configuration store *)
+             let msg =
+               "store has smaller version than software, data will be migrated!"
+             in
+             Lwt.return (Error (`Msg msg))))
     >|= function
     | Ok t ->
         let dump_key_ops () =

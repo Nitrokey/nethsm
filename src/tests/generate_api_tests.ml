@@ -318,17 +318,17 @@ let tests_for_states meth path cmd (response_code, response_body)
     (* if request contains --data json, prepare a wrong example *)
     let args = Str.split (Str.regexp "--data") req in
     (if List.length args == 2 then
-     (* prepare wrong json *)
-     let headers = List.hd args in
-     let wrong_json = "{}}}" in
-     let wrong_req =
-       Printf.sprintf " %s--data %s " headers (escape wrong_json)
-     in
-     let wrong_json_cmd =
-       Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n"
-         cmd' wrong_req
-     in
-     write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd);
+       (* prepare wrong json *)
+       let headers = List.hd args in
+       let wrong_json = "{}}}" in
+       let wrong_req =
+         Printf.sprintf " %s--data %s " headers (escape wrong_json)
+       in
+       let wrong_json_cmd =
+         Printf.sprintf "%s %s  -D 400_wrong_json_headers.out -o /dev/null \n\n"
+           cmd' wrong_req
+       in
+       write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd);
 
     (* prepare wrong auth header if endpoint requires authentication *)
     (match role with
@@ -350,12 +350,12 @@ let tests_for_states meth path cmd (response_code, response_body)
           Str.global_replace (Str.regexp_string current_auth) someone_else req
         in
         (if req <> wrong_auth then
-         let wrong_auth_cmd =
-           Printf.sprintf
-             "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'
-             wrong_auth
-         in
-         write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd);
+           let wrong_auth_cmd =
+             Printf.sprintf
+               "%s %s  -D 403_wrong_auth_headers.out -o /dev/null \n\n" cmd'
+               wrong_auth
+           in
+           write_cmd (outdir ^ "/403_wrong_auth_cmd.sh") wrong_auth_cmd);
         let no_auth =
           Str.global_replace (Str.regexp_string current_auth) "" req
         in
