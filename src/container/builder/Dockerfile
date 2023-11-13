@@ -195,13 +195,13 @@ EOF
 
 ARG OPAM_REPOSITORY_COMMIT
 COPY --chown=1000:1000 keyfender.opam.locked /home/opam/
-COPY --chown=1000:1000 mirage-unikernel-keyfender-unix.opam.locked /home/opam/
+COPY --chown=1000:1000 unikernel-preinstall.opam.locked /home/opam/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   opam repository set-url default git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT}
   opam update
   OPAMJOBS=$(nproc) opam install -y dune containers ezjsonm yaml ocamlformat
-  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --ignore-pin-depends /home/opam/keyfender.opam.locked
-  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --ignore-pin-depends /home/opam/mirage-unikernel-keyfender-unix.opam.locked
+  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/keyfender.opam.locked
+  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/unikernel-preinstall.opam.locked
 EOF
 # Remove opam cache directory
 RUN rmdir /home/opam/.opam/download-cache

@@ -216,6 +216,10 @@ let main =
         "h2-lwt";
       package
         ~pin:
+          "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+        "hpack";
+      package
+        ~pin:
           "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
         "grpc";
       package

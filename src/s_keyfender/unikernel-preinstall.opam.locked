@@ -1,5 +1,5 @@
 opam-version: "2.0"
-name: "mirage-unikernel-keyfender-unix"
+name: "mirage-unikernel-keyfender-muen"
 version: "~dev"
 synopsis: "This is a dummy"
 maintainer: "dummy"
@@ -18,8 +18,9 @@ depends: [
   "base-threads" {= "base"}
   "base-unix" {= "base"}
   "base64" {= "3.5.1"}
-  "bigstringaf" {= "0.9.1"}
   "bisect_ppx" {= "2.8.3"}
+  "bheap" {= "2.0.0"}
+  "bigstringaf" {= "0.9.0"}
   "bos" {= "0.2.1"}
   "ca-certs" {= "0.2.3"}
   "ca-certs-nss" {= "3.92"}
@@ -32,7 +33,9 @@ depends: [
   "conduit-mirage" {= "6.1.0"}
   "conf-gmp" {= "4"}
   "conf-gmp-powm-sec" {= "3"}
-  "conf-pkg-config" {= "3"}
+  "conf-libseccomp" {= "1"}
+  "conf-m4" {= "1"}
+  "conf-pkg-config" {= "2"}
   "conf-protoc" {= "4.4.0"}
   "cppo" {= "1.6.9"}
   "crunch" {= "3.3.1"}
@@ -40,7 +43,7 @@ depends: [
   "cstruct" {= "6.2.0"}
   "cstruct-lwt" {= "6.2.0"}
   "cstruct-sexp" {= "6.2.0"}
-  "digestif" {= "1.1.4"}
+  "digestif" {= "1.1.2"}
   "dispatch" {= "0.5.0"}
   "dns" {= "6.4.1"}
   "dns-client" {= "6.4.1"}
@@ -58,6 +61,7 @@ depends: [
   "gluten" {= "0.5.0"}
   "gluten-lwt" {= "0.5.0"}
   "gmap" {= "0.3.0"}
+  "gmp-freestanding" {= "6.2.1"}
   "happy-eyeballs" {= "0.5.0"}
   "hex" {= "1.5.0"}
   "hkdf" {= "1.0.4"}
@@ -80,9 +84,11 @@ depends: [
   "mirage" {= "3.10.8"}
   "mirage-block" {= "3.0.2"}
   "mirage-bootvar-unix" {= "0.1.0"}
+  "mirage-bootvar-solo5" {= "0.6.0"}
   "mirage-channel" {= "4.1.0"}
-  "mirage-clock" {= "4.2.0"}
-  "mirage-clock-unix" {= "4.2.0"}
+  "mirage-clock" {= "4.0.0"}
+  "mirage-clock-freestanding" {= "4.0.0"}
+  "mirage-clock-unix" {= "4.0.0"}
   "mirage-console" {= "5.1.0"}
   "mirage-crypto" {= "0.10.7"}
   "mirage-crypto-ec" {= "0.10.7"}
@@ -97,13 +103,14 @@ depends: [
   "mirage-kv-mem" {= "3.0.0"}
   "mirage-logs" {= "1.3.0"}
   "mirage-net" {= "4.0.0"}
-  "mirage-no-solo5" {= "1"}
+  "mirage-net-solo5" {= "0.6.2"}
   "mirage-no-xen" {= "1"}
   "mirage-profile" {= "0.9.1"}
   "mirage-protocols" {= "8.0.0"}
   "mirage-random" {= "3.0.0"}
   "mirage-random-test" {= "0.1.0"}
   "mirage-runtime" {= "3.10.8"}
+  "mirage-solo5" {= "0.6.5"}
   "mirage-stack" {= "4.0.0"}
   "mirage-time" {= "3.0.0"}
   "mirage-types" {= "3.10.8"}
@@ -114,8 +121,10 @@ depends: [
   "ocaml" {= "4.14.0"}
   "ocaml-compiler-libs" {= "v0.12.4"}
   "ocaml-config" {= "2"}
+  "ocaml-freestanding" {= "0.6.7"}
   "ocaml-option-flambda" {= "1"}
   "ocaml-protoc-plugin" {= "4.5.0"}
+  "ocaml-src" {= "4.14.0"}
   "ocaml-syntax-shims" {= "1.0.0"}
   "ocaml-variants" {= "4.14.0+options"}
   "ocamlbuild" {= "0.14.2"}
@@ -143,6 +152,7 @@ depends: [
   "seq" {= "base"}
   "sexplib" {= "v0.16.0"}
   "sexplib0" {= "v0.16.0"}
+  "solo5-bindings-muen" {= "0.6.9"}
   "spawn" {= "v0.15.1"}
   "stdlib-shims" {= "0.3.0"}
   "stringext" {= "1.6.0"}
@@ -160,14 +170,15 @@ depends: [
   "xenstore" {= "2.2.0"}
   "xenstore_transport" {= "1.3.0"}
   "yojson" {= "2.1.1"}
-  "zarith" {= "1.13"}
+  "zarith" {= "1.12"}
+  "zarith-freestanding" {= "1.12"}
 ]
 build: [
   "sh"
   "-exc"
-  "cd src/s_keyfender && mirage configure --no-depext -t unix --allocation-policy=best-fit --no-platform=true --single-interface --bisect-ppx --no-scrypt=true && mirage build"
+  "cd src/s_keyfender && mirage configure --no-depext -t muen --allocation-policy=best-fit --retry=true && mirage build"
 ]
-install: ["cp" "src/s_keyfender/_build/main.native" "%{bin}%/keyfender"]
+install: ["cp" "src/s_keyfender/keyfender.muen" "%{bin}%/keyfender.muen"]
 dev-repo: "git+https://example.com/nonexistent"
 pin-depends: [
   [
@@ -203,10 +214,10 @@ pin-depends: [
     "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
   [
-    "mirage.3.10.8"
-    "https://github.com/mirage/mirage/releases/download/v3.10.8/mirage-v3.10.8.tbz"
+    "hpack.dev"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
 ]
 url {
-  src: "ssh://git@git.nitrokey.com/nitrokey/nethsm/nethsm.git#master"
+  src: "file:///src#master"
 }
