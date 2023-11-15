@@ -159,7 +159,7 @@ module type S = sig
       t ->
       Json.MS.t ->
       Json.key_type ->
-      Json.key ->
+      Json.private_key ->
       Json.restrictions ->
       (unit, error) result Lwt.t
 
@@ -1290,7 +1290,7 @@ struct
       let open Mirage_crypto_ec in
       get_key t id >|= fun pkey ->
       let cs_to_b64 cs = Base64.encode_string (Cstruct.to_string cs) in
-      let key, typ =
+      let public, typ =
         match pkey.priv with
         | X509 (`RSA k) ->
             let z_to_b64 n =
@@ -1330,7 +1330,7 @@ struct
           Json.mechanisms = pkey.mechanisms;
           typ;
           operations = pkey.operations;
-          key;
+          public;
           restrictions = pkey.restrictions;
         }
 

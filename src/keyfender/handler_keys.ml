@@ -27,7 +27,7 @@ struct
         | Error e -> Endpoint.respond_error e rd
         | Ok keys ->
             let items =
-              List.map (fun key -> `Assoc [ ("key", `String key) ]) keys
+              List.map (fun key -> `Assoc [ ("id", `String key) ]) keys
             in
             let body = Yojson.Safe.to_string (`List items) in
             Wm.continue (`String body) rd
@@ -41,7 +41,7 @@ struct
           | Some path -> path
         in
         let ok (key : Json.private_key_req) =
-          Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key
+          Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.priv
             key.restrictions
           >>= function
           | Ok () -> Wm.continue true rd
@@ -307,7 +307,7 @@ struct
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok id (key : Json.private_key_req) =
-          Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.key
+          Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.priv
             key.restrictions
           >>= function
           | Ok () -> Wm.continue true rd

@@ -161,7 +161,7 @@ module type S = sig
       t ->
       Json.MS.t ->
       Json.key_type ->
-      Json.key ->
+      Json.private_key ->
       Json.restrictions ->
       (unit, error) result Lwt.t
 

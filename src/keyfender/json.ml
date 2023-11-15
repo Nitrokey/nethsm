@@ -197,7 +197,7 @@ let random_req_of_yojson x =
     Error "length must be between 1 and 1024"
   else Ok rr
 
-type key = {
+type private_key = {
   primeP : (string[@default ""]);
   primeQ : (string[@default ""]);
   publicExponent : (string[@default ""]);
@@ -342,7 +342,7 @@ type public_key = {
   mechanisms : MS.t;
   typ : key_type; [@key "type"]
   operations : int;
-  key : (Yojson.Safe.t[@default `Null]);
+  public : (Yojson.Safe.t[@default `Null]);
   restrictions : restrictions;
 }
 [@@deriving to_yojson]
@@ -351,7 +351,7 @@ type private_key_req = {
   mechanisms : MS.t;
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
   typ : key_type; [@key "type"]
-  key : key;
+  priv : private_key; [@key "private"]
 }
 [@@deriving yojson]
 

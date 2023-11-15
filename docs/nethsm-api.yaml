@@ -364,7 +364,7 @@ paths:
                     restrictions:
                       tags:
                         - berlin
-                    key:
+                    public:
                       modulus: FhJQl11CiY0ifRHXeAqFh4rdSl6
                       publicExponent: FhJQl11CiY0ifRHXeAqFh4rdSl6
                     operations: 242
@@ -379,7 +379,7 @@ paths:
                     restrictions:
                       tags:
                         - berlin
-                    key:
+                    public:
                       data: BMKlPJ60PNFgsekRwg7n5mTIJkWWy6XLy0ORj14HumKi5qH63JaJzFOWLxYiaB6KH0NOgEKb7rUt
                 eddsa:
                   summary: "Curve25519"
@@ -391,7 +391,7 @@ paths:
                     restrictions:
                       tags:
                         - berlin
-                    key:
+                    public:
                       data: htnjTKRUz3XnLys5YD2+bKvzXZuu9cvXKwsCnWdzR+4=
                 generic:
                   summary: Generic
@@ -465,7 +465,7 @@ paths:
                   type: RSA
                   mechanisms:
                     - RSA_Signature_PSS_SHA256
-                  key:
+                  private:
                     primeP: AOnWFZ+JrI/xOXJU04uYCZOiPVUWd6CSbVseEYrYQYxc7dVroePshz29tc+VEOUP5T0O8lXMEkjFAwjW6C9QTAsPyl6jwyOQluMRIkdN4/7BAg3HAMuGd7VmkGyYrnZWW54sLWp1JD6XJG33kF+9OSar9ETPoVyBgK5punfiUFEL
                     primeQ: ANT1kWDdP9hZoFKT49dwdM/S+3ZDnxQa7kZk9p+JKU5RaU9e8pS2GOJljHwkES1FH6CUGeIaUi81tRKe2XZhe/163sEyMcxkaaRbBbTc1v6ZDKILFKKt4eX7LAQfhL/iFlgi6pcyUM8QDrm1QeFgGz11ChM0JuQw1WwkX06lg8iv
                     publicExponent: AQAB
@@ -478,7 +478,7 @@ paths:
                   type: EC_P224
                   mechanisms:
                     - ECDSA_Signature
-                  key:
+                  private:
                     data: "BgcqhkjOPQIBBgUrgQQAIQM6AATZOhHS/Sed4w=="
                   restrictions:
                     tags:
@@ -489,7 +489,7 @@ paths:
                   type: Curve25519
                   mechanisms:
                     - EdDSA_Signature
-                  key:
+                  private:
                     data: "m0o4HHT5tiwxxJ3hCzK6H9pXt9R854qyJ+q4Lmei/Kg="
                   restrictions:
                     tags:
@@ -1968,16 +1968,16 @@ components:
       type: string
     KeyList:
       example:
-        - key: KeyID
+        - id: KeyID
       type: array
       items:
         $ref: "#/components/schemas/KeyItem"
     KeyItem:
       example:
-        key: KeyID
+        id: KeyID
       type: object
       properties:
-        key:
+        id:
           $ref: "#/components/schemas/ID"
       required:
         - key
@@ -2018,7 +2018,7 @@ components:
         mechanisms:
           - RSA_Signature_PSS_SHA256
         type: RSA
-        key:
+        private:
           primeP: AOnWFZ+JrI/xOXJU04uYCZOiPVUWd6CSbVseEYrYQYxc7dVroePshz29tc+VEOUP5T0O8lXMEkjFAwjW6C9QTAsPyl6jwyOQluMRIkdN4/7BAg3HAMuGd7VmkGyYrnZWW54sLWp1JD6XJG33kF+9OSar9ETPoVyBgK5punfiUFEL
           primeQ: ANT1kWDdP9hZoFKT49dwdM/S+3ZDnxQa7kZk9p+JKU5RaU9e8pS2GOJljHwkES1FH6CUGeIaUi81tRKe2XZhe/163sEyMcxkaaRbBbTc1v6ZDKILFKKt4eX7LAQfhL/iFlgi6pcyUM8QDrm1QeFgGz11ChM0JuQw1WwkX06lg8iv
           publicExponent: AQAB
@@ -2031,7 +2031,7 @@ components:
           $ref: "#/components/schemas/KeyMechanisms"
         type:
           $ref: "#/components/schemas/KeyType"
-        key:
+        private:
           $ref: "#/components/schemas/KeyPrivateData"
         restrictions:
           $ref: "#/components/schemas/KeyRestrictions"
@@ -2058,7 +2058,7 @@ components:
         restrictions:
           tags:
             - berlin
-        key:
+        public:
           modulus: FhJQl11CiY0ifRHXeAqFh4rdSl6
           publicExponent: FhJQl11CiY0ifRHXeAqFh4rdSl6
         operations: 242
@@ -2070,7 +2070,7 @@ components:
           $ref: "#/components/schemas/KeyType"
         restrictions:
           $ref: "#/components/schemas/KeyRestrictions"
-        key:
+        public:
           $ref: "#/components/schemas/KeyPublicData"
         operations:
           type: integer

@@ -166,7 +166,7 @@ add_rsa2048 () {
 {
   mechanisms: ["RSA_Decryption_PKCS1", "RSA_Signature_PKCS1"],
   type: "RSA",
-  key: {
+  private: {
     primeP: "APWssfg0uM2HevzjbDM+Om8ThaGLNoxzJkujtbT55SPhx5ntnDiktTXNRAHdwJgAc1HPVVCm6nESSIZ0ZqO+rh2vRYT+oXMHre0zhpGDZMVAB31zowTUv+6d7lakMbqN3hDjpxaiP3Xg7my4qMCrnnFyBq7LuE/0zw2SeoQnKlY1",
     primeQ : "ANAc/C1uKDdSsgc/du5N4B8vLZH8aC+poVyq8eZwkgs71vG3XccW6gEkC5dh439DKdZKYj3pywq39NNjzAK0VSs9TnscttaVtaS45rctpyP5nNoQnsVe3euc55P9UKuV9tRw7nnSi0Tf1QDbphEP/bsXj7F4FG6McdheXLPzV7M7",
     publicExponent : "AQAB"
@@ -183,7 +183,7 @@ add_rsa4096 () {
 {
   mechanisms: ["RSA_Decryption_PKCS1", "RSA_Signature_PKCS1"],
   type: "RSA",
-  key: {
+  private: {
     primeP: "APiF89+5Bpxxsl93H2pG9lSFq5cea5y8xIM6NMsOihisG55qCsTRaHQPvxPzKtjciJg6x1/jCH8lns44eaE99qR1N78hZqSETHNCJKEzTRzsAwrRoFJhVzvw5VgFqWtJOiB7djvE9FTjv68HGlPJysIQxw1UI4PVLWLHsxpSs4jmp4Uy48sS3wP+C1/Spf7gB6x1vNrLHVm2pXo0gavNWmsBBCdOufQHP9+a9V7CRwJEd0udfEnMtToB3wg+ER9mnUV26jr4lHrjXgm/6qQaFn2Vk5TTRfx6RSSId5sE0ur7wav/9mReFj2N7FTd+7ulb3rnaKH4ZpI5sZOyrWer1G8=",
     primeQ : "AM5QN5bS/2s10eAQ1MlE7RBYWCMtb8OFc+m+YqGA4vMSAE9rdvYxjJWFK3hoVHoHfEVmxIArz4SE9yA8FtTnQmEhXHJZkVCsUFaP/LTKtsMSef9O1KusgOBh7ro8VQlU8pOJDg85AvuBfNAcGY81QUXfnKpRGh9DTQisq5fYDUY9y51ou/oQShtO399AAOF/+1x+gwiTPLYx2hTKb9astWObn1TfkqM/gISLSN7p1RPUyVoJ7UycpX+ZUXx/z9tAKOCEHK9gDQqaT1cnnBYF1LOHvMaDrIJ8pA+5J4C2M0mmOvtZ6zy+OtngNfEM5Xg4LDhgKwZhza1vy/DM1bkjRe0=",
     publicExponent : "AQAB"
@@ -200,7 +200,7 @@ add_p256 () {
 {
   mechanisms: ["ECDSA_Signature"],
   type: "EC_P256",
-  key: {
+  private: {
     data: "n0HHZm8rFRY0XO4FpS42azls3qgQ75o/m2m2H6VQGSQ="
   }
 }

@@ -1649,7 +1649,7 @@ let keys_get =
   | _ -> false
 
 let key_json =
-  {| { mechanisms: [ "RSA_Signature_PKCS1" ], type: "RSA", key: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
+  {| { mechanisms: [ "RSA_Signature_PKCS1" ], type: "RSA", private: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
 
 let keys_post_json =
   "POST on /keys succeeds" @? fun () ->
@@ -1853,7 +1853,7 @@ let keys_key_get =
                xs
           && List.exists
                (fun (k, v) ->
-                 k = "key"
+                 k = "public"
                  &&
                  match v with
                  | `Assoc a ->
@@ -2346,7 +2346,7 @@ let ed25519_json =
          (Mirage_crypto_ec.Ed25519.priv_to_cstruct ed25519_priv))
   in
   Printf.sprintf
-    {| { mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", key: { data: "%s" } } |}
+    {| { mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", private: { data: "%s" } } |}
     b64
 
 let keys_key_put_ed25519 =
@@ -2501,7 +2501,7 @@ let keys_key_get_generic =
 let generic_json =
   let b64 = Base64.encode_string generic_key in
   Printf.sprintf
-    {| { mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", key: { data: "%s" } } |}
+    {| { mechanisms: [ "AES_Encryption_CBC" ], type: "Generic", private: { data: "%s" } } |}
     b64
 
 let keys_key_put_generic =
