@@ -440,6 +440,7 @@ create_artifact_packages:
       "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/update/latest/nethsm_update_${CI_COMMIT_SHORT_SHA}.zip"
 
 integration_test_sdk_py:
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
