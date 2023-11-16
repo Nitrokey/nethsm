@@ -1862,7 +1862,7 @@ paths:
 components:
   schemas:
     Passphrase:
-      minLength: 1
+      minLength: 10
       type: string
     ID:
       pattern: ^[a-zA-Z0-9]+$
@@ -2354,7 +2354,7 @@ components:
         newPassphrase:
           $ref: "#/components/schemas/Passphrase"
         currentPassphrase:
-          $ref: "#/components/schemas/Passphrase"
+          type: string
       required:
         - newPassphrase
         - currentPassphrase
@@ -2410,7 +2410,7 @@ components:
         newPassphrase:
           $ref: "#/components/schemas/Passphrase"
         currentPassphrase:
-          $ref: "#/components/schemas/Passphrase"
+          type: string
       required:
         - newPassphrase
         - currentPassphrase
