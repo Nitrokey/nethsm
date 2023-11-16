@@ -22,29 +22,30 @@ let all_states = [ "Unprovisioned"; "Locked"; "Operational" ]
 
 let skip_endpoints =
   [
-    "/system/update";
+    "/config/tls/cert.pem";
+    "/keys/{KeyID}/cert";
+    "/system/backup";
     "/system/cancel-update";
     "/system/commit-update";
-    "/system/backup";
     "/system/restore";
-    "/keys/{KeyID}/cert";
-    "/config/tls/cert.pem";
+    "/system/update";
   ]
 
 let skip_body_endpoints =
   [
-    "/random";
-    "/config/tls/csr.pem";
+    "/config/time";
     "/config/tls/cert.pem";
+    "/config/tls/csr.pem";
     "/config/tls/public.pem";
     "/health/state";
-    "/metrics";
-    "/config/time";
-    "/system/info";
-    "/keys/{KeyID}";
     "/keys";
-    "/users/{UserID}";
+    "/keys/generate";
+    "/keys/{KeyID}";
+    "/metrics";
+    "/random";
+    "/system/info";
     "/users";
+    "/users/{UserID}";
   ]
 
 let is_quoted s =

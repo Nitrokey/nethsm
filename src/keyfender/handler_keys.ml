@@ -44,7 +44,12 @@ struct
           Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.priv
             key.restrictions
           >>= function
-          | Ok () -> Wm.continue true rd
+          | Ok () ->
+              let body =
+                `Assoc [ ("id", `String id) ] |> Yojson.Basic.to_string
+              in
+              let rd = { rd with resp_body = `String body } in
+              Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
         Json.decode Json.private_key_req_of_yojson content
@@ -80,6 +85,10 @@ struct
                 Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id)
               in
               let rd' = Webmachine.Rd.with_resp_headers cc rd in
+              let body =
+                `Assoc [ ("id", `String id) ] |> Yojson.Basic.to_string
+              in
+              let rd' = { rd' with resp_body = `String body } in
               Wm.continue true rd'
           | Error e -> Endpoint.respond_error e rd
         in
@@ -143,6 +152,10 @@ struct
                 Cohttp.Header.add hdr "location" ("/api/v1/keys/" ^ id)
               in
               let rd' = Webmachine.Rd.with_resp_headers cc rd in
+              let body =
+                `Assoc [ ("id", `String id) ] |> Yojson.Basic.to_string
+              in
+              let rd' = { rd' with resp_body = `String body } in
               Wm.continue true rd'
           | Error e -> Endpoint.respond_error e rd
         in

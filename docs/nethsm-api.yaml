@@ -256,6 +256,10 @@ paths:
               description: Where to find the newly added key.
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResourceId"
           description: |
             Successful import of a private key.
             The response contains a Location header,
@@ -314,6 +318,10 @@ paths:
               description: Where to find the newly added key.
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (specified properties are invalid).
         "401":
@@ -972,6 +980,15 @@ paths:
             Successful creation of user.
             The response contains a Location header,
             e.g. "https://nethsm.local/v1/users/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+          headers:
+            location:
+              description: Where to find the newly added user.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
         "401":
@@ -1897,6 +1914,13 @@ components:
         - warning
         - error
       type: string
+    CreateResourceId:
+      example:
+        id: ab0d5df406ddad1075ab
+      type: object
+      properties:
+        id:
+          type: string
     KeyType:
       enum:
         - RSA

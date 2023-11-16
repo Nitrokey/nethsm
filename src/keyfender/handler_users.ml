@@ -40,7 +40,12 @@ struct
           Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName
             ~passphrase:user.passphrase
           >>= function
-          | Ok () -> Wm.continue true rd
+          | Ok () ->
+              let body =
+                `Assoc [ ("id", `String id) ] |> Yojson.Basic.to_string
+              in
+              let rd = { rd with resp_body = `String body } in
+              Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
         Json.decode_user_req content |> Endpoint.err_to_bad_request ok rd

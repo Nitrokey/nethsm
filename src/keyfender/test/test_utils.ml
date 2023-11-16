@@ -263,3 +263,16 @@ let create_multipart_request (parts : (string * string) list) : string * string
       in
       let body = string_of_stream body_stream in
       (content_type, body)
+
+(* Checks if the provided id natches the id provided in the body as json of the form {"id": "someid"} *)
+let check_body_id body id =
+  let body = Cohttp_lwt.Body.to_string body |> Lwt_main.run in
+  let id' =
+    let open Yojson.Basic in
+    from_string body |> Util.member "id" |> Util.to_string
+  in
+  String.equal id id'
+
+(* Extracts the id from a Location URL like /api/v1/keys/KEYID *)
+let extract_location_id location =
+  String.split_on_char '/' location |> fun l -> List.nth l 4

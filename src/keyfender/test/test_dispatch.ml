@@ -1332,12 +1332,14 @@ let users_post =
   "POST on /users/ succeeds" @? fun () ->
   let expect = info "added Jane User (xxxx): R-Operator" in
   match admin_post_request ~expect ~body:(`String operator_json) "/users" with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
       | Some loc ->
-          let prefix = "/api/v1/users/" in
-          String.equal (String.sub loc 0 (String.length prefix)) prefix)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let user_operator_add =
@@ -1655,7 +1657,15 @@ let keys_post_json =
   "POST on /keys succeeds" @? fun () ->
   let expect = info "created (xxxx)" in
   match admin_post_request ~expect ~body:(`String key_json) "/keys" with
-  | _, Some (`Created, _, _, _) -> true
+  | _, Some (`Created, headers, body, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc ->
+          (* /api/v1/keys/<keyid> *)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let key_pem =
@@ -1686,12 +1696,15 @@ let keys_post_pem =
     admin_post_request ~expect ~content_type:"application/x-pem-file" ~query
       ~body:(`String key_pem) "/keys"
   with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
-      | Some loc when String.contains loc '?' ->
-          false (* the query string shouldn't be included *)
-      | Some _ -> true)
+      | Some loc ->
+          (* /api/v1/keys/<keyid> *)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let keys_generate =
@@ -1703,12 +1716,15 @@ let keys_generate =
   match
     admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
   with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
       | Some loc ->
           (* /api/v1/keys/<keyid> *)
-          List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let keys_generate_invalid_id =
@@ -1760,12 +1776,15 @@ let keys_generate_ed25519 =
   match
     admin_post_request ~expect ~body:(`String generate_ed25519) "/keys/generate"
   with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
       | Some loc ->
           (* /api/v1/keys/<keyid> *)
-          List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let keys_generate_ed25519_explicit_keyid =
@@ -1778,10 +1797,12 @@ let keys_generate_ed25519_explicit_keyid =
   match
     admin_post_request ~expect ~body:(`String generate_ed25519) "/keys/generate"
   with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
-      | Some loc -> String.equal loc "/api/v1/keys/mynewkey")
+      | Some loc ->
+          let header_check = String.equal loc "/api/v1/keys/mynewkey" in
+          header_check && check_body_id body "mynewkey")
   | _ -> false
 
 let keys_generate_ed25519_fail =
@@ -1807,12 +1828,15 @@ let keys_generate_generic =
   match
     admin_post_request ~expect ~body:(`String generate_generic) "/keys/generate"
   with
-  | _, Some (`Created, headers, _, _) -> (
+  | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
       | None -> false
       | Some loc ->
           (* /api/v1/keys/<keyid> *)
-          List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4)
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
 let keys_generate_generic_fail =
