@@ -283,23 +283,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PrivateKey"
-          application/x-pem-file:
+          multipart/form-data:
             schema:
-              $ref: "#/components/schemas/PemPrivateKey"
+              $ref: "#/components/schemas/PrivateKeyPem"
+            encoding:
+              key_file:
+                contentType: application/x-pem-file
         required: true
-      parameters:
-        - name: mechanisms
-          in: query
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/KeyMechanism"
-        - name: tags
-          in: query
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ID"
       security:
         - basic: []
       x-annotation-role:
@@ -502,23 +492,13 @@ paths:
                   restrictions:
                     tags:
                       - berlin
-          application/x-pem-file:
+          multipart/form-data:
             schema:
-              $ref: "#/components/schemas/PemPrivateKey"
+              $ref: "#/components/schemas/PrivateKeyPem"
+            encoding:
+              key_file:
+                contentType: application/x-pem-file
         required: true
-      parameters:
-        - name: mechanisms
-          in: query
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/KeyMechanism"
-        - name: tags
-          in: query
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/ID"
       security:
         - basic: []
       x-annotation-role:
@@ -1858,19 +1838,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                arguments:
-                  type: object
-                  properties:
-                    backupPassphrase:
-                      $ref: "#/components/schemas/Passphrase"
-                    systemTime:
-                      type: string
-                      format: date-time
-                backup_file:
-                  type: string
-                  format: binary
+              $ref: "#/components/schemas/RestoreRequest"
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -2063,6 +2031,26 @@ components:
         - mechanisms
         - type
         - key
+    PrivateKeyPem:
+      example:
+        arguments:
+          mechanisms:
+            - RSA_Signature_PSS_SHA256
+          restrictions:
+            tags:
+              - munich
+        key_file: privatekey.pem
+      type: object
+      properties:
+        arguments:
+          type: object
+          properties:
+            mechanisms:
+              $ref: "#/components/schemas/KeyMechanisms"
+            restrictions:
+              $ref: "#/components/schemas/KeyRestrictions"
+        key_file:
+          $ref: "#/components/schemas/PemPrivateKey"
     KeyPrivateData:
       type: object
       properties:
@@ -2438,6 +2426,20 @@ components:
       required:
         - newPassphrase
         - currentPassphrase
+    RestoreRequest:
+      type: object
+      properties:
+        arguments:
+          type: object
+          properties:
+            backupPassphrase:
+              $ref: "#/components/schemas/Passphrase"
+            systemTime:
+              type: string
+              format: date-time
+        backup_file:
+          type: string
+          format: binary
     TimeConfig:
       example:
         time: "2018-10-30T11:20:50Z"

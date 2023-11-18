@@ -355,6 +355,12 @@ type private_key_req = {
 }
 [@@deriving yojson]
 
+type private_key_multipart_req = {
+  mechanisms : MS.t;
+  restrictions : (restrictions[@default { tags = TagSet.empty }]);
+}
+[@@deriving yojson]
+
 type decrypt_mode =
   | RAW
   | PKCS1

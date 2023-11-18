@@ -345,6 +345,17 @@ let operational_mock_with_mbox () =
         ~passphrase:"test3Passphrase" ~name:"backup"
       >|= fun _ -> state )
 
+let multipart_log =
+  {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
+test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Decode a 8-bit part.
+test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
+test_dispatch.exe: [DEBUG] End of input.
+test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
+|}
+
 let system_update_commit_ok =
   "a request for /system/commit-update with authenticated user returns 200"
   @? fun () ->
@@ -415,17 +426,7 @@ let system_backup_and_restore_ok =
             create_multipart_request
               [ ("arguments", arguments); ("backup_data", backup_data) ]
           in
-          let expect =
-            {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
-test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] End of input.
-test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
-|}
-          in
+          let expect = multipart_log in
           match
             request ~expect ~meth:`POST ~content_type ~body:(`String body)
               "/system/restore"
@@ -488,16 +489,8 @@ let system_backup_and_restore_changed_devkey =
               >|= fun (y, _, _) -> y )
           in
           let expect =
-            {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
-test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] End of input.
-test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
-test_dispatch.exe: [INFO] Device Key changed. Refreshing stored Domain Key.
-|}
+            multipart_log
+            ^ info "Device Key changed. Refreshing stored Domain Key."
           in
           match
             request ~expect ~meth:`POST ~content_type ~body:(`String body)
@@ -564,17 +557,7 @@ let system_backup_and_restore_unattended =
       create_multipart_request
         [ ("arguments", arguments); ("backup_data", backup_data) ]
     in
-    let expect =
-      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
-test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] End of input.
-test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
-|}
-    in
+    let expect = multipart_log in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
       "/system/restore"
     |> Expect.no_content
@@ -626,17 +609,9 @@ let system_backup_and_restore_unattended_changed_devkey =
   in
   let* hsm_state =
     let expect =
-      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
-test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] End of input.
-test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
-test_dispatch.exe: [ERROR] unattended boot failed with not authenticated
-test_dispatch.exe: [INFO] Device Key changed. Refreshing stored Domain Key.
-|}
+      multipart_log
+      ^ error "unattended boot failed with not authenticated"
+      ^ info "Device Key changed. Refreshing stored Domain Key."
     in
     let arguments =
       Yojson.Safe.to_string
@@ -710,19 +685,7 @@ let system_backup_and_restore_operational =
   in
   (* restore *)
   let* hsm_state =
-    let expect =
-      {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 byte(s).
-test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Decode a 8-bit part.
-test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
-test_dispatch.exe: [DEBUG] End of input.
-test_dispatch.exe: [DEBUG] Remain one payload: "\r\n--------------------------eb790219f130e103--\r\n"
-test_dispatch.exe: [INFO] removing: /key/newKeyID
-
-|}
-    in
+    let expect = multipart_log ^ info "removing: /key/newKeyID\n" in
     let arguments =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
@@ -1687,14 +1650,18 @@ Md8AsPjClPZa3yUjpRaBeOvFmYMVH/scXXy+hxJJwz/tl+Gtde1Gf/CeDw5TEcQy
 -----END PRIVATE KEY-----|}
 
 let keys_post_pem =
-  let query =
-    [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ]
-  in
   "POST on /keys succeeds" @? fun () ->
-  let expect = info "created (xxxx)" ^ info "tags (xxxx): [\"munich\"]" in
+  let params =
+    {|{ mechanisms: [ "RSA_Signature_PKCS1" ], restrictions: { tags: [ "munich" ] } }|}
+  in
+  let expect =
+    multipart_log ^ info "created (xxxx)" ^ info "tags (xxxx): [\"munich\"]"
+  in
+  let content_type, body =
+    create_multipart_request [ ("arguments", params); ("backup_data", key_pem) ]
+  in
   match
-    admin_post_request ~expect ~content_type:"application/x-pem-file" ~query
-      ~body:(`String key_pem) "/keys"
+    admin_post_request ~expect ~content_type ~body:(`String body) "/keys"
   with
   | _, Some (`Created, headers, body, _) -> (
       match Cohttp.Header.get headers "location" with
@@ -1931,13 +1898,17 @@ let keys_key_put_json =
 
 let keys_key_put_pem =
   "PUT on /keys/keyID succeeds" @? fun () ->
-  let expect = info "created (keyID)" ^ info "tags (keyID): [\"munich\"]" in
-  let query =
-    [ ("mechanisms", [ "RSA_Signature_PKCS1" ]); ("tags", [ "munich" ]) ]
+  let expect =
+    multipart_log ^ info "created (keyID)" ^ info "tags (keyID): [\"munich\"]"
+  in
+  let params =
+    {|{ mechanisms: [ "RSA_Signature_PKCS1" ], restrictions: { tags: [ "munich" ] } }|}
+  in
+  let content_type, body =
+    create_multipart_request [ ("arguments", params); ("backup_data", key_pem) ]
   in
   match
-    admin_put_request ~expect ~content_type:"application/x-pem-file" ~query
-      ~body:(`String key_pem) "/keys/keyID"
+    admin_put_request ~expect ~content_type ~body:(`String body) "/keys/keyID"
   with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
