@@ -310,7 +310,7 @@ func sPlatformActions() {
 		" --data-dir=/data/etcd"+
 		" --snapshot-count=5000"+
 		" --auto-compaction-retention=1h"+
-		" --quota-backend-bytes=4294967296"+ // should not be more than RAM
+		" --quota-backend-bytes=6232449024"+ // should not be more than RAM
 		" --initial-cluster-state=new"+
 		" --v2-deprecation=gone"+
 		" --enable-v2=false"+
