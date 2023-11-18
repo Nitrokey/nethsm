@@ -14,6 +14,7 @@ struct
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.role hsm_state `Administrator ip
+      val mutable new_id = None
 
       method private get_json rd =
         Hsm.User.list hsm_state >>= function
@@ -29,14 +30,8 @@ struct
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok (user : Json.user_req) =
-          let id =
-            match Cohttp.Header.get rd.req_headers "new_id" with
-            | None ->
-                assert false
-                (* this can't happen since we set it ourselves,
-                   and webmachine ensures that it already happened. *)
-            | Some path -> path
-          in
+          (* must succeed since we set it ourselves, and webmachine ensures that it already happened. *)
+          let id = Option.get new_id in
           Hsm.User.add hsm_state ~id ~role:user.role ~name:user.realName
             ~passphrase:user.passphrase
           >>= function
@@ -53,14 +48,9 @@ struct
       method! post_is_create rd = Wm.continue true rd
 
       method! create_path rd =
-        let path = Hsm.generate_id () in
-        let rd' =
-          {
-            rd with
-            req_headers = Cohttp.Header.add rd.req_headers "new_id" path;
-          }
-        in
-        Wm.continue path rd'
+        let id = Hsm.generate_id () in
+        new_id <- Some id;
+        Wm.continue id rd
 
       method! allowed_methods rd = Wm.continue [ `POST; `GET ] rd
 

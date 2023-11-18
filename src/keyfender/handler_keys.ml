@@ -66,6 +66,7 @@ struct
         let rd = Webmachine.Rd.with_resp_headers cc rd in
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
+        (* must succeed since we set it ourselves, and webmachine ensures that it already happened. *)
         let id = Option.get new_id in
         let ok (key : Json.private_key_req) =
           Hsm.Key.add_json hsm_state ~id key.mechanisms key.typ key.priv
@@ -156,6 +157,7 @@ struct
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.role hsm_state `Administrator ip
       inherit! Endpoint.no_cache
+      val mutable new_id = None
 
       method private set_json rd =
         let cc hdr = Cohttp.Header.remove hdr "location" in
@@ -164,7 +166,7 @@ struct
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok (key : Json.generate_key_req) =
           let id =
-            match (key.id, Cohttp.Header.get rd.req_headers "new_id") with
+            match (key.id, new_id) with
             | "", Some path -> path
             | "", None -> assert false (* can never happen, see above *)
             | id, _ -> id
@@ -190,7 +192,7 @@ struct
       method! post_is_create rd = Wm.continue true rd
 
       method! create_path rd =
-        let path = Hsm.generate_id () in
+        let id = Hsm.generate_id () in
         let uri =
           let parts = Astring.String.cuts ~sep:"/" (Uri.path rd.uri) in
           let without_last =
@@ -198,14 +200,9 @@ struct
           in
           Uri.with_path rd.uri (Astring.String.concat ~sep:"/" without_last)
         in
-        let rd' =
-          {
-            rd with
-            req_headers = Cohttp.Header.add rd.req_headers "new_id" path;
-            uri;
-          }
-        in
-        Wm.continue path rd'
+        new_id <- Some id;
+        let rd' = { rd with uri } in
+        Wm.continue id rd'
 
       method! allowed_methods rd = Wm.continue [ `POST ] rd
 
