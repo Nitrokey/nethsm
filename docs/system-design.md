@@ -4,7 +4,7 @@
 
 # Introduction {#sec-i}
 
-NetHSM is a networked hardware security module which can securely store a large number of cryptographic keys, have a high computing performance, and offers common key management functions via a modern REST-based API.
+NetHSM is a networked Hardware Security Module (HSM) which can securely store a large number of cryptographic keys, have a high computing performance, and offers common key management functions via a modern REST-based API.
 
 For further introductory and user guidance, see the [user documentation][docs] as a prerequisite to understand this document. This document describes the System Design and Technical Architecture of the NetHSM, which includes:
 
