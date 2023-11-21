@@ -47,7 +47,9 @@ Configuration Store
 
 Device Key
 
-: A persistent device-dependent key, unique to each NetHSM hardware unit delivered by Nitrokey. The *Device Key* is used to derive an _Unlock Key_.
+: A device-dependent key that is securely stored by the TPM and only accessible
+if signed and unmodified NetHSM software is running. The *Device Key* is used to encrypt the
+data in the _Domain Key Store_.
 
 Domain Key
 
@@ -117,11 +119,11 @@ Unprovisioned
 
 : An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for [Initial Provisioning](#sec-us-ip) is available.
 
-Note: Other than a NetHSM hardware appliance, resetting a NetHSM testing software container yields to the Locked state.
+Note: Other than a NetHSM hardware appliance, resetting a NetHSM testing container yields the Locked state.
 
 # Data Model {#sec-dd-dm}
 
-![Data Model](DataModel.png){width=75%}
+![Data Model](DataModel.svg){width=75%}
 
 All _User Data_ is stored in a number of persistent data stores on the NetHSM; see Figure 1: Data Model. Each data store is a Key/Value store, additionally containing a version number (denoted as "Store Version" in the diagram). This version number is incremented whenever the underlying data model ("Values") of a data store changes. It determines if data migration code needs to be run for that data store.
 
@@ -132,11 +134,12 @@ For each data store, the diagram shows, as a high-level overview, which types of
 
 # Encryption Architecture {#sec-dd-ea}
 
-![Encryption Architecture](EncryptionArchitecture.png){width=75%}
+![Encryption Architecture](EncryptionArchitecture.svg){width=75%}
 
 The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the **S-Keyfender** subject has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
-The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with ephemeral _Unlock Keys_.
+The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using
+AES256-GCM (i.e. AEAD) with the _Device Key_.
 
 The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot](#sec-us-ub). Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
@@ -146,8 +149,9 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |         GOTO UNLOCKED
 |     ELSE LOOP: # In case of Attended Boot
 |         _Unlock Passphrase_ = Await API call to `/unlock` endpoint
-|         _Unlock Key_ = SHA256(*Device Key*|KDF(_Unlock Passphrase_))
-|         _Domain Key_ = Decrypt\_AES256GCM(_Unlock Key_, _Slot 0_)
+|         _Unlock Key_ = KDF(_Unlock Passphrase_)
+|         _Locked Domain Key_ = Decrypt\_AES256GCM(_Device Key_, _Slot 0_)
+|         _Domain Key_ = Decrypt\_AES256GCM(_Unlock Key_, _Locked Domain Key_)
 |         IF decryption was successful:
 |             Return _Success_ to API caller
 |             GOTO UNLOCKED
@@ -157,13 +161,30 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |     UNLOCKED:
 |     _State_ = _Operational_
 
-A random _Device Key_ (unique per device) is generated during the first boot of the system. The TPM is used to seal it with the Storage Root Key (SRK) and the PCR measurement of the _Firmware_. During subsequent boots the sealed _Device Key_ is unsealed with the TPM. This prevents access of unauthorized _Firmware_ to the _Device Key_.
+A random _Device Key_ (unique per device) is generated during the first boot of
+the system. The TPM is used to seal it with the Storage Root Key (SRK) and the
+PCR measurement of the _Firmware_. During subsequent boots the sealed _Device
+Key_ is unsealed with the TPM. This prevents access of unauthorized _Firmware_
+and _Software_ to the _Device Key_.
 
 During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), the _Device Key_ is used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
 
-During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. The _Device Key_ is extended with the KDF of the _Unlock Passphrase_ and hashed with SHA256. The resulting hash is used as the _Unlock Key_. The _Unlock Key_ is then similarly used to decrypt the encrypted _Domain Key_ stored in "Slot 0". If the decryption step fails (due to the user providing an incorrect _Unlock Passphrase_ or invalid _Device Key_), the NetHSM shall remain in the _Locked_ state, and continue to await an _Unlock Passphrase_.
+During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left
+and right hand side), the NetHSM waits for the user (via the `/unlock` endpoint
+of the REST API) to provide an _Unlock Passphrase_. The _Unlock Key_ is
+calculated by applying the KDF to the _Unlock Passphrase_. The _Device Key_ is
+used to decrypt the encrypted _Locked Domain Key_ stored in "Slot 0". The
+_Unlock Key_ is then used to decrypt the _Domain Key_ from the _Locked Domain
+Key_. If any decryption step fails (due to the user providing an incorrect
+_Unlock Passphrase_ or invalid _Device Key_), the NetHSM shall remain in the
+_Locked_ state, and continue to await an _Unlock Passphrase_.
 
-For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub) causes **S-Keyfender** to populate "Slot 1" with a _Domain Key_ encrypted with the _Device Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub) causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
+For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub)
+causes **S-Keyfender** to populate "Slot 1" with a _Domain Key_ encrypted with
+_only_ the _Device Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub)
+causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no
+point does the NetHSM persistently store either the _Unlock Passphrase_ or an
+_Unlock Key_.
 
 # Technical Architecture {#sec-dd-ta}
 
