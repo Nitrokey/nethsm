@@ -1889,6 +1889,8 @@ components:
       properties:
         id:
           type: string
+      required:
+        - id
     KeyType:
       enum:
         - RSA
@@ -1972,7 +1974,7 @@ components:
         id:
           $ref: "#/components/schemas/ID"
       required:
-        - key
+        - id
     KeyRestrictions:
       type: object
       properties:
@@ -2030,7 +2032,7 @@ components:
       required:
         - mechanisms
         - type
-        - key
+        - private
     PrivateKeyPem:
       example:
         arguments:
