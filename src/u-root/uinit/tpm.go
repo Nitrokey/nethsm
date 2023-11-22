@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"sync"
@@ -29,6 +28,7 @@ import (
 
 const (
 	sealedDeviceKeyFile = "/data/sealedDeviceKey"
+	tpmRandSize         = 48
 )
 
 var (
@@ -64,27 +64,12 @@ func withTPMContext(f func(*tpm2.TPMContext) error) error {
 	return f(tpmCtxInstance)
 }
 
-type tpmRandReader struct{ *tpm2.TPMContext }
-
-func (v tpmRandReader) Read(p []byte) (int, error) {
-	l := len(p)
-	if l > 48 {
-		l = 48
-	}
-	data, err := v.GetRandom(uint16(l))
-	if err != nil {
-		return 0, err
-	}
-	n := copy(p, data)
-	return n, nil
-}
-
-func tpmRand(buf []byte) error {
-	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
-		_, err := io.ReadFull(tpmRandReader{tpm}, buf)
-		return err
+func tpmRand() (buf []byte, err error) {
+	_ = withTPMContext(func(tpm *tpm2.TPMContext) error {
+		buf, err = tpm.GetRandom(tpmRandSize)
+		return nil
 	})
-	return err
+	return
 }
 
 func getIdFromAk(akPub *tpm2.Public) string {

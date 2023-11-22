@@ -7,19 +7,17 @@ import (
 	"io"
 	"log"
 	"math"
-	"math/rand"
 	"net"
 	"os"
 	"time"
-	"unsafe"
 
 	"github.com/u-root/u-root/pkg/termios"
 )
 
 const (
 	trngDev       = "/dev/ttyS1"
-	randBlockSize = 4096 // this must be in sync with values in startTrngListener in unikernel.ml
-	randTotalSize = randBlockSize * 2
+	trngRandSize  = 4096 // this must be in sync with values in startTrngListener in unikernel.ml
+	totalRandSize = trngRandSize + tpmRandSize
 	timeout       = time.Second * 10
 )
 
@@ -49,14 +47,6 @@ func check(err error) {
 	}
 }
 
-func getTPMBlock(buf []byte) []byte {
-	return buf[:randBlockSize]
-}
-
-func getTRNGBlock(buf []byte) []byte {
-	return buf[randBlockSize:]
-}
-
 func trngTask() {
 	f, err := os.Open(trngDev)
 	check(err)
@@ -75,42 +65,43 @@ func trngTask() {
 	trngLoop(f)
 }
 
-func randReader(trng io.Reader) func(func([]byte)) {
+func randReader(trng io.Reader) func() []byte {
 	ch := make(chan []byte)
-	noTRNG := make([]byte, randBlockSize)
-	reader := func(handler func([]byte)) {
+	reader := func() []byte {
 		var buf []byte
 		select {
 		case buf = <-ch:
-			ent := entropy(getTRNGBlock(buf))
+			ent := shannonEntropy(buf)
 			if ent < 7.2 {
 				log.Printf("ERROR: entropy %f from TRNG too low, dropping data.\n", ent)
-				buf = noTRNG
+				buf = buf[:0]
 			}
 		case <-time.After(timeout):
 			log.Printf("ERROR: reading from TRNG timed out! Using only entropy from TPM!")
-			buf = noTRNG
 		}
-		err := tpmRand(getTPMBlock(buf))
+		tpmRand, err := tpmRand()
 		if err != nil {
 			log.Printf("ERROR: reading entropy from TPM failed: %v", err)
-			buf = getTRNGBlock(buf)
+		} else {
+			buf = append(buf, tpmRand...)
 		}
 		if len(buf) > 0 {
-			handler(buf)
+			return buf
 		} else {
 			log.Printf("ERROR: couldn't read any entropy from RNGs!")
+			return nil
 		}
 	}
-	buf1 := make([]byte, randTotalSize)
-	buf2 := make([]byte, randTotalSize)
 	go func() {
 		defer log.Println("TRNG reader stopped")
+		bufA := &[totalRandSize]byte{}
+		bufB := &[totalRandSize]byte{}
 		for {
-			_, err := io.ReadFull(trng, getTRNGBlock(buf1))
+			buf := bufA[:trngRandSize]
+			_, err := io.ReadFull(trng, buf)
 			check(err)
-			ch <- buf1
-			buf1, buf2 = buf2, buf1
+			ch <- buf
+			bufA, bufB = bufB, bufA
 		}
 	}()
 	return reader
@@ -126,19 +117,16 @@ func trngLoop(trng io.Reader) {
 	defer devRand.Close() // nolint
 
 	fullySeeded := false
-	seeder := func(buf []byte) {
-		rand.Seed(rand.Int63() ^
-			*(*int64)(unsafe.Pointer(&buf[0])) ^
-			*(*int64)(unsafe.Pointer(&buf[len(buf)/2])))
+	seed := func(buf []byte) {
 		_, err = devRand.Write(buf)
 		check(err)
-		if !fullySeeded && len(buf) == randTotalSize {
+		if !fullySeeded && len(buf) == totalRandSize {
 			fullySeededNotify()
 			fullySeeded = true
 		}
 	}
 
-	sender := func(buf []byte) {
+	send := func(buf []byte) {
 		_, err = keyfender.Write(buf)
 		if err != nil {
 			log.Printf("Sending entropy failed: %v", err)
@@ -147,14 +135,15 @@ func trngLoop(trng io.Reader) {
 
 	getRand := randReader(trng)
 	for {
-		getRand(seeder)
-		getRand(sender)
+		seed(getRand())
+		time.Sleep(time.Second)
+		send(getRand())
 		time.Sleep(time.Second)
 	}
 }
 
 // calculate the Shannon Entropy of a byte slice
-func entropy(data []byte) float64 {
+func shannonEntropy(data []byte) float64 {
 	n := float64(len(data))
 	var histogram [256]int
 	for _, b := range data {

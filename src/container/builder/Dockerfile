@@ -165,7 +165,7 @@ EOF
 
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  curl -sSL "https://go.dev/dl/go1.19.5.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL "https://go.dev/dl/go1.21.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
