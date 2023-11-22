@@ -399,6 +399,7 @@ test_muen_prodrive_hermes:
         sleep 1
       done
       echo "done."
+    - if grep ' ERR\(OR:\)\? ' $SERIALTXT ; then exit 1 ; fi
   after_script:
     - >-
       curl -k -s
