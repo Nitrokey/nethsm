@@ -17,6 +17,8 @@ For further introductory and user guidance, see the [user documentation][docs] a
 
 A separate document describes the REST-based API for consumers.
 
+NetHSM's hardware is in a 19" rack chassis and consists of an Intel x86 CPU, RAM, SSD, a discrete TPM, and a discrete TRNG.
+
 The [Muen separation kernel][muen] is an open source microkernel that has been formally proven to contain no runtime errors at the source code level. Muen runs on the Intel x86-64 architecture, and uses the VT-x and VT-d features to provide isolation for multiple subjects. Muen-based systems are entirely static and configured only at build time.
 
 We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM hardware.
@@ -196,12 +198,12 @@ The **S-Net-External** subject is a minimized Linux which bridges Ethernet frame
 
 The **S-Platform** subject is a minimized Linux which provides access to
 hardware components and system services. The physical disk device (SSD), the TPM
-and the TRNG are passed to this subject. The **S-Platform** subject provides a
-_Key-Value Store_ for persistently storing all data. It provides services to
+and the discrete TRNG are passed to this subject. The **S-Platform** subject provides a
+key-value store for persistently storing all _User Data_. It provides services to
 update the _System Software_, securely erase all _User Data_, manage the _Device
 Key_ and other data from the TPM, and shutdown and reboot the device. It
-utilizes the TRNG to create external entropy and periodically send datagrams
-**S-Keyfender** containing output of the TRNG.
+utilizes the discrete TRNG to create external entropy and periodically send datagrams to
+**S-Keyfender** containing output of the discrete TRNG.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
 
@@ -210,7 +212,7 @@ The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpo
 **S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers. We expect that initially there will be two consumers of the REST API:
 
 1. The command line tool [nitropy].
-2. PKCS#11 driver
+2. [PKCS#11 module]
 
 Additional functionality provided by **S-Keyfender**:
 
@@ -222,6 +224,7 @@ For the avoidance of doubt, the following functionality is specifically _not_ pr
 * A DNS resolver or DHCP client. This implies that a NetHSM can only be configured to use a static IPv4 address, and that any external services (such as syslog) can likewise only be configured using an IPv4 address.
 
 [nitropy]: https://docs.nitrokey.com/software/nitropy/
+[PKCS#11 module]: https://docs.nitrokey.com/nethsm/pkcs11-setup
 [RFC 3164]: https://tools.ietf.org/html/rfc3164
 
 ## Timekeeping {#sec-dd-ta-s-t}
@@ -233,7 +236,7 @@ In order to provide core system functionality, including but not limited to:
 
 **S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Storage**, **S-Platform** and **S-TRNG** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
+Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Platform** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
 
 **Note**: There will be no support for timezones; any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client (e.g. Web UI) to translate to local time, if this is desired.
 
@@ -281,9 +284,14 @@ Some sample sessions:
 
 ## Future Extensions {#sec-dd-ta-fe}
 
-**Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage**. Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
+**Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage** (see below). Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
 
 As currently designed, the private key used by **S-Keyfender** for the TLS endpoint and other data is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NetHSM to provide a TLS endpoint. We could instead store this private key in the TPM or encrypt the *Configuration Store* with the *Device Key*. This would require both a more complex, bi-directional, communication protocol between **S-Keyfender** and **S-TRNG**.
+
+**Ext-Disaggregation**: Disaggregate **S-Platform** into at least the following additional subjects:
+
+- The **S-TRNG** subject is a minimized Linux which provides external entropy to **S-Keyfender**. It utilizes a TRNG, to periodically send datagrams to **S-Keyfender** containing output of the TRNG.
+- The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**.
 
 **Ext-Syslog-TLS**: Implement full syslog support as described in [RFC 5424], with support for a TLS-based transport as described in [RFC 5425]. Requires **Ext-Time** for server TLS certificate validation.
 
@@ -387,25 +395,27 @@ NetHSM uses etcd to store all _User Data_. This comes with an log for each data 
 
 NetHSM has the following entropy sources:
 
-- Nitrokey TRNG RS232
-
+- discrete TRNG build by Nitrokey ([hardware], [firmware])
 - TPM RNG
 - Intel CPU's RDRAND
 - Event loop from network and IO
 
 Entropy is consumed in S-Platform and S-Keyfender.
 
+[hardware]: https://github.com/Nitrokey/nitrokey-trng-rs232-hardware
+[firmware]: https://github.com/Nitrokey/nitrokey-trng-rs232-firmware
+
 ### S-Platform
 
-S-Platform reads random data from both the serial TRNG and the TPM and feeds
+S-Platform reads random data from both the discrete TRNG and the TPM and feeds
 them both to **S-Keyfender** and to /dev/random of the Linux kernel. If one of
 the sources fail, errors are logged.
 
 During boot of the system **S-Keyfender** requests a Device Key from S-Platform.
 At very first boot of the system a Device Key doesn't exist yet. The possible
-generation of a new Device Key is delayed until random data from TRNG and TPM
+generation of a new Device Key is delayed until random data from both discrete TRNG and TPM
 has been fed to /dev/random at least once. The entropy used to generate the
-Device Key is retrieved from the Go library [crypto/rand.Read()][go-crypto-rand]
+Device Key is retrieved from the Go library `crypto/rand.Read()`
 which uses getrandom(2). If any of the two entropy sources failed, no Device Key
 is generated, an error message is logged at the serial console, the system
 doesn't proceed booting and ends in an non-operational state.
@@ -416,11 +426,10 @@ The **S-Keyfender** subject uses as cryptographically secure random number gener
 
 The entropy sources used [during startup][startup-entropy] are are the CPU instruction RDRAND (executed three times, returning 64 bit each), and once the Whirlwind bootstrap algorithm based on timing of instructions that take a variable number of cycles (with l=100 lmax=1024).
 
-During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc. Additionally **S-Keyfender** listens on an UDP port for packages with random data from S-Platform. These packages contain entropy from both TRNG RS232 and TPM TRNG and are fed into all 32 pools.
+During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc. Additionally **S-Keyfender** listens on an UDP port for packages with random data from S-Platform. These packages contain entropy from both discrete TRNG and TPM TRNG and are fed into all 32 pools.
 
-In case during the operation either TRNG RS232 or TPM RNG fails, an error message is logged repeatedly in Syslog and the system keeps running. If both of these entropy sources fail, the system stops and ends in a non-operational state.
+In case during the operation either discrete TRNG or TPM RNG fails, an error message is logged repeatedly in Syslog and the system keeps running. If both of these entropy sources fail, the system stops and ends in a non-operational state.
 
-[go-crypto-rand]: https://git.nitrokey.com/nitrokey/nethsm/nethsm/-/blob/master/crypto/rand.Read()
 [Fortuna]: https://www.schneier.com/academic/fortuna/
 [fortuna-impl]: https://github.com/mirage/mirage-crypto/tree/master/rng
 [startup-entropy]: https://github.com/mirage/mirage-crypto/blob/master/rng/mirage/mirage_crypto_rng_mirage.ml
@@ -438,12 +447,12 @@ EC: part of the [mirage-crypto-ec] package, uses C code generated by [fiat-crypt
 [mirage-crypto-pk]: https://github.com/mirage/mirage-crypto
 [zarith]: https://github.com/ocaml/zarith
 [gmplib]: https://gmplib.org/
-[rsa.ml]: https://github.com/mirage/mirage-crypto/blob/v0.10.1/pk/rsa.ml
+[rsa.ml]: https://github.com/mirage/mirage-crypto/blob/v0.10.7/pk/rsa.ml
 [mirage-crypto-ec]: https://github.com/mirage/mirage-crypto
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto/
-[ec-native]: https://github.com/mirage/mirage-crypto/blob/v0.10.1/ec/native
+[ec-native]: https://github.com/mirage/mirage-crypto/blob/v0.10.7/ec/native
 [BoringSSL]: https://github.com/google/boringssl
-[ocaml-ec]: https://github.com/mirage/mirage-crypto/blob/v0.10.1/ec/mirage_crypto_ec.ml
+[ocaml-ec]: https://github.com/mirage/mirage-crypto/blob/v0.10.7/ec/mirage_crypto_ec.ml
 
 ## Cryptographic Parameters {#sec-cp}
 
