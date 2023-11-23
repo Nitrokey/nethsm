@@ -188,25 +188,22 @@ _Unlock Key_.
 
 # Technical Architecture {#sec-dd-ta}
 
-![Muen Subjects](MuenSubjects.png){width=75%}
+![Muen Subjects](MuenSubjects.svg){width=75%}
 
-NetHSM consists of five Muen subjects, as shown in Figure 3: Muen Subjects. Bidirectional communication channels are drawn as arrows.
+NetHSM consists of three Muen subjects, as shown in Figure 3: Muen Subjects. Bidirectional communication channels are drawn as arrows.
 
 The **S-Net-External** subject is a minimized Linux which bridges Ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to **S-Keyfender**. Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in **S-Net-External**, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
 
-The **S-TRNG** subject is a minimized Linux which provides external entropy to **S-Keyfender**. It utilizes a TRNG, to periodically send datagrams to **S-Keyfender** containing output of the TRNG.
-
-The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**.
-
-The **S-Platform** subject is a minimized Linux which manages _System Software_ updates of NetHSM, and provides block storage for **S-Storage**. The physical disk device (i.e. SATA controller) is passed to this subject. The **S-Platform** subject also manages the hardware platform, and provides services to update the _System Software_, securely erase all _User Data_, read the _Device Key_, and shutdown and reboot the device.
+The **S-Platform** subject is a minimized Linux which provides access to
+hardware components and system services. The physical disk device (SSD), the TPM
+and the TRNG are passed to this subject. The **S-Platform** subject provides a
+_Key-Value Store_ for persistently storing all data. It provides services to
+update the _System Software_, securely erase all _User Data_, manage the _Device
+Key_ and other data from the TPM, and shutdown and reboot the device. It
+utilizes the TRNG to create external entropy and periodically send datagrams
+**S-Keyfender** containing output of the TRNG.
 
 The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
-
-**S-DBGserver** (not illustrated) has a simple input interface to query status information, print the current contents of the log buffer, trigger a system shutdown or reboot.
-
-**S-Time** (not illustrated) enables accessing the device's real time clock.
-
-**Note**: Currently **S-TRNG**, **S-Storage** and **S-Platform** are combined in a single subject **S-Platform**.
 
 ## S-Keyfender {#sec-dd-ta-s}
 
