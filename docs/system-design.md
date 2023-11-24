@@ -236,7 +236,16 @@ In order to provide core system functionality, including but not limited to:
 
 **S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Platform** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
+Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock"
+time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between
+the RTC and "wall clock" time to the _Configuration Store_, allowing
+**S-Keyfender** to maintain "wall clock" time across reboots. This implies that,
+in the mean time, other subjects such as **S-Platform** will _not_ share the
+same view of "wall clock" time as **S-Keyfender**.
+
+Additionally there might be the possibility to set the system RTC from outside,
+for example from the BMC, depending on the hardware platform. In this case the
+offset can be left at 0 by not providing any "wall clock" time.
 
 **Note**: There will be no support for timezones; any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client (e.g. Web UI) to translate to local time, if this is desired.
 
@@ -246,7 +255,15 @@ Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock"
 
 Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using a key derivation function. When a _Backup Passphrase_ is configured or changed by an **R-Administrator**, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an **R-Administrator** and a _Backup Key_ exists.
 
-The backup is double-encrypted: the outer encryption layer uses the _Backup Key_, the data contained is the unencrypted _Configuration Store_ and the _Authentication Store_, _Domain Key Store_ and _Key Store_, all of which are encrypted with the _Domain Key_ as an inner encryption layer.
+The backup is double-encrypted: the outer encryption layer uses the _Backup
+Key_, the data contained is the unencrypted _Configuration Store_, the _Domain
+Key Store_, which is encrypted with the _Device Key_, and the _Authentication
+Store_ and _Key Store_, wich both are encrypted with the _Domain Key_ as an
+inner encryption layer.
+
+In order to allow restoring the backup to another device, the _Locked Domain
+Key_, that is the _Domain Key_ only encrypted with the _Unlock Key_ and _not_
+encrypted with the _Device Key_ is additionally stored in the backup.
 
 This implies that:
 
@@ -259,21 +276,34 @@ When a backup is initiated, **S-Keyfender** prepares a backup, encrypts it with 
 
 During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and [Unattended Boot](#sec-us-ub) must have been enabled. For details refer to [Encryption Architecture](#sec-dd-ea).
 
-**Note (Unprovisioned)**: For the avoidance of doubt, partial backup and restore are _not_ provided when restoring from an unprovisioned state. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM, and also the _Unlock Passphrase_, to those current at the time of the backup.
-
 **Note (Operational)**: When restoring from an operational state, only _Authentication Store_ and _Key Store_ are restored. Data in _Configuration Store_ and _Domain Key Store_ is ignored.
 
-When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a JSON format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the contents of each data store are de-serialized from the JSON format and inserted into the store.
+**Note (Unprovisioned)**: For the avoidance of doubt, partial restore is _not_
+provided when restoring from an unprovisioned state. This implies that restoring
+a backup may change the network and TLS endpoint configuration of the NetHSM,
+and also the _Unlock Passphrase_, to those current at the time of the backup.
+
+When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the
+contents of each data store (i.e. _User Data_) into a binary format, and
+encrypts the result with the _Backup Key_. This will only backup a snapshot of
+each data store without history. During system restore, the reverse process is
+performed; the contents of each data store are de-serialized from the binary
+format and inserted into the store.
 
 ## Communication with S-Platform {#sec-dd-ta-cws}
 
-The **S-Keyfender** subject uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the *Device Key*. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
+The **S-Keyfender** subject uses a communication channel with **S-Platform** to
+conduct operations that need low-level platform functionality: reboot, shutdown,
+reset, update, and retrieving the TPM data including the *Device Key*. The
+protocol is line-based over a TCP stream, where **S-Platform** is listening on a
+socket for client connections - only a single client connection at any time is
+supported.
 
 The client, after establishing the TCP stream, sends the command (all uppercase) followed by a single newline character. The server replies with either "OK" or "ERROR", optionally followed by a whitespace character and printable ASCII characters, terminated with a newline character.
 
 Some sample sessions:
 
-    | C->S: DEVICE-KEY\n
+    | C->S: PLATFORM-DATA\n
     | S->C: OK abcdef\n
 
     | C->S: SHUTDOWN\n
@@ -286,12 +316,16 @@ Some sample sessions:
 
 **Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage** (see below). Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
 
-As currently designed, the private key used by **S-Keyfender** for the TLS endpoint and other data is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NetHSM to provide a TLS endpoint. We could instead store this private key in the TPM or encrypt the *Configuration Store* with the *Device Key*. This would require both a more complex, bi-directional, communication protocol between **S-Keyfender** and **S-TRNG**.
+As currently designed, the private key used by **S-Keyfender** for the TLS endpoint and other data is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NetHSM to provide a TLS endpoint. We could instead store this private key in the TPM or encrypt the *Configuration Store* with the *Device Key*.
 
 **Ext-Disaggregation**: Disaggregate **S-Platform** into at least the following additional subjects:
 
-- The **S-TRNG** subject is a minimized Linux which provides external entropy to **S-Keyfender**. It utilizes a TRNG, to periodically send datagrams to **S-Keyfender** containing output of the TRNG.
-- The **S-Storage** subject is a minimized Linux which provides persistence to **S-Keyfender** via the `git` protocol, storing the repository on virtualized block storage provided by **S-Platform**.
+- The **S-TRNG** subject is a minimized Linux which provides external entropy to
+  **S-Keyfender**. It utilizes the discrete TRNG, to periodically send datagrams
+  to **S-Keyfender** containing output of the TRNG.
+- The **S-Storage** subject is a minimized Linux which provides persistence to
+  **S-Keyfender**, storing the _User Data_ on virtualized block storage provided
+  by **S-Platform**.
 
 **Ext-Syslog-TLS**: Implement full syslog support as described in [RFC 5424], with support for a TLS-based transport as described in [RFC 5425]. Requires **Ext-Time** for server TLS certificate validation.
 
@@ -330,12 +364,24 @@ Updates must be applied manually by the R-Administrator. "OTA" updates are not s
 
 The act of updating the _System Software_ is performed by **S-Platform**; when **S-Keyfender** is processing an update file from the REST API, the following actions happen in parallel:
 
-- **S-Keyfender** performs any decompression required and streams the binary image to **S-Platform**, which writes it to an _inactive_ system partition.
-- at the same time, **S-Keyfender** verifies the "outer signature" of the Update Key (protecting the integrity of the binary image, version number, release notes) and update eligibility.
+- **S-Keyfender** performs any decompression required and streams the binary
+  image to **S-Platform**, which writes it to an _inactive_ system partition.
+- at the same time, **S-Keyfender** verifies the update signature with the
+  public Update Key (protecting the integrity of the binary image, version
+  number, release notes) and update eligibility.
 
-_If and only if_ verification of the _System Software_'s "outer signature" and update eligibility are successful, **S-Keyfender** enables the REST API endpoint allowing the user to "commit" the software update. Only after this endpoint is requested, **S-Keyfender** will instruct **S-Platform** to perform the actions necessary (e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new system partition _once_ on next boot.
+_If and only if_ verification of the update signature and eligibility are
+successful, **S-Keyfender** enables the REST API endpoint allowing the user to
+"commit" the software update. Only after this endpoint is requested,
+**S-Keyfender** will instruct **S-Platform** to perform the actions necessary
+(e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new
+system partition _once_ on next boot.
 
-During boot, the _System Software_'s "inner signature" of the Boot Key is verified by the _Firmware_ as part of _Verified Boot_. If the new _System Software_ does not boot successfully or the _Verified Boot_ verification fails, the system will automatically reboot into the old _System Software_ as a fallback.
+During boot, the _System Software_'s signature is verified with the public
+Boot Key by the _Firmware_ as part of _Verified Boot_. If the new _System
+Software_ does not boot successfully or the _Verified Boot_ verification fails,
+the system will automatically reboot into the old _System Software_ as a
+fallback.
 
 _If and only if_ both _Verified Boot_ verification succeeds and the new _System Software_ boots successfully, the new _System Software_ will perform the actions necessary to permanently configure the system to boot into the new _System Software_ (e.g. by modifying the GPT or interacting with the _Firmware_). The new _System Software_ may now start data migration, if required.
 
