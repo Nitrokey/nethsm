@@ -1,3 +1,7 @@
+# 0.10
+
+* Release candidate for 1.0
+
 # 0.9
 
 * Alpha version
