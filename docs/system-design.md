@@ -441,7 +441,7 @@ NetHSM uses etcd to store all _User Data_. This comes with an log for each data 
 
 NetHSM has the following entropy sources:
 
-- discrete TRNG build by Nitrokey ([hardware], [firmware])
+- discrete TRNG built by Nitrokey ([hardware], [firmware])
 - TPM RNG
 - Intel CPU's RDRAND
 - Event loop from network and IO
