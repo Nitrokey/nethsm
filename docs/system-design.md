@@ -1,6 +1,6 @@
 % NetHSM System Design
 % Sven Anderson; Martin Lucina; Hannes Mehnert; Stefanie Schirmer; Jan Suhr
-% Nitrokey GmbH, 2023
+% Nitrokey GmbH, 2019-2023
 
 # Introduction {#sec-i}
 
@@ -33,7 +33,7 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 Authentication Store
 
-: A data store containing encrypted user credentials (name, passphrase) and mapping to permissions resp. _Roles_.
+: A data store containing encrypted user credentials (user name, passphrase) and mapping to permissions resp. _Roles_.
 
 Backup Key
 
