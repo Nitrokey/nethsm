@@ -1,10 +1,10 @@
 % NetHSM System Design
-% Hannes Mehnert; Martin Lucina; Stefanie Schirmer; Sven Anderson; Jan Suhr
+% Sven Anderson; Martin Lucina; Hannes Mehnert; Stefanie Schirmer; Jan Suhr
 % Nitrokey GmbH, 2023
 
 # Introduction {#sec-i}
 
-NetHSM is a networked Hardware Security Module (HSM) which can securely store a large number of cryptographic keys, have a high computing performance, and offers common key management functions via a modern REST-based API.
+NetHSM is a networked Hardware Security Module (HSM) which can securely store a large number of cryptographic keys, has high computing performance, and offers key management functions via a modern REST-based API.
 
 For further introductory and user guidance, see the [user documentation][docs] as a prerequisite to understand this document. This document describes the System Design and Technical Architecture of the NetHSM, which includes:
 
@@ -33,15 +33,19 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 Authentication Store
 
-: A data store containing encrypted user credentials (login, passphrase) and mapping to permissions/roles.
+: A data store containing encrypted user credentials (name, passphrase) and mapping to permissions resp. _Roles_.
 
 Backup Key
 
-: A symmetric key used for outer layer encryption of system backups. Derived from the _Backup Passphrase_ once configured, and stored in the _Configuration Store_.
+: A symmetric key used for outer layer encryption of backup files. Derived from the _Backup Passphrase_ once configured, and stored in the _Configuration Store_.
 
 Backup Passphrase
 
-: The _Backup Passphrase_ is required to gain access to a system backup.
+: The _Backup Passphrase_ is required to gain access to a backup file.
+
+Boot Mode
+
+:The available _Boot Modes_ are _Attended Boot_ and _Unattended Boot_. See the user documentation for more information.
 
 Configuration Store
 
@@ -49,9 +53,7 @@ Configuration Store
 
 Device Key
 
-: A device-dependent key that is securely stored by the TPM and only accessible
-if signed and unmodified NetHSM software is running. The *Device Key* is used to encrypt the
-data in the _Domain Key Store_.
+: A device-dependent key that is securely stored by the TPM and only accessible if signed and unmodified NetHSM software is running. The _Device Key_ is used to encrypt the data in the _Domain Key Store_.
 
 Domain Key
 
@@ -60,10 +62,6 @@ Domain Key
 Domain Key Store
 
 : A data store containing encrypted _Domain Keys_.
-
-Extension
-
-: An optional feature not in scope of the current implementation. Extensions are referred to as **Ext-Name** throughout this document.
 
 Firmware
 
@@ -75,15 +73,11 @@ Key Store
 
 Role
 
-: Each user account configured on the NetHSM has a single _Role_ assigned to it. Roles are referred to as **R-Name** throughout this document; see user documentation for a detailed list.
+: Each user account configured on the NetHSM has a single _Role_ assigned to it. _Roles_ are referred to as **R-Name** throughout this document. See the user documentation for a detailed list.
 
 System Software
 
-: The NetHSM system software, i.e. Muen and all subjects without the _Firmware_.
-
-Tags
-
-: Key access can be restricted to users matching specific _Tags_. Refer to the user documentation for details.
+: The NetHSM _System Software_, i.e. Muen and all subjects without the _Firmware_.
 
 Unlock Key
 
@@ -91,11 +85,11 @@ Unlock Key
 
 Unlock Passphrase
 
-: The _Unlock Passphrase_ is used to derive an _Unlock Key_ and must be provided by the user at boot time, unless unattended boot has been configured.
+: The _Unlock Passphrase_ is used to derive an _Unlock Key_ and must be provided by the user at boot time, unless _Unattended Boot_ has been configured.
 
 User Data
 
-: Used collectively to refer to all user data persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model](#sec-dd-dm) for details.
+: Used collectively to refer to all _User Data_ persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model](#sec-dd-dm) for details.
 
 Verified Boot
 
@@ -121,29 +115,28 @@ Unprovisioned
 
 : An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for [Initial Provisioning](#sec-us-ip) is available.
 
-Note: Other than a NetHSM hardware appliance, resetting a NetHSM testing container yields the Locked state.
+Note: Other than a NetHSM hardware appliance, resetting a NetHSM test container results in a Locked state.
 
 # Data Model {#sec-dd-dm}
 
 ![Data Model](DataModel.svg){width=75%}
 
-All _User Data_ is stored in a number of persistent data stores on the NetHSM; see Figure 1: Data Model. Each data store is a Key/Value store, additionally containing a version number (denoted as "Store Version" in the diagram). This version number is incremented whenever the underlying data model ("Values") of a data store changes. It determines if data migration code needs to be run for that data store.
+All _User Data_ is stored in a number of persistent data stores on the NetHSM; see Figure 1: Data Model. Each data store is a key-value store, additionally containing a version number (denoted as "Store Version" in the diagram). This version number is incremented whenever the underlying data model (values) of a data store changes. It determines if data migration code needs to be run for that data store.
 
-For each data store, the diagram shows, as a high-level overview, which types of "Keys" are associated with which types of "Values". See the REST API documentation for a detailed definition of the data types, including:
+For each data store, the diagram shows, as a high-level overview, which types of keys (as in key-value) are associated with which types of values. See the REST API documentation for a detailed definition of the data types, including:
 
-* valid input and output data types for each HTTPS endpoint, which correspond to the "Values" stored in each data store,
+* valid input and output data types for each HTTPS endpoint, which correspond to the values stored in each data store,
 * constraints for each data type, e.g. "a KeyID needs to be a string of alphanumeric characters, which is between 1 and 128 characters long".
 
 # Encryption Architecture {#sec-dd-ea}
 
 ![Encryption Architecture](EncryptionArchitecture.svg){width=75%}
 
-The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the **S-Keyfender** subject has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
+The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the subject **S-Keyfender** has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
-The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using
-AES256-GCM (i.e. AEAD) with the _Device Key_.
+The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with the _Device Key_.
 
-The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "Slot" is used depends on whether or not the NetHSM is configured for [Unattended Boot](#sec-us-ub). Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
+The _Domain Key Store_ contains two "slots" for encrypted _Domain Keys_; which slot is used depends on whether or not the NetHSM is configured for _Unattended Boot_. Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
 |     _State_ = _Locked_
 |     _Domain Key_ = Decrypt\_AES256GCM(_Device Key_, _Slot 1_)
@@ -151,9 +144,9 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |         GOTO UNLOCKED
 |     ELSE LOOP: # In case of Attended Boot
 |         _Unlock Passphrase_ = Await API call to `/unlock` endpoint
-|         _Unlock Key_ = KDF(_Unlock Passphrase_)
-|         _Locked Domain Key_ = Decrypt\_AES256GCM(_Device Key_, _Slot 0_)
-|         _Domain Key_ = Decrypt\_AES256GCM(_Unlock Key_, _Locked Domain Key_)
+|         _Unlock Key_ = KDF_SCRYPT(_Unlock Passphrase_)
+|         _locked Domain Key_ = Decrypt\_AES256GCM(_Device Key_, _Slot 0_)
+|         _Domain Key_ = Decrypt\_AES256GCM(_Unlock Key_, _locked Domain Key_)
 |         IF decryption was successful:
 |             Return _Success_ to API caller
 |             GOTO UNLOCKED
@@ -163,30 +156,15 @@ The _Domain Key Store_ contains two "Slots" for encrypted _Domain Keys_; which "
 |     UNLOCKED:
 |     _State_ = _Operational_
 
-A random _Device Key_ (unique per device) is generated during the first boot of
-the system. The TPM is used to seal it with the Storage Root Key (SRK) and the
-PCR measurement of the _Firmware_. During subsequent boots the sealed _Device
-Key_ is unsealed with the TPM. This prevents access of unauthorized _Firmware_
-and _Software_ to the _Device Key_.
+A random _Device Key_ (unique per device) is generated during the first boot of the system. The TPM is used to seal it with its Storage Root Key (SRK) and the PCR measurement of the _Firmware_. During subsequent boots the sealed _Device Key_ is unsealed with the TPM. This prevents access of unauthorized _Firmware_ and _Software_ to the _Device Key_.
 
-During [Unattended Boot](#sec-us-ub), (see Figure 2: Encryption Architecture, right hand side), the _Device Key_ is used to decrypt the encrypted _Domain Key_ stored in "Slot 1". If the decryption step fails the NetHSM shall automatically fall back to [Attended Boot](#sec-us-ab).
+During _Unattended Boot_, (see Figure 2: Encryption Architecture, right hand side), the _Device Key_ is used to decrypt the encrypted _Domain Key_ stored in slot 1. If the decryption step fails the NetHSM automatically falls back to _Attended Boot_.
 
-During [Attended Boot](#sec-us-ab), (see Figure 2: Encryption Architecture, left
-and right hand side), the NetHSM waits for the user (via the `/unlock` endpoint
-of the REST API) to provide an _Unlock Passphrase_. The _Unlock Key_ is
-calculated by applying the KDF to the _Unlock Passphrase_. The _Device Key_ is
-used to decrypt the encrypted _Locked Domain Key_ stored in "Slot 0". The
-_Unlock Key_ is then used to decrypt the _Domain Key_ from the _Locked Domain
-Key_. If any decryption step fails (due to the user providing an incorrect
-_Unlock Passphrase_ or invalid _Device Key_), the NetHSM shall remain in the
-_Locked_ state, and continue to await an _Unlock Passphrase_.
+During _Attended Boot_, (see Figure 2: Encryption Architecture, left and right hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. The _Unlock Key_ is calculated by applying the key derivation function (KDF) to the _Unlock Passphrase_. The _Device Key_ is used to decrypt the encrypted _locked Domain Key_ stored in slot 0. The _Unlock Key_ is then used to decrypt the _Domain Key_ from the _locked Domain Key_. If any decryption step fails (due to the user providing an incorrect _Unlock Passphrase_ or invalid _Device Key_), the NetHSM remains in the _Locked_ state, and continues to await an _Unlock Passphrase_.
 
-For the avoidance of doubt: The act of [Enabling Unattended Boot](#sec-us-eub)
-causes **S-Keyfender** to populate "Slot 1" with a _Domain Key_ encrypted with
-_only_ the _Device Key_. Conversely, [Disabling Unattended Boot](#sec-us-dub)
-causes **S-Keyfender** to erase (overwrite) the contents of "Slot 1". At no
-point does the NetHSM persistently store either the _Unlock Passphrase_ or an
-_Unlock Key_.
+For the avoidance of doubt: The act of Enabling _Unattended Boot_ causes **S-Keyfender** to populate slot 1 with a _Domain Key_ encrypted with _only_ the _Device Key_. Conversely, Disabling _Unattended Boot_ causes **S-Keyfender** to erase (overwrite) the contents of slot 1. At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
+
+Among others, the described hardware binding and encryption prevents that (a copy of) the disk of one device can be decrypted in a different device.
 
 # Technical Architecture {#sec-dd-ta}
 
@@ -196,108 +174,68 @@ NetHSM consists of three Muen subjects, as shown in Figure 3: Muen Subjects. Bid
 
 The **S-Net-External** subject is a minimized Linux which bridges Ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to **S-Keyfender**. Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in **S-Net-External**, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
 
-The **S-Platform** subject is a minimized Linux which provides access to
-hardware components and system services. The physical disk device (SSD), the TPM
-and the discrete TRNG are passed to this subject. The **S-Platform** subject provides a
-key-value store for persistently storing all _User Data_. It provides services to
-update the _System Software_, securely erase all _User Data_, manage the _Device
-Key_ and other data from the TPM, and shutdown and reboot the device. It
-utilizes the discrete TRNG to create external entropy and periodically send datagrams to
-**S-Keyfender** containing output of the discrete TRNG.
+The **S-Platform** subject is a minimized Linux which provides access to hardware components and system services. The physical disk device (SSD), the TPM and the discrete TRNG are passed to this subject. The **S-Platform** subject provides a key-value store for persistently storing all _User Data_. It provides services to update the _System Software_, securely erase all _User Data_, manage the _Device Key_ and other data from the TPM, and shutdown and reboot the device. It utilizes the discrete TRNG to create external entropy and periodically sends datagrams to **S-Keyfender** containing output of the discrete TRNG.
 
-The **S-Keyfender** subject is a MirageOS Unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
+The **S-Keyfender** subject is a MirageOS unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
 
 ## S-Keyfender {#sec-dd-ta-s}
 
-**S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers. We expect that initially there will be two consumers of the REST API:
-
-1. The command line tool [nitropy].
-2. [PKCS#11 module]
+**S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers.
 
 Additional functionality provided by **S-Keyfender**:
 
 * logging of system events to a remote syslog host (as defined by [RFC 3164]),
-* an API endpoint for retrieving metrics (e.g. network traffic, memory usage, store usage, key operations, uptime).
+* an API endpoint for retrieving metrics (e.g. network traffic, memory usage, storage usage, key operations, uptime).
 
-For the avoidance of doubt, the following functionality is specifically _not_ provided by **S-Keyfender**:
+For the avoidance of doubt, a DNS resolver or DHCP client is specifically _not_ provided by **S-Keyfender**. This implies that a NetHSM can only be configured to use a static IPv4 address, and that any external services (such as syslog) need to be configured with an IPv4 address too.
 
-* A DNS resolver or DHCP client. This implies that a NetHSM can only be configured to use a static IPv4 address, and that any external services (such as syslog) can likewise only be configured using an IPv4 address.
-
-[nitropy]: https://docs.nitrokey.com/software/nitropy/
-[PKCS#11 module]: https://docs.nitrokey.com/nethsm/pkcs11-setup
 [RFC 3164]: https://tools.ietf.org/html/rfc3164
 
 ## Timekeeping {#sec-dd-ta-s-t}
 
 In order to provide core system functionality, including but not limited to:
 
-1. Correct responses in HTTP headers (e.g. `Last-Modified`, `Expires`, `Date`).
-2. Meaningful timestamps in log messages.
+1. Correct responses in HTTP headers (e.g. `Last-Modified`, `Expires`, `Date`)
+2. Meaningful timestamps in log messages
 
 **S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock"
-time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between
-the RTC and "wall clock" time to the _Configuration Store_, allowing
-**S-Keyfender** to maintain "wall clock" time across reboots. This implies that,
-in the mean time, other subjects such as **S-Platform** will _not_ share the
-same view of "wall clock" time as **S-Keyfender**.
+Therefore, a REST endpoint allows an **R-Administrator** to set the "wall clock" time as seen by **S-Keyfender**. **S-Keyfender** will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing **S-Keyfender** to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as **S-Platform** will _not_ share the same view of "wall clock" time as **S-Keyfender**.
 
-Additionally there might be the possibility to set the system RTC from outside,
-for example from the BMC, depending on the hardware platform. In this case the
-offset can be left at 0 by not providing any "wall clock" time.
+Additionally there might be the possibility to set the system RTC from outside, for example from the BMC, depending on the hardware platform. In this case the offset can be left at 0 by not providing any "wall clock" time.
 
-**Note**: There will be no support for timezones; any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client (e.g. Web UI) to translate to local time, if this is desired.
+**Note**: There will be no support for timezones. Any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339] `time-offset` of `Z`. It is the responsibility of the client to translate to local time, if this is desired.
 
 [RFC 3339]: https://tool.ietf.org/html/rfc3339
 
 ## Backup and Restore {#sec-dd-ta-s-bar}
 
-Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using a key derivation function. When a _Backup Passphrase_ is configured or changed by an **R-Administrator**, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an **R-Administrator** and a _Backup Key_ exists.
+Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using the key derivation function. When a _Backup Passphrase_ is configured or changed by an **R-Administrator**, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an **R-Administrator** and a _Backup Key_ exists.
 
-The backup is double-encrypted: the outer encryption layer uses the _Backup
-Key_, the data contained is the unencrypted _Configuration Store_, the _Domain
-Key Store_, which is encrypted with the _Device Key_, and the _Authentication
-Store_ and _Key Store_, wich both are encrypted with the _Domain Key_ as an
-inner encryption layer.
+The backup is double-encrypted: The outer encryption layer uses the _Backup Key_. The data contained is the unencrypted _Configuration Store_, the _Domain Key Store_, which is encrypted with the _Device Key_, and the _Authentication Store_ and _Key Store_, which both are encrypted with the _Domain Key_ as an inner encryption layer.
 
-In order to allow restoring the backup to another device, the _Locked Domain
-Key_, that is the _Domain Key_ only encrypted with the _Unlock Key_ and _not_
-encrypted with the _Device Key_ is additionally stored in the backup.
+In order to allow restoring the backup to another device, the _locked Domain Key_, that is the _Domain Key_ only encrypted with the _Unlock Key_ and _not_ encrypted with the _Device Key_ is additionally stored in the backup.
 
 This implies that:
 
 1. To gain access to all data contained in a backup (notably the encrypted contents of the _Authentication Store_ and _Key Store_), _both_ the _Backup Key_ and an _Unlock Key_ are required.
 2. Storing the _Backup Key_ in the unencrypted _Configuration Store_ is not a security risk (does not change the threat model), as the only data additionally protected by the _Backup Key_ is that contained in the same unencrypted _Configuration Store_. An attacker that has physical access to the NetHSM can already gain access to this data.
 
-The backup mechanism is designed this way to support automated backups: Once the _Backup Passphrase_ has been configured by an **R-Administrator**, an external client can periodically fetch the backup endpoint and store the data persistently. This backup client only requires credentials for an **R-Backup** user account, and is _not_ able to decrypt the backup, neither the outer nor the inner layer.
+The backup mechanism is designed this way to support automated backups: Once the _Backup Passphrase_ has been configured by an **R-Administrator**, an external client can periodically fetch the backup endpoint and store the backup file. This backup client only requires credentials for an **R-Backup** user account, and is _not_ able to decrypt the backup, neither the outer nor the inner layer.
 
 When a backup is initiated, **S-Keyfender** prepares a backup, encrypts it with the stored _Backup Key_ and sends it to the requesting client.
 
-During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and [Unattended Boot](#sec-us-ub) must have been enabled. For details refer to [Encryption Architecture](#sec-dd-ea).
+During system restore, the backup is decrypted by **S-Keyfender** using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and _Unattended Boot_ must have been enabled. Restoring a backup of a device with _Unattended Boot_ on a different device results in an _Attended Boot_ which requires the _Unlock Passphrase_. For details refer to [Encryption Architecture](#sec-dd-ea).
 
 **Note (Operational)**: When restoring from an operational state, only _Authentication Store_ and _Key Store_ are restored. Data in _Configuration Store_ and _Domain Key Store_ is ignored.
 
-**Note (Unprovisioned)**: For the avoidance of doubt, partial restore is _not_
-provided when restoring from an unprovisioned state. This implies that restoring
-a backup may change the network and TLS endpoint configuration of the NetHSM,
-and also the _Unlock Passphrase_, to those current at the time of the backup.
+**Note (Unprovisioned)**: For the avoidance of doubt, partial restore is _not_ provided when restoring from an unprovisioned state. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM and also the _Unlock Passphrase_ and _Boot Mode_, to those current at the time of the backup.
 
-When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the
-contents of each data store (i.e. _User Data_) into a binary format, and
-encrypts the result with the _Backup Key_. This will only backup a snapshot of
-each data store without history. During system restore, the reverse process is
-performed; the contents of each data store are de-serialized from the binary
-format and inserted into the store.
+When performing backups, **S-Keyfender** serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a binary format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the content of each data store is de-serialized from the binary format and inserted into the store.
 
 ## Communication with S-Platform {#sec-dd-ta-cws}
 
-The **S-Keyfender** subject uses a communication channel with **S-Platform** to
-conduct operations that need low-level platform functionality: reboot, shutdown,
-reset, update, and retrieving the TPM data including the *Device Key*. The
-protocol is line-based over a TCP stream, where **S-Platform** is listening on a
-socket for client connections - only a single client connection at any time is
-supported.
+The subject **S-Keyfender** uses a communication channel with **S-Platform** to conduct operations that need low-level platform functionality: reboot, shutdown, reset, update, and retrieving the TPM data including the _Device Key_. The protocol is line-based over a TCP stream, where **S-Platform** is listening on a socket for client connections - only a single client connection at any time is supported.
 
 The client, after establishing the TCP stream, sends the command (all uppercase) followed by a single newline character. The server replies with either "OK" or "ERROR", optionally followed by a whitespace character and printable ASCII characters, terminated with a newline character.
 
@@ -305,38 +243,12 @@ Some sample sessions:
 
     | C->S: PLATFORM-DATA\n
     | S->C: OK abcdef\n
-
+    
     | C->S: SHUTDOWN\n
     | S->C: OK\n
-
+    
     | C->S: FOO\n
     | S->C: ERROR Unknown command\n
-
-## Future Extensions {#sec-dd-ta-fe}
-
-**Ext-MultiCore**: **S-Keyfender** could be split up into two subjects: **S-Keyfender**, and **S-Crypto-Worker**. **S-Keyfender** would then delegate all operations on private key material (key generation, decryption, signing) to **S-Crypto-Worker**. This could be implemented using a simple "request queue", with load-balancing to multiple instances of **S-Crypto-Worker** running on multiple CPU cores. Depending on the protocol used for such delegation requests (private key in-band or not), **S-Crypto-Worker** _may_ require access to **S-Storage** (see below). Apart from providing the ability to scale up to multiple CPU cores for performance, this would also allow **S-Keyfender** to continue to serve HTTPS requests while a long-running cryptographic operation (e.g. key generation) is in progress.
-
-As currently designed, the private key used by **S-Keyfender** for the TLS endpoint and other data is stored unencrypted in the _Configuration Store_. This is unavoidable as otherwise there would be no way for a NetHSM to provide a TLS endpoint. We could instead store this private key in the TPM or encrypt the *Configuration Store* with the *Device Key*.
-
-**Ext-Disaggregation**: Disaggregate **S-Platform** into at least the following additional subjects:
-
-- The **S-TRNG** subject is a minimized Linux which provides external entropy to
-  **S-Keyfender**. It utilizes the discrete TRNG, to periodically send datagrams
-  to **S-Keyfender** containing output of the TRNG.
-- The **S-Storage** subject is a minimized Linux which provides persistence to
-  **S-Keyfender**, storing the _User Data_ on virtualized block storage provided
-  by **S-Platform**.
-
-**Ext-Syslog-TLS**: Implement full syslog support as described in [RFC 5424], with support for a TLS-based transport as described in [RFC 5425]. Requires **Ext-Time** for server TLS certificate validation.
-
-[RFC 5424]: https://tools.ietf.org/html/rfc5424
-[RFC 5425]: https://tools.ietf.org/html/rfc5425
-
-**Ext-Time**: An alternative approach which does not require persisting current "wall clock" time in **S-Keyfender** or to the RTC would be to implement a unicast SNTP client as described in [RFC 4330] and its associated configuration endpoint (IP address).
-
-[RFC 4330]: https://tools.ietf.org/html/rfc4330
-
-**Ext-FirmwareUpdate**: The current design allows for in-band updates of the _System Software_ only. Notably, this does _not_ include updates of CPU microcode as Muen has no support for this, instead choosing to delegate this to the _Firmware_. _Firmware_ updates are to be deployed through BMC. If in-band update of platform _Firmware_ is desired, this can be implemented as an extension which could take the form of a USB key containing a special Muen-based system with the additional software (`flashrom` et al.) required. Note that additional threats and attack surface (ability to write to the system flash) should be carefully considered in the development of such a system.
 
 ## Linux-based Subjects {#sec-dd-ta-ls}
 
@@ -358,34 +270,22 @@ All Linux-based Muen subjects that are integrated in the system will be built on
 
 ## System Software Update {#sec-dd-ta-ssu}
 
-The _System Software_ is a binary image, signed and distributed by Nitrokey. The versioning schema is *major*.*minor*. In each *major* release series, upgrades and downgrades within the same *major* release are allowed ("eligible" below). The data layout will not change within a *major* release series, but may change between release *major*.x and *major*+1.y. Downgrades to an older *major* release are not allowed.
+The _System Software_ is a binary image, signed and distributed by Nitrokey. The versioning schema is *major*.*minor*. In each *major* release series, upgrades and downgrades within the same *major* release are allowed ("eligible" below). The data layout will not change within a *major* release series, but may change between release *major*.x and *major*+1.y. Downgrades to an older *major* release are not possible.
 
-Updates must be applied manually by the R-Administrator. "OTA" updates are not supported.
+Updates must be applied manually by the R-Administrator. Over the air (OTA) updates are not supported.
 
-The act of updating the _System Software_ is performed by **S-Platform**; when **S-Keyfender** is processing an update file from the REST API, the following actions happen in parallel:
+The act of updating the _System Software_ is performed by **S-Platform**. When **S-Keyfender** is processing an update file from the REST API, the following actions happen in parallel:
 
-- **S-Keyfender** performs any decompression required and streams the binary
-  image to **S-Platform**, which writes it to an _inactive_ system partition.
-- at the same time, **S-Keyfender** verifies the update signature with the
-  public Update Key (protecting the integrity of the binary image, version
-  number, release notes) and update eligibility.
+- **S-Keyfender** performs any decompression required and streams the binary image to **S-Platform**, which writes it to an _inactive_ system partition.
+- at the same time, **S-Keyfender** verifies the update signature with the public _Update Key_ (protecting the integrity of the binary image, version number, release notes) and update eligibility.
 
-_If and only if_ verification of the update signature and eligibility are
-successful, **S-Keyfender** enables the REST API endpoint allowing the user to
-"commit" the software update. Only after this endpoint is requested,
-**S-Keyfender** will instruct **S-Platform** to perform the actions necessary
-(e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new
-system partition _once_ on next boot.
+_If and only if_ verification of the update signature and eligibility are successful, **S-Keyfender** enables the REST API endpoint allowing the user to "commit" the software update. Only after this endpoint is requested, **S-Keyfender** will instruct **S-Platform** to perform the actions necessary (e.g. modifying the GPT or interacting with the _Firmware_) to boot from the new system partition _once_ on next boot.
 
-During boot, the _System Software_'s signature is verified with the public
-Boot Key by the _Firmware_ as part of _Verified Boot_. If the new _System
-Software_ does not boot successfully or the _Verified Boot_ verification fails,
-the system will automatically reboot into the old _System Software_ as a
-fallback.
+During boot, the _System Software_'s signature is verified with the public Boot Key by the _Firmware_ as part of _Verified Boot_. If the new _System Software_ does not boot successfully or the _Verified Boot_ verification fails, the system will automatically reboot into the old _System Software_ as a fallback.
 
 _If and only if_ both _Verified Boot_ verification succeeds and the new _System Software_ boots successfully, the new _System Software_ will perform the actions necessary to permanently configure the system to boot into the new _System Software_ (e.g. by modifying the GPT or interacting with the _Firmware_). The new _System Software_ may now start data migration, if required.
 
-The actual implementation details of **S-Platform** will be based on the design used by both Chromium OS and CoreOS Container Linux, and are not described in more detail in this document; please refer to the Chromium OS [Disk Format][chromium-disk] and [File System/Autoupdate][chromium-autoupdate] design documents.
+The actual implementation details of **S-Platform** will be based on the design used by both Chromium OS and CoreOS Container Linux, and are not described in more detail in this document. Please refer to the Chromium OS [Disk Format][chromium-disk] and [File System/Autoupdate][chromium-autoupdate] design documents.
 
 [chromium-disk]: http://www.chromium.org/chromium-os/chromiumos-design-docs/disk-format
 [chromium-autoupdate]: https://www.chromium.org/chromium-os/chromiumos-design-docs/filesystem-autoupdate
@@ -395,7 +295,7 @@ The actual implementation details of **S-Platform** will be based on the design 
 
 Coreboot is used as the _Firmware_ of the NetHSM, with GRUB 2 as the Coreboot payload (boot loader). It provides the following functionality:
 
-1. GPT support for [System Software Update](#sec-dd-ta-ssu).
+1. GPT support for [System Software Update](#sec-dd-ta-ssu)
 2. Muen uses the [Signed Block Stream][sbs-spec] (SBS) protocol for _Verified Boot_. The SBS implementation from Codelabs has been integrated to GRUB 2.
 3. Support for VT-d and correct bring-up of the IOMMU, required for Muen.
 
@@ -409,7 +309,7 @@ The process of ensuring that the NetHSM hardware will only boot _System Software
 
 Build-time tooling provides:
 
-1. Embed a trusted public key into CBFS in the _Firmware_ image to be flashed to NetHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NetHSM hardware.
+1. Embed a trusted public key into CBFS in the _Firmware_ image to be flashed to NetHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NetHSM hardware. (Note: Not to be confused with the protection of the _Device Key_ by another root of trust, namely the ACM in the chipset.)
 2. Sign the components of a _System Software_ image with the matching private key (referred to as an "inner signature" in [System Software Update](#sec-dd-ta-ssu)).
 3. Build a signed "Live USB" system intended for use as an "installer" to install stock NetHSM hardware with an initial _System Software_ image.
 
@@ -425,23 +325,23 @@ During system boot, Coreboot will launch the GRUB 2 payload, which will initiall
 
 # Security Design {#sec-dd-sd}
 
-NetHSM runs on commodity hardware using a minimal amount of high-assurance software to protect private keys stored in the *Key Store*. A TPM is used to secure a *Device Key*, which is used to encrypt the *Domain Key*, and prevents unauthorized modifications of the firmware.
+NetHSM runs on commodity hardware using a minimal amount of high-assurance software to protect private keys stored in the _Key Store_. A TPM is used to secure a _Device Key_, which is used to encrypt the _Domain Key_, and prevents unauthorized modifications of the _Firmware_.
 
 NetHSM security design is based on software with a minimal trusted computing base (TCB): The Muen separation kernel is used for managing the physical resources of the system and isolating the subjects from each other. Device drivers for physical devices (Ethernet, USB, Storage) are provided by minimized Linux subjects, which are accessible only from the Muen subjects. The core subject is **S-Keyfender**, a MirageOS based unikernel, developed in OCaml.
 
-In case a subject is exploited (e.g. by exploiting the Ethernet driver of the **S-Net-External** subject), it does not lead to a compromise of the *Key Store* assets. Muen ensures that only the **S-Keyfender** subject, if it is _Unlocked_, has access to the decrypted _Key Store_. The _Domain Key_ used for encrypting data in the _Key Store_ is only kept in memory, and never written unencrypted to persistent storage.
+In case a subject is exploited (e.g. by exploiting the Ethernet driver of the **S-Net-External** subject), it does not lead to a compromise of the _Key Store_ assets. Muen ensures that only the **S-Keyfender** subject, if it is _Unlocked_, has access to the decrypted _Key Store_. The _Domain Key_ used for encrypting data in the _Key Store_ is only kept in memory, and never written unencrypted to persistent storage.
 
 Each subject has only the minimum of privileges absolutely necessary for its operation. The TCB is kept small. It consists of the Muen separation kernel and **S-Keyfender**. The other subjects do not have access to the unencrypted private key material. A compromised subject (other than **S-Keyfender**) cannot access stored private key material.
 
 Muen is implemented in Ada, a memory-safe programming language, and its isolation properties are formally verified in the Spark language. **S-Keyfender** is a MirageOS unikernel implemented in OCaml, a functional memory-safe language. MirageOS has been developed over 10 years to remove dependencies written in unsafe languages.
 
-NetHSM uses etcd to store all _User Data_. This comes with an log for each data modification, which adds accountability and rollback points for the data.
+NetHSM uses etcd to store all _User Data_. This comes with an log for each data modification, which adds accountability and rollback points for the data (currently not used).
 
 ## Entropy {#sec-dd-sd-rn}
 
 NetHSM has the following entropy sources:
 
-- discrete TRNG built by Nitrokey ([hardware], [firmware])
+- discrete TRNG builtar by Nitrokey ([hardware], [firmware])
 - TPM RNG
 - Intel CPU's RDRAND
 - Event loop from network and IO
@@ -453,24 +353,15 @@ Entropy is consumed in S-Platform and S-Keyfender.
 
 ### S-Platform
 
-S-Platform reads random data from both the discrete TRNG and the TPM and feeds
-them both to **S-Keyfender** and to /dev/random of the Linux kernel. If one of
-the sources fail, errors are logged.
+S-Platform reads random data from both the discrete TRNG and the TPM and feeds them both to **S-Keyfender** and to `/dev/random` of the Linux kernel. If one of the sources fail, errors are logged.
 
-During boot of the system **S-Keyfender** requests a Device Key from S-Platform.
-At very first boot of the system a Device Key doesn't exist yet. The possible
-generation of a new Device Key is delayed until random data from both discrete TRNG and TPM
-has been fed to /dev/random at least once. The entropy used to generate the
-Device Key is retrieved from the Go library `crypto/rand.Read()`
-which uses getrandom(2). If any of the two entropy sources failed, no Device Key
-is generated, an error message is logged at the serial console, the system
-doesn't proceed booting and ends in an non-operational state.
+During boot of the system **S-Keyfender** requests a _Device Key_ from **S-Platform**. At very first boot of the system a _Device Key_ doesn't exist yet. The possible generation of a new _Device Key_ is delayed until random data from both discrete TRNG and TPM has been fed to `/dev/random` at least once. The entropy used to generate the _Device Key_ is retrieved from the Go library `crypto/rand.Read()` which uses getrandom(2). If any of the two entropy sources fail, no _Device Key_ is generated, an error message is logged at the serial console, the system doesn't proceed booting and ends in an non-operational state.
 
 ### S-Keyfender
 
-The **S-Keyfender** subject uses as cryptographically secure random number generator, an [implementation of][fortuna-impl] [Fortuna] with 32 pools. **S-Keyfender** does not have direct access to real hardware, it is crucial to collect non-predictable entropy.
+The **S-Keyfender** subject uses as cryptographically secure random number generator, an [implementation of][fortuna-impl] [Fortuna] with 32 pools. Because **S-Keyfender** does not have direct access to real hardware, it is crucial to collect non-predictable entropy.
 
-The entropy sources used [during startup][startup-entropy] are are the CPU instruction RDRAND (executed three times, returning 64 bit each), and once the Whirlwind bootstrap algorithm based on timing of instructions that take a variable number of cycles (with l=100 lmax=1024).
+The entropy sources used [during startup][startup-entropy] are the CPU instruction RDRAND (executed three times, returning 64 bit each), and once the Whirlwind bootstrap algorithm based on timing of instructions that take a variable number of cycles (with l=100 lmax=1024).
 
 During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc. Additionally **S-Keyfender** listens on an UDP port for packages with random data from S-Platform. These packages contain entropy from both discrete TRNG and TPM TRNG and are fed into all 32 pools.
 
@@ -504,11 +395,10 @@ EC: part of the [mirage-crypto-ec] package, uses C code generated by [fiat-crypt
 
 The key generated for the HTTPS endpoint is an EC key (secp256r1).
 
-The keyfender library in keyfender/crypto.ml includes the following choices of cryptographic parameters:
-- SCRYPT-KDF: b=16384, r=8, p=16, salt length 16 byte.
+The key derivation function in `keyfender/crypto.ml` is scrypt with the following chosen parameters: b=16384, r=8, p=16, salt length 16 byte
 
 The data stored on disk is encrypted with AES256-GCM (32 byte key, nonce size is 12).
 
 ## Rate Limiting {#sec-rl}
 
-To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the unlock passphrase is one failed access per second per IP address. The rate limit for all endpoints requiring authentication is 1 failed authentication per second per IP address and username.
+To limit brute-forcing of passphrases, **S-Keyfender** rate limits logins. The rate for the _Unlock Passphrase_ is one failed access per second per IP address. The rate limit for all endpoints requiring authentication is 1 failed authentication per second per IP address and username.
