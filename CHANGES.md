@@ -1,3 +1,7 @@
+# 1.0 (2023-11-27)
+
+* Initial release
+
 # 0.10
 
 * Release candidate for 1.0
