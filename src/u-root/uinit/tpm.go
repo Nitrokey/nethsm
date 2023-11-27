@@ -72,9 +72,12 @@ func tpmRand() (buf []byte, err error) {
 	return
 }
 
+// encoding without I, O, 0, 1
+const base32Chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
 func getIdFromAk(akPub *tpm2.Public) string {
 	akName := akPub.Name().Digest()
-	return base32.StdEncoding.EncodeToString(akName[:7])[:10]
+	return base32.NewEncoding(base32Chars).EncodeToString(akName[:7])[:10]
 }
 
 func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
