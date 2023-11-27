@@ -309,7 +309,7 @@ The process of ensuring that the NetHSM hardware will only boot _System Software
 
 Build-time tooling provides:
 
-1. Embed a trusted public key into CBFS in the _Firmware_ image to be flashed to NetHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NetHSM hardware. (Note: Not to be confused with the protection of the _Device Key_ by another root of trust, namely the ACM in the chipset.)
+1. Embed a trusted public key (RSA-4096) into CBFS in the _Firmware_ image to be flashed to NetHSM hardware. This is considered the root of trust, and cannot be modified without reflashing the NetHSM hardware. (Note: Not to be confused with the protection of the _Device Key_ by another root of trust, namely the ACM in the chipset.)
 2. Sign the components of a _System Software_ image with the matching private key (referred to as an "inner signature" in [System Software Update](#sec-dd-ta-ssu)).
 3. Build a signed "Live USB" system intended for use as an "installer" to install stock NetHSM hardware with an initial _System Software_ image.
 
