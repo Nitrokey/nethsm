@@ -43,7 +43,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
-  git clone -s /repo /home/opam/nethsm
+  git clone /repo /home/opam/nethsm
 EOF
 
 WORKDIR /home/opam/nethsm
