@@ -277,7 +277,7 @@ build_muen_prodrive_hermes:
     - opam exec -- make -j$(nproc) artifacts
     - mkdir -p ${CI_JOB_NAME}_artifacts
     - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
-    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --dirty --tags --always)
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
 
 build_muen_qemu_kvm:
   rules:
@@ -313,7 +313,7 @@ build_muen_qemu_kvm:
     - opam exec -- make -j$(nproc) artifacts
     - mkdir -p ${CI_JOB_NAME}_artifacts
     - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
-    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --dirty --tags --always)
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
 
 build_ci_installer_prodrive_hermes:
   rules:

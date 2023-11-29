@@ -128,7 +128,7 @@ endif
 # ------------------------------------------------------------------------------
 
 SOFTWARE_VERSION := src/keyfender/softwareVersion
-BUILD_TAG := $(strip $(shell git -C . describe --tags --always))
+BUILD_TAG := $(strip $(shell git -C . describe --tags --always --long))
 
 src/keyfender/buildTag:
 	echo $(BUILD_TAG) > $@

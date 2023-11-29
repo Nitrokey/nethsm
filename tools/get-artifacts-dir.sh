@@ -2,7 +2,7 @@
 # This script produces a partial path name identifying the artifacts for this
 # build. Used by "make artifacts".
 
-DESCR="$(git -C . describe --dirty --tags --always)"
+DESCR="$(git -C . describe --tags --always --long)"
 
 if [ -z "${CI}" ]; then
     ID="Z$(date -u +%Y%m%d)"
