@@ -1,0 +1,14 @@
+(library
+ (name generate_api_tests_lib)
+ (modules)
+ (libraries base64 ezjsonm yaml containers cohttp astring))
+
+(executable
+ (name generate_api_tests)
+ (modules generate_api_tests)
+ (libraries generate_api_tests_lib))
+
+(executable
+ (name run_generated_tests)
+ (modules run_generated_tests)
+ (libraries alcotest bos spawn))

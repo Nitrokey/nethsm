@@ -1,0 +1,77 @@
+opam-version: "2.0"
+maintainer: [
+  "Stefanie Schirmer @linse"
+  "Hannes Mehnert"
+]
+authors: [
+  "Stefanie Schirmer @linse"
+  "Hannes Mehnert"
+]
+homepage: "dummy"
+bug-reports: "dummy"
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}]
+  ["dune" "runtest" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}] {with-test}
+]
+
+depends: [
+  "cmdliner" {>= "1.2.0"}
+  "ocaml" {>= "4.08.0"}
+  "dune" {>= "2.8.0"}
+  "alcotest" #{with-test}
+  "bos" #{with-test}
+  "spawn" #{with-test}
+  "astring"
+  "logs"
+  "lwt"
+  "ptime"
+  "cohttp" {= "5.0.0"}
+  "rresult"
+  "mirage-crypto" {>= "0.8.4"}
+  "webmachine" {>= "0.7.0"}
+  "cohttp-lwt" {= "5.0.0"}
+  "yojson"
+  "mirage-clock"
+  "mirage-random" {>= "2.0.0"}
+  "ppx_deriving_yojson"
+  "ppx_deriving"
+  "ppx_blob"
+  "scrypt-kdf" {>= "1.1.0"}
+  "mirage-kv" {>= "3.0.0"}
+  "tls" {>= "0.13.1"}
+  "x509" {>= "0.13.0"}
+  "mirage-crypto-ec"
+  "base64" {>= "3.0.0"}
+  "hex"
+  "gmap" {>= "0.3.0"}
+  "ipaddr" {>= "5.0.0"}
+  "metrics" {>= "0.2.0"}
+  "metrics-lwt" {>= "0.2.0"}
+  "mirage-time"
+  "duration"
+  "multipart_form"
+  "multipart_form-lwt"
+  "io-page" {>= "2.4.0"} #{with-test}
+  "conduit-mirage" {>= "5.0.0"} #{with-test}
+  "cohttp-mirage" {= "5.0.0"} #{with-test}
+  "tcpip" {>= "7.0.0"} #{with-test}
+  "mirage-clock-unix" #{with-test}
+  "mirage-kv-mem" #{with-test}
+  "mirage-random-test" #{with-test}
+]
+synopsis: "Keyfender library"
+pin-depends: [
+  ["conduit-mirage.6.1.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"]
+  ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+]
+# These versions of CoHTTP/Conduit integrate a partially worked patch to
+# transfer to the callback the identity of the client (the `inet_addr`) for
+# MirageOS only. We did change cohttp-lwt-unix or cohttp-async for instance.
+# These patches will probably not (according to the Conduit's design) be
+# integrated upstream.
+# These patches are applied on the version 5.0.0 of CoHTTP/Conduit and they
+# are available into the branch client-ip5 into dinosaure/ocaml-cohttp &
+# dinosaure/ocaml-conduit.

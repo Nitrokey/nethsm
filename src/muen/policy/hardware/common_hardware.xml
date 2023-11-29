@@ -1,0 +1,30 @@
+<hardware>
+  <devices>
+    <device name="vga">
+      <memory name="buffer" physicalAddress="16#000a_0000#" size="16#0002_0000#" caching="WC"/>
+      <ioPort name="ports" start="16#03c0#" end="16#03df#"/>
+    </device>
+    <device name="ps2">
+      <irq name="kbd_irq" number="1"/>
+      <irq name="mouse_irq" number="12"/>
+      <ioPort name="port_60" start="16#0060#" end="16#0060#"/>
+      <ioPort name="port_64" start="16#0064#" end="16#0064#"/>
+    </device>
+    <device name="cmos_rtc">
+      <ioPort name="ports" start="16#0070#" end="16#0071#"/>
+    </device>
+    <device name="pcspeaker">
+      <ioPort name="Port_61" start="16#0061#" end="16#0061#"/>
+      <ioPort name="Port_42_43" start="16#0042#" end="16#0043#"/>
+    </device>
+    <device name="pci_legacy">
+      <ioPort name="Port_cf8" start="16#0cf8#" end="16#0cf8#"/>
+      <!-- Can't list 0cf9 here as it conflicts with system_board -->
+      <ioPort name="Port_cfa_16" start="16#0cfa#" end="16#0cfb#"/>
+      <ioPort name="Port_cfc_32" start="16#0cfc#" end="16#0cff#"/>
+    </device>
+    <device name="tpm">
+      <memory name="iomem" physicalAddress="16#fed4_0000#" size="16#0000_5000#" caching="UC"/>
+    </device>
+  </devices>
+</hardware>

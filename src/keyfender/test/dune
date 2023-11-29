@@ -1,0 +1,93 @@
+(tests
+ (libraries
+  logs.fmt
+  fmt.tty
+  mirage-crypto-rng.unix
+  lwt.unix
+  mirage-clock-unix
+  mirage-random-test
+  mirage-kv-mem
+  keyfender
+  alcotest
+  str)
+ (modules test_dispatch test_export_backup test_dispatch_helpers test_utils)
+ (preprocessor_deps public.pem)
+ (preprocess
+  (pps ppx_blob))
+ (deps
+  update.bin
+  ../bin/sign_update.exe
+  key.pem
+  changes
+  version
+  my_backup.bin
+  ../bin/export_backup.exe)
+ (names test_dispatch test_export_backup)
+ (package keyfender))
+
+(test
+ (libraries logs.fmt fmt.tty keyfender mirage-random-test alcotest)
+ (modules test_crypto)
+ (name test_crypto)
+ (package keyfender))
+
+(executable
+ (libraries
+  logs.fmt
+  fmt.tty
+  keyfender
+  mirage-random-test
+  mirage-clock-unix
+  mirage-kv-mem
+  lwt.unix
+  mirage-crypto-rng.unix)
+ (modules test_stream)
+ (preprocessor_deps public.pem)
+ (preprocess
+  (pps ppx_blob))
+ (name test_stream)
+ (public_name test_stream)
+ (package keyfender))
+
+(executable
+ (libraries
+  logs.fmt
+  fmt.tty
+  mirage-crypto-rng.unix
+  keyfender
+  tcpip.stack-socket
+  conduit-mirage
+  cohttp-mirage
+  mirage-clock-unix
+  mirage-kv-mem
+  mirage-random-test)
+ (modules test_server)
+ (preprocessor_deps public.pem)
+ (preprocess
+  (pps ppx_blob))
+ (name test_server)
+ (public_name test_server)
+ (package keyfender))
+
+(executable
+ (libraries logs.fmt keyfender)
+ (modules test_logs)
+ (name test_logs))
+
+(cram
+ (deps ./test_logs.exe))
+
+(executable
+ (libraries
+  logs.fmt
+  fmt.tty
+  lwt.unix
+  alcotest
+  keyfender
+  mirage-clock-unix
+  mirage-kv-mem
+  mirage-random-test)
+ (modules test_cached_store)
+ (name test_cached_store)
+ (public_name test_cached_store)
+ (package keyfender))

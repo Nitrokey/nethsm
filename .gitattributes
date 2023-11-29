@@ -1,0 +1,5 @@
+/src/container/static/Index.js filter=lfs diff=lfs merge=lfs -text
+/src/container/static/Index.js.map filter=lfs diff=lfs merge=lfs -text
+/src/coreboot/blobs/** filter=lfs diff=lfs merge=lfs -text
+/src/installer/root/boot/vmlinuz filter=lfs diff=lfs merge=lfs -text
+**/modules/**/*.ko filter=lfs diff=lfs merge=lfs -text

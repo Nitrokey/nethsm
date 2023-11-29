@@ -1,0 +1,492 @@
+variables:
+  DEFAULT_BRANCH: master
+  BUILDER_TAG: latest
+  USE_CCACHE: 1
+  CCACHE_DIR: /downloads/ccache
+  GIT_LFS_SKIP_SMUDGE: 1
+  BUILDKIT_HOST: tcp://172.17.0.1:12345
+  PUSH: "push=true"
+  CI_INSTALLER_IMG: DANGER-fast-factory-reset.img
+
+.dependency_paths:
+  builder: &builder_dep_paths
+    - src/container/builder/**
+    - .opam-repository-commit
+    - .gitlab-ci.yml
+  coreboot: &coreboot_dep_paths
+    - src/coreboot/**
+    - keys/**
+    - .gitlab-ci.yml
+    - Makefile*
+
+.setup_job_default: &setup_job_default
+  - git config --global --add safe.directory ${CI_PROJECT_DIR}
+  - git config --global --add safe.directory /nethsm-tools
+  - sudo chmod 01777 /downloads
+  - mkdir -p /downloads/opam
+  - ln -s /downloads/opam ~/.opam/download-cache
+  - eval $(ssh-agent)
+  - cat $VENDOR_KEY | ssh-add -
+
+.setup_job_buildkit: &setup_job_buildkit
+  - mkdir -p $HOME/.docker
+  - >
+    echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf
+    "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
+    tr -d '\n')\"}}}" > ${HOME}/.docker/config.json
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+      changes:
+        paths: *builder_dep_paths
+      variables:
+        BUILDER_TAG: ${CI_COMMIT_SHORT_SHA}
+    - when: always
+
+default:
+  image: "${CI_REGISTRY_IMAGE}/builder:${BUILDER_TAG}"
+  tags:
+    - docker
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+stages:
+  - prepare
+  - test
+  - build
+  - test_hw
+  - docker_integration_test
+  - commit
+  - fuzz
+
+build_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        PUSH: "push=false"
+    - if: $BUILDER_TAG != "latest"
+  stage: prepare
+  needs: []
+  image:
+    name: moby/buildkit:rootless
+    entrypoint: [""]
+  before_script: *setup_job_buildkit
+  script:
+    - cp src/keyfender/keyfender.opam.locked src/container/builder/
+    - cp src/s_keyfender/unikernel-preinstall.opam.locked src/container/builder/
+    - >-
+      buildctl build --frontend=dockerfile.v0 --progress=plain
+      --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
+      --local context="${CI_PROJECT_DIR}/src/container/builder"
+      --ssh default="${VENDOR_KEY}"
+      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
+      --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
+
+build_container_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        PUSH: "push=false"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  needs:
+    - job: build_builder_image
+      optional: true
+    - job: build_api_spec_docs
+      optional: true
+  dependencies:
+    - build_api_spec_docs
+  stage: build
+  image:
+    name: moby/buildkit:rootless
+    entrypoint: [""]
+  before_script: *setup_job_buildkit
+  script:
+    - >-
+      buildctl build --frontend=dockerfile.v0 --progress=plain
+      --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
+      --local context=${CI_PROJECT_DIR}
+      --ssh default="${VENDOR_KEY}"
+      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
+
+commit_builder_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - >
+      if skopeo inspect docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA} >/dev/null 2>&1 ;
+      then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
+      docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
+
+commit_container_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  variables:
+    IMAGE_NAME: "nitrokey/nethsm"
+    IMAGE_TAG: "testing"
+    REGISTRY: "docker.io"
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
+  script:
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+validate_api_spec:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    API_SPEC: "docs/nethsm-api.yaml"
+    API_SPEC_DEBUG: "/tmp/nethsm-api-debug.log"
+  stage: test
+  needs: []
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
+  services:
+    - name: swaggerapi/swagger-validator-v2
+      alias: swagger-validator
+  script:
+    - >-
+      curl --request POST http://swagger-validator:8080/validator/debug
+      --header "Accept: application/json"
+      --header "Content-Type: application/yaml"
+      --data-binary @$API_SPEC
+      | tee ${API_SPEC_DEBUG} | json_pp
+    - >-
+      jq -e 'contains({"schemaValidationMessages":[{"level":"error"}]}) | not'
+      ${API_SPEC_DEBUG} >/dev/null
+
+test_keyfender:
+  rules:
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    MODE: test
+  stage: test
+  needs:
+    - job: build_builder_image
+      optional: true
+  coverage: '/(Coverage: ).*\((.*)\)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: obj/cobertura.xml
+    paths:
+      - "src/keyfender/_build/default/test/_build/_tests/"
+  before_script: *setup_job_default
+  script:
+    - opam exec -- make check-format || (echo "formatting check failed, please run 'make fix-format'" ; exit 1)
+    - opam exec -- make -j$(nproc) coverage-summary
+
+build_api_spec_docs:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    API_SPEC: "docs/nethsm-api.yaml"
+    API_DOCS: "src/s_keyfender/htdocs/api_docs"
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+    - job: validate_api_spec
+      optional: true
+  artifacts:
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - ${API_DOCS}
+  script:
+    - mkdir -p ${API_DOCS}
+    - cp ${API_SPEC} ${API_DOCS}
+    - curl -sSL "https://github.com/swagger-api/swagger-ui/archive/master.tar.gz" -o /tmp/swagger-ui.tar.gz
+    - mkdir -p /tmp/swagger-ui
+    - tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
+    - cp -an /tmp/swagger-ui/dist/* ${API_DOCS}
+
+build_dev:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    MODE: dev
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+  before_script: *setup_job_default
+  script:
+    - opam exec -- make -j$(nproc) build
+
+build_muen_prodrive_hermes:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+      changes:
+        paths: *coreboot_dep_paths
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: prodrive-hermes-1.0
+    GIT_LFS_SKIP_SMUDGE: 0
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+    # - job: build_dev
+    #   artifacts: false
+    - job: build_api_spec_docs
+      optional: true
+  dependencies:
+    - build_api_spec_docs
+  artifacts:
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - ${CI_JOB_NAME}_artifacts
+  before_script: *setup_job_default
+  script:
+    - opam exec -- make -j$(nproc) artifacts
+    - mkdir -p ${CI_JOB_NAME}_artifacts
+    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
+
+build_muen_qemu_kvm:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+      changes:
+        paths: *coreboot_dep_paths
+      variables:
+        WITH_COREBOOT: "1"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: qemu-kvm
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+    - job: build_dev
+      artifacts: false
+    - job: build_api_spec_docs
+      optional: true
+  dependencies:
+    - build_api_spec_docs
+  artifacts:
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - ${CI_JOB_NAME}_artifacts
+  before_script: *setup_job_default
+  script:
+    - opam exec -- make -j$(nproc) artifacts
+    - mkdir -p ${CI_JOB_NAME}_artifacts
+    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
+    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
+
+build_ci_installer_prodrive_hermes:
+  rules:
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
+  stage: test_hw
+  needs:
+    - job: build_muen_prodrive_hermes
+  artifacts:
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - obj/${CI_INSTALLER_IMG}
+  script:
+    - mkdir -p ${CI_PROJECT_DIR}/obj
+    - >-
+      tools/mk-ci-installer.sh
+      ${CI_PROJECT_DIR}/build_muen_prodrive_hermes_artifacts/installer.img
+      ${CI_PROJECT_DIR}/obj/${CI_INSTALLER_IMG}
+
+test_muen_prodrive_hermes:
+  tags:
+    - "hermes"
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule")
+  variables:
+    NETHSM_IP: 192.168.1.1
+    BMC_IP: 192.168.144.2
+    BMC_USER: bmc_admin
+    BMC_PASS: nitrokey
+    HTTP_SERVER: 192.168.144.1
+    SERIALPID: ${CI_PROJECT_DIR}/obj/serial_out.pid
+    SERIALTXT: ${CI_PROJECT_DIR}/obj/serial_out.txt
+  stage: test_hw
+  needs:
+    - build_ci_installer_prodrive_hermes
+  artifacts:
+    when: always
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - obj/serial_out.txt
+  before_script:
+    - lsof -t /dev/ttyUSB0 | xargs -r kill || true
+    - stty -F /dev/ttyUSB0 raw pass8 -echo 115200
+  script:
+    - cp obj/${CI_INSTALLER_IMG} /var/www/html/${CI_JOB_ID}-installer.img
+    - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/${CI_JOB_ID}-installer.img"
+    - rm /var/www/html/${CI_JOB_ID}-installer.img
+    - cat </dev/ttyUSB0 >$SERIALTXT 2>&1 &
+    - echo $! >$SERIALPID
+    - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
+    - |-
+      printf "waiting for NetHSM"
+      x=0
+      while ! curl -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
+        printf "."
+        ((x++>10)) && echo "time out!" && exit 1
+        sleep 5
+      done
+      echo "done."
+    - cd src/tests
+    - NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh
+    - NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
+    - |-
+      echo "Backup dump:"
+      python3 ../keyfender/bin/export_backup.py backupPassphrase /tmp/backup.bin
+    - >-
+      { TIMEFORMAT="Total time: %R" ; time
+      NETHSM_URL="https://${NETHSM_IP}/api" REQUESTS=1000 CONNECTIONS=10
+      ./load_test.sh ; } 2>&1 | tee ${CI_PROJECT_DIR}/obj/load_test.out
+    - >-
+      TIME=$(tail -1 ${CI_PROJECT_DIR}/obj/load_test.out | sed -n 's/Total time: \(.*\)/\1/p')
+    - PERF=$(bc -l <<<"x=100/e(l(2)*${TIME}/60);scale=2;x/1")
+    - "echo Performance: ${PERF}%"
+    - |-
+      printf "waiting for serial output"
+      while true ; do
+        size=$(du -b $SERIALTXT | cut -f1)
+        [ "$size" == "$lastsize" ] && break
+        lastsize=$size
+        printf "."
+        sleep 1
+      done
+      echo "done."
+    - if grep ' ERR\(OR:\)\? ' $SERIALTXT ; then exit 1 ; fi
+  after_script:
+    - >-
+      curl -k -s
+      https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset -u
+      ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
+      '{"ResetType": "ForceOff"}'
+  coverage: "/(^Performance: )(.*)%/"
+
+create_artifact_packages:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: commit
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
+  needs: []
+  script:
+    - >-
+      REF=$(curl -sS -f --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines?sha=${CI_COMMIT_SHA}&status=success"
+      | jq -r '.[0].ref')
+    - echo $REF
+    - >
+      curl -o artifacts.zip -f --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${REF}/download?job=build_muen_prodrive_hermes"
+    - unzip artifacts.zip
+    - cd build_muen_prodrive_hermes_artifacts
+    - >-
+      [ -f bios.swu ] && mv bios.swu bios_${CI_COMMIT_SHORT_SHA}.swu && zip bios.zip bios_${CI_COMMIT_SHORT_SHA}.swu
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file bios.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/bios/latest/nethsm_bios_${CI_COMMIT_SHORT_SHA}.zip"
+    - >-
+      mv installer.img installer_${CI_COMMIT_SHORT_SHA}.img && zip installer.zip installer_${CI_COMMIT_SHORT_SHA}.img
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file installer.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/installer/latest/nethsm_installer_${CI_COMMIT_SHORT_SHA}.zip"
+    - >-
+      mv update.img.bin update_${CI_COMMIT_SHORT_SHA}.bin && zip update.zip update_${CI_COMMIT_SHORT_SHA}.bin
+      && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file update.zip
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/update/latest/nethsm_update_${CI_COMMIT_SHORT_SHA}.zip"
+
+integration_test_sdk_py:
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        PUSH: "push=false"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  stage: docker_integration_test
+  needs:
+    - job: build_container_image
+  image:
+    entrypoint: ["/bin/sh", "-c"]
+    name: "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+  variables:
+    FLIT_ROOT_INSTALL: 1
+  script:
+    - apk add python3 git make
+    - git clone https://github.com/Nitrokey/nethsm-sdk-py.git
+    - cd nethsm-sdk-py && make init && TEST_MODE=ci make test
+
+run-openapi-fuzzer:
+  allow_failure: true
+  rules:
+    # run only on master
+    # - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: fuzz
+  timeout: 48h
+  needs:
+    - job: build_builder_image
+      optional: true
+  before_script: *setup_job_default
+  when: manual
+  script:
+    # install rust and openapi-fuzzer
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - source "$HOME/.cargo/env"
+    - cargo install openapi-fuzzer
+    - cargo install yj
+    - make build
+    # convert yaml to json, somehow openapi-fuzzer does not like our yaml
+    - yj docs/nethsm-api.yaml > ./api.json
+    # run openapi-fuzzer
+    - ./tools/openapi-fuzzing.sh
+  artifacts:
+    when: always
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - src/tests/openapi-fuzzer.regressions
+      - src/tests/results

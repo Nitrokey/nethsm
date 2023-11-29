@@ -1,0 +1,879 @@
+# Copyright 2023 - 2023, Nitrokey GmbH
+# SPDX-License-Identifier: EUPL-1.2
+
+# User-settable parameters.
+# Pass these at 'make' invocation time to the top-level Makefile.
+
+# (MODE is set from top-level Makefile and persisted to .stamp-mode.)
+
+# Set NO_ETCD=1 if you are using MODE=dev and do not want to run
+# a etcd daemon.
+NO_ETCD ?=
+
+# Set NET_EXTERNAL=interface to use a non-default interface for the
+# "External" (192.168.1.0/24) network.
+NET_EXTERNAL ?= tap200
+
+# Set NET_INTERNAL=interface to use a non-default interface for the
+# "Internal" (169.254.169.0/24) network.
+NET_INTERNAL ?= tap201
+
+# Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
+# for the Keyfender unikernel. Default for MODE=muen is '--retry=true'.
+# (actual setting is performed later)
+
+# Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
+# built for. Currently supported: qemu-kvm or prodrive-hermes-1.0.
+#
+# TODO: This should be persisted similarly to MODE=, or otherwise detect that
+# it changed?
+MUEN_HARDWARE ?= qemu-kvm
+
+# Private key directory used to sign Muen system image.
+# Set BOOT_KEY_SMARTCARD=1 to use a GPG smartcard.
+BOOT_KEY_SMARTCARD ?=
+
+ifeq ($(BOOT_KEY_SMARTCARD),1)
+MUEN_KEY_DIR ?= keys/smartcard
+else
+MUEN_KEY_DIR ?= keys/test-key
+endif
+
+# Set USE_CCACHE=1 if you would like to use ccache to speed up the build.
+USE_CCACHE ?=
+
+# Private key used to sign NetHSM update image.
+# Set UPDATE_KEY_SMARTCARD=1 to use a PKCS#11 smartcard.
+# The UPDATE_KEY_SMARTCARD_SLOT and UPDATE_KEY_SMARTCARD_USER_PIN will then be
+# applied when signing the image.
+# The public key of the UPDATE_KEY_SMARTCARD_SLOT is embedded in the S-Keyfender
+# unikernel.
+UPDATE_KEY_SMARTCARD ?=
+UPDATE_KEY_SMARTCARD_SLOT ?= 03
+UPDATE_KEY_SMARTCARD_USER_PIN ?= 123456
+ifneq ($(UPDATE_KEY_SMARTCARD),1)
+OUTER_PUB_KEY ?= src/keyfender/test/public.pem
+OUTER_PRIV_KEY ?= src/keyfender/test/key.pem
+endif
+
+# ------------------------------------------------------------------------------
+
+TOP_DIR := $(abspath .)
+
+PATH_ORIG := ${PATH}
+
+.SUFFIXES:
+
+# Ensure that variables specified on the (top-level) 'make' command line are
+# NOT passed down to sub-makes invoked by this Makefile. Doing so would pass
+# down e.g. $(MODE), which is an overloaded name and breaks third-party
+# "downstream" Makefiles.
+MAKEOVERRIDES =
+
+# Do not run any jobs in *this* Makefile in parallel. This would not gain us
+# anything and complicates the output. -j is still passed to and honored by
+# recursively called Makefiles.
+.NOTPARALLEL:
+
+.PHONY: all
+all:
+	@echo Error: Makefile.sub should not be invoked directly
+	@false
+
+# We cannot use $(MODE) in this Makefile, as that can be overriden by the user
+# in the top-level Makefile, and we need either the "last used mode" from
+# .stamp-mode OR 'dev' if this is a fresh/distclean'd tree.
+XMODE := $(shell cat .stamp-mode 2>/dev/null)
+
+DUNE := dune
+DUNE_ARGS := --release
+OPAM_VERSION := $(shell opam --version)
+OPAM_VERSION_GT_EQ_2_1_0 := $(shell expr ${OPAM_VERSION} \>= 2.1.0)
+
+ifeq ($(XMODE),)
+XMODE := dev
+endif
+ifeq ($(XMODE),dev)
+TARGET := hvt
+KEYFENDER_CARGS ?= --no-platform=true --memtrace=1234
+else ifeq ($(XMODE),muen)
+TARGET := muen
+KEYFENDER_CARGS ?= --retry=true
+else ifeq ($(XMODE),test)
+TARGET := unix
+KEYFENDER_CARGS ?= --no-platform=true --single-interface --bisect-ppx --no-scrypt=true
+DUNE := OCAMLRUNPARAM=b dune
+DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
+OPAMVAR_coverage := true
+export OPAMVAR_coverage
+else
+$(error Invalid MODE '$(XMODE)')
+endif
+
+ifneq ($(USE_CCACHE),)
+$(info Enabling ccache)
+CCACHE := ccache
+CCACHE_PATH := /usr/lib/ccache/bin:/usr/lib/ccache:
+PATH := $(CCACHE_PATH)$(PATH_ORIG)
+export PATH
+ifneq ($(shell PATH=$(PATH) gcc -xc -c - -o /dev/null --ccache-skip </dev/null 2>&1),)
+$(error USE_CCACHE was requested but /usr/lib/ccache is not first on $$PATH)
+endif
+endif
+
+# ------------------------------------------------------------------------------
+#
+# Rules for 'prepare' step. Common to all MODEs.
+#
+# ------------------------------------------------------------------------------
+
+SOFTWARE_VERSION := src/keyfender/softwareVersion
+BUILD_TAG := $(strip $(shell git -C . describe --tags --always --long))
+
+src/keyfender/buildTag:
+	echo $(BUILD_TAG) > $@
+
+$(SOFTWARE_VERSION): CHANGES.md
+	grep ^# CHANGES.md | head -1 | cut -d ' ' -f 2 > $@
+
+.stamp-prepare: src/keyfender/buildTag $(SOFTWARE_VERSION)
+ifneq ($(CCACHE_DIR),)
+	mkdir -p $(CCACHE_DIR)
+endif
+	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
+ifeq ($(XMODE),test)
+# Additional dependencies required for coverage testing and building
+# generate_raml_tests.exe; we only install these when building with MODE=test.
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml ocamlformat
+	opam install -y --deps-only --with-test keyfender
+else
+	opam install -y dune 'mirage>=3.10.4' 'functoria<4' ocamlformat
+#solo5-bindings-$(TARGET) mirage-solo5
+endif
+	touch $@
+
+.PHONY: prepare
+prepare: .stamp-prepare
+
+ETCD_VER := v3.5.10
+ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
+ETCD_DIR := $(TOP_DIR)/etcd-download
+
+$(ETCD_DIR):
+	curl -L $(ETCD_DOWNLOAD_URL)/$(ETCD_VER)/etcd-$(ETCD_VER)-linux-amd64.tar.gz -o /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
+	mkdir -p $(ETCD_DIR)
+	tar xzvf /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz -C $(ETCD_DIR) --strip-components=1
+	rm /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
+
+distclean: clean
+	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
+	$(RM) src/keyfender/buildTag
+	$(RM) $(SOFTWARE_VERSION)
+	$(RM) $(ETCD_DIR)
+	$(RM) .stamp-prepare
+
+# ------------------------------------------------------------------------------
+#
+# Rules for building the keyfender library, and the S-Keyfender unikernel.
+# Common to all MODEs.
+#
+# ------------------------------------------------------------------------------
+
+KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
+KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
+ifeq "$(TARGET)" "unix"
+S_KEYFENDER := src/s_keyfender/keyfender
+else
+S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
+endif
+S_KEYFENDER_PREP := src/s_keyfender/_build/default/stamp-prep
+UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
+
+$(KEYFENDER): .stamp-prepare
+	cd src/keyfender && $(DUNE) build $(DUNE_ARGS)
+
+$(KEYFENDER_INSTALL): $(KEYFENDER)
+	opam reinstall -y --assume-built keyfender
+	touch $@
+
+$(UPDATE_KEY):
+ifneq ($(UPDATE_KEY_SMARTCARD),1)
+	cp $(OUTER_PUB_KEY) $@
+else
+	sudo service pcscd start
+	pkcs11-tool --read-object --id "${UPDATE_KEY_SMARTCARD_SLOT}" --type pubkey | openssl rsa -inform der -outform pem -pubin > $@
+	sudo service pcscd stop
+endif
+
+.PHONY: clean-keyfender
+clean-keyfender:
+	-opam remove -y keyfender
+	$(RM) $(KEYFENDER_INSTALL)
+	-cd src/keyfender && $(DUNE) clean
+	-cd src/s_keyfender && mirage clean
+	$(RM) $(UPDATE_KEY)
+
+$(S_KEYFENDER_PREP): .stamp-prepare
+	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) --allocation-policy=best-fit $(KEYFENDER_CARGS)
+	cd src/s_keyfender && $(MAKE) depend
+	touch $@
+
+$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
+	cd src/s_keyfender && $(MAKE) build
+
+.PHONY: build-keyfender
+build-keyfender: $(S_KEYFENDER)
+
+.PHONY: check-format
+check-format: $(S_KEYFENDER_PREP)
+	cd src/keyfender && $(DUNE) build @fmt
+	cd src/s_keyfender && $(DUNE) build @fmt
+	cd src/tests && $(DUNE) build @fmt
+
+.PHONY: fix-format
+fix-format: $(S_KEYFENDER_PREP)
+	cd src/keyfender && $(DUNE) fmt || true
+	cd src/s_keyfender && $(DUNE) fmt || true
+	cd src/tests && $(DUNE) fmt || true
+
+.PHONY: test-keyfender-lib test-keyfender-e2e
+test-keyfender-lib: $(KEYFENDER)
+	cd src/keyfender && $(DUNE) runtest $(DUNE_ARGS)
+ifeq ($(XMODE),test)
+	sleep 1
+	bisect-ppx-report summary --coverage-path=src/keyfender
+endif
+
+test-keyfender-e2e: $(KEYFENDER)
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./provision_test.sh
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" REQUESTS=1 CONNECTIONS=1 ./load_test.sh
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_gen
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_gen
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_gen
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_sign
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_sign
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh p256_sign
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa2048_decrypt
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+	pkill test_server.exe && wait || true
+	cd src/tests && \
+	    ../keyfender/_build/default/test/test_server.exe &
+	sleep 1
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ITERS=1 JOBS=1 ./performance.sh rsa4096_decrypt
+	cd src/tests && \
+	    NETHSM_URL="http://localhost:8080/api" ./shutdown_test.sh
+ifeq ($(XMODE),test)
+	# Coverage files get saved in the working directory test_server.exe was
+	# run in, for this test we only want those in src/tests, not any in
+	# src/tests/generated.
+	sleep 1
+	bisect-ppx-report summary src/tests/*.coverage
+endif
+
+ifeq ($(XMODE),dev)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running a local development system using Solo5/hvt.
+#
+# ------------------------------------------------------------------------------
+
+RUN_DIR := $(TOP_DIR)/run
+
+.PHONY: build
+build: $(S_KEYFENDER)
+
+ifeq ($(NO_ETCD),)
+
+$(RUN_DIR)/etcd.pid:
+	etcd \
+	    --listen-client-urls 'http://169.254.169.2:2379' \
+		--advertise-client-urls 'http://169.254.169.2:2379' \
+		--data-dir $(RUN_DIR)/etcd \
+		--loglevel debug \
+        --log-outputs $(RUN_DIR)/etcd.log \
+	    & ; echo $$! > $@
+
+else
+
+$(RUN_DIR)/etcd.pid: ;
+
+endif
+
+.PHONY: run
+run: build $(RUN_DIR)/etcd.pid
+	solo5-hvt \
+	    --net:external=$(NET_EXTERNAL) \
+	    --net:internal=$(NET_INTERNAL) \
+	    $(S_KEYFENDER)
+
+.PHONY: clean
+clean: clean-keyfender
+ifeq ($(NO_ETCD),)
+	-test -f $(RUN_DIR)/etcd.pid && \
+	    kill $$(cat $(RUN_DIR)/etcd.pid) && \
+	    rm $(RUN_DIR)/etcd.pid
+endif
+	$(RM) -r $(RUN_DIR)
+
+else ifeq ($(XMODE),test)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running Keyfender library, test_server.exe and tests
+# only.
+#
+# Note that the generated API tests (test-keyfender-api) target is only
+# available in this mode.
+#
+# ------------------------------------------------------------------------------
+
+.PHONY: test-keyfender-api
+test-keyfender-api: $(S_KEYFENDER) | $(ETCD_DIR)
+	cd src/tests && $(DUNE) exec ./generate_api_tests.exe
+	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
+	# For this test we want to consider ALL coverage files under
+	# src/tests/generated
+	sleep 1
+	bisect-ppx-report summary --coverage-path=src/tests/generated
+
+.PHONY: build
+build: $(KEYFENDER)
+
+.stamp-test-%: test-%
+	touch $@
+
+.PHONY: coverage-summary
+# Generate a summary coverage report. Runs all test-keyfender-* targets if not
+# previously run in this tree.
+coverage-summary: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-test-keyfender-e2e
+	mkdir -p $(TOP_DIR)/obj
+	bisect-ppx-report cobertura \
+		--coverage-path=src/tests \
+		--coverage-path=src/keyfender \
+		--coverage-path=src/s_keyfender \
+		--source-path=src/keyfender \
+		--source-path=src/s_keyfender \
+		$(TOP_DIR)/obj/cobertura.xml
+	bisect-ppx-report summary \
+	    --coverage-path=src/tests \
+	    --coverage-path=src/keyfender \
+	    --coverage-path=src/s_keyfender
+
+.PHONY: coverage
+# Generate a combined coverage report. Runs all test-keyfender-* targets if not
+# previously run in this tree.
+coverage: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-test-keyfender-e2e
+	mkdir -p $(TOP_DIR)/obj
+	bisect-ppx-report html \
+	    --coverage-path=src/tests \
+	    --coverage-path=src/keyfender \
+	    --coverage-path=src/s_keyfender \
+	    --source-path=src/keyfender \
+	    --source-path=src/s_keyfender \
+	    -o $(TOP_DIR)/obj/coverage
+	@echo "Open obj/coverage/index.html for coverage report"
+
+.PHONY: clean
+clean: clean-keyfender
+	-cd src/tests && $(DUNE) clean
+	find src/tests/generated -mindepth 1 -type d | xargs -r rm -r
+	find . -type f -name \*.coverage | xargs -r rm
+	$(RM) -r $(TOP_DIR)/obj
+	$(RM) .stamp-test-*
+
+else ifeq ($(XMODE),muen)
+# ------------------------------------------------------------------------------
+#
+# Rules for building and running a Muen system.
+#
+# ------------------------------------------------------------------------------
+
+MUEN_DIR := /nethsm-tools/muen
+MUEN_POLICY_DIR := $(TOP_DIR)/src/muen/policy
+MUEN_LINUX_CONFIG := $(TOP_DIR)/src/muen/linux/config-5.4-$(MUEN_HARDWARE)
+MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
+MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
+
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+COREBOOT_CONFIG := $(TOP_DIR)/src/coreboot/config.nethsm_qemu_q35
+else ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+COREBOOT_CONFIG := $(TOP_DIR)/src/coreboot/config.nethsm_prodrive_hermes_1.0
+else
+$(error Invalid MUEN_HARDWARE)
+endif
+
+OBJ_DIR := $(TOP_DIR)/obj
+OBJ_DATA_DIR := $(OBJ_DIR)/data
+OBJ_INITRAMFS_DIR := $(OBJ_DIR)/initramfs
+
+$(OBJ_DIR):
+	mkdir -p $@
+
+# ------------------------------------------------------------------------------
+OBJ_ETCD_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
+INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd
+
+$(INSTALL_ETCD_DAEMON): | $(OBJ_DIR) $(ETCD_DIR)
+	mkdir -p $(OBJ_ETCD_BIN_DIR)
+	cp -a $(ETCD_DIR)/etcd $@
+
+# ------------------------------------------------------------------------------
+MKE2FS := /nethsm-tools/bin/mke2fs
+INSTALL_MKE2FS := $(OBJ_INITRAMFS_DIR)/bin/mke2fs
+
+ETC_DIR := $(TOP_DIR)/src/u-root/etc
+INSTALL_ETC_DIR := $(OBJ_INITRAMFS_DIR)/etc
+
+$(INSTALL_MKE2FS): $(MKE2FS)
+	cp $< $@
+
+$(INSTALL_ETC_DIR): $(ETC_DIR)
+	cp -a $</ $@
+
+# ------------------------------------------------------------------------------
+SFDISK := /nethsm-tools/bin/sfdisk
+INSTALL_SFDISK := $(OBJ_INITRAMFS_DIR)/bin/sfdisk
+
+$(INSTALL_SFDISK): $(SFDISK)
+	cp $< $@
+
+# ------------------------------------------------------------------------------
+COREBOOT_SRC := /nethsm-tools/coreboot
+COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
+OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
+CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
+OBJ_BIOS_SWU := $(OBJ_DIR)/bios.swu
+BIOS_BASE_SWU := src/coreboot/blobs/POC6001198032R12-RP06.00-uefi-csme-no_me-btg_p5.swu
+COREBOOT_MISC := $(COREBOOT_SRC)/misc
+COREBOOT_ACM := src/coreboot/blobs/acm_btg_csme.bin
+COREBOOT_OEM_KEY := src/coreboot/dummy_oem_key.pem
+
+$(COREBOOT_SRC)/.config: $(COREBOOT_CONFIG)
+	cd $(COREBOOT_SRC) && \
+	    make defconfig KBUILD_DEFCONFIG=$(COREBOOT_CONFIG)
+ifeq ($(USE_CCACHE),1)
+	cd $(COREBOOT_SRC) && \
+	    util/scripts/config --enable CCACHE
+endif
+
+$(COREBOOT_MISC): $(COREBOOT_ACM) $(COREBOOT_OEM_KEY)
+	mkdir -p $@
+	cp $(COREBOOT_ACM) $@/acm.bin
+	cp $(COREBOOT_OEM_KEY) $@/oem_key.pem
+
+# Coreboot does its own magic and checks out submodules depending on the
+# actual configuration at build time; unfortunately they do not provide a
+# separate Makefile target for this step, so it will be done here.
+$(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_MISC)
+	$(MAKE) -C $(COREBOOT_SRC) CPUS=$(shell nproc)
+
+# After building Coreboot, add the trusted public key and GRUB configuration
+# file to CBFS.
+COREBOOT_GRUB_CFG := src/coreboot/grub.cfg
+
+$(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREBOOT_GRUB_CFG)
+	cp $< $@
+	$(CBFSTOOL) $@ add \
+	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
+	$(CBFSTOOL) $@ add \
+	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
+	$(CBFSTOOL) $@ add \
+	    -f src/coreboot/ascii.pf2 -n etc/ascii.pf2 -t raw
+
+$(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
+	OFFSET_ROM=$(shell strings -o -t x $(OBJ_COREBOOT_ROM) | \
+		grep -F __FMAP__ | head -1 | awk '{ print $$1; }'); \
+	OFFSET_SWU=$(shell strings -o -t x $(BIOS_BASE_SWU) | \
+		grep -F __FMAP__ | head -1 | awk '{ print $$1; }' ); \
+	cp $(BIOS_BASE_SWU) $@ ; \
+	dd if=$(OBJ_COREBOOT_ROM) of=$@ bs=16 skip=$$((0x$${OFFSET_ROM}/16)) \
+		seek=$$(((0x$${OFFSET_ROM} + 0x$${OFFSET_SWU}%0x1000)/16)) conv=notrunc
+	CID=$(strip $(shell git rev-parse HEAD | cut -b 1-8)); \
+	sed -i "s/variant uefi-csme/variant g$${CID}/" $@
+	DATE=$(strip $(shell date -I)) ; \
+	sed -i "s/6001-1970-150..../NetHSM-$${DATE}/" $@
+
+# ------------------------------------------------------------------------------
+OBJ_DATA_ETCD_DIR := $(OBJ_DATA_DIR)/etcd
+$(OBJ_DATA_ETCD_DIR):
+	mkdir -p $@
+	chmod 0700 $@
+
+$(OBJ_DATA_DIR): $(OBJ_DATA_ETCD_DIR)
+
+OBJ_DATA_CPIO := $(OBJ_DIR)/data.cpio
+
+# Produce the CPIO
+# archive containing the template used to populate an empty /data partition on
+# boot. This is a bit round-about; blame UNIX tools for not letting us specify
+# ownership information in archives speficially.
+#
+# Notably, this ensures that everything under /data/etcd is owned by the etcd
+# user (1:1), with the "this data partition is now populated" stamp file being
+# owned by root (0:0).
+$(OBJ_DATA_CPIO): $(OBJ_DATA_DIR)
+	cd $(OBJ_DATA_DIR) && \
+	    find . -mindepth 1 | cpio -H newc -o -F $@ -R +1:+1 --reproducible
+# Workaround for https://github.com/u-root/u-root/issues/1838
+	echo $(BUILD_TAG) > $(OBJ_DATA_DIR)/initialised-v1
+	cd $(OBJ_DATA_DIR) && \
+	    echo initialised-v1 | cpio -H newc -oA -F $@ -R +0:+0 --reproducible
+
+INSTALL_DATA_CPIO := $(OBJ_INITRAMFS_DIR)/tmpl/data.cpio
+
+# obj/data.cpio is "installed" into the initramfs as tmpl/data.cpio.
+$(INSTALL_DATA_CPIO): $(OBJ_DATA_CPIO)
+	mkdir -p $(OBJ_INITRAMFS_DIR)/tmpl
+	cp $< $@
+
+# ------------------------------------------------------------------------------
+OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
+OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
+U_ROOT_SRC := /nethsm-tools/u-root
+U_ROOT_UINIT := $(TOP_DIR)/src/u-root/uinit
+U_ROOT_BUILD_TAG := $(U_ROOT_UINIT)/.build_tag
+U_ROOT_HW_VERSION := $(U_ROOT_UINIT)/.hardware_version
+# XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
+U_ROOT_PKGS := ./cmds/core/init \
+    ./cmds/core/cpio \
+    ./cmds/core/insmod \
+    ./cmds/core/ip \
+    ./cmds/core/ls \
+    ./cmds/core/mkdir \
+    ./cmds/core/mount \
+    ./cmds/core/shutdown \
+    ./cmds/core/umount \
+    $(U_ROOT_UINIT)
+
+$(U_ROOT_BUILD_TAG):
+	echo -n "$(BUILD_TAG)" >$@
+
+$(U_ROOT_HW_VERSION):
+	echo -n "$(MUEN_HARDWARE)" >$@
+
+INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_ETC_DIR) $(INSTALL_SFDISK) \
+    $(INSTALL_DATA_CPIO)
+
+$(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_BUILD_TAG) $(U_ROOT_HW_VERSION)
+	$(U_ROOT_SRC)/u-root -format=cpio -build=bb \
+	    -o $(OBJ_INITRAMFS_CPIO) \
+	    -defaultsh="" \
+	    -files "$(OBJ_INITRAMFS_DIR):." \
+		-uroot-source $(U_ROOT_SRC) \
+	    $(U_ROOT_PKGS)
+	gzip -9 -f $(OBJ_INITRAMFS_CPIO)
+
+# Ensure u-root initramfs is rebuilt if nethsm uinit sources change.
+# There might be a better way of doing this, but this will have to do for now.
+$(OBJ_INITRAMFS): \
+    $(wildcard $(U_ROOT_UINIT)/*.go) \
+    $(U_ROOT_UINIT)/script/script.go
+
+# ------------------------------------------------------------------------------
+MUEN_POLICY_OBJ_DIR := $(MUEN_DIR)/policy/obj
+MUEN_PACK_OBJ_DIR := $(MUEN_DIR)/pack/obj
+MUEN_S_KEYFENDER := $(MUEN_POLICY_OBJ_DIR)/keyfender.muen
+MUEN_S_KEYFENDER_CSPEC := src/muen/policy/xml/component_unikernel.xml
+MUEN_PACK_IMG_CSL := $(MUEN_PACK_OBJ_DIR)/muen.img.cmds
+MUEN_GEN_CSPEC := $(MUEN_DIR)/tools/scripts/solo5-muen-gencspec.py
+# XXX: Using --bootparams= here is not currently possible without using
+# XXX: mirageos/compose.py, so we persist parameters at unikernel configure
+# XXX: time instead.
+# XXX: We should not be special-casing QEMU/KVM here.
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+MUEN_GEN_CSPEC_EXTRA :=
+else
+MUEN_GEN_CSPEC_EXTRA := --ram 1024
+endif
+
+$(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
+	$(MUEN_GEN_CSPEC) \
+	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
+	    $(MUEN_GEN_CSPEC_EXTRA) \
+	    $< \
+	    $(MUEN_DIR)/policy/xml/mirageos/cspec_src.xml \
+	    $(MUEN_POLICY_OBJ_DIR)
+
+$(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
+	$(MAKE) -C $(MUEN_DIR) --silent --no-print-directory \
+	    NO_PROOF=1 \
+	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nethsm_basic_system.xml \
+	    HARDWARE=$(MUEN_HARDWARE_XML) \
+	    PLATFORM=$(MUEN_PLATFORM_XML) \
+	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
+	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
+	    INITRAMFS=$(OBJ_INITRAMFS) \
+		PATH=$(CCACHE_PATH)/opt/gnat/bin:$(PATH_ORIG) \
+	    pack
+
+OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
+
+$(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
+	tools/muen-mksysimage.sh $(MUEN_KEY_DIR) $@ $<
+	gpgconf --homedir $(MUEN_KEY_DIR)/private --kill all
+
+SIGN_UPDATE := src/keyfender/_build/default/bin/sign_update.exe
+
+OBJ_UPDATE_IMG := $(OBJ_DIR)/update.img.bin
+OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
+
+$(OBJ_UPDATE_CHANGELOG): CHANGES.md
+	tools/create-changes.sh CHANGES.md > $@
+	echo "($(BUILD_TAG))" >> $@
+
+ifneq ($(UPDATE_KEY_SMARTCARD),1)
+SIGN_UPDATE_KEY := $(OUTER_PRIV_KEY)
+SIGN_UPDATE_FLAGS :=
+else
+SIGN_UPDATE_KEY := $(UPDATE_KEY_SMARTCARD_SLOT)
+SIGN_UPDATE_FLAGS := --pkcs11 "${UPDATE_KEY_SMARTCARD_USER_PIN}"
+endif
+
+$(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(OBJ_UPDATE_CHANGELOG)
+	sudo service pcscd start
+	$(SIGN_UPDATE) $(SIGN_UPDATE_FLAGS) \
+	    $(SIGN_UPDATE_KEY) $(OBJ_UPDATE_CHANGELOG) $(SOFTWARE_VERSION) $(OBJ_SYSTEM_IMG) \
+	    >$@
+	sudo service pcscd stop
+
+# ------------------------------------------------------------------------------
+# Installer stuff
+
+OBJ_INSTALLER_IMG := $(OBJ_DIR)/installer.img
+OBJ_INSTALLER_ROOT := $(OBJ_DIR)/installer
+OBJ_INSTALLER_INITRAMFS := $(OBJ_INSTALLER_ROOT)/boot/initramfs
+INSTALLER_DIR := $(TOP_DIR)/src/installer
+
+INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
+
+$(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_DIR)/root/**/*)
+	rm -rf $@
+	cp -a $(INSTALLER_DIR)/root $@
+	sed -i s/__BUILD_TAG__/$(BUILD_TAG)/ $@/boot/grub/grub.cfg
+
+$(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT)
+	$(U_ROOT_SRC)/u-root \
+		-o /tmp/installer_initramfs.cpio \
+		-defaultsh="" \
+		-files $(INSTALLER_DIR)/initramfs:. \
+		-files $(MKE2FS):bin/mke2fs \
+		-files $(SFDISK):bin/sfdisk \
+		-files $(ETC_DIR)/mke2fs.conf:etc/mke2fs.conf \
+		-files $(OBJ_SYSTEM_IMG):system.img.cpio \
+		-files $(OBJ_UPDATE_CHANGELOG):update.changelog \
+		-uroot-source $(U_ROOT_SRC) \
+		-uinitcmd "/uinit" \
+		./cmds/core/init \
+		./cmds/core/elvish \
+		./cmds/core/insmod \
+		./cmds/core/echo \
+		./cmds/core/cat \
+		./cmds/core/sync \
+		./cmds/core/dd \
+		./cmds/core/sleep \
+		./cmds/core/poweroff
+	gzip -9 --stdout /tmp/installer_initramfs.cpio >$@
+	rm /tmp/installer_initramfs.cpio
+
+$(OBJ_INSTALLER_IMG): $(OBJ_INSTALLER_INITRAMFS) $(OBJ_INSTALLER_ROOT) tools/gpg-sign-detached.sh
+	rm -f $$(find $(OBJ_INSTALLER_ROOT) -type f -name \*.sig)
+	for i in $$(find $(OBJ_INSTALLER_ROOT) -type f); do \
+		tools/gpg-sign-detached.sh $(MUEN_KEY_DIR) $${i} ; \
+	done
+	gpgconf --homedir $(MUEN_KEY_DIR)/private --kill all
+	cd $(OBJ_INSTALLER_ROOT) && find . -type f | cpio -v -o -H newc -F $@
+
+# ------------------------------------------------------------------------------
+# Artifacts
+
+ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_IMG)
+
+ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ARTIFACTS += $(OBJ_INSTALLER_IMG)
+endif
+
+ifneq ($(WITH_COREBOOT),)
+ARTIFACTS += $(OBJ_COREBOOT_ROM)
+ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ARTIFACTS += $(OBJ_BIOS_SWU)
+endif
+endif
+
+.PHONY: build
+build: $(ARTIFACTS)
+
+ifeq ($(MUEN_HARDWARE),qemu-kvm)
+# ------------------------------------------------------------------------------
+# The remaining rules apply to building and running a QEMU/KVM emulated system.
+
+OBJ_QEMU_DISK_IMG := $(OBJ_DIR)/qemu-disk.img
+
+$(OBJ_QEMU_DISK_IMG): $(OBJ_SYSTEM_IMG) tools/nethsm-install.sh
+	tools/nethsm-install.sh -f -E 1G $@ $<
+
+# This both adds the QEMU disk image to the build: rule above, and adds it to
+# the list of artifacts.
+ARTIFACTS += $(OBJ_QEMU_DISK_IMG)
+
+RUN_DIR := $(TOP_DIR)/run
+RUN_QEMU_DISK_IMG := $(RUN_DIR)/disk.img
+
+$(RUN_QEMU_DISK_IMG): $(OBJ_QEMU_DISK_IMG)
+	mkdir -p $(RUN_DIR)
+	cp $< $@
+
+$(RUN_DIR)/screenrc:
+	echo "logfile $(RUN_DIR)/serial.out" >$@
+
+$(RUN_DIR)/swtpm.pid:
+	mkdir -p $(RUN_DIR)/swtpm-state
+	swtpm socket \
+	  --daemon \
+	  --tpmstate dir=$(RUN_DIR)/swtpm-state \
+	  --pid file=$(RUN_DIR)/swtpm.pid \
+	  --ctrl type=unixio,path=$(RUN_DIR)/swtpm-sock \
+	  --log file=$(RUN_DIR)/swtpm.log,level=20 \
+	  --tpm2
+
+QEMU ?= qemu-system-x86_64
+
+QEMU_OPTS := \
+    -bios $(OBJ_COREBOOT_ROM) \
+    -drive file=$(RUN_QEMU_DISK_IMG),format=raw \
+    -serial stdio \
+    -display none \
+    -machine q35,accel=kvm,kernel-irqchip=split \
+    -cpu host,+invtsc \
+    -m 5120 \
+    -smp cores=2,threads=2,sockets=1 \
+    -device intel-iommu,intremap=on,device-iotlb=on \
+    -device ioh3420,id=pcie.1,chassis=1 \
+    -device virtio-net-pci,bus=pcie.1,addr=0.0,netdev=net0,disable-legacy=on,disable-modern=off,iommu_platform=on,ats=on \
+    -device qemu-xhci,id=xhci,bus=pcie.0,addr=3.0 \
+    -device usb-tablet,bus=xhci.0 \
+    -netdev tap,id=net0,ifname=$(NET_EXTERNAL),script=no,downscript=no \
+    -chardev socket,id=chrtpm,path=$(RUN_DIR)/swtpm-sock \
+    -tpmdev emulator,id=tpm0,chardev=chrtpm \
+    -device tpm-tis,tpmdev=tpm0
+QEMU_PIDFILE := $(RUN_DIR)/qemu.pid
+
+.PHONY: check-running
+check-running:
+	@if test -f $(QEMU_PIDFILE) && test -d /proc/`cat $(QEMU_PIDFILE)`; then \
+	    echo "Error: QEMU still running, check $(QEMU_PIDFILE)"; \
+	    false; \
+	else \
+	    true; \
+	fi
+
+.PHONY: run
+run: $(RUN_QEMU_DISK_IMG) $(OBJ_COREBOOT_ROM) $(RUN_DIR)/screenrc check-running $(RUN_DIR)/swtpm.pid
+	screen -c $(RUN_DIR)/screenrc -L -dmS kvm-muen \
+	    $(QEMU) $(QEMU_OPTS) -pidfile $(RUN_DIR)/qemu.pid
+	@echo -n "* QEMU/KVM started for '$(RUN_QEMU_DISK_IMG)', waiting for boot: "
+	@for i in $$(seq 1 5); do \
+	    sleep 1; \
+	    echo -n .; \
+	    boot=$$(cat $(RUN_DIR)/serial.out 2>/dev/null | grep 'coreboot.*bootblock starting'); \
+	    if [ -n "$$boot" ]; then \
+	        echo " OK"; echo; \
+	        echo "Console: screen -r kvm-muen"; \
+	        echo "         (C-A k to quit, C-A d to detach)"; \
+	        break; \
+	    fi; \
+	done; \
+	if [ -z "$$boot" ]; then echo "\nERROR:" && cat $(RUN_DIR)/serial.out && exit 1; fi
+
+endif # QEMU/KVM
+
+# ------------------------------------------------------------------------------
+ifneq ($(ARTIFACTS),)
+ARTIFACTS_ID := $(shell MODE=$(XMODE) MUEN_HARDWARE=$(MUEN_HARDWARE) \
+    tools/get-artifacts-dir.sh)
+ARTIFACTS_DIR := $(OBJ_DIR)/artifacts/$(ARTIFACTS_ID)
+
+$(ARTIFACTS_DIR)/SHA256SUM.txt: $(ARTIFACTS)
+	mkdir -p $(ARTIFACTS_DIR)
+	cp $(ARTIFACTS) $(ARTIFACTS_DIR)
+	cd $(ARTIFACTS_DIR) && sha256sum $(notdir $(ARTIFACTS)) >$@
+
+.PHONY: artifacts
+artifacts: $(ARTIFACTS_DIR)/SHA256SUM.txt
+	@echo ""
+	@echo "Built artifacts in $(OBJ_DIR)/artifacts for:"
+	@echo "$(ARTIFACTS_ID)"
+	@echo ""
+	@cat $<
+endif
+
+.PHONY: clean
+clean: clean-keyfender
+	$(RM) $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC)
+	$(MAKE) -C $(MUEN_DIR) --silent --no-print-directory distclean
+# Remove the Linux kernel configuration to ensure a reconfigure/rebuild if it changes
+	$(RM) $(MUEN_DIR)/components/linux/src/.config*
+	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
+# The above does not clean up the checked-out GRUB 2 properly, so do it here
+	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2
+	$(MAKE) -C src/util-linux --silent --no-print-directory distclean
+	$(RM) -r $(E2FSPROGS_DIR)
+	$(RM) $(U_ROOT_BIN)
+	$(RM) -r $(OBJ_DIR) $(RUN_DIR)
+
+endif

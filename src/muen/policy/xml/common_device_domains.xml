@@ -1,0 +1,23 @@
+<include>
+ <domain name="net_external_domain">
+  <memory>
+   <memory logical="dma1" physical="net_external|lowmem" virtualAddress="16#0002_0000#" writable="true" executable="false"/>
+   <memory logical="dma2" physical="net_external|ram" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
+  </memory>
+  <devices>
+   <device logical="first_nic" physical="ethernet_controller_1"/>
+   <device logical="additional_nics" physical="additional_nics"/>
+  </devices>
+ </domain>
+ <domain name="platform_domain">
+  <memory>
+   <memory logical="dma1" physical="platform|lowmem" virtualAddress="16#0002_0000#" writable="true" executable="false"/>
+   <memory logical="dma2" physical="platform|ram" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
+   <memory logical="dma3" physical="platform|ram_2" virtualAddress="16#0001_0000_0000#" writable="true" executable="false"/>
+   <memory logical="dma4" physical="platform|ram_3" virtualAddress="16#0002_6000_0000#" writable="true" executable="false"/>
+  </memory>
+  <devices>
+   <device logical="storage_controller" physical="storage_controller"/>
+  </devices>
+ </domain>
+</include>

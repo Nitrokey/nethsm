@@ -1,0 +1,20 @@
+<subject name="time">
+ <events>
+  <source>
+   <group name="vmx_exit">
+    <default physical="system_panic">
+     <system_panic/>
+    </default>
+   </group>
+  </source>
+ </events>
+ <component ref="time">
+  <map logical="time_export1" physical="time_info"/>
+  <map logical="debuglog" physical="debuglog_time"/>
+  <map logical="cmos_rtc" physical="cmos_rtc">
+   <map logical="ports" physical="ports"/>
+  </map>
+  <map logical="status" physical="status_time"/>
+  <map logical="control" physical="control_time"/>
+ </component>
+</subject>

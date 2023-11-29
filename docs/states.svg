@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.0//EN" "http://www.w3.org/TR/2001/PR-SVG-20010719/DTD/svg10.dtd">
+<svg width="48cm" height="14cm" viewBox="336 189 959 261" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <g id="Hintergrund">
+    <g>
+      <rect style="fill: #ffffff; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" x="701" y="191" width="593" height="258" rx="0" ry="0"/>
+      <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:middle;font-family:sans-serif;font-style:normal;font-weight:normal" x="997.5" y="323.881">
+        <tspan x="997.5" y="323.881"></tspan>
+      </text>
+    </g>
+    <g>
+      <ellipse style="fill: #ffffff; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" cx="400" cy="289" rx="62.0536" ry="31.0268"/>
+      <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:middle;font-family:sans-serif;font-style:normal;font-weight:normal" x="400" y="292.881">
+        <tspan x="400" y="292.881">Unprovisioned</tspan>
+      </text>
+    </g>
+    <g>
+      <ellipse style="fill: #ffffff; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" cx="781.433" cy="289.466" rx="69.5673" ry="29.5336"/>
+      <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:middle;font-family:sans-serif;font-style:normal;font-weight:normal" x="781.433" y="293.347">
+        <tspan x="781.433" y="293.347">Operational</tspan>
+      </text>
+    </g>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="483" y="340">
+      <tspan x="483" y="340">a) Set Unlock Passphrase</tspan>
+      <tspan x="483" y="356">and R-Administrator passphrase</tspan>
+      <tspan x="483" y="372">b) restore backup</tspan>
+    </text>
+    <g>
+      <ellipse style="fill: #ffffff; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" cx="1196" cy="288" rx="77.3072" ry="38.6536"/>
+      <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:middle;font-family:sans-serif;font-style:normal;font-weight:normal" x="1196" y="291.881">
+        <tspan x="1196" y="291.881">Locked</tspan>
+      </text>
+    </g>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="857" y="230">
+      <tspan x="857" y="230">a) Attended Boot: Enter Unlock Passphrase</tspan>
+      <tspan x="857" y="246">b) Unattended Boot: -</tspan>
+    </text>
+    <g>
+      <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 717.16,278.164 A 432.019,432.019 0 0 0 466.637,274.344"/>
+      <polygon style="fill: #000000; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" fill-rule="evenodd" points="459.445,276.466 467.509,268.722 466.607,274.239 470.479,278.271 "/>
+    </g>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="570" y="246">
+      <tspan x="570" y="246">Reset</tspan>
+    </text>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="997.5" y="320">
+      <tspan x="997.5" y="320"></tspan>
+    </text>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="714" y="212">
+      <tspan x="714" y="212">Provisioned</tspan>
+    </text>
+    <g>
+      <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 845.704,300.768 A 496.093,496.093 0 0 0 1115.19,305.368"/>
+      <polygon style="fill: #000000; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" fill-rule="evenodd" points="1122.43,303.405 1114.18,310.954 1115.21,305.461 1111.44,301.337 "/>
+    </g>
+    <g>
+      <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 1124.58,273.208 A 496.22,496.22 0 0 0 855.024,275.354"/>
+      <polygon style="fill: #000000; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" fill-rule="evenodd" points="847.838,277.498 855.894,269.744 854.998,275.262 858.874,279.29 "/>
+    </g>
+    <text font-size="12.8" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="962" y="337">
+      <tspan x="962" y="337">a) Lock</tspan>
+      <tspan x="962" y="353">b) Reboot</tspan>
+      <tspan x="962" y="369">c) Shutdown</tspan>
+      <tspan x="962" y="385">d) commit update</tspan>
+      <tspan x="962" y="401">e) Reset</tspan>
+      <tspan x="962" y="417">f) Restore</tspan>
+    </text>
+    <g>
+      <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 457.31,300.87 A 432.013,432.013 0 0 0 707.845,303.594"/>
+      <polygon style="fill: #000000; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" fill-rule="evenodd" points="715.028,301.441 706.997,309.22 707.876,303.7 703.986,299.685 "/>
+    </g>
+  </g>
+</svg>
