@@ -440,6 +440,20 @@ create_artifact_packages:
       && curl -w '\n' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file update.zip
       "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/update/latest/nethsm_update_${CI_COMMIT_SHORT_SHA}.zip"
 
+push_github_mirror:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: commit
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
+  needs: []
+  before_script: *setup_job_default
+  script:
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - git remote add github git@github.com:Nitrokey/nethsm.git
+    - git push -f --follow-tags github ${CI_COMMIT_SHORT_SHA}:main
+
 integration_test_sdk_py:
   allow_failure: true
   rules:
