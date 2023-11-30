@@ -23,7 +23,7 @@ ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-
   libfreetype6-dev libiberty-dev libncurses-dev libseccomp-dev libssl-dev \
   libxml2-utils make mtools opensc openssh-client patch pcscd picocom pkg-config python3 python3-pip \
   g++ git-merge-changelog python-is-python3 libtool qemu-system-x86 rsync scdaemon \
-  screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev"
+  screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev git-lfs less joe"
 
 # Mirage/Solo5/NetHSM: Required packages
 # Note: Some of these would be installed by "opam depext" automatically during
