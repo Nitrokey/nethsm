@@ -170,11 +170,25 @@ $(ETCD_DIR):
 	tar xzvf /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz -C $(ETCD_DIR) --strip-components=1
 	rm /tmp/etcd-$(ETCD_VER)-linux-amd64.tar.gz
 
+API_DOCS_DIR := $(TOP_DIR)/src/s_keyfender/htdocs/api_docs
+SWAGGER_UI_DOWNLOAD_URL := https://github.com/swagger-api/swagger-ui/archive/master.tar.gz
+
+$(API_DOCS_DIR):
+	curl -sSL $(SWAGGER_UI_DOWNLOAD_URL) -o /tmp/swagger-ui.tar.gz
+	mkdir -p /tmp/swagger-ui
+	tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
+	sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/nethsm-api.yaml"\,/g' /tmp/swagger-ui/dist/swagger-initializer.js
+	sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' /tmp/swagger-ui/dist/swagger-initializer.js
+	mkdir -p src/s_keyfender/htdocs/api_docs
+	cp -r /tmp/swagger-ui/dist/* ./src/s_keyfender/htdocs/api_docs
+	cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/nethsm-api.yaml 
+
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) src/keyfender/buildTag
 	$(RM) $(SOFTWARE_VERSION)
 	$(RM) $(ETCD_DIR)
+	$(RM) $(API_DOCS_DIR)
 	$(RM) .stamp-prepare
 
 # ------------------------------------------------------------------------------
@@ -223,7 +237,7 @@ $(S_KEYFENDER_PREP): .stamp-prepare
 	cd src/s_keyfender && $(MAKE) depend
 	touch $@
 
-$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY)
+$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY) $(API_DOCS_DIR)
 	cd src/s_keyfender && $(MAKE) build
 
 .PHONY: build-keyfender
