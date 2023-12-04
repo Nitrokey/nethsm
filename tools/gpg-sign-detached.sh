@@ -39,6 +39,7 @@ fi
 
 gpg --homedir "${GPGDIR}" --batch \
     --digest-algo SHA512 -b \
+    --pinentry-mode=loopback \
+    --passphrase-file=<(echo ${UPDATE_KEY_SMARTCARD_USER_PIN}) \
     -o "${INPUT}.sig" "${INPUT}" \
     || die "GPG failed while signing"
-
