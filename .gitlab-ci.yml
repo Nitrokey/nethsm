@@ -96,10 +96,6 @@ build_container_image:
   needs:
     - job: build_builder_image
       optional: true
-    - job: build_api_spec_docs
-      optional: true
-  dependencies:
-    - build_api_spec_docs
   stage: build
   image:
     name: moby/buildkit:rootless
@@ -210,32 +206,6 @@ test_keyfender:
     - opam exec -- make check-format || (echo "formatting check failed, please run 'make fix-format'" ; exit 1)
     - opam exec -- make -j$(nproc) coverage-summary
 
-build_api_spec_docs:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
-  variables:
-    API_SPEC: "docs/nethsm-api.yaml"
-    API_DOCS: "src/s_keyfender/htdocs/api_docs"
-  stage: build
-  needs:
-    - job: build_builder_image
-      optional: true
-    - job: validate_api_spec
-      optional: true
-  artifacts:
-    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
-    expire_in: 1 week
-    paths:
-      - ${API_DOCS}
-  script:
-    - mkdir -p ${API_DOCS}
-    - cp ${API_SPEC} ${API_DOCS}
-    - curl -sSL "https://github.com/swagger-api/swagger-ui/archive/master.tar.gz" -o /tmp/swagger-ui.tar.gz
-    - mkdir -p /tmp/swagger-ui
-    - tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
-    - cp -an /tmp/swagger-ui/dist/* ${API_DOCS}
-
 build_dev:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -271,10 +241,6 @@ build_muen_prodrive_hermes:
       optional: true
     # - job: build_dev
     #   artifacts: false
-    - job: build_api_spec_docs
-      optional: true
-  dependencies:
-    - build_api_spec_docs
   artifacts:
     name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
@@ -307,10 +273,6 @@ build_muen_qemu_kvm:
       optional: true
     - job: build_dev
       artifacts: false
-    - job: build_api_spec_docs
-      optional: true
-  dependencies:
-    - build_api_spec_docs
   artifacts:
     name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
