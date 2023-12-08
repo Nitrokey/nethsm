@@ -451,8 +451,9 @@ push_github_mirror:
   before_script: *setup_job_default
   script:
     - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - git lfs uninstall
     - git remote add github git@github.com:Nitrokey/nethsm.git
-    - git push -f --follow-tags github ${CI_COMMIT_SHORT_SHA}:main
+    - git push -f --follow-tags --no-verify github ${CI_COMMIT_SHORT_SHA}:main
 
 integration_test_sdk_py:
   allow_failure: true
