@@ -204,7 +204,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/unikernel-preinstall.opam.locked
 EOF
 # Remove opam cache directory
-RUN rmdir /home/opam/.opam/download-cache
+RUN rmdir /home/opam/.opam/download-cache 2>/dev/null || true
 
 COPY --link --chown=1000:1000 --from=mke2fs /nethsm-tools/bin/mke2fs /nethsm-tools/bin/
 COPY --link --chown=1000:1000 --from=sfdisk /nethsm-tools/bin/sfdisk /nethsm-tools/bin/
