@@ -527,7 +527,7 @@ struct
 
   class handler_decrypt hsm_state ip =
     object (self)
-      inherit Endpoint.base_with_body_length
+      inherit Endpoint.base_with_large_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.role hsm_state `Operator ip
       inherit! Endpoint.no_cache
@@ -575,7 +575,7 @@ struct
 
   class handler_encrypt hsm_state ip =
     object (self)
-      inherit Endpoint.base_with_body_length
+      inherit Endpoint.base_with_large_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.role hsm_state `Operator ip
       inherit! Endpoint.no_cache
@@ -623,7 +623,7 @@ struct
 
   class handler_sign hsm_state ip =
     object (self)
-      inherit Endpoint.base_with_body_length
+      inherit Endpoint.base_with_large_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.role hsm_state `Operator ip
       inherit! Endpoint.no_cache

@@ -88,6 +88,9 @@ struct
     object
       inherit base
 
+      (* limit body to 1MB *)
+      val max_body_length = 1024 * 1024
+
       method! valid_entity_length : (bool, body) Wm.op =
         fun rd ->
           match
@@ -97,10 +100,16 @@ struct
           | Some len -> (
               try
                 let int_len = int_of_string len in
-                (* limit body to 1MB *)
-                let max_length = 1024 * 1024 in
-                Wm.continue (int_len <= max_length) rd
+                Wm.continue (int_len <= max_body_length) rd
               with Failure _ -> Wm.continue false rd)
+    end
+
+  class virtual base_with_large_body_length =
+    object
+      inherit base_with_body_length
+
+      (* raise body limit to 67MB, base64 of 50MB *)
+      val! max_body_length = 1024 * 1024 * 67
     end
 
   class no_cache =
