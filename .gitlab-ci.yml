@@ -360,6 +360,7 @@ test_muen_prodrive_hermes:
     - lsof -t /dev/ttyUSB0 | xargs -r kill || true
     - stty -F /dev/ttyUSB0 raw pass8 -echo 115200
   script:
+    - rm -f /var/www/html/*-installer.img
     - cp obj/${CI_INSTALLER_IMG} /var/www/html/${CI_JOB_ID}-installer.img
     - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/${CI_JOB_ID}-installer.img"
     - rm /var/www/html/${CI_JOB_ID}-installer.img
