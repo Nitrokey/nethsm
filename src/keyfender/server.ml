@@ -127,7 +127,16 @@ module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
     Access_log.debug (fun m ->
         m "request headers %s"
           (Cohttp.Header.to_string (Cohttp.Request.headers request)));
-    (Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request
+    (Lwt.catch
+       (fun () ->
+         Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request)
+       (fun e ->
+         if e = Out_of_memory then Gc.compact ();
+         Lwt.return_some
+           ( `Internal_server_error,
+             Cohttp.Header.init (),
+             `String (Printexc.to_string e),
+             [] ))
      >|= function
      | None -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
      | Some result -> result)
