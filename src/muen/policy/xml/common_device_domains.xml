@@ -14,7 +14,6 @@
    <memory logical="dma1" physical="platform|lowmem" virtualAddress="16#0002_0000#" writable="true" executable="false"/>
    <memory logical="dma2" physical="platform|ram" virtualAddress="16#0100_0000#" writable="true" executable="false"/>
    <memory logical="dma3" physical="platform|ram_2" virtualAddress="16#0001_0000_0000#" writable="true" executable="false"/>
-   <memory logical="dma4" physical="platform|ram_3" virtualAddress="16#0002_6000_0000#" writable="true" executable="false"/>
   </memory>
   <devices>
    <device logical="storage_controller" physical="storage_controller"/>

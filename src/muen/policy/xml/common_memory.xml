@@ -31,6 +31,5 @@
  <memory name="platform|ram" size="16#1000_0000#" caching="WB"/>
  <memory name="platform|lowmem" size="16#0008_0000#" caching="WB"/>
  <memory name="platform|ram_2" size="16#0001_6000_0000#" caching="WB"/>
- <memory name="platform|ram_3" size="16#2000_0000#" caching="WB"/>
  <memory name="crash_audit" physicalAddress="16#0001_0000_0000#" size="16#1000#" caching="UC" type="subject_crash_audit"/>
 </include>

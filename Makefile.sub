@@ -639,7 +639,7 @@ MUEN_GEN_CSPEC := $(MUEN_DIR)/tools/scripts/solo5-muen-gencspec.py
 ifeq ($(MUEN_HARDWARE),qemu-kvm)
 MUEN_GEN_CSPEC_EXTRA :=
 else
-MUEN_GEN_CSPEC_EXTRA := --ram 1024
+MUEN_GEN_CSPEC_EXTRA := --ram 1536
 endif
 
 $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
