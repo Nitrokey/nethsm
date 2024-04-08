@@ -177,4 +177,20 @@ pin-depends: [
     "conduit-mirage.6.1.0"
     "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"
   ]
+  [
+    "mirage-crypto.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-ec.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-pk.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-rng.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
 ]

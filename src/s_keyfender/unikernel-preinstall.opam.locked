@@ -217,6 +217,22 @@ pin-depends: [
     "hpack.dev"
     "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
+  [
+    "mirage-crypto.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-ec.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-pk.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
+  [
+    "mirage-crypto-rng.0.10.7"
+    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+  ]
 ]
 url {
   src: "file:///src#master"

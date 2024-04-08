@@ -66,6 +66,10 @@ pin-depends: [
   ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
   ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
   ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["mirage-crypto.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-ec.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-pk.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-rng.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
 ]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for
@@ -75,3 +79,9 @@ pin-depends: [
 # These patches are applied on the version 5.0.0 of CoHTTP/Conduit and they
 # are available into the branch client-ip5 into dinosaure/ocaml-cohttp &
 # dinosaure/ocaml-conduit.
+#
+# The vendored versions of the mirage-crypto libraries are the latest version
+# compatbiel with Mirage 3 (0.10.7), with the integration of upstream PRs
+# improving performance of EC signature, verification and key generation
+# (see PR 133).
+# The vendored versions should be discarded as soon as keyfender uses Mirage 4
