@@ -348,7 +348,7 @@ $(RUN_DIR)/etcd.pid:
 		--data-dir $(RUN_DIR)/etcd \
 		--loglevel debug \
         --log-outputs $(RUN_DIR)/etcd.log \
-	    & ; echo $$! > $@
+	    & echo $$! > $@
 
 else
 
