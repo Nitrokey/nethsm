@@ -140,6 +140,11 @@ $(SOFTWARE_VERSION): CHANGES.md
 ifneq ($(CCACHE_DIR),)
 	mkdir -p $(CCACHE_DIR)
 endif
+ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+	opam source gmp-freestanding --dir $(TOP_DIR)/src/gmp-freestanding
+	patch -p1 -d $(TOP_DIR)/src/gmp-freestanding <$(TOP_DIR)/src/muen/gmp-kabylake.patch
+	opam pin -y -j$(shell nproc) gmp-freestanding $(TOP_DIR)/src/gmp-freestanding
+endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building

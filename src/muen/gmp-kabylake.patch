@@ -1,0 +1,12 @@
+diff -ur gmp-freestanding.6.2.1.orig/mirage-build.sh gmp-freestanding.6.2.1/mirage-build.sh
+--- gmp-freestanding.6.2.1.orig/mirage-build.sh	2024-04-30 02:10:15.041616000 +0000
++++ gmp-freestanding.6.2.1/mirage-build.sh	2024-04-30 02:11:44.158306658 +0000
+@@ -34,7 +34,7 @@
+ ac_cv_func_obstack_vprintf=no \
+ ac_cv_func_localeconv=no \
+ ./configure \
+-    --host=$(uname -m)-unknown-none --enable-fat --disable-shared --with-pic=no \
++    --host=kabylake-unknown-none --disable-shared --with-pic=no \
+     CC=cc "CPPFLAGS=${FREESTANDING_CFLAGS} -fno-stack-protector"
+ 
+ make SUBDIRS="mpn mpz mpq mpf" \
