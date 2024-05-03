@@ -1,0 +1,22 @@
+opam-version: "2.0"
+synopsis: "The GNU Multiple Precision Arithmetic Library"
+description: "Freestanding build of GNU GMP."
+maintainer: "Martin Lucina <martin@lucina.net>"
+authors: "Torbjörn Granlund and contributors"
+license: ["LGPL-3.0-only" "LGPL-2.0-only"]
+homepage: "https://gmplib.org/"
+bug-reports: "mirageos-devel@lists.xenproject.org"
+depends: [
+  "ocaml"
+  "ocaml-freestanding" {>= "0.4.1" & < "0.7.0"}
+  "conf-m4" {build}
+]
+flags: light-uninstall
+build: ["sh" "-ex" "./mirage-build.sh"]
+install: ["sh" "-ex" "./mirage-install.sh"]
+remove: [
+  "rm"
+  "-rf"
+  "%{prefix}%/lib/pkgconfig/gmp-freestanding.pc"
+  "%{prefix}%/lib/gmp-freestanding"
+]

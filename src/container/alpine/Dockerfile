@@ -34,8 +34,12 @@ EOF
 ARG OPAM_REPOSITORY_COMMIT
 COPY --chown=1000:1000 src/keyfender/keyfender.opam.locked /home/opam/
 COPY --chown=1000:1000 src/s_keyfender/unikernel-preinstall.opam.locked /home/opam/
+COPY --chown=1000:1000 src/container/builder/gmp-freestanding /home/opam/gmp-6.3.0/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   opam repository set-url default git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT}
+  curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam
+  patch -p1 -d /home/opam/gmp-6.3.0/ </home/opam/gmp-6.3.0/libgmp-fat.patch
+  opam pin -y -n gmp-freestanding.6.3.0 /home/opam/gmp-6.3.0/
   opam update
   OPAMJOBS=$(nproc) opam install -y dune
   OPAMJOBS=$(nproc) opam install -y --deps-only --locked --ignore-pin-depends /home/opam/keyfender.opam.locked
