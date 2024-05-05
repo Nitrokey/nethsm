@@ -208,13 +208,6 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/unikernel-preinstall.opam.locked
 EOF
 
-COPY --chown=1000:1000 gmp-freestanding /home/opam/gmp-6.3.0/
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam
-  patch -p1 </home/opam/gmp-6.3.0/libgmp-fat.patch -d /home/opam/gmp-6.3.0/
-  opam pin -y gmp-freestanding /home/opam/gmp-6.3.0/
-EOF
-
 # Remove opam cache directory
 RUN rmdir /home/opam/.opam/download-cache 2>/dev/null || true
 
