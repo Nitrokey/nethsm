@@ -37,13 +37,13 @@ paths:
     get:
       responses:
         "200":
-          description: Yes, it is alive.
+          description: NetHSM is fully started and in state *Locked* or *Unprovisioned*.
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Not locked or unprovisioned (in operational state).
+          description: NetHSM is not in state *Locked* or *Unprovisioned*.
       description: |
-        Retrieve wether NetHSM is alive (powered up).
+        Retrieve whether NetHSM is fully started but not ready to take traffic.
         This corresponds to the state *Locked* or *Unprovisioned*.
       x-annotation-role:
         - Public
@@ -54,14 +54,13 @@ paths:
     get:
       responses:
         "200":
-          description: Yes, it is alive and ready.
+          description: NetHSM is in state *Operational*.
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Not alive and ready (not in operational state).
+          description: NetHSM is not in state *Operational*.
       description: |
-        Retrieve wether NetHSM is alive and ready to take traffic.
-        This corresponds to the state *Operational*.
+        Retrieve whether NetHSM is in state *Operational* and thus ready to take traffic.
       x-annotation-role:
         - Public
       x-annotation-state:
