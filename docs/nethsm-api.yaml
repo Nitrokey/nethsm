@@ -1838,6 +1838,9 @@ paths:
           multipart/form-data:
             schema:
               $ref: "#/components/schemas/RestoreRequest"
+      security:
+        - {}         # for complete restore
+        - basic: []  # for partial restore
       x-annotation-role:
         - Public
       x-annotation-state:
