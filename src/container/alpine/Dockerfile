@@ -59,13 +59,11 @@ RUN <<EOF
   ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 \
-  --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 \
-  --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
   opam exec -- mirage configure --no-depext -t unix --no-platform=true \

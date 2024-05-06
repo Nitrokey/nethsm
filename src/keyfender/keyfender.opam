@@ -62,14 +62,14 @@ depends: [
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.6.1.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"]
-  ["cohttp.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["cohttp-lwt.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["cohttp-mirage.5.0.0" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["mirage-crypto.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-ec.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-pk.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-rng.0.10.7" "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["conduit-mirage.6.1.0" "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"]
+  ["cohttp.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-lwt.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["cohttp-mirage.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
+  ["mirage-crypto.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-ec.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-pk.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto-rng.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
 ]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for

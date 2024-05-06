@@ -140,9 +140,9 @@ COPY --chown=1000:1000 muennet-tailroom.patch /nethsm-tools/muen/components/linu
 RUN patch -d /nethsm-tools/muen/components/linux/modules/muennet -i muennet-tailroom.patch
 
 FROM ada AS coreboot
-RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp <<EOF
   mkdir -p /nethsm-tools/coreboot
-  git clone --depth 50 -b nethsm-btg-4.20 git@git.nitrokey.com:nitrokey/nethsm/vendor/coreboot.git /nethsm-tools/coreboot
+  git clone --depth 50 -b nethsm https://github.com/nitrokey/nethsm-coreboot.git /nethsm-tools/coreboot
   cd /nethsm-tools/coreboot
   git remote set-url origin https://github.com/coreboot/coreboot.git
   git submodule update --checkout --init --depth 50
@@ -154,9 +154,9 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreb
   sed -u ':a;s/[^\cH]\cH//g;ta' \
   "
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=ssh,required=true,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp <<EOF
   cd /nethsm-tools/coreboot/payloads/external/GRUB2
-  git clone --depth 50 -b nethsm git@git.nitrokey.com:nitrokey/nethsm/vendor/grub.git grub2
+  git clone --depth 1 -b nethsm https://github.com/nitrokey/nethsm-grub.git grub2
   mkdir grub2/gnulib && cd grub2/gnulib
   git init && git remote add origin https://github.com/coreutils/gnulib
   git fetch origin --depth 1 $(sed -n s/^GNULIB_REVISION=//p ../bootstrap.conf)

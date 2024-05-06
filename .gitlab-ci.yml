@@ -25,8 +25,6 @@ variables:
   - sudo chmod 01777 /downloads
   - mkdir -p /downloads/opam
   - ln -s /downloads/opam ~/.opam/download-cache
-  - eval $(ssh-agent)
-  - cat $VENDOR_KEY | ssh-add -
 
 .setup_job_buildkit: &setup_job_buildkit
   - mkdir -p $HOME/.docker
@@ -85,7 +83,6 @@ build_builder_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
       --local context="${CI_PROJECT_DIR}/src/container/builder"
-      --ssh default="${VENDOR_KEY}"
       --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
@@ -113,7 +110,6 @@ build_container_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
       --local context=${CI_PROJECT_DIR}
-      --ssh default="${VENDOR_KEY}"
       --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 

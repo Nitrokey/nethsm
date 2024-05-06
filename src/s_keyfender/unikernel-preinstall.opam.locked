@@ -183,55 +183,55 @@ dev-repo: "git+https://example.com/nonexistent"
 pin-depends: [
   [
     "cohttp.5.0.0"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+    "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
   ]
   [
     "cohttp-lwt.5.0.0"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+    "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
   ]
   [
     "cohttp-mirage.5.0.0"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
+    "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"
   ]
   [
     "conduit-mirage.6.1.0"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"
+    "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"
   ]
   [
     "grpc.dev"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+    "git+https://github.com/nitrokey/nethsm-ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
   ]
   [
     "grpc-lwt.dev"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+    "git+https://github.com/nitrokey/nethsm-ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
   ]
   [
     "h2.dev"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+    "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
   [
     "h2-lwt.dev"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+    "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
   [
     "hpack.dev"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+    "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
   ]
   [
     "mirage-crypto.0.10.7"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
   ]
   [
     "mirage-crypto-ec.0.10.7"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
   ]
   [
     "mirage-crypto-pk.0.10.7"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
   ]
   [
     "mirage-crypto-rng.0.10.7"
-    "git+ssh://git@git.nitrokey.com:/nitrokey/nethsm/vendor/mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
   ]
 ]
 url {
