@@ -447,6 +447,8 @@ push_github_mirror:
   needs: []
   before_script: *setup_job_default
   script:
+    - eval $(ssh-agent)
+    - cat $GITHUB_KEY | ssh-add -
     - ssh-keyscan github.com >> ~/.ssh/known_hosts
     - git lfs uninstall
     - git remote add github git@github.com:Nitrokey/nethsm.git
