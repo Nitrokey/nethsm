@@ -152,7 +152,7 @@ commit_container_image:
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
-validate_api_spec:
+validate_api_spec_swagger:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
@@ -175,6 +175,18 @@ validate_api_spec:
     - >-
       jq -e 'contains({"schemaValidationMessages":[{"level":"error"}]}) | not'
       ${API_SPEC_DEBUG} >/dev/null
+
+validate_api_spec_openapi_generator:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    API_SPEC: "docs/nethsm-api.yaml"
+  stage: test
+  needs: []
+  image: "openapitools/openapi-generator-cli:latest-release"
+  script:
+    - java -jar /opt/openapi-generator/modules/openapi-generator-cli/target/openapi-generator-cli.jar validate --input-spec $API_SPEC
 
 test_keyfender:
   rules:
