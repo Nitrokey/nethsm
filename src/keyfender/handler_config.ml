@@ -12,7 +12,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
         Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
@@ -32,7 +32,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
         Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
@@ -67,7 +67,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post_json
       inherit! Endpoint.no_cache
 
@@ -90,7 +90,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post_json
       inherit! Endpoint.no_cache
 
@@ -124,7 +124,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.put_json
       inherit! Endpoint.no_cache
 
@@ -143,7 +143,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
         Hsm.Config.unattended_boot hsm_state >>= function
@@ -180,7 +180,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
         Hsm.Config.network hsm_state >>= fun network ->
@@ -214,7 +214,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
         Hsm.Config.log hsm_state >>= fun log_config ->
@@ -247,7 +247,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.put_json
       inherit! Endpoint.no_cache
 
@@ -266,7 +266,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.no_cache
 
       method private get rd =

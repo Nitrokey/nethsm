@@ -27,6 +27,7 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
   module Config = Handler_config.Make (Wm) (Hsm)
   module Users = Handler_users.Make (Wm) (Hsm)
   module Keys = Handler_keys.Make (Wm) (Hsm)
+  module Namespace = Handler_namespaces.Make (Wm) (Hsm)
   module System = Handler_system.Make (Wm) (Hsm)
 
   let routes hsm_state ip =
@@ -73,6 +74,8 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
         ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state ip);
         ( "/keys/:id/restrictions/tags/:tag",
           fun () -> new Keys.handler_restrictions_tags hsm_state ip );
+        ("/namespaces", fun () -> new Namespace.handler_namespaces hsm_state ip);
+        ("/namespaces/:id", fun () -> new Namespace.handler hsm_state ip);
         ("/system/info", fun () -> new System.info hsm_state ip);
         ("/system/reboot", fun () -> new System.reboot hsm_state ip);
         ("/system/shutdown", fun () -> new System.shutdown hsm_state ip);

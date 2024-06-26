@@ -20,7 +20,10 @@ module Hsm_clock = Keyfender.Hsm_clock.Make (Pclock)
 module Store = Mirage_kv_mem.Make (Hsm_clock)
 
 module Hsm =
-  Keyfender.Hsm.Make (Mirage_random_test) (Store) (Time) (Mclock) (Hsm_clock)
+  Keyfender.Hsm.Make (Mirage_random_test) (Keyfender.Kv_ext.Make_ranged (Store))
+    (Time)
+    (Mclock)
+    (Hsm_clock)
 
 module Webserver = Keyfender.Server.Make (Mirage_random_test) (Http) (Hsm)
 

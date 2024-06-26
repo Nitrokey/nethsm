@@ -12,7 +12,8 @@ type settings = {
   cache_size : int;
 }
 
-module Make (KV : Typed_kv.S) (Monotonic_clock : Mirage_clock.MCLOCK) = struct
+module Make (KV : Kv_ext.Typed_ranged) (Monotonic_clock : Mirage_clock.MCLOCK) =
+struct
   type creation_time = int64
 
   module Cache =
@@ -138,6 +139,7 @@ module Make (KV : Typed_kv.S) (Monotonic_clock : Mirage_clock.MCLOCK) = struct
     KV.disconnect t.kv
 
   let list t = KV.list t.kv
+  let list_range t = KV.list_range t.kv
   let last_modified t = KV.last_modified t.kv
   let digest t = KV.digest t.kv
 

@@ -496,6 +496,14 @@ let role_of_yojson = function
 type user_req = { realName : string; role : role; passphrase : string }
 [@@deriving yojson]
 
+type namespace = { namespace : string } [@@deriving yojson]
+
+let namespace_to_yojson namespace =
+  let namespace = Option.value ~default:"" namespace in
+  namespace_to_yojson { namespace }
+
+let valid_namespace = function None -> Ok () | Some x -> valid_id x >>| ignore
+
 let decode_user_req content =
   decode user_req_of_yojson content >>= fun user ->
   valid_passphrase ~name:"passphrase" user.passphrase >>| fun () -> user

@@ -58,6 +58,17 @@ module type S = sig
   val random : int -> string
   val generate_id : unit -> string
 
+  module Nid : sig
+    type t = { namespace : string option; id : string }
+
+    val separator : string
+    val unsafe_of_string : string -> t
+    val of_string : string -> (t, string) result
+    val to_string : t -> string
+    val namespace : t -> string option
+    val id : t -> string
+  end
+
   module Config : sig
     val change_unlock_passphrase :
       t ->
@@ -120,43 +131,48 @@ module type S = sig
       val tags : t -> Json.TagSet.t
     end
 
-    val is_authenticated :
-      t -> username:string -> passphrase:string -> bool Lwt.t
+    val is_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
+    val is_authorized : t -> Nid.t -> Json.role -> bool Lwt.t
 
-    val is_authorized : t -> string -> Json.role -> bool Lwt.t
-    val list : t -> (string list, error) result Lwt.t
-    val exists : t -> id:string -> (bool, error) result Lwt.t
-    val get : t -> id:string -> (Info.t, error) result Lwt.t
+    val list : namespace:string option -> t -> (string list, error) result Lwt.t
+    (** If namespace is present, return only users who are in the given
+        namespace *)
+
+    val exists : t -> Nid.t -> (bool, error) result Lwt.t
+    val get : t -> Nid.t -> (Info.t, error) result Lwt.t
 
     val add :
-      id:string ->
       t ->
+      Nid.t ->
       role:Json.role ->
       passphrase:string ->
       name:string ->
       (unit, error) result Lwt.t
 
-    val remove : t -> id:string -> (unit, error) result Lwt.t
+    val remove : t -> Nid.t -> (unit, error) result Lwt.t
 
     val set_passphrase :
-      t -> id:string -> passphrase:string -> (unit, error) result Lwt.t
+      t -> Nid.t -> passphrase:string -> (unit, error) result Lwt.t
 
-    val add_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
-    val remove_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+    val add_tag : t -> Nid.t -> tag:string -> (bool, error) result Lwt.t
+    val remove_tag : t -> Nid.t -> tag:string -> (bool, error) result Lwt.t
     val list_digest : t -> string option Lwt.t
-    val digest : t -> id:string -> string option Lwt.t
+    val digest : t -> Nid.t -> string option Lwt.t
   end
 
   module Key : sig
-    val exists : t -> id:string -> (bool, error) result Lwt.t
+    val exists :
+      ?namespace:string -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
+      ?namespace:string ->
       t ->
       filter_by_restrictions:bool ->
-      user_id:string ->
+      user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
     val add_json :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -166,6 +182,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val add_pem :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -174,6 +191,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val generate :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.key_type ->
@@ -182,40 +200,66 @@ module type S = sig
       Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val remove : t -> id:string -> (unit, error) result Lwt.t
-    val get_json : t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
-    val get_pem : t -> id:string -> (string, error) result Lwt.t
+    val remove :
+      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+
+    val get_json :
+      ?namespace:string -> t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
+
+    val get_pem :
+      ?namespace:string -> t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem :
-      t -> id:string -> Json.subject_req -> (string, error) result Lwt.t
+      t ->
+      ?namespace:string ->
+      id:string ->
+      Json.subject_req ->
+      (string, error) result Lwt.t
 
     val get_cert :
-      t -> id:string -> ((string * string) option, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      ((string * string) option, error) result Lwt.t
 
     val set_cert :
       t ->
+      ?namespace:string ->
       id:string ->
       content_type:string ->
       string ->
       (unit, error) result Lwt.t
 
-    val remove_cert : t -> id:string -> (unit, error) result Lwt.t
+    val remove_cert :
+      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_restrictions :
-      t -> id:string -> (Json.restrictions, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags :
-      t -> id:string -> tag:string -> (bool, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      tag:string ->
+      (bool, error) result Lwt.t
 
     val remove_restriction_tags :
-      t -> id:string -> tag:string -> (bool, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      tag:string ->
+      (bool, error) result Lwt.t
 
     (* val encrypt : t -> id:string -> Json.encrypt_mode -> string -> (string, error) result Lwt.t *)
 
     val decrypt :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       iv:string option ->
       Json.decrypt_mode ->
       string ->
@@ -223,8 +267,9 @@ module type S = sig
 
     val encrypt :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       iv:string option ->
       Json.encrypt_mode ->
       string ->
@@ -232,20 +277,38 @@ module type S = sig
 
     val sign :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       Json.sign_mode ->
       string ->
       (string, error) result Lwt.t
 
-    val list_digest : t -> filter_by_restrictions:bool -> string option Lwt.t
-    val digest : t -> id:string -> string option Lwt.t
+    val list_digest :
+      ?namespace:string ->
+      t ->
+      filter_by_restrictions:bool ->
+      string option Lwt.t
+
+    val digest : ?namespace:string -> t -> id:string -> string option Lwt.t
+
+    val remove_all_in_namespace :
+      t -> namespace:string -> (unit, error) result Lwt.t
+  end
+
+  module Namespace : sig
+    type id = string option
+
+    val exists : t -> id -> (bool, error) result Lwt.t
+    val create : t -> id -> (unit, error) result Lwt.t
+    val list : t -> (string list, error) result Lwt.t
+    val remove : t -> id -> (unit, error) result Lwt.t
   end
 end
 
 module Make
     (Rng : Mirage_random.S)
-    (KV : Mirage_kv.RW)
+    (KV : Kv_ext.Ranged)
     (Time : Mirage_time.S)
     (Monotonic_clock : Mirage_clock.MCLOCK)
     (Clock : Hsm_clock.HSMCLOCK) : sig

@@ -168,6 +168,9 @@ let req_states req =
 let req_roles req =
   Ezjsonm.get_strings @@ Ezjsonm.find req [ "x-annotation-role" ]
 
+let req_caller_namespaces req =
+  Ezjsonm.get_strings @@ Ezjsonm.find req [ "x-annotation-caller-namespace" ]
+
 let subst_prefix = "x-test-value-"
 let subst_prefix_len = String.length subst_prefix
 
@@ -213,6 +216,8 @@ type test = {
 let make_req_data req meth =
   let substs = req_substs req in
   let roles = req_roles req in
+  (* Fr now, just check that each endpoint has namespace annotation *)
+  let () = req_caller_namespaces req |> ignore in
   let role, auth_header =
     match roles with
     | [ "Public" ] -> (None, "")

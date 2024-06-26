@@ -154,6 +154,15 @@ let system_reboot_ok =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
+let system_reboot_namespaced_fails =
+  "a request for /system/reboot with namespaced user returns 403" @? fun () ->
+  match
+    request ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/reboot"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let system_shutdown_ok =
   "a request for /system/shutdown with authenticated user returns 200"
   @? fun () ->
@@ -161,11 +170,30 @@ let system_shutdown_ok =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
+let system_shutdown_namespaced_fails =
+  "a request for /system/shutdown with namespaced user returns 403" @? fun () ->
+  match
+    request ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/shutdown"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let system_factory_reset_ok =
   "a request for /system/factory-reset with authenticated user returns 200"
   @? fun () ->
   match admin_post_request "/system/factory-reset" with
   | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let system_factory_reset_namespaced_fails =
+  "a request for /system/factory-reset with namespaced user returns 403"
+  @? fun () ->
+  match
+    request ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/factory-reset"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
 let update_key =
@@ -230,6 +258,20 @@ let system_update_ok =
   | hsm_state, Some (`OK, _, `String release_notes, _) ->
       String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes
       && Hsm.state hsm_state = `Operational
+  | _ -> false
+
+let system_update_namespaced_fails =
+  "a request for /system/update with namespaced user returns 403" @? fun () ->
+  let body =
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    `String (sign_update update ^ update)
+  in
+  match
+    request ~body ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/update"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
 let system_update_signature_mismatch =
@@ -337,11 +379,11 @@ let operational_mock_with_mbox () =
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun _ ->
-      Hsm.User.add state ~id:"operator" ~role:`Operator
+      Hsm.User.add state (user "operator") ~role:`Operator
         ~passphrase:"test2Passphrase" ~name:"operator"
       >>= fun _ ->
-      Hsm.User.add_tag state ~id:"operator" ~tag:"berlin" >>= fun _ ->
-      Hsm.User.add state ~id:"backup" ~role:`Backup
+      Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
+      Hsm.User.add state (user "backup") ~role:`Backup
         ~passphrase:"test3Passphrase" ~name:"backup"
       >|= fun _ -> state )
 
@@ -372,6 +414,16 @@ let system_update_commit_ok =
       | _ -> false)
   | _ -> false
 
+let system_update_commit_namespaced_fails =
+  "a request for /system/commit-update with namespaced user returns 403"
+  @? fun () ->
+  match
+    request ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/commit-update"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let system_update_commit_fail =
   "a request for /system/commit-update without an image previously uploaded \
    fails."
@@ -396,6 +448,22 @@ let system_update_cancel_ok =
       | _ -> false)
   | _ -> false
 
+let system_update_cancel_namespaced_fails =
+  "a request for /system/cancel-update with namespaced user returns 403"
+  @? fun () ->
+  let body =
+    let data = prefix_and_pad "binary data is here" in
+    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let signature = sign_update update in
+    `String (signature ^ update)
+  in
+  match
+    request ~body ~meth:`POST ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers "/system/cancel-update"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let system_backup_and_restore_ok =
   "a request for /system/restore succeeds" @? fun () ->
   let backup_passphrase = "backup passphrase" in
@@ -403,8 +471,10 @@ let system_backup_and_restore_ok =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
+  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
   match
-    admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       let headers = auth_header "backup" "test3Passphrase" in
@@ -651,7 +721,7 @@ let system_backup_and_restore_operational =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = hsm_with_key () in
+  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -674,6 +744,19 @@ let system_backup_and_restore_operational =
      Hsm.Key.add_pem hsm_state mechanisms ~id:"newKeyID" test_key_pem
        no_restrictions)
   |> Result.get_ok;
+  (* do the same with namespaces *)
+  let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
+  let* hsm_state =
+    request ~expect:expect_ns ~meth:`DELETE ~hsm_state ~headers:admin_headers
+      "/namespaces/namespace1"
+    |> Expect.no_content
+  in
+  let expect = info "created (namespace3)" in
+  let* hsm_state =
+    request ~expect ~meth:`PUT ~hsm_state ~headers:admin_headers
+      "/namespaces/namespace3"
+    |> Expect.no_content
+  in
   (* the unlock passphrase is changed, but we don't expect it to be restored *)
   Lwt_main.run
     (Hsm.Config.change_unlock_passphrase hsm_state ~new_passphrase:"i am secure"
@@ -685,7 +768,11 @@ let system_backup_and_restore_operational =
   in
   (* restore *)
   let* hsm_state =
-    let expect = multipart_log ^ info "removing: /key/newKeyID\n" in
+    let expect =
+      multipart_log
+      ^ info "removing: /key/newKeyID\n"
+      ^ info "removing: /namespace/namespace3\n"
+    in
     let arguments =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
@@ -712,6 +799,17 @@ let system_backup_and_restore_operational =
   (* check that new keys are deleted *)
   let* _ =
     request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
+    |> Expect.not_found
+  in
+  (* same for namespaces and related keys *)
+  let* _ =
+    request ~expect:expect_ns ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace1"
+    |> Expect.no_content
+  in
+  let* _ =
+    request ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace3"
     |> Expect.not_found
   in
   ()
@@ -869,6 +967,14 @@ let lock_ok =
 let lock_failed =
   "a request for /lock with the wrong passphrase fails" @? fun () ->
   let headers = operator_headers in
+  let hsm_state = operational_mock () in
+  match request ~meth:`POST ~hsm_state ~headers "/lock" with
+  | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Operational
+  | _ -> false
+
+let lock_nonroot_fails =
+  "a request for /lock as a namespaced user fails fails" @? fun () ->
+  let headers = subadmin_headers in
   let hsm_state = operational_mock () in
   match request ~meth:`POST ~hsm_state ~headers "/lock" with
   | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Operational
@@ -1276,6 +1382,95 @@ let config_version_but_no_salt =
           Hsm.boot ~platform software_update_key data )
       |> ignore)
 
+let namespaces_get =
+  "GET on /namespaces/ succeeds" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~headers:admin_headers
+      "/namespaces"
+  with
+  | _, Some (`OK, _, `String data, _) ->
+      let expected = {|[{"id":"namespace1"},{"id":"namespace2"}]|} in
+      String.equal expected data
+  | _ -> false
+
+let namespaces_get_nuser =
+  "GET on /namespaces/ fails when called by N-Admins" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~headers:subadmin_headers
+      "/namespaces"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let namespaces_seq =
+  "GET on /namespaces/ succeeds after creating and deleting a namespace"
+  @? fun () ->
+  let hsm_state = operational_mock () in
+  let hsm_state, _ =
+    request
+      ~expect:(info "created (namespace3)")
+      ~meth:`PUT ~hsm_state ~headers:admin_headers "/namespaces/namespace3"
+  in
+  let hsm_state, _ =
+    request
+      ~expect:(info "removed (namespace3)")
+      ~meth:`DELETE ~hsm_state ~headers:admin_headers "/namespaces/namespace3"
+  in
+  match request ~hsm_state ~headers:admin_headers "/namespaces" with
+  | _, Some (`OK, _, `String data, _) ->
+      let expected = {|[{"id":"namespace1"},{"id":"namespace2"}]|} in
+      String.equal expected data
+  | _ -> false
+
+let namespaces_existing_create =
+  "PUT on /namespaces/namespace1 fails (already exists)" @? fun () ->
+  match
+    request ~meth:`PUT ~hsm_state:(operational_mock ()) ~headers:admin_headers
+      "/namespaces/namespace1"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let namespaces_existing_delete =
+  "DELETE on /namespaces/namespace1 succeeds with no keys" @? fun () ->
+  let expect = info "removed (namespace1)" in
+  match
+    request ~meth:`DELETE ~expect ~hsm_state:(operational_mock ())
+      ~headers:admin_headers "/namespaces/namespace1"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let namespaces_existing_delete_keys =
+  "DELETE on /namespaces/namespace1 succeeds and deletes keys" @? fun () ->
+  let expect = info "removed (namespace1)" ^ info "removed (subKeyID)" in
+  match
+    request ~meth:`DELETE ~expect
+      ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+      ~headers:admin_headers "/namespaces/namespace1"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let namespaces_new_delete =
+  "DELETE on /namespaces/namespace3 fails (does not exist)" @? fun () ->
+  match
+    request ~meth:`DELETE ~hsm_state:(operational_mock ())
+      ~headers:admin_headers "/namespaces/namespace3"
+  with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+
+let namespaces_new_create =
+  "PUT on /namespaces/namespace3 succeeds" @? fun () ->
+  let expect = info "created (namespace3)" in
+  match
+    request ~expect ~meth:`PUT ~hsm_state:(operational_mock ())
+      ~headers:admin_headers "/namespaces/namespace3"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
 let users_get =
   "GET on /users/ succeeds" @? fun () ->
   match
@@ -1283,9 +1478,23 @@ let users_get =
   with
   | _, Some (`OK, _, `String data, _) ->
       let expected =
-        {|[{"user":"admin"},{"user":"backup"},{"user":"operator"},{"user":"operator2"}]|}
+        {|[{"user":"admin"},{"user":"backup"},{"user":"namespace1~subadmin"},{"user":"namespace1~suboperator"},{"user":"namespace2~suboperator2"},{"user":"operator"},{"user":"operator2"}]|}
       in
-      String.equal data expected
+      Alcotest.(check string "user list same" expected data);
+      true
+  | _ -> false
+
+let users_get_namespace =
+  "GET on /users/ succeeds partially when namespaced" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~headers:subadmin_headers "/users"
+  with
+  | _, Some (`OK, _, `String data, _) ->
+      let expected =
+        {|[{"user":"namespace1~subadmin"},{"user":"namespace1~suboperator"}]|}
+      in
+      Alcotest.(check string "user list same" expected data);
+      true
   | _ -> false
 
 let operator_json =
@@ -1305,7 +1514,24 @@ let users_post =
           header_check && check_body_id body (extract_location_id loc))
   | _ -> false
 
-let user_operator_add =
+let users_post_namespace =
+  "POST on /users/ as N-Admin succeeds" @? fun () ->
+  let expect = info "added Jane User (xxxx): R-Operator" in
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST
+      ~headers:subadmin_headers ~expect ~body:(`String operator_json) "/users"
+  with
+  | _, Some (`Created, headers, body, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc ->
+          let header_check =
+            List.length (Astring.String.cuts ~empty:false ~sep:"/" loc) = 4
+          in
+          header_check && check_body_id body (extract_location_id loc))
+  | _ -> false
+
+let user_operator_add_root_root =
   "PUT on /users/op succeeds" @? fun () ->
   let expect = info "added Jane User (op): R-Operator" in
   match admin_put_request ~expect ~body:(`String operator_json) "/users/op" with
@@ -1313,6 +1539,65 @@ let user_operator_add =
       match Cohttp.Header.get headers "location" with
       | None -> false
       | Some loc -> String.equal loc "/api/v1/users/op")
+  | _ -> false
+
+let user_operator_add_root_ns =
+  "PUT on /users/namespace3~op from R-Admin succeeds with non-existing \
+   namespace"
+  @? fun () ->
+  let expect = info "added Jane User (namespace3~op): R-Operator" in
+  match
+    admin_put_request ~expect ~body:(`String operator_json)
+      "/users/namespace3~op"
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc "/api/v1/users/namespace3~op")
+  | _ -> false
+
+let user_operator_add_ns_root =
+  "PUT on /users/op fails from N-Admin" @? fun () ->
+  match
+    request ~meth:`PUT ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers ~body:(`String operator_json) "/users/op"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_ns_ns =
+  "PUT on /users/namespace1~op from N-Admin succeeds" @? fun () ->
+  let expect = info "added Jane User (namespace1~op): R-Operator" in
+  match
+    request ~meth:`PUT ~hsm_state:(operational_mock ()) ~expect
+      ~headers:subadmin_headers ~body:(`String operator_json)
+      "/users/namespace1~op"
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc "/api/v1/users/namespace1~op")
+  | _ -> false
+
+let user_operator_add_ns_ns_mismatch =
+  "PUT on /users/namespace2~op fails from N-Admin from different namespace"
+  @? fun () ->
+  match
+    request ~meth:`PUT ~hsm_state:(operational_mock ())
+      ~headers:subadmin_headers ~body:(`String operator_json)
+      "/users/namespace2~op"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_root_ns_existing =
+  "PUT on /users/namespace1~op with namespace fails when namespace exists"
+  @? fun () ->
+  match
+    request ~meth:`PUT ~hsm_state:(operational_mock ()) ~headers:admin_headers
+      ~body:(`String operator_json) "/users/namespace1~op"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
 let user_operator_add_empty_passphrase =
@@ -1341,7 +1626,28 @@ let user_operator_add_invalid_id2 =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let user_operator_delete =
+let user_operator_add_invalid_id3 =
+  "PUT on /users/test-user/ fails (not alphanum)" @? fun () ->
+  let id = "test-user" in
+  match
+    admin_put_request ~body:(`String operator_json) ("/users/" ^ id ^ "/")
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_invalid_id4 =
+  "PUT on /users/~user/ fails (empty ns)" @? fun () ->
+  match admin_put_request ~body:(`String operator_json) "/users/~user/" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_invalid_id5 =
+  "PUT on /users/user~/ fails (empty user id)" @? fun () ->
+  match admin_put_request ~body:(`String operator_json) "/users/user~/" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_root_root =
   "DELETE on /users/operator succeeds" @? fun () ->
   let expect = info "removed (operator)" in
   match
@@ -1349,6 +1655,15 @@ let user_operator_delete =
       ~headers:admin_headers "/users/operator"
   with
   | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_self =
+  "DELETE on /users/namespace1~subadmin fails by self" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`DELETE
+      ~headers:subadmin_headers "/users/namespace1~subadmin"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
 let user_operator_delete_not_found =
@@ -1376,6 +1691,53 @@ let user_operator_delete_fails =
   match
     request ~hsm_state:(operational_mock ()) ~meth:`DELETE ~headers
       "/users/operator"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_root_ns =
+  "DELETE on /users/namespace1~suboperator fails as R-Admin" @? fun () ->
+  let headers = admin_headers in
+  match
+    request
+      ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+      ~meth:`DELETE ~headers "/users/namespace1~suboperator"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_ns_ns =
+  "DELETE on /users/namespace1~suboperator succeeds as N-Admin" @? fun () ->
+  let headers = subadmin_headers in
+  let expect = info {|removed (namespace1~suboperator)|} in
+  match
+    request ~expect
+      ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+      ~meth:`DELETE ~headers "/users/namespace1~suboperator"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_ns_ns_mismatch =
+  "DELETE on /users/namespace2~suboperator fails as N-Admin from different \
+   namespace"
+  @? fun () ->
+  let headers = subadmin_headers in
+  match
+    request
+      ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+      ~meth:`DELETE ~headers "/users/namespace2~suboperator"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_operator_delete_ns_root =
+  "DELETE on /users/operator fails as an N-Admin" @? fun () ->
+  let headers = subadmin_headers in
+  match
+    request
+      ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+      ~meth:`DELETE ~headers "/users/operator"
   with
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
@@ -1571,6 +1933,83 @@ let user_passphrase_operator_post =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
+let user_passphrase_suboperator_post_root_ns_existing =
+  "POST on /users/namespace1~suboperator/passphrase from R-Admin fails if \
+   namespace exists"
+  @? fun () ->
+  let new_passphrase = "my super new passphrase" in
+  match
+    request ~hsm_state:(operational_mock ())
+      ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
+      ~meth:`POST ~headers:admin_headers
+      "/users/namespace1~suboperator/passphrase"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_passphrase_suboperator_post_root_ns =
+  "POST on /users/namespace1~suboperator/passphrase from R-Admin succeeds if \
+   namespace does not exists"
+  @? fun () ->
+  let new_passphrase = "my super new passphrase" in
+  let hsm_state =
+    let expect = info "removed (namespace1)" in
+    match
+      request ~expect ~hsm_state:(operational_mock ()) ~meth:`DELETE
+        ~headers:admin_headers "/namespaces/namespace1"
+    with
+    | hsm_state, Some (`No_content, _, _, _) -> hsm_state
+    | _ -> assert false
+  in
+  let expect = info "changed namespace1~suboperator (suboperator) passphrase" in
+  match
+    request ~expect ~hsm_state
+      ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
+      ~meth:`POST ~headers:admin_headers
+      "/users/namespace1~suboperator/passphrase"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let user_passphrase_suboperator_post_ns_ns =
+  "POST on /users/namespace1~suboperator/passphrase from N-Admin succeeds"
+  @? fun () ->
+  let new_passphrase = "my super new passphrase" in
+  let expect = info "changed namespace1~suboperator (suboperator) passphrase" in
+  match
+    request ~expect ~hsm_state:(operational_mock ())
+      ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
+      ~meth:`POST ~headers:subadmin_headers
+      "/users/namespace1~suboperator/passphrase"
+  with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let user_passphrase_suboperator_post_ns_ns_mismatch =
+  "POST on /users/namespace2~suboperator/passphrase fails as  N-Admin from \
+   different namespace"
+  @? fun () ->
+  let new_passphrase = "my super new passphrase" in
+  match
+    request ~hsm_state:(operational_mock ())
+      ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
+      ~meth:`POST ~headers:subadmin_headers
+      "/users/namespace2~suboperator/passphrase"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
+let user_passphrase_suboperator_post_ns_root =
+  "POST on /users/operator/passphrase from N-Admin fails" @? fun () ->
+  let new_passphrase = "my super new passphrase" in
+  match
+    request ~hsm_state:(operational_mock ())
+      ~body:(`String ("{\"passphrase\":\"" ^ new_passphrase ^ "\"}"))
+      ~meth:`POST ~headers:subadmin_headers "/users/operator/passphrase"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let user_passphrase_administrator_post =
   "POST on /users/admin/passphrase fails as operator" @? fun () ->
   let headers = auth_header "operator" "test2Passphrase" in
@@ -1613,8 +2052,133 @@ let keys_get =
   | _, Some (`OK, _, `String body, _) -> String.equal body "[]"
   | _ -> false
 
+let keys_get_namespace =
+  "GET on /keys lists only key in caller's namespace" @? fun () ->
+  let n1 =
+    match
+      request ~headers:subadmin_headers
+        ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+        "/keys"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"subKeyID"}]|}
+    | _ -> false
+  in
+  let n2 =
+    match
+      request ~headers:admin_headers
+        ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+        "/keys"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"keyID"}]|}
+    | _ -> false
+  in
+  let n3 =
+    match
+      request ~headers:subadmin_headers ~hsm_state:(hsm_with_key ()) "/keys"
+    with
+    | _, Some (`OK, _, `String body, _) -> String.equal body "[]"
+    | _ -> false
+  in
+  let n4 =
+    match
+      request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"keyID"}]|}
+    | _ -> false
+  in
+  n1 && n2 && n3 && n4
+
 let key_json =
   {| { mechanisms: [ "RSA_Signature_PKCS1" ], type: "RSA", private: { primeP: "+hsFcOCzFRwQMwuLaFjpv6pMv6BcqmcRBBWbVaWzpaq6+ag4dRpy0tIF1852zyCYqkGu5uTkHt6ndJPfKnJISQ==", primeQ : "wxq55QRL62Z+1IrsBM6h/YBcfTHnbiojepFPAakJAU0P0j+9gsHBbPgb2iFMhQyEj0bIKdfWhaAS1oqj6awsMw==", publicExponent : "AQAB" } } |}
+
+let keys_get_namespace_seq =
+  "GET on /keys behaves as intended w.r.t. namespace creation/deletion"
+  @? fun () ->
+  (* Create user in non-existing namespace *)
+  let sa3_json =
+    {| { realName: "N-Admin", role: "Administrator", passphrase: "ppppppppp3" } |}
+  in
+  let headers = auth_header "namespace3~subadmin3" "ppppppppp3" in
+  let hsm_state = operational_mock () in
+  let hsm_state =
+    let expect = info "added N-Admin (namespace3~subadmin3): R-Administrator" in
+    match
+      admin_put_request ~expect ~hsm_state ~body:(`String sa3_json)
+        "/users/namespace3~subadmin3"
+    with
+    | state, Some (`Created, _, _, _) -> state
+    | _ -> Alcotest.fail "user creation failed"
+  in
+  (* User cannot list its namespace keys *)
+  let () =
+    match request ~meth:`GET ~headers ~hsm_state "/keys" with
+    | _, Some (`Forbidden, _, _, _) -> ()
+    | _ -> Alcotest.fail "GET /keys/ did not return 403"
+  in
+  (* Create the namespace *)
+  let hsm_state =
+    let expect = info "created (namespace3)" in
+    match admin_put_request ~expect ~hsm_state "/namespaces/namespace3" with
+    | state, Some (`No_content, _, _, _) -> state
+    | _ -> Alcotest.fail "namespace creation failed"
+  in
+  (* Create a key *)
+  let hsm_state =
+    let expect = info "created (keyID)" in
+    match
+      request ~meth:`PUT ~headers ~hsm_state ~expect ~body:(`String key_json)
+        "/keys/keyID"
+    with
+    | state, Some (`No_content, _, _, _) -> state
+    | _ -> Alcotest.fail "key creation failed"
+  in
+  (* User can now list the keys *)
+  let () =
+    match request ~meth:`GET ~headers ~hsm_state "/keys" with
+    | _, Some (`OK, _, `String body, _) ->
+        let expect = {|[{"id":"keyID"}]|} in
+        Alcotest.(check string "key list is the same" body expect)
+    | _ -> Alcotest.fail "GET /keys/ did not return 403"
+  in
+  (* User deletion by admin forbidden *)
+  let () =
+    match
+      request ~meth:`DELETE ~headers:admin_headers ~hsm_state
+        "/users/namespace3~subadmin3"
+    with
+    | _, Some (`Forbidden, _, _, _) -> ()
+    | _ -> Alcotest.fail "user deletion succeeded"
+  in
+  (* Delete namespace *)
+  let hsm_state =
+    let expect = info "removed (namespace3)" ^ info "removed (keyID)" in
+    match
+      request ~meth:`DELETE ~headers:admin_headers ~expect ~hsm_state
+        "/namespaces/namespace3"
+    with
+    | state, Some (`No_content, _, _, _) -> state
+    | _ -> Alcotest.fail "namespace deletion failed"
+  in
+  (* User cannot list its namespace keys, again *)
+  let () =
+    match request ~meth:`GET ~headers ~hsm_state "/keys" with
+    | _, Some (`Forbidden, _, _, _) -> ()
+    | _ -> Alcotest.fail "GET /keys/ did not return 403"
+  in
+  (* User deletion by admin succeeds *)
+  let () =
+    let expect = info "removed (namespace3~subadmin3)" in
+    match
+      request ~meth:`DELETE ~headers:admin_headers ~expect ~hsm_state
+        "/users/namespace3~subadmin3"
+    with
+    | _, Some (`No_content, _, _, _) -> ()
+    | _ -> Alcotest.fail "user deletion failed"
+  in
+  true
 
 let keys_post_json =
   "POST on /keys succeeds" @? fun () ->
@@ -2565,7 +3129,7 @@ let keys_key_restrictions_tags_sign_fail =
   "POST on /keys/keyID/sign with an user that doesn't have the tag fails"
   @? fun () ->
   let hsm_state = hsm_with_tags () in
-  Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin")
+  Lwt_main.run (Hsm.User.remove_tag hsm_state (user "operator") ~tag:"berlin")
   |> Result.get_ok |> ignore;
   match
     request ~headers:operator_headers ~hsm_state ~meth:`POST
@@ -2587,7 +3151,7 @@ let keys_get_restrictions_filtered =
       Alcotest.(check (neg string))
         "when operator has tag: list isn't empty" body "[]"
   | _ -> Alcotest.fail "when operator has tag: didn't return OK");
-  Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin")
+  Lwt_main.run (Hsm.User.remove_tag hsm_state (user "operator") ~tag:"berlin")
   |> Result.get_ok |> ignore;
   match
     request ~headers:operator_headers ~hsm_state "/keys"
@@ -2607,7 +3171,7 @@ let keys_get_restrictions_unfiltered =
       Alcotest.(check (neg string))
         "when operator has tag: list isn't empty" body "[]"
   | _ -> Alcotest.fail "when operator has tag: didn't return OK");
-  Lwt_main.run (Hsm.User.remove_tag hsm_state ~id:"operator" ~tag:"berlin")
+  Lwt_main.run (Hsm.User.remove_tag hsm_state (user "operator") ~tag:"berlin")
   |> Result.get_ok |> ignore;
   match request ~headers:operator_headers ~hsm_state "/keys" with
   | _, Some (`OK, _, `String body, _) ->
@@ -2828,11 +3392,11 @@ let rate_limit_for_get =
   let path = "/system/info" in
   "rate limit for get" @? fun () ->
   let hsm_state = operational_mock () in
-  let headers = auth_header "not a valid user" "no valid password" in
+  let headers = auth_header "notavaliduser" "no valid password" in
   let expect =
     warning
-      "not a valid user unauthenticated: Cannot find the key \
-       /authentication/not a valid user"
+      "notavaliduser unauthenticated: Cannot find the key \
+       /authentication/notavaliduser"
   in
   ignore (request ~expect ~hsm_state ~headers path);
   match request ~hsm_state ~headers path with
@@ -2885,11 +3449,11 @@ let rate_limit_time_for_get =
   let path = "/system/info" in
   "rate limit time for get after a second" @? fun () ->
   let hsm_state = operational_mock () in
-  let headers = auth_header "not a valid user" "no valid password" in
+  let headers = auth_header "notavaliduser" "no valid password" in
   let expect =
     warning
-      "not a valid user unauthenticated: Cannot find the key \
-       /authentication/not a valid user"
+      "notavaliduser unauthenticated: Cannot find the key \
+       /authentication/notavaliduser"
   in
   ignore (request ~hsm_state ~expect ~headers path);
   match request ~hsm_state ~headers path with
@@ -2940,9 +3504,7 @@ let auth_decode_invalid_base64 =
   in
   let expect =
     warning
-      "is_authorized failed with header value Basic \
-       wrongYWRtaW46dGVzdDFQYXNzcGhyYXNl and message invalid base64 encoding: \
-       Wrong padding (data wrongYWRtaW46dGVzdDFQYXNzcGhyYXNl)"
+      "is_authorized failed with message invalid base64 encoding: Wrong padding"
   in
   let admin_headers = auth_header "admin" "test1Passphrase" in
   match
@@ -3061,8 +3623,8 @@ let crypto_rsa_decrypt () =
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
       match
         Lwt_main.run
-          (Hsm.Key.decrypt hsm ~id:"test" ~iv:None ~user_id:"operator" dec_mode
-             enc_data)
+          (Hsm.Key.decrypt hsm ~id:"test" ~iv:None ~user_nid:(user "operator")
+             dec_mode enc_data)
       with
       | Ok data ->
           let b64_dec = Base64.decode_exn data in
@@ -3086,7 +3648,8 @@ let crypto_rsa_pkcs1_sign () =
   in
   match
     Lwt_main.run
-      (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.PKCS1
+      (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+         Keyfender.Json.PKCS1
          (b64_and_hash `SHA1 sign_test_data))
   with
   | Ok signature -> (
@@ -3132,7 +3695,7 @@ let crypto_rsa_pss_sign () =
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
       match
         Lwt_main.run
-          (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" sign_mode
+          (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator") sign_mode
              (b64_and_hash hash sign_test_data))
       with
       | Ok signature -> (
@@ -3164,7 +3727,8 @@ let crypto_ed25519_sign () =
   add_pem hsm ~id:"test" mechs ed25519_priv_pem;
   match
     Lwt_main.run
-      (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.EdDSA
+      (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+         Keyfender.Json.EdDSA
          (Base64.encode_exn (Cstruct.to_string sign_test_data)))
   with
   | Ok signature -> (
@@ -3214,7 +3778,8 @@ let crypto_ecdsa_sign () =
       let pub = X509.Private_key.public priv in
       match
         Lwt_main.run
-          (Hsm.Key.sign hsm ~id:"test" ~user_id:"operator" Keyfender.Json.ECDSA
+          (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+             Keyfender.Json.ECDSA
              (b64_and_hash hash sign_test_data))
       with
       | Ok signature -> (
@@ -3241,7 +3806,8 @@ let crypto_aes_cbc_encrypt () =
       add_generic hsm ~id:"test" mechs (secret |> Cstruct.to_string);
       match
         Lwt_main.run
-          (Hsm.Key.encrypt hsm ~id:"test" ~user_id:"operator" ~iv:None AES_CBC
+          (Hsm.Key.encrypt hsm ~id:"test" ~user_nid:(user "operator") ~iv:None
+             AES_CBC
              (Base64.encode_string aes_message))
       with
       | Ok (cipher_b64, Some iv_b64) ->
@@ -3279,8 +3845,8 @@ let crypto_aes_cbc_decrypt () =
       let iv = Some (Cstruct.to_string iv |> Base64.encode_string) in
       match
         Lwt_main.run
-          (Hsm.Key.decrypt hsm ~id:"test" ~user_id:"operator" ~iv AES_CBC
-             encrypted)
+          (Hsm.Key.decrypt hsm ~id:"test" ~user_nid:(user "operator") ~iv
+             AES_CBC encrypted)
       with
       | Ok m -> String.equal m (Base64.encode_string aes_message)
       | Error _ -> assert false)
@@ -3310,12 +3876,15 @@ let () =
           system_info_error_precondition_failed;
           system_info_error_forbidden;
         ] );
-      ("/system/reboot", [ system_reboot_ok ]);
-      ("/system/shutdown", [ system_shutdown_ok ]);
-      ("/system/factory-reset", [ system_factory_reset_ok ]);
+      ("/system/reboot", [ system_reboot_ok; system_reboot_namespaced_fails ]);
+      ( "/system/shutdown",
+        [ system_shutdown_ok; system_shutdown_namespaced_fails ] );
+      ( "/system/factory-reset",
+        [ system_factory_reset_ok; system_factory_reset_namespaced_fails ] );
       ( "/system/update",
         [
           system_update_ok;
+          system_update_namespaced_fails;
           system_update_signature_mismatch;
           system_update_too_much_data;
           system_update_too_few_data;
@@ -3326,8 +3895,10 @@ let () =
       ( "/system/commit-update",
         [
           system_update_commit_ok;
+          system_update_commit_namespaced_fails;
           system_update_commit_fail;
           system_update_cancel_ok;
+          system_update_cancel_namespaced_fails;
         ] );
       ("/system/update from binary file", [ system_update_from_file_ok ]);
       ("/system/update signing", [ sign_update_ok ]);
@@ -3348,7 +3919,7 @@ let () =
           unlock_twice;
           unlock_fails_wrong_device_key;
         ] );
-      ("/lock", [ lock_ok; lock_failed ]);
+      ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
       ( "/config/unattended_boot",
         [
           get_unattended_boot_ok;
@@ -3386,14 +3957,37 @@ let () =
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
       ("config version but no unlock salt", [ config_version_but_no_salt ]);
-      ("/users", [ users_get; users_post ]);
+      ("/namespaces", [ namespaces_get; namespaces_get_nuser; namespaces_seq ]);
+      ( "/namespaces/namespace1",
+        [
+          namespaces_existing_delete;
+          namespaces_existing_delete_keys;
+          namespaces_existing_create;
+        ] );
+      ( "/namespaces/namespace3",
+        [ namespaces_new_create; namespaces_new_delete ] );
+      ( "/users",
+        [ users_get; users_get_namespace; users_post; users_post_namespace ] );
       ( "/users/operator",
         [
-          user_operator_add;
           user_operator_add_empty_passphrase;
           user_operator_add_invalid_id;
           user_operator_add_invalid_id2;
-          user_operator_delete;
+          user_operator_add_invalid_id3;
+          user_operator_add_invalid_id4;
+          user_operator_add_invalid_id5;
+          user_operator_add_root_root;
+          user_operator_add_ns_root;
+          user_operator_add_root_ns;
+          user_operator_add_root_ns_existing;
+          user_operator_add_ns_ns;
+          user_operator_add_ns_ns_mismatch;
+          user_operator_delete_root_root;
+          user_operator_delete_self;
+          user_operator_delete_root_ns;
+          user_operator_delete_ns_root;
+          user_operator_delete_ns_ns;
+          user_operator_delete_ns_ns_mismatch;
           user_operator_delete_not_found;
           user_operator_delete_invalid_id;
           user_operator_delete_fails;
@@ -3428,9 +4022,19 @@ let () =
           user_passphrase_post_fails_invalid_id;
         ] );
       ("/users/operator/passphrase", [ user_passphrase_operator_post ]);
+      ( "/users/suboperator/passphrase",
+        [
+          user_passphrase_suboperator_post_root_ns;
+          user_passphrase_suboperator_post_root_ns_existing;
+          user_passphrase_suboperator_post_ns_root;
+          user_passphrase_suboperator_post_ns_ns;
+          user_passphrase_suboperator_post_ns_ns_mismatch;
+        ] );
       ( "/keys",
         [
           keys_get;
+          keys_get_namespace;
+          keys_get_namespace_seq;
           keys_get_restrictions_filtered;
           keys_get_restrictions_unfiltered;
           keys_post_json;

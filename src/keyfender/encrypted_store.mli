@@ -11,9 +11,9 @@
     stored for key [b] unless [a] and [b] are equal. The IV is generated at
     random. The encrypted value stored is a concatenation of the IV, the
     authentication tag, and the encrypted data. *)
-module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
+module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
   include
-    Mirage_kv.RW
+    Kv_ext.Ranged
       with type error =
         [ Mirage_kv.error
         | `Kv of KV.error
@@ -24,7 +24,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) : sig
         | `Kv of KV.write_error
         | `Invalid_key of KV.key ]
 
-  type slot = Authentication | Key
+  type slot = Authentication | Key | Namespace
 
   val pp_slot : slot Fmt.t
   val slot_to_string : slot -> string

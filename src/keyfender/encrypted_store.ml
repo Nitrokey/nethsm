@@ -4,13 +4,14 @@
 
 open Lwt.Infix
 
-module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
+module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) = struct
   type t = { kv : KV.t; prefix : Mirage_kv.Key.t; key : Crypto.GCM.key }
-  type slot = Authentication | Key
+  type slot = Authentication | Key | Namespace
 
   let slot_to_string = function
     | Authentication -> "authentication"
     | Key -> "key"
+    | Namespace -> "namespace"
 
   let pp_slot ppf slot = Fmt.string ppf (slot_to_string slot) [@@coverage off]
 
@@ -52,16 +53,20 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
     with_key_check key @@ fun () ->
     KV.exists t.kv (prefix t key) >|= lift_kv_err
 
+  let filter_version items =
+    List.filter (fun (data, _) -> not (String.equal Version.file data)) items
+
   let list t key =
     with_key_check key @@ fun () ->
     KV.list t.kv (prefix t key) >|= function
-    | Ok items ->
-        let items_without_version =
-          List.filter
-            (fun (data, _) -> not (String.equal Version.file data))
-            items
-        in
-        Ok items_without_version
+    | Ok items -> Ok (filter_version items)
+    | Error e -> Error (`Kv e)
+
+  let list_range t range =
+    let open Kv_ext in
+    with_key_check (Range.prefix range) @@ fun () ->
+    KV.list_range t.kv (Range.prepend range t.prefix) >|= function
+    | Ok items -> Ok (filter_version items)
     | Error e -> Error (`Kv e)
 
   let last_modified t key =
@@ -139,8 +144,7 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
 
   let unlock version store ~key kv =
     let open Lwt_result.Infix in
-    let prefix = prefix store and key = Crypto.GCM.of_secret key in
-    let t = { kv; prefix; key } in
+    let t = v store ~key kv in
     get_version t >>= fun v ->
     Lwt.return
       (match Version.compare version v with
@@ -151,15 +155,18 @@ module Make (R : Mirage_random.S) (KV : Mirage_kv.RW) = struct
   let disconnect _t = Lwt.return_unit
   let slot_auth = slot_to_string Authentication
   let slot_key = slot_to_string Key
+  let slot_namespace = slot_to_string Namespace
 
   let slot_of_key key =
     match Mirage_kv.Key.segments key with
     | _ :: v :: _ when String.equal v Version.file -> None
     | prefix :: _ when String.equal prefix slot_auth -> Some Authentication
     | prefix :: _ when String.equal prefix slot_key -> Some Key
+    | prefix :: _ when String.equal prefix slot_namespace -> Some Namespace
     | _ -> None
 
   let prefix_of_slot = function
     | Authentication -> Mirage_kv.Key.v slot_auth
     | Key -> Mirage_kv.Key.v slot_key
+    | Namespace -> Mirage_kv.Key.v slot_namespace
 end

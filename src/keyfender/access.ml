@@ -16,7 +16,8 @@ struct
            set Authorization header in is_authorized, which has been called
            before. *)
         assert false
-    | Some v -> v
+    | Some v ->
+        Hsm.Nid.unsafe_of_string v (* this has already been parsed before *)
 
   let replace_authorization auth headers =
     Cohttp.Header.replace headers "Authorization" auth
@@ -26,10 +27,10 @@ struct
     | Some ("", b64) -> (
         match Base64.decode b64 with
         | Error (`Msg msg) ->
-            Rresult.R.error_msgf "invalid base64 encoding: %s (data %s)" msg b64
+            Rresult.R.error_msgf "invalid base64 encoding: %s" msg
         | Ok data -> (
             match Astring.String.cut ~sep:":" data with
-            | None -> Error (`Msg ("invalid user:pass encoding" ^ data))
+            | None -> Error (`Msg "invalid user:pass encoding")
             | Some (user, password) -> Ok (user, password)))
     | _ -> Error (`Msg ("invalid auth header " ^ auth))
 
@@ -37,8 +38,12 @@ struct
     match get_authorization rd.Webmachine.Rd.req_headers with
     | None -> Wm.continue (`Basic "NetHSM") rd
     | Some auth -> (
+        let err msg =
+          Logs.warn (fun m -> m "is_authorized failed with message %s" msg);
+          Wm.continue (`Basic "invalid authorization") rd
+        in
         match decode_auth auth with
-        | Ok (username, passphrase) ->
+        | Ok (username, passphrase) -> (
             if not (Rate_limit.within (Hsm.now ()) ip username) then
               let cc hdr =
                 Cohttp.Header.replace hdr "content-type" "application/json"
@@ -48,23 +53,22 @@ struct
                 ~body:(`String (Json.error "Too many requests"))
                 429 rd'
             else
-              Hsm.User.is_authenticated hsm_state ~username ~passphrase
-              >>= fun auth ->
-              if auth then
-                let rd' =
-                  Webmachine.Rd.with_req_headers
-                    (replace_authorization username)
-                    rd
-                in
-                Wm.continue `Authorized rd'
-              else (
-                Rate_limit.add (Hsm.now ()) ip username;
-                Wm.continue (`Basic "invalid authorization") rd)
-        | Error (`Msg msg) ->
-            Logs.warn (fun m ->
-                m "is_authorized failed with header value %s and message %s"
-                  auth msg);
-            Wm.continue (`Basic "invalid authorization") rd)
+              match Hsm.Nid.of_string username with
+              | Error msg -> err msg
+              | Ok nid ->
+                  Hsm.User.is_authenticated hsm_state nid ~passphrase
+                  >>= fun auth ->
+                  if auth then
+                    let rd' =
+                      Webmachine.Rd.with_req_headers
+                        (replace_authorization username)
+                        rd
+                    in
+                    Wm.continue `Authorized rd'
+                  else (
+                    Rate_limit.add (Hsm.now ()) ip username;
+                    Wm.continue (`Basic "invalid authorization") rd))
+        | Error (`Msg msg) -> err msg)
 
   let is_in_state hsm_state state = Hsm.state hsm_state = state
 

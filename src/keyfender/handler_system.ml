@@ -12,7 +12,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit Endpoint.get_json
 
       method private to_json =
@@ -34,7 +34,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -46,7 +46,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -58,7 +58,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -70,7 +70,7 @@ struct
     object (self)
       inherit Endpoint.base
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -95,7 +95,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -109,7 +109,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -123,7 +123,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Backup ip
+      inherit! Endpoint.r_role hsm_state `Backup ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -151,6 +151,7 @@ struct
 
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
+      inherit! Endpoint.r_role hsm_state `Administrator ip as r_role
       val mutable content_type = None
 
       method! known_content_type rd =
@@ -223,14 +224,9 @@ struct
         | `Locked -> assert false
 
       method! forbidden rd =
-        let open Lwt.Syntax in
-        let* forbidden =
-          match Hsm.state hsm_state with
-          | `Unprovisioned -> Lwt.return false
-          | `Operational ->
-              Endpoint.Access.forbidden hsm_state `Administrator rd
-          | `Locked -> assert false
-        in
-        Wm.continue forbidden rd
+        match Hsm.state hsm_state with
+        | `Unprovisioned -> Wm.continue false rd
+        | `Operational -> r_role#forbidden rd
+        | `Locked -> assert false
     end
 end

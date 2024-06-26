@@ -61,3 +61,18 @@ POST_operator()
 {
     POST "$@" --user operator:OperatorOperator
 }
+
+GET_nadmin()
+{
+    GET "$@" --user 'namespace1~nadmin:NAdministrator'
+}
+
+PUT_nadmin()
+{
+    PUT "$@" --user 'namespace1~nadmin:NAdministrator'
+}
+
+POST_nadmin()
+{
+    POST "$@" --user 'namespace1~nadmin:NAdministrator'
+}

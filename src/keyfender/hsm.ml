@@ -58,6 +58,17 @@ module type S = sig
   val random : int -> string
   val generate_id : unit -> string
 
+  module Nid : sig
+    type t = { namespace : string option; id : string }
+
+    val separator : string
+    val unsafe_of_string : string -> t
+    val of_string : string -> (t, string) result
+    val to_string : t -> string
+    val namespace : t -> string option
+    val id : t -> string
+  end
+
   module Config : sig
     val change_unlock_passphrase :
       t ->
@@ -118,43 +129,44 @@ module type S = sig
       val tags : t -> Json.TagSet.t
     end
 
-    val is_authenticated :
-      t -> username:string -> passphrase:string -> bool Lwt.t
-
-    val is_authorized : t -> string -> Json.role -> bool Lwt.t
-    val list : t -> (string list, error) result Lwt.t
-    val exists : t -> id:string -> (bool, error) result Lwt.t
-    val get : t -> id:string -> (Info.t, error) result Lwt.t
+    val is_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
+    val is_authorized : t -> Nid.t -> Json.role -> bool Lwt.t
+    val list : namespace:string option -> t -> (string list, error) result Lwt.t
+    val exists : t -> Nid.t -> (bool, error) result Lwt.t
+    val get : t -> Nid.t -> (Info.t, error) result Lwt.t
 
     val add :
-      id:string ->
       t ->
+      Nid.t ->
       role:Json.role ->
       passphrase:string ->
       name:string ->
       (unit, error) result Lwt.t
 
-    val remove : t -> id:string -> (unit, error) result Lwt.t
+    val remove : t -> Nid.t -> (unit, error) result Lwt.t
 
     val set_passphrase :
-      t -> id:string -> passphrase:string -> (unit, error) result Lwt.t
+      t -> Nid.t -> passphrase:string -> (unit, error) result Lwt.t
 
-    val add_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
-    val remove_tag : t -> id:string -> tag:string -> (bool, error) result Lwt.t
+    val add_tag : t -> Nid.t -> tag:string -> (bool, error) result Lwt.t
+    val remove_tag : t -> Nid.t -> tag:string -> (bool, error) result Lwt.t
     val list_digest : t -> string option Lwt.t
-    val digest : t -> id:string -> string option Lwt.t
+    val digest : t -> Nid.t -> string option Lwt.t
   end
 
   module Key : sig
-    val exists : t -> id:string -> (bool, error) result Lwt.t
+    val exists :
+      ?namespace:string -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
+      ?namespace:string ->
       t ->
       filter_by_restrictions:bool ->
-      user_id:string ->
+      user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
     val add_json :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -164,6 +176,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val add_pem :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -172,6 +185,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val generate :
+      ?namespace:string ->
       id:string ->
       t ->
       Json.key_type ->
@@ -180,38 +194,66 @@ module type S = sig
       Json.restrictions ->
       (unit, error) result Lwt.t
 
-    val remove : t -> id:string -> (unit, error) result Lwt.t
-    val get_json : t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
-    val get_pem : t -> id:string -> (string, error) result Lwt.t
+    val remove :
+      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+
+    val get_json :
+      ?namespace:string -> t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
+
+    val get_pem :
+      ?namespace:string -> t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem :
-      t -> id:string -> Json.subject_req -> (string, error) result Lwt.t
+      t ->
+      ?namespace:string ->
+      id:string ->
+      Json.subject_req ->
+      (string, error) result Lwt.t
 
     val get_cert :
-      t -> id:string -> ((string * string) option, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      ((string * string) option, error) result Lwt.t
 
     val set_cert :
       t ->
+      ?namespace:string ->
       id:string ->
       content_type:string ->
       string ->
       (unit, error) result Lwt.t
 
-    val remove_cert : t -> id:string -> (unit, error) result Lwt.t
+    val remove_cert :
+      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_restrictions :
-      t -> id:string -> (Json.restrictions, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags :
-      t -> id:string -> tag:string -> (bool, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      tag:string ->
+      (bool, error) result Lwt.t
 
     val remove_restriction_tags :
-      t -> id:string -> tag:string -> (bool, error) result Lwt.t
+      ?namespace:string ->
+      t ->
+      id:string ->
+      tag:string ->
+      (bool, error) result Lwt.t
+
+    (* val encrypt : t -> id:string -> Json.encrypt_mode -> string -> (string, error) result Lwt.t *)
 
     val decrypt :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       iv:string option ->
       Json.decrypt_mode ->
       string ->
@@ -219,8 +261,9 @@ module type S = sig
 
     val encrypt :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       iv:string option ->
       Json.encrypt_mode ->
       string ->
@@ -228,14 +271,32 @@ module type S = sig
 
     val sign :
       t ->
+      ?namespace:string ->
       id:string ->
-      user_id:string ->
+      user_nid:Nid.t ->
       Json.sign_mode ->
       string ->
       (string, error) result Lwt.t
 
-    val list_digest : t -> filter_by_restrictions:bool -> string option Lwt.t
-    val digest : t -> id:string -> string option Lwt.t
+    val list_digest :
+      ?namespace:string ->
+      t ->
+      filter_by_restrictions:bool ->
+      string option Lwt.t
+
+    val digest : ?namespace:string -> t -> id:string -> string option Lwt.t
+
+    val remove_all_in_namespace :
+      t -> namespace:string -> (unit, error) result Lwt.t
+  end
+
+  module Namespace : sig
+    type id = string option
+
+    val exists : t -> id -> (bool, error) result Lwt.t
+    val create : t -> id -> (unit, error) result Lwt.t
+    val list : t -> (string list, error) result Lwt.t
+    val remove : t -> id -> (unit, error) result Lwt.t
   end
 end
 
@@ -256,7 +317,7 @@ let software_version = String.trim [%blob "softwareVersion"]
 
 module Make
     (Rng : Mirage_random.S)
-    (KV : Mirage_kv.RW)
+    (KV : Kv_ext.Ranged)
     (Time : Mirage_time.S)
     (Monotonic_clock : Mirage_clock.MCLOCK)
     (Clock : Hsm_clock.HSMCLOCK) =
@@ -529,6 +590,33 @@ struct
 
   let version_is_upgrade ~current ~update = fst current <= fst update
 
+  module Nid = struct
+    type t = { namespace : string option; id : string }
+
+    let separator = "~"
+    let namespace t = t.namespace
+    let id t = t.id
+
+    let pp fmt t =
+      match t.namespace with
+      | None -> Fmt.pf fmt "%s" t.id
+      | Some n -> Fmt.pf fmt "%s%s%s" n separator t.id
+
+    let unsafe_of_string s =
+      match Astring.String.cut ~sep:separator s with
+      | None -> { namespace = None; id = s }
+      | Some (namespace, id) -> { namespace = Some namespace; id }
+
+    let of_string s =
+      let nid = unsafe_of_string s in
+      match (Json.valid_namespace nid.namespace, Json.valid_id nid.id) with
+      | Ok _, Ok _ -> Ok nid
+      | Error e, _ | _, Error e -> Error e
+
+    let to_string t =
+      match t.namespace with None -> t.id | Some n -> n ^ separator ^ t.id
+  end
+
   module Stores = struct
     module Config_store = Config_store.Make (KV)
     module Domain_key_store = Domain_key_store.Make (Rng) (KV)
@@ -599,6 +687,15 @@ struct
     module Key_store =
       Cached_store.Make
         (Json_store.Make (Encrypted_store) (Key_info)) (Monotonic_clock)
+
+    module Namespace_info = struct
+      type t = string [@@deriving yojson]
+      (** Name of the namespace *)
+    end
+
+    module Namespace_store =
+      Cached_store.Make
+        (Json_store.Make (Encrypted_store) (Namespace_info)) (Monotonic_clock)
   end
 
   open Stores
@@ -608,6 +705,7 @@ struct
     (* needed when unlock passphrase changes and likely for unattended boot *)
     auth_store : User_store.t;
     key_store : Key_store.t;
+    namespace_store : Namespace_store.t;
   }
 
   let equal_keys a b = Cstruct.equal a.domain_key b.domain_key
@@ -713,7 +811,7 @@ struct
       let t' = Cstruct.of_string t in
       Mirage_crypto.Hash.SHA256.digest (Cstruct.append k t')
     in
-    (extend dk "auth_store", extend dk "key_store")
+    (extend dk "auth_store", extend dk "key_store", extend dk "namespace_store")
 
   let load_keys kv device_key pass_key =
     let open Lwt_result.Infix in
@@ -729,36 +827,51 @@ struct
     | None -> Lwt.return_ok data
     | Some k -> decrypt_with_pass_key data ~pass_key:k)
     >|= fun domain_key ->
-    let auth_store_key, key_store_key = make_store_keys domain_key in
-    (domain_key, auth_store_key, key_store_key)
+    let auth_store_key, key_store_key, namespace_store_key =
+      make_store_keys domain_key
+    in
+    (domain_key, auth_store_key, key_store_key, namespace_store_key)
 
   let unlock_store kv slot key =
-    let open Lwt_result.Infix in
+    let open Lwt.Infix in
     let slot_str = Encrypted_store.slot_to_string slot in
-    internal_server_error Unlock
-      ("connecting to " ^ slot_str ^ " store")
-      Encrypted_store.pp_connect_error
-      (Encrypted_store.unlock Version.current slot ~key kv)
-    >>= function
-    | `Version_greater (stored, _t) ->
+    Encrypted_store.unlock Version.current slot ~key kv >>= function
+    | Ok (`Version_greater (stored, _t)) ->
         (* upgrade code for authentication store *)
         Lwt.return
         @@ Error
              ( Internal_server_error,
                Fmt.str "%s store too old (%a), no migration code" slot_str
                  Version.pp stored )
-    | `Kv store -> Lwt.return @@ Ok store
+    | Ok (`Kv store) -> Lwt.return @@ Ok store
+    | Error (`Kv (`Not_found _)) when slot = Namespace ->
+        Logs.warn (fun f ->
+            f
+              "This device has not been provisioned with a namespace store. \
+               Initializing it on the fly with the provided key!");
+        internal_server_error Write "provisioning namespace store"
+          KV.pp_write_error
+          (Encrypted_store.initialize Version.current Namespace ~key kv)
+    | Error e ->
+        internal_server_error Unlock
+          ("connecting to " ^ slot_str ^ " store")
+          Encrypted_store.pp_connect_error (Lwt_result.fail e)
 
   (* credential is device key with or without pass_key, depending on boot mode *)
   let unlock ?pass_key kv ~cache_settings ~device_key =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    load_keys kv device_key pass_key >>= fun (domain_key, as_key, ks_key) ->
+    load_keys kv device_key pass_key
+    >>= fun (domain_key, as_key, ks_key, ns_key) ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
-    unlock_store kv Key ks_key >|= fun key_store ->
+    unlock_store kv Key ks_key >>= fun key_store ->
+    unlock_store kv Namespace ns_key >|= fun namespace_store ->
     let auth_store = User_store.connect ~settings:cache_settings auth_store in
     let key_store = Key_store.connect ~settings:cache_settings key_store in
-    let keys = { domain_key; auth_store; key_store } in
+    let namespace_store =
+      Namespace_store.connect ~settings:cache_settings namespace_store
+    in
+    let keys = { domain_key; auth_store; key_store; namespace_store } in
     Operational keys
 
   let unlock_with_device_key kv ~device_key = unlock kv ~device_key
@@ -784,7 +897,7 @@ struct
     let device_key = t.device_key in
     let* keys = load_keys t.kv device_key (Some pass_key) in
     match (keys, t.state) with
-    | Ok (dk, _, _), Operational { domain_key = dk'; _ }
+    | Ok (dk, _, _, _), Operational { domain_key = dk'; _ }
       when Cstruct.equal dk dk' ->
         Lwt.return_ok ()
     | _ -> Lwt.return_error (Forbidden, "unlock passphrase is incorrect.")
@@ -874,6 +987,138 @@ struct
     let (`Hex id) = Hex.of_cstruct (Mirage_crypto_rng.generate 10) in
     id
 
+  (** Storage schema:
+        /namespace_1
+        ...
+        /namespace_n
+  *)
+  module Namespace = struct
+    let ns_src = Logs.Src.create "hsm.namespace" ~doc:"HSM namespace log"
+
+    module Access = (val Logs.src_log ns_src : Logs.LOG)
+
+    type id = string option
+
+    let ns_store t =
+      match t.state with
+      | Operational keys -> keys.namespace_store
+      | _ -> assert false
+
+    let key_prefix namespace =
+      match namespace with
+      | None -> Mirage_kv.Key.empty
+      | Some n -> Mirage_kv.Key.v ("." ^ n)
+
+    let file_range namespace =
+      let prefix = key_prefix namespace in
+      (* list only the keys prefixed with ["namespace/0", "namespace0"[,
+         to avoid listing subdirectories prefixed with '.'
+         This allows efficient listing of keys from the root namespace (no
+         matter how many namespaces or namespaced keys there are).
+         Similarly, it will allow efficient listing of N-Keys without care for
+         sub-namespaces if hierarchical namespaces are implemented, as long as
+         each directory is prefixed by '.'.
+      *)
+      Kv_ext.Range.create ~prefix ~start:"0" ()
+
+    let exists t = function
+      | None ->
+          (* Root namespace always exists *)
+          Lwt_result.return true
+      | Some n ->
+          let open Lwt.Infix in
+          let store = ns_store t in
+          let key = Mirage_kv.Key.v n in
+          internal_server_error Read "Exists key" Namespace_store.pp_read_error
+            (Namespace_store.get store key >|= function
+             | Ok n' when n = n' -> Ok true
+             | Error (`Store (`Not_found _)) -> Ok false
+             | Error (`Store (`Kv (`Not_found _))) -> Ok false
+             | Ok n' ->
+                 Logs.err (fun f ->
+                     f
+                       "Namespace %s exists but its entry contains the wrong \
+                        name (%s). Corrupted store?"
+                       n n');
+                 Error (`Store (`Not_found key))
+             | Error e -> Error e)
+
+    let create t = function
+      | None -> Lwt_result.fail (Bad_request, "Root namespace always exists")
+      | Some n ->
+          let open Lwt_result.Infix in
+          exists t (Some n) >>= fun namespace_exists ->
+          if namespace_exists then
+            Lwt_result.fail
+              (Bad_request, Fmt.str "Namespace %s already exists" n)
+          else
+            let store = ns_store t in
+            let key = Mirage_kv.Key.v n in
+            with_write_lock (fun () ->
+                internal_server_error Write "Create namespace"
+                  Encrypted_store.pp_write_error
+                  (Namespace_store.set store key n))
+            >|= fun () -> Access.info (fun f -> f "created (%s)" n)
+
+    let list t =
+      let open Lwt_result.Infix in
+      let store = ns_store t in
+      internal_server_error Read "List namespaces" Encrypted_store.pp_error
+        (Namespace_store.list store Mirage_kv.Key.empty)
+      >>= fun xs ->
+      let open Lwt.Infix in
+      Lwt_list.map_s
+        (function
+          | n, `Dictionary ->
+              Lwt.return
+                (Error
+                   ( Internal_server_error,
+                     "Namespace store contains dictionary: " ^ n ))
+          | n, `Value -> Lwt.return_ok n)
+        xs
+      >|= fun l ->
+      List.fold_right
+        (fun acc x ->
+          match (x, acc) with
+          | Error e, _ -> Error e
+          | _, Error e -> Error e
+          | Ok l, Ok x -> Ok (x :: l))
+        l (Ok [])
+
+    let remove t = function
+      | None -> Lwt_result.fail (Bad_request, "Cannot delete root namespace")
+      | Some n ->
+          let open Lwt_result.Infix in
+          exists t (Some n) >>= fun namespace_exists ->
+          if namespace_exists then
+            (* Note that keys belonging to the namespace are not deleted here,
+               but in the request handler instead *)
+            let store = ns_store t in
+            let key = Mirage_kv.Key.v n in
+            with_write_lock (fun () ->
+                internal_server_error Write "Delete namespace key"
+                  Encrypted_store.pp_write_error
+                  (Namespace_store.remove store key))
+            >|= fun () -> Access.info (fun m -> m "removed (%s)" n)
+          else
+            Lwt_result.fail
+              (Bad_request, Fmt.str "Namespace %s does not exist" n)
+  end
+
+  (** Storage schema:
+        /r_user_1
+        ...
+        /r_user_n
+        /namespace_1~n1_user_1
+        ...
+        /namespace_1~n1_user_m
+        ...
+        /namespace_n~nn_user_m
+
+        All functions take explicit nids (namespace, id) parameters, and never
+        process a fully-qualified user name like "ns~id" as a single string.
+        Parsing a string into a nid is assumed to be done in user-facing layers.
+        *)
   module User = struct
     module Info = User_info
 
@@ -890,12 +1135,17 @@ struct
       | `Metrics -> "R-Metrics"
       | `Backup -> "R-Backup"
 
-    let read store id = User_store.get store (Mirage_kv.Key.v id)
+    let make_store_key nid =
+      let key = Nid.to_string nid in
+      Mirage_kv.Key.(v key)
 
-    let write store id user =
+    let read store nid = User_store.get store (make_store_key nid)
+
+    let write store nid data =
       with_write_lock (fun () ->
+          let key = make_store_key nid in
           internal_server_error Write "Write user" User_store.pp_write_error
-            (User_store.set store (Mirage_kv.Key.v id) user))
+            (User_store.set store key data))
 
     (* functions below are exported, and take a Hsm.t directly, this the
        wrapper to unpack the auth_store handle. *)
@@ -905,16 +1155,16 @@ struct
       | _ -> assert false
     (* checked by webmachine Handler_user.service_available *)
 
-    let get_user t id =
+    let get_user t nid =
       let keys = in_store t in
-      read keys id
+      read keys nid
 
-    let is_authenticated t ~username ~passphrase =
+    let is_authenticated t nid ~passphrase =
       let open Lwt.Infix in
-      get_user t username >|= function
+      get_user t nid >|= function
       | Error e ->
           Access.warn (fun m ->
-              m "%s unauthenticated: %a" username User_store.pp_read_error e);
+              m "%a unauthenticated: %a" Nid.pp nid User_store.pp_read_error e);
           false
       | Ok user ->
           let pass =
@@ -924,28 +1174,34 @@ struct
           in
           Cstruct.equal pass (Cstruct.of_string user.digest)
 
-    let is_authorized t username role =
+    let is_authorized t nid role =
       let open Lwt.Infix in
-      get_user t username >|= function
+      get_user t nid >>= function
       | Error e ->
           Access.warn (fun m ->
-              m "%s unauthorized for %a: %a" username pp_role role
+              m "%a unauthorized for %a: %a" Nid.pp nid pp_role role
                 User_store.pp_read_error e);
-          false
-      | Ok user -> user.role = role
+          Lwt.return false
+      | Ok user -> (
+          if (* Check that namespace exists already *)
+             user.role <> role then Lwt.return false
+          else
+            Namespace.exists t nid.namespace >|= function
+            | Error _ | Ok false -> false
+            | Ok true -> true)
 
-    let exists t ~id =
+    let exists t nid =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error Read "Exists user" User_store.pp_error
-        (User_store.exists store (Mirage_kv.Key.v id) >|= function
+        (User_store.exists store (make_store_key nid) >|= function
          | None -> false
          | Some _ -> true)
 
-    let get t ~id =
+    let get t nid =
       let store = in_store t in
       internal_server_error Read "Read user" User_store.pp_read_error
-        (read store id)
+        (read store nid)
 
     let prepare_user ~name ~passphrase ~role =
       let salt = Rng.generate Crypto.passphrase_salt_len in
@@ -960,39 +1216,60 @@ struct
         tags = Json.TagSet.empty;
       }
 
-    let add ~id t ~role ~passphrase ~name =
+    let add t nid ~role ~passphrase ~name =
       let open Lwt_result.Infix in
       let store = in_store t in
-      Lwt.bind (read store id) (function
+      Lwt.bind (read store nid) (function
         | Error (`Store (`Kv (`Not_found _))) ->
             let user = prepare_user ~name ~passphrase ~role in
-            write store id user >|= fun () ->
-            Access.info (fun m -> m "added %s (%s): %a" name id pp_role role)
+            write store nid user >|= fun () ->
+            Access.info (fun m ->
+                m "added %s (%a): %a" name Nid.pp nid pp_role role)
         | Ok _ -> Lwt.return (Error (Conflict, "user already exists"))
         | Error _ as e ->
             internal_server_error Read "Adding user" User_store.pp_read_error
               (Lwt.return e))
 
-    let list t =
-      let open Lwt_result.Infix in
+    let efficient_list t namespace =
       let store = in_store t in
-      internal_server_error Read "List users" User_store.pp_error
-        (User_store.list store Mirage_kv.Key.empty)
-      >|= fun xs -> List.map fst (List.filter (fun (_, typ) -> typ = `Value) xs)
+      (* no prefix: user store is flat *)
+      let range =
+        match namespace with
+        | None -> Kv_ext.Range.create ()
+        | Some n ->
+            let start = n ^ Nid.separator in
+            let stop =
+              Kv_ext.Range.next_key (Bytes.of_string start)
+              |> Bytes.unsafe_to_string
+            in
+            Kv_ext.Range.create ~start ~stop ()
+      in
+      User_store.list_range store range
 
-    let remove t ~id =
+    let list ~namespace t =
+      let open Lwt.Infix in
+      efficient_list t namespace >>= function
+      | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt_result.return []
+      | Error e ->
+          internal_server_error Read "List users" Key_store.pp_error
+            (Lwt_result.fail e)
+      | Ok xs ->
+          Lwt.return_ok
+            (List.filter_map (function id, `Value -> Some id | _ -> None) xs)
+
+    let remove t nid =
       let open Lwt_result.Infix in
       let store = in_store t in
       with_write_lock (fun () ->
           internal_server_error Write "Remove user" User_store.pp_write_error
-            ( User_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
-              Access.info (fun m -> m "removed (%s)" id) ))
+            ( User_store.remove store (make_store_key nid) >|= fun () ->
+              Access.info (fun m -> m "removed (%a)" Nid.pp nid) ))
 
-    let set_passphrase t ~id ~passphrase =
+    let set_passphrase t nid ~passphrase =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error Read "Read user" User_store.pp_read_error
-        (read store id)
+        (read store nid)
       >>= fun user ->
       let salt' = Rng.generate Crypto.passphrase_salt_len in
       let digest' =
@@ -1005,38 +1282,39 @@ struct
           digest = Cstruct.to_string digest';
         }
       in
-      write store id user' >|= fun () ->
-      Access.info (fun m -> m "changed %s (%s) passphrase" id user.name)
+      write store nid user' >|= fun () ->
+      Access.info (fun m -> m "changed %a (%s) passphrase" Nid.pp nid user.name)
 
-    let add_tag t ~id ~tag =
+    let add_tag t nid ~tag =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error Read "Read user" User_store.pp_read_error
-        (read store id)
+        (read store nid)
       >>= fun user ->
       if Info.role user = `Operator then
         if not (Json.TagSet.mem tag user.tags) then (
           let user' = { user with tags = Json.TagSet.add tag user.tags } in
-          write store id user' >|= fun () ->
-          Access.info (fun m -> m "added a tag to %s (%s): %S" id user.name tag);
+          write store nid user' >|= fun () ->
+          Access.info (fun m ->
+              m "added a tag to %a (%s): %S" Nid.pp nid user.name tag);
           true)
         else Lwt.return_ok false
       else
         Lwt.return_error
           (Bad_request, "tag operations only exist on operator users")
 
-    let remove_tag t ~id ~tag =
+    let remove_tag t nid ~tag =
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error Read "Read user" User_store.pp_read_error
-        (read store id)
+        (read store nid)
       >>= fun user ->
       if Info.role user = `Operator then
         if Json.TagSet.mem tag user.tags then (
           let user' = { user with tags = Json.TagSet.remove tag user.tags } in
-          write store id user' >|= fun () ->
+          write store nid user' >|= fun () ->
           Access.info (fun m ->
-              m "removed a tag from %s (%s): %S" id user.name tag);
+              m "removed a tag from %a (%s): %S" Nid.pp nid user.name tag);
           true)
         else Lwt.return_ok false
       else
@@ -1050,14 +1328,24 @@ struct
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let digest t ~id =
+    let digest t nid =
       let open Lwt.Infix in
       let store = in_store t in
-      User_store.digest store (Mirage_kv.Key.v id) >|= function
+      User_store.digest store (make_store_key nid) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
 
+  (** Storage schema:
+        /root_key_n
+        ...
+        /root_key_n
+        /.namespace_1/ns_key1
+        ...
+        /.namespace_1/ns_key_n
+        ...
+        /.namespace_n/ns_key_n
+  *)
   module Key = struct
     let key_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
 
@@ -1071,11 +1359,16 @@ struct
       | _ -> assert false
     (* checked by webmachine Handler_keys.service_available *)
 
-    let exists t ~id =
+    let make_store_key ?namespace id =
+      let prefix = Namespace.key_prefix namespace in
+      Mirage_kv.Key.(prefix / id)
+
+    let exists ?namespace t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
+      let key = make_store_key ?namespace id in
       internal_server_error Read "Exists key" Encrypted_store.pp_error
-        (Key_store.exists store (Mirage_kv.Key.v id) >|= function
+        (Key_store.exists store key >|= function
          | None -> false
          | Some _ -> true)
 
@@ -1088,46 +1381,54 @@ struct
     (* boilerplate for dumping keys whose operations changed *)
     let cached_operations = Hashtbl.create 7
 
-    let get_key t id =
+    let get_key t ?namespace id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      let key = Mirage_kv.Key.v id in
+      let key = make_store_key ?namespace id in
       internal_server_error Read "Read key" Key_store.pp_read_error
         (Key_store.get store key)
       >>= fun key ->
       let operations =
-        match Hashtbl.find_opt cached_operations id with
+        match Hashtbl.find_opt cached_operations (namespace, id) with
         | None -> key.operations
         | Some v -> v
       in
       Lwt.return (Ok { key with operations })
 
-    let list t ~filter_by_restrictions ~user_id =
-      let open Lwt_result.Infix in
+    let efficient_list t namespace =
       let store = key_store t in
-      internal_server_error Read "List keys" Key_store.pp_error
-        (Key_store.list store Mirage_kv.Key.empty)
-      >>= fun xs ->
-      User.get t ~id:user_id >>= fun user_info ->
+      let range = Namespace.file_range namespace in
+      Key_store.list_range store range
+
+    let list ?namespace t ~filter_by_restrictions ~user_nid =
       let open Lwt.Infix in
-      let is_admin = User.Info.role user_info = `Administrator in
-      let is_usable (k : Key_info.t) =
-        validate_restrictions ~user_info k.restrictions |> Result.is_ok
-      in
-      let values_id =
-        List.filter_map (function id, `Value -> Some id | _ -> None) xs
-      in
-      if is_admin || not filter_by_restrictions then
-        (* bypass filter *)
-        Lwt.return_ok values_id
-      else
-        (* keep only usable keys *)
-        let filter id =
-          get_key t id >|= function
-          | Ok k when is_usable k -> Some id
-          | _ -> None
-        in
-        Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l
+      efficient_list t namespace >>= function
+      | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt_result.return []
+      | Error e ->
+          internal_server_error Read "List keys" Key_store.pp_error
+            (Lwt_result.fail e)
+      | Ok xs ->
+          let open Lwt_result.Infix in
+          User.get t user_nid >>= fun user_info ->
+          let open Lwt.Infix in
+          let is_admin = User.Info.role user_info = `Administrator in
+          let is_usable (k : Key_info.t) =
+            validate_restrictions ~user_info k.restrictions |> Result.is_ok
+          in
+          let values_id =
+            List.filter_map (function id, `Value -> Some id | _ -> None) xs
+          in
+          if is_admin || not filter_by_restrictions then
+            (* bypass filter *)
+            Lwt.return_ok values_id
+          else
+            (* keep only usable keys *)
+            let filter id =
+              get_key t id >|= function
+              | Ok k when is_usable k -> Some id
+              | _ -> None
+            in
+            Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l
 
     let dump_keys t =
       let open Lwt.Infix in
@@ -1138,18 +1439,18 @@ struct
               let store = key_store t in
               Key_store.batch store (fun b ->
                   Hashtbl.fold
-                    (fun id _ x ->
+                    (fun (namespace, id) _ x ->
                       x >>= function
                       | Error e -> Lwt.return (Error e)
                       | Ok () -> (
-                          get_key t id >>= function
+                          get_key t ?namespace id >>= function
                           | Error (_, msg) ->
                               (* this should not happen *)
                               Log.err (fun m ->
                                   m "error %s while retrieving key %s" msg id);
                               Lwt.return (Ok ())
                           | Ok k -> (
-                              let key = Mirage_kv.Key.v id in
+                              let key = make_store_key ?namespace id in
                               Key_store.set b key k >>= function
                               | Ok () -> Lwt.return (Ok ())
                               | Error e ->
@@ -1162,17 +1463,17 @@ struct
           | Ok () -> Hashtbl.clear cached_operations
           | Error _ -> ())
 
-    let encode_and_write t id key =
-      let store = key_store t and kv_key = Mirage_kv.Key.v id in
-      Hashtbl.remove cached_operations id;
+    let encode_and_write t ?namespace id key =
+      let store = key_store t and kv_key = make_store_key ?namespace id in
+      Hashtbl.remove cached_operations (namespace, id);
       with_write_lock (fun () ->
           internal_server_error Write "Write key" Key_store.pp_write_error
             (Key_store.set store kv_key key))
 
-    let add ~id t mechanisms priv restrictions =
+    let add ?namespace ~id t mechanisms priv restrictions =
       let open Lwt_result.Infix in
       let store = key_store t in
-      let key = Mirage_kv.Key.v id in
+      let key = make_store_key ?namespace id in
       internal_server_error Read "Exist key" Key_store.pp_error
         (Key_store.exists store key)
       >>= function
@@ -1180,7 +1481,7 @@ struct
           Lwt.return
             (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-          encode_and_write t id
+          encode_and_write t ?namespace id
             { mechanisms; priv; cert = None; operations = 0; restrictions }
           >|= fun () ->
           Access.info (fun f -> f "created (%s)" id);
@@ -1191,7 +1492,7 @@ struct
 
     open Stores.Key_info
 
-    let add_json ~id t mechanisms typ key restrictions =
+    let add_json ?namespace ~id t mechanisms typ key restrictions =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s" msg ctx data
@@ -1233,12 +1534,12 @@ struct
             X509 p
       with
       | Error (`Msg e) -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ~id t mechanisms priv restrictions
+      | Ok priv -> add ?namespace ~id t mechanisms priv restrictions
 
-    let add_pem ~id t mechanisms data restrictions =
+    let add_pem ?namespace ~id t mechanisms data restrictions =
       match X509.Private_key.decode_pem (Cstruct.of_string data) with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ~id t mechanisms (X509 priv) restrictions
+      | Ok priv -> add ?namespace ~id t mechanisms (X509 priv) restrictions
 
     let generate_x509 typ ~length =
       let open Rresult in
@@ -1270,25 +1571,43 @@ struct
           in
           generate_x509 x509_type ~length >>| fun key -> X509 key
 
-    let generate ~id t typ mechanisms ~length restrictions =
+    let generate ?namespace ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
       Lwt.return (generate_key typ ~length) >>= fun priv ->
       Metrics.key_op `Generate;
-      add ~id t mechanisms priv restrictions
+      add ?namespace ~id t mechanisms priv restrictions
 
-    let remove t ~id =
+    let remove ?namespace t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      Hashtbl.remove cached_operations id;
+      Hashtbl.remove cached_operations (namespace, id);
+      let key = make_store_key ?namespace id in
       with_write_lock (fun () ->
           internal_server_error Write "Remove key" Key_store.pp_write_error
-            ( Key_store.remove store (Mirage_kv.Key.v id) >|= fun () ->
+            ( Key_store.remove store key >|= fun () ->
               Access.info (fun m -> m "removed (%s)" id) ))
 
-    let get_json t ~id =
+    let remove_all_in_namespace t ~namespace =
+      let open Lwt.Infix in
+      efficient_list t (Some namespace) >>= function
+      | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt.return (Ok ())
+      | Error _ as e ->
+          internal_server_error Read "List keys" Key_store.pp_error
+            (Lwt.return e)
+      | Ok xs ->
+          Lwt_list.filter_map_s
+            (function
+              | _, `Dictionary -> Lwt.return None
+              | id, `Value -> remove ~namespace t ~id >|= fun r -> Some r)
+            xs
+          >|= List.fold_left
+                (function Error e -> fun _ -> Error e | _ -> fun x -> x)
+                (Ok ())
+
+    let get_json ?namespace t ~id =
       let open Lwt_result.Infix in
       let open Mirage_crypto_ec in
-      get_key t id >|= fun pkey ->
+      get_key t ?namespace id >|= fun pkey ->
       let cs_to_b64 cs = Base64.encode_string (Cstruct.to_string cs) in
       let public, typ =
         match pkey.priv with
@@ -1334,9 +1653,9 @@ struct
           restrictions = pkey.restrictions;
         }
 
-    let get_pem t ~id =
+    let get_pem ?namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       Lwt_result.lift
       @@
       match key.priv with
@@ -1345,9 +1664,9 @@ struct
           Ok (Cstruct.to_string @@ X509.Public_key.encode_pem pub)
       | Generic _ -> Error (Bad_request, "Generic keys have no public key")
 
-    let csr_pem t ~id subject =
+    let csr_pem t ?namespace ~id subject =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       let subject' = Json.to_distinguished_name subject in
       Lwt_result.lift
       @@
@@ -1360,50 +1679,51 @@ struct
       | Generic _ ->
           Error (Bad_request, "Generic keys can't create certificates")
 
-    let get_cert t ~id =
+    let get_cert ?namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t id >|= fun key -> key.cert
+      get_key t ?namespace id >|= fun key -> key.cert
 
-    let set_cert t ~id ~content_type data =
+    let set_cert t ?namespace ~id ~content_type data =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       match key.cert with
       | Some _ ->
           Lwt.return (Error (Conflict, "Key already contains a certificate"))
       | None ->
           let key' = { key with cert = Some (content_type, data) } in
-          encode_and_write t id key'
+          encode_and_write t ?namespace id key'
 
-    let remove_cert t ~id =
+    let remove_cert ?namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       match key.cert with
       | None ->
           Lwt.return
             (Error (Not_found, "There is no certificate for this KeyID."))
       | Some _ ->
           let key' = { key with cert = None } in
-          encode_and_write t id key'
+          encode_and_write t ?namespace id key'
 
-    let get_restrictions t ~id =
+    let get_restrictions ?namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t id >|= fun key -> key.restrictions
+      get_key t ?namespace id >|= fun key -> key.restrictions
 
-    let add_restriction_tags t ~id ~tag =
+    let add_restriction_tags ?namespace t ~id ~tag =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       if not (Json.TagSet.mem tag key.restrictions.tags) then (
         let restrictions' =
           { Json.tags = Json.TagSet.add tag key.restrictions.tags }
         in
         Access.info (fun f -> f "update (%s): added tag %S" id tag);
-        encode_and_write t id { key with restrictions = restrictions' }
+        encode_and_write t ?namespace id
+          { key with restrictions = restrictions' }
         >|= fun () -> true)
       else Lwt.return_ok false
 
-    let remove_restriction_tags t ~id ~tag =
+    let remove_restriction_tags ?namespace t ~id ~tag =
       let open Lwt_result.Infix in
-      get_key t id >>= fun key ->
+      get_key t ?namespace id >>= fun key ->
       if Json.TagSet.mem tag key.restrictions.tags then (
         let restrictions' =
           { Json.tags = Json.TagSet.remove tag key.restrictions.tags }
@@ -1420,18 +1740,19 @@ struct
     module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP (Mirage_crypto.Hash.SHA384)
     module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP (Mirage_crypto.Hash.SHA512)
 
-    let validate_restrictions t ~user_id key_data =
+    let validate_restrictions t ~user_nid key_data =
       let open Lwt_result.Infix in
-      User.get t ~id:user_id >>= fun user_info ->
+      User.get t user_nid >>= fun user_info ->
       let validation =
         if User.Info.role user_info = `Administrator then Ok ()
         else validate_restrictions ~user_info key_data.restrictions
       in
       Result.map (fun () -> key_data) validation |> Lwt.return
 
-    let decrypt t ~id ~user_id ~iv decrypt_mode data =
+    let decrypt t ?namespace ~id ~user_nid ~iv decrypt_mode data =
       let open Lwt_result.Infix in
-      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
+      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
         (let open Rresult.R.Infix in
@@ -1498,16 +1819,18 @@ struct
                        "Decryption only supported for RSA and Generic keys." ))
                >>= fun cs ->
                Metrics.key_op `Decrypt;
-               Hashtbl.replace cached_operations id (succ key_data.operations);
+               Hashtbl.replace cached_operations (namespace, id)
+                 (succ key_data.operations);
                Ok (Base64.encode_string (Cstruct.to_string cs)))
              else
                Error
                  ( Bad_request,
                    "Key mechanisms do not allow requested decryption." ))
 
-    let encrypt t ~id ~user_id ~iv encrypt_mode data =
+    let encrypt t ?namespace ~id ~user_nid ~iv encrypt_mode data =
       let open Lwt_result.Infix in
-      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
+      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
         (let open Rresult.R.Infix in
@@ -1552,16 +1875,18 @@ struct
                      (Bad_request, "Encryption only supported for Generic keys."))
                >>= fun (cs, iv) ->
                Metrics.key_op `Encrypt;
-               Hashtbl.replace cached_operations id (succ key_data.operations);
+               Hashtbl.replace cached_operations (namespace, id)
+                 (succ key_data.operations);
                Ok (cs, iv))
              else
                Error
                  ( Bad_request,
                    "Key mechanisms do not allow requested encryption." ))
 
-    let sign t ~id ~user_id sign_mode data =
+    let sign t ?namespace ~id ~user_nid sign_mode data =
       let open Lwt_result.Infix in
-      get_key t id >>= validate_restrictions t ~user_id >>= fun key_data ->
+      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       match Base64.decode oneline with
       | Error (`Msg msg) ->
@@ -1612,26 +1937,28 @@ struct
                       (X509.Private_key.sign hash ~scheme priv data))
               >>| fun signature ->
                 Metrics.key_op `Sign;
-                Hashtbl.replace cached_operations id (succ key_data.operations);
+                Hashtbl.replace cached_operations (namespace, id)
+                  (succ key_data.operations);
                 Base64.encode_string @@ Cstruct.to_string signature )
           else
             Lwt.return
               (Error
                  (Bad_request, "Key mechanisms do not allow requested signing."))
 
-    let list_digest t ~filter_by_restrictions =
+    let list_digest ?namespace t ~filter_by_restrictions =
       let open Lwt.Infix in
       if filter_by_restrictions then Lwt.return_none
       else
+        let key = Namespace.key_prefix namespace in
         let store = key_store t in
-        Key_store.digest store Mirage_kv.Key.empty >|= function
+        Key_store.digest store key >|= function
         | Ok digest -> Some (to_hex digest)
         | Error _ -> None
 
-    let digest t ~id =
+    let digest ?namespace t ~id =
       let open Lwt.Infix in
       let store = key_store t in
-      Key_store.digest store (Mirage_kv.Key.v id) >|= function
+      Key_store.digest store (make_store_key ?namespace id) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end
@@ -1644,7 +1971,9 @@ struct
     let unlock_salt = Rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
     let domain_key = Rng.generate Crypto.key_len in
-    let auth_store_key, key_store_key = make_store_keys domain_key in
+    let auth_store_key, key_store_key, namespace_store_key =
+      make_store_keys domain_key
+    in
     with_write_lock (fun () ->
         KV.batch t.kv (fun b ->
             internal_server_error Write "Initializing configuration store"
@@ -1683,11 +2012,26 @@ struct
               KV.pp_write_error
               (KV.set b k_v_key k_v_value)
             >>= fun () ->
+            (* Initializing the namespace store is also done on the fly if
+               unlocking an old store without namespaces, in
+               Encrypted_store.unlock *)
+            let namespace_store =
+              Encrypted_store.v Namespace ~key:namespace_store_key t.kv
+            in
+            let n_v_key, n_v_value =
+              Encrypted_store.prepare_set namespace_store Version.filename
+                Version.(to_string current)
+            in
+            internal_server_error Write "Initializing namespace store"
+              KV.pp_write_error
+              (KV.set b n_v_key n_v_value)
+            >>= fun () ->
             let keys =
               {
                 domain_key;
                 auth_store = User_store.connect auth_store;
                 key_store = Key_store.connect key_store;
+                namespace_store = Namespace_store.connect namespace_store;
               }
             in
             t.state <- Operational keys;
@@ -2333,24 +2677,41 @@ struct
         Lwt_result.return stream
       else Lwt_result.return stream
 
+    let rec list_keys_rec ~kv prefix =
+      let open Lwt_result.Infix in
+      KV.list kv prefix >>= fun entries ->
+      Lwt_list.fold_left_s
+        (function
+          | Error e -> fun _ -> Lwt_result.fail e
+          | Ok acc -> (
+              function
+              | sub, `Value ->
+                  let key = Mirage_kv.Key.(prefix // v sub) in
+                  Lwt_result.return (key :: acc)
+              | sub, `Dictionary ->
+                  let prefix = Mirage_kv.Key.(prefix // v sub) in
+                  list_keys_rec ~kv prefix >>= fun subkeys ->
+                  Lwt_result.return (subkeys @ acc)))
+        (Ok []) entries
+
     let remove_extra_keys ~kv backup_keys =
       let ( let** ) = Lwt_result.bind in
       let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
       let** auth_keys =
         internal_server_error Read "restoring backup (listing keys)" KV.pp_error
-          (KV.list kv auth_prefix)
+          (list_keys_rec ~kv auth_prefix)
       in
       let key_prefix = Encrypted_store.prefix_of_slot Key in
       let** key_keys =
         internal_server_error Read "restoring backup (listing keys)" KV.pp_error
-          (KV.list kv key_prefix)
+          (list_keys_rec ~kv key_prefix)
       in
-      let add_prefix prefix keys =
-        List.map (fun (k, _) -> Mirage_kv.Key.(prefix / k)) keys
+      let ns_prefix = Encrypted_store.prefix_of_slot Namespace in
+      let** ns_keys =
+        internal_server_error Read "restoring backup (listing keys)" KV.pp_error
+          (list_keys_rec ~kv ns_prefix)
       in
-      let keys =
-        add_prefix auth_prefix auth_keys @ add_prefix key_prefix key_keys
-      in
+      let keys = auth_keys @ key_keys @ ns_keys in
       List.filter_map
         (fun key ->
           if
@@ -2441,10 +2802,15 @@ struct
               let** () =
                 if is_operational then
                   (* we remove keys and users that not present in the
-                      backup *)
+                      backup.
+                     if namespace store is not present in backup, the current
+                     one will be emptied (all namespaces deleted) but will stay
+                     provisioned. *)
                   remove_extra_keys ~kv:b !backup_keys
                 else
-                  (* unprovisioned: end state is locked *)
+                  (* unprovisioned: end state is locked.
+                     if namespace store is not present in backup, it will be
+                     provisioned here *)
                   let** new_state =
                     boot_config_store ~cache_settings:t.cache_settings b
                       t.device_key
@@ -2455,7 +2821,8 @@ struct
               (match t.state with
               | Operational v ->
                   User_store.clear_cache v.auth_store;
-                  Key_store.clear_cache v.key_store
+                  Key_store.clear_cache v.key_store;
+                  Namespace_store.clear_cache v.namespace_store
               | _ -> ());
               let** () =
                 (* the domain key might have changed if restored to a
@@ -2550,25 +2917,28 @@ struct
          in
          Lwt.return (Ok t)
      | Some version -> (
+         let boot () =
+           boot_config_store ~cache_settings kv device_key >>= fun state ->
+           certificate_chain kv >|= fun (cert, chain, key) ->
+           {
+             state;
+             has_changes;
+             key;
+             cert;
+             chain;
+             software_update_key;
+             kv;
+             info;
+             system_info;
+             mbox;
+             res_mbox;
+             device_key;
+             cache_settings;
+           }
+         in
+
          match Version.(compare current version) with
-         | `Equal ->
-             boot_config_store ~cache_settings kv device_key >>= fun state ->
-             certificate_chain kv >|= fun (cert, chain, key) ->
-             {
-               state;
-               has_changes;
-               key;
-               cert;
-               chain;
-               software_update_key;
-               kv;
-               info;
-               system_info;
-               mbox;
-               res_mbox;
-               device_key;
-               cache_settings;
-             }
+         | `Equal -> boot ()
          | `Smaller ->
              let msg =
                "store has higher version than software, please update software \

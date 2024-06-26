@@ -9,8 +9,8 @@ module type Json_encoding = sig
   val to_yojson : t -> Yojson.Safe.t
 end
 
-module Make (KV : Mirage_kv.RW) (J : Json_encoding) :
-  Typed_kv.S
+module Make (KV : Kv_ext.Ranged) (J : Json_encoding) :
+  Kv_ext.Typed_ranged
     with type value = J.t
      and type t = KV.t
      and type error = KV.error

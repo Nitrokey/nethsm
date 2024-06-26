@@ -260,21 +260,6 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
 
-  (* Calculate end of range for prefix. See
-     https://etcd.io/docs/v3.5/learning/api/#key-ranges *)
-  let end_of_prefix p =
-    let rec inc b i =
-      if i < 0 then Bytes.make 1 '\x00'
-      else
-        match Bytes.get b i with
-        | '\xff' -> (inc [@tailcall]) b (i - 1)
-        | c ->
-            Bytes.set b i Char.(chr (code c + 1));
-            Bytes.sub b 0 (i + 1)
-    in
-    let p = Bytes.copy p in
-    inc p (Bytes.length p - 1)
-
   let disconnect _ = Lwt.return_unit
 
   type error = [ `Etcd_error of string | Mirage_kv.error ]
@@ -292,6 +277,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | { KeyValue.mod_revision = i; _ } :: _ -> Ok (0, Int64.of_int i)
         | _ -> Error (`Not_found k))
 
+  (** WARNING: only works on Values, will return None for dictionaries *)
   let exists t k =
     let key = bytes_of_key k in
     let request = RangeRequest.make ~key ~count_only:true () in
@@ -308,12 +294,29 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | { KeyValue.value = s; _ } :: _ -> Ok (Bytes.to_string s)
         | _ -> Error (`Not_found k))
 
-  let list t k =
-    let key =
+  (* remove *consecutive* duplicates in a list*)
+  let rec dedup = function
+    | [] -> []
+    | [ x ] -> [ x ]
+    | a :: b :: tl when a = b -> dedup (b :: tl)
+    | a :: b :: tl -> a :: dedup (b :: tl)
+
+  let list_range t range =
+    let open Keyfender.Kv_ext in
+    let dir k =
       Bytes.of_string (match Key.to_string k with "/" -> "/" | s -> s ^ "/")
     in
-    let range_end = end_of_prefix key in
-    let prefix_len = Bytes.length key in
+    let key =
+      match Range.first_key range with
+      | None -> Range.prefix range |> dir
+      | Some first_key -> Key.to_string first_key |> Bytes.of_string
+    in
+    let range_end =
+      match Range.range_end range with
+      | None -> Range.next_key (Range.prefix range |> dir)
+      | Some range_end -> Key.to_string range_end |> Bytes.of_string
+    in
+    let prefix_len = Bytes.length (Range.prefix range |> dir) in
     let request =
       RangeRequest.(
         make ~key ~range_end ~keys_only:true ~sort_order:SortOrder.DESCEND ())
@@ -329,10 +332,19 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
               let key_no_prefix =
                 String.sub key prefix_len (key_len - prefix_len)
               in
-              (acc_keys [@tailcall]) ((key_no_prefix, `Value) :: acc) t
+              let segments = Mirage_kv.Key.(v key_no_prefix |> segments) in
+              let res =
+                match segments with
+                | [] | [ _ ] -> (key_no_prefix, `Value)
+                | base :: _ :: _ -> (base, `Dictionary)
+              in
+              (acc_keys [@tailcall]) (res :: acc) t
         in
-        let keys = acc_keys [] resp.RangeResponse.kvs in
+        (* remove duplicates in *already sorted* list *)
+        let keys = acc_keys [] resp.RangeResponse.kvs |> dedup in
         Ok keys)
+
+  let list t key = list_range t (Keyfender.Kv_ext.Range.create ~prefix:key ())
 
   let digest t k =
     let open Lwt_result.Infix in
@@ -363,7 +375,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
 
   let remove t k =
     let key = bytes_of_key k in
-    let range_end = end_of_prefix key in
+    let range_end = Keyfender.Kv_ext.Range.next_key key in
     let request = DeleteRangeRequest.make ~key ~range_end () in
     etcd_try (fun () -> Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
 

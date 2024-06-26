@@ -7,7 +7,7 @@ module Test_logs = struct
   let buffer = Buffer.create 1000
   let fmt = Format.formatter_of_buffer buffer
   let reporter = Logs.format_reporter ~app:fmt ~dst:fmt ()
-  let tag_regex = Str.regexp {|([a-f0-9]+)|}
+  let tag_regex = Str.regexp {|(\([a-z0-9]+~\)?[a-f0-9]+)|}
   let sanitize s = Str.global_substitute tag_regex (fun _ -> "(xxxx)") s
 
   let check ~expect fn =
@@ -46,7 +46,12 @@ end
 module Kv_mem = Mirage_kv_mem.Make (Hsm_clock)
 
 module Hsm =
-  Keyfender.Hsm.Make (Mirage_random_test) (Kv_mem) (Time) (Mclock) (Hsm_clock)
+  Keyfender.Hsm.Make
+    (Mirage_random_test)
+    (Keyfender.Kv_ext.Make_ranged (Kv_mem))
+    (Time)
+    (Mclock)
+    (Hsm_clock)
 
 module Handlers = Keyfender.Server.Make_handlers (Mirage_random_test) (Hsm)
 
@@ -102,6 +107,8 @@ let copy t =
   let v = Marshal.to_string t [] in
   Marshal.from_string v 0
 
+let user ?namespace id = { Hsm.Nid.id; namespace }
+
 let create_operational_mock mbox =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
@@ -110,15 +117,30 @@ let create_operational_mock mbox =
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun _ ->
-      Hsm.User.add state ~id:"operator" ~role:`Operator
-        ~passphrase:"test2Passphrase" ~name:"operator"
+      let operator = user "operator" in
+      Hsm.User.add state operator ~role:`Operator ~passphrase:"test2Passphrase"
+        ~name:"operator"
       >>= fun _ ->
-      Hsm.User.add_tag state ~id:"operator" ~tag:"berlin" >>= fun _ ->
-      Hsm.User.add state ~id:"backup" ~role:`Backup
+      Hsm.User.add_tag state operator ~tag:"berlin" >>= fun _ ->
+      Hsm.User.add state (user "backup") ~role:`Backup
         ~passphrase:"test3Passphrase" ~name:"backup"
       >>= fun _ ->
-      Hsm.User.add state ~id:"operator2" ~role:`Operator
+      Hsm.User.add state (user "operator2") ~role:`Operator
         ~passphrase:"test4Passphrase" ~name:"operator2"
+      >>= fun _ ->
+      Hsm.Namespace.create state (Some "namespace1") >>= fun _ ->
+      Hsm.Namespace.create state (Some "namespace2") >>= fun _ ->
+      Hsm.User.add state
+        (user ~namespace:"namespace1" "subadmin")
+        ~role:`Administrator ~passphrase:"test5Passphrase" ~name:"subadmin"
+      >>= fun _ ->
+      Hsm.User.add state
+        (user ~namespace:"namespace1" "suboperator")
+        ~role:`Operator ~passphrase:"test6Passphrase" ~name:"suboperator"
+      >>= fun _ ->
+      Hsm.User.add state
+        (user ~namespace:"namespace2" "suboperator2")
+        ~role:`Operator ~passphrase:"test7Passphrase" ~name:"suboperator2"
       >|= fun _ -> state )
 
 let operational_mock = lazy (create_operational_mock good_platform)
@@ -178,13 +200,20 @@ let test_key =
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
 
-let hsm_with_key
+let hsm_with_key ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock () in
   Lwt_main.run
     (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions
-     >|= function
-     | Ok () -> state
+     >>= function
+     | Ok () when and_namespace = None -> Lwt.return state
+     | Ok () -> (
+         let namespace = Option.get and_namespace in
+         Hsm.Key.add_pem ~namespace state mechanisms ~id:"subKeyID" test_key_pem
+           no_restrictions
+         >|= function
+         | Ok () -> state
+         | Error _ -> assert false)
      | Error _ -> assert false)
 
 let auth_header user pass =
@@ -193,6 +222,11 @@ let auth_header user pass =
 
 let admin_headers = auth_header "admin" "test1Passphrase"
 let operator_headers = auth_header "operator" "test2Passphrase"
+let subadmin_headers = auth_header "namespace1~subadmin" "test5Passphrase"
+let suboperator_headers = auth_header "namespace1~suboperator" "test6Passphrase"
+
+let suboperator2_headers =
+  auth_header "namespace2~suboperator2" "test7Passphrase"
 
 let admin_put_request ?expect ?(hsm_state = operational_mock ())
     ?(body = `Empty) ?content_type ?query path =

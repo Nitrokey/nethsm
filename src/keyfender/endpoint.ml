@@ -33,6 +33,12 @@ struct
       | None -> Error "no ID provided"
       | Some x -> Json.valid_id x)
 
+  let lookup_path_nid ok rd =
+    err_to_bad_request ok rd
+      (match Webmachine.Rd.lookup_path_info "id" rd with
+      | None -> Error "no ID provided"
+      | Some x -> Hsm.Nid.of_string x)
+
   let date () =
     let ptime_to_http_date ptime =
       let (y, m, d), ((hh, mm, ss), _) = Ptime.to_date_time ptime
@@ -66,6 +72,10 @@ struct
         y hh mm ss
     in
     ptime_to_http_date (Hsm.now ())
+
+  let get_namespace rd =
+    let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
+    user_nid.namespace
 
   class virtual base =
     object
@@ -149,6 +159,93 @@ struct
           | not_an_admin -> Wm.continue not_an_admin rd
     end
 
+  (** By default, enforce on all HTTP methods *)
+  class no_namespace ?exclude_meths () =
+    object
+      method forbidden : (bool, body) Wm.op =
+        fun rd ->
+          match exclude_meths with
+          | Some methods when List.mem rd.meth methods -> Wm.continue false rd
+          | _ ->
+              let user = Access.get_user rd.Webmachine.Rd.req_headers in
+              let is_root = user.namespace = None in
+              Wm.continue (not is_root) rd
+    end
+
+  let ( >>=? ) m f =
+    let open Wm in
+    m >>= function
+    | Ok x, rd -> f x rd
+    | Error code, rd -> Lwt.return (Error code, rd)
+
+  let join_ops ~join fs rd =
+    let rec aux rd = function
+      | [] -> assert false
+      | [ f ] -> f rd
+      | f :: tl ->
+          aux rd tl >>=? fun x rd ->
+          f rd >>=? fun y rd -> Wm.continue (join x y) rd
+    in
+    aux rd fs
+
+  (** R-Role ([no_namespace] + [role])
+      User is Root (no namespace) and has given role *)
+  class r_role ?r_exclude_meths hsm_state role ip =
+    object
+      inherit role hsm_state role ip as role
+      inherit! no_namespace ?exclude_meths:r_exclude_meths () as namespace
+
+      method! forbidden =
+        join_ops ~join:( || ) [ role#forbidden; namespace#forbidden ]
+    end
+
+  (** For endpoints managing users, ensure that the target and caller are
+      strictly in the same namespace.
+      - this is a strict check: if the caller is a R-User and target a N-User,
+        the check will fail, despite the higher privileges of the caller
+      - the check is *relaxed* (i.e. the above situation would pass) if either:
+        - the target's namespace has not been created yet (since no member of
+          that namespace could be the caller anyway)
+        - the HTTP method is explicitly given in [root_allowed_for]
+      - the check is completely disabled in the HTTP method is explicitly given
+        in exclude_meths
+  *)
+  class target_same_namespace ?(root_allowed_for = []) ?exclude_meths hsm_state
+    =
+    object
+      method forbidden : (bool, body) Wm.op =
+        fun rd ->
+          match exclude_meths with
+          | Some methods when List.mem rd.meth methods -> Wm.continue false rd
+          | _ ->
+              let user = Access.get_user rd.Webmachine.Rd.req_headers in
+              let caller_namespace = user.namespace in
+              let filter_error f = function
+                | Ok x -> f x
+                | Error e -> respond_error e rd
+              in
+              let strict_applies = not (List.mem rd.meth root_allowed_for) in
+              lookup_path_nid
+                (fun nid ->
+                  let user_namespace = nid.namespace in
+                  Hsm.Namespace.exists hsm_state user_namespace
+                  >>= filter_error @@ fun user_namespace_exists ->
+                      (* If caller is root and namespace does not exist
+                         (or root allowed), then grant access and stop
+                      *)
+                      let strict = strict_applies && user_namespace_exists in
+                      if caller_namespace = None && not strict then
+                        Wm.continue false rd
+                      else
+                        (* Otherwise, actually check that caller is in
+                           user namespace *)
+                        let same_namespace =
+                          caller_namespace = user_namespace
+                        in
+                        Wm.continue (not same_namespace) rd)
+                rd
+    end
+
   class role_operator_get_self hsm_state ip =
     object
       method is_authorized : (Wm.auth, body) Wm.op =
@@ -163,7 +260,7 @@ struct
               if not_an_operator then Wm.continue not_an_operator rd
               else
                 let user = Access.get_user rd.Webmachine.Rd.req_headers in
-                lookup_path_info (fun id -> Wm.continue (id <> user) rd) "id" rd
+                lookup_path_nid (fun nid -> Wm.continue (nid <> user) rd) rd
           | not_an_admin -> Wm.continue not_an_admin rd
     end
 

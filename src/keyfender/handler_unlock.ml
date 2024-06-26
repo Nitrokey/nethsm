@@ -42,7 +42,7 @@ struct
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 

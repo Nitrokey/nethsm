@@ -4,7 +4,7 @@
 
 module Hsm_clock = Keyfender.Hsm_clock.Make (Pclock)
 
-module Stats_store (Store : Mirage_kv.RW) = struct
+module Stats_store (Store : Keyfender.Kv_ext.Ranged) = struct
   include Store
 
   let pp_read_error = pp_error
@@ -29,6 +29,7 @@ module Stats_store (Store : Mirage_kv.RW) = struct
     exists t k
 
   let list { t; _ } = list t
+  let list_range { t; _ } = list_range t
   let last_modified { t; _ } = last_modified t
   let digest { t; _ } = digest t
   let remove { t; _ } = remove t
@@ -45,7 +46,7 @@ module Stats_store (Store : Mirage_kv.RW) = struct
 end
 
 module KV = Mirage_kv_mem.Make (Hsm_clock)
-module Underlying_store = Stats_store (KV)
+module Underlying_store = Stats_store (Keyfender.Kv_ext.Make_ranged (KV))
 module Cached_store = Keyfender.Cached_store.Make (Underlying_store) (Mclock)
 open Lwt.Syntax
 
