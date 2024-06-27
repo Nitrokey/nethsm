@@ -37,6 +37,8 @@ etcd \
     2>&1 | sed "s/^/[etcd] /" \
     &
 
+ETCD_PID=$!
+
 if [ $ADMINPW ] ; then
 { sleep 2
   curl -k -X POST https://$KEYFENDER_IP:8443/api/v1/provision \
@@ -48,10 +50,24 @@ if [ $ADMINPW ] ; then
 fi
 
 if [ -z "$KEYFENDER_KVM" ] ; then
-/keyfender.unix $KEYFENDER_DEBUG_LOG
+/keyfender.unix $KEYFENDER_DEBUG_LOG &
 else
 /solo5-hvt \
     --net:external=tap200 \
     --net:internal=tap201 \
-    /keyfender.hvt $KEYFENDER_DEBUG_LOG
+    /keyfender.hvt $KEYFENDER_DEBUG_LOG \
+    &
 fi
+
+KEYFENDER_PID=$!
+
+_signal_termination() {
+    kill -TERM "$KEYFENDER_PID"
+    kill -TERM "$ETCD_PID"
+}
+
+trap _signal_termination SIGTERM
+trap _signal_termination SIGINT
+
+wait "$KEYFENDER_PID"
+wait "$ETCD_PID"
