@@ -219,19 +219,19 @@ pin-depends: [
   ]
   [
     "mirage-crypto.0.10.7"
-    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"
   ]
   [
     "mirage-crypto-ec.0.10.7"
-    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"
   ]
   [
     "mirage-crypto-pk.0.10.7"
-    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"
   ]
   [
     "mirage-crypto-rng.0.10.7"
-    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"
+    "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"
   ]
 ]
 url {

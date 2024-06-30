@@ -66,10 +66,10 @@ pin-depends: [
   ["cohttp.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
   ["cohttp-lwt.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
   ["cohttp-mirage.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["mirage-crypto.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-ec.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-pk.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
-  ["mirage-crypto-rng.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#040ef2281abbcb11f473b6eecb96ac4f3100d1e8"]
+  ["mirage-crypto.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
+  ["mirage-crypto-ec.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
+  ["mirage-crypto-pk.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
+  ["mirage-crypto-rng.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
 ]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for

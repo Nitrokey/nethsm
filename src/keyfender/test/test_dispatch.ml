@@ -18,6 +18,10 @@ let ( @? ) name fn =
   Alcotest.test_case name `Quick (fun () ->
       Alcotest.(check bool) "OK" true (fn ()))
 
+let get_ok_result topic = function
+  | Ok x -> x
+  | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
+
 let empty =
   "a request for / will produce no result" @? fun () ->
   match request "/" with _, None -> true | _ -> false
@@ -3765,34 +3769,34 @@ let crypto_ecdsa_sign () =
         "P384" );
       ( `SHA512,
         X509.Private_key.generate ~seed `P521,
-        "MIGIAkIBuBsgXU417z6tOTUKmUbemf/TbHt43MK7qPmq4QQKstcBCPzGavagjOU2arQPrKR3QCGffDGNG2C4jhx5m2HxQ9YCQgDx5HLLjbJGEAaz9mePAo+u/TPScLOHbEpO7vYloCSipEc6GjoimPvl4xTd6zeRpMD97jmhmLVeUbQWNi6Jthvftg==",
+        "MIGIAkIAxUNirK+/g6PtdsTFjXqcc+B7S4OCw0ZAwUWYvYa+IQtitW0LTK8nUkbOytEW/UZJq+d7+fPDBdI3O/kHOkFTu4ECQgDltV5EgDZnpjcsdH15Jm5kxzstOvgFUCi0EWhLn6mUeMSq2rZZUZZI3/6o5SgEwL4p6kkRLRPXo/btBJqY5BJUrw==",
         "P521" );
     ]
   in
   List.map
     (fun (hash, priv, sign, txt) ->
-      ("signing with ECDSA " ^ txt ^ " succeeds") @? fun () ->
-      let hsm = operational_mock () in
-      add_pem hsm ~id:"test" mechs
-        (Cstruct.to_string (X509.Private_key.encode_pem priv));
-      let pub = X509.Private_key.public priv in
-      match
-        Lwt_main.run
-          (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
-             Keyfender.Json.ECDSA
-             (b64_and_hash hash sign_test_data))
-      with
-      | Ok signature -> (
-          assert (sign = signature);
-          let b64_dec = Base64.decode_exn signature in
-          match
-            X509.Public_key.verify hash ~scheme:`ECDSA
-              ~signature:(Cstruct.of_string b64_dec)
-              pub (`Message sign_test_data)
-          with
-          | Ok () -> true
-          | Error _ -> false)
-      | Error _ -> false)
+      Alcotest.test_case
+        ("signing with ECDSA " ^ txt ^ " succeeds")
+        `Quick
+        (fun () ->
+          let hsm = operational_mock () in
+          add_pem hsm ~id:"test" mechs
+            (Cstruct.to_string (X509.Private_key.encode_pem priv));
+          let pub = X509.Private_key.public priv in
+          let signature =
+            Lwt_main.run
+              (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+                 Keyfender.Json.ECDSA
+                 (b64_and_hash hash sign_test_data))
+            |> Result.map_error (fun (_, s) -> `Msg s)
+            |> get_ok_result "sign"
+          in
+          Alcotest.(check string) ("same signature for " ^ txt) sign signature;
+          let b64_dec = Base64.decode signature |> get_ok_result "base64" in
+          X509.Public_key.verify hash ~scheme:`ECDSA
+            ~signature:(Cstruct.of_string b64_dec)
+            pub (`Message sign_test_data)
+          |> get_ok_result "verify"))
     algos
 
 let crypto_aes_cbc_encrypt () =
