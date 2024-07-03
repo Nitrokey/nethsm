@@ -305,6 +305,7 @@ let check_body_id body id =
     let open Yojson.Basic in
     from_string body |> Util.member "id" |> Util.to_string
   in
+  Alcotest.(check string "body_id" id id');
   String.equal id id'
 
 (* Extracts the id from a Location URL like /api/v1/keys/KEYID *)

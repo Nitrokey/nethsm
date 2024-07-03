@@ -108,9 +108,11 @@ struct
 
       inherit!
         Endpoint.target_same_namespace
-          ~root_allowed_for:[ `GET ] ~exclude_meths:[ `PUT ] hsm_state as namespace
+          ~root_allowed_for:[ `GET ] ~exclude_meths:[ `PUT; `POST ] hsm_state as namespace
       (* Same namespace check is not applicable for PUT, where the referred user
          does not exist yet. For GET, R-Users can still access N-Users info *)
+
+      val mutable new_id = None
 
       method! forbidden =
         (* Check both role and namespace *)
@@ -138,11 +140,20 @@ struct
             ~passphrase:user.passphrase
           >>= function
           | Ok _id ->
-              let cc hdr =
-                Cohttp.Header.replace hdr "Location" (Uri.path rd.uri)
+              let rd =
+                if rd.Webmachine.Rd.meth = `POST then
+                  let str = Hsm.Nid.to_string nid in
+                  let body =
+                    `Assoc [ ("id", `String str) ] |> Yojson.Basic.to_string
+                  in
+                  { rd with resp_body = `String body }
+                else
+                  let cc hdr =
+                    Cohttp.Header.replace hdr "Location" (Uri.path rd.uri)
+                  in
+                  Webmachine.Rd.with_resp_headers cc rd
               in
-              let rd' = Webmachine.Rd.with_resp_headers cc rd in
-              Wm.continue true rd'
+              Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
         let ok nid (req : Json.user_req) =
@@ -152,7 +163,10 @@ struct
         let ok nid =
           Endpoint.err_to_bad_request (ok nid) rd (Json.decode_user_req content)
         in
-        Endpoint.lookup_path_nid ok rd
+        match rd.Webmachine.Rd.meth with
+        | `PUT -> Endpoint.lookup_path_nid ok rd
+        | `POST -> ok (Option.get new_id)
+        | _ -> assert false
 
       method! resource_exists rd =
         let ok nid =
@@ -160,9 +174,50 @@ struct
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
-        Endpoint.lookup_path_nid ok rd
+        match rd.Webmachine.Rd.meth with
+        | `POST -> Wm.continue true rd
+        | _ -> Endpoint.lookup_path_nid ok rd
 
-      method! allowed_methods rd = Wm.continue [ `PUT; `GET; `DELETE ] rd
+      method! post_is_create rd = Wm.continue true rd
+
+      method! create_path rd =
+        let error () =
+          Endpoint.respond_error
+            ( Hsm.Bad_request,
+              "POST on this endpoint expects a prefix of the form '/ns~' to \
+               select in which namespace the new user should be created. For a \
+               new root user, don't add a trailing '/'." )
+            rd
+        in
+        match Webmachine.Rd.lookup_path_info "id" rd with
+        | None -> error ()
+        | Some x -> (
+            match Hsm.Nid.unsafe_of_string x with
+            | { namespace = Some n; id = "" } when n <> "" ->
+                let id = Hsm.generate_id () in
+                let nid = { Hsm.Nid.namespace = Some n; id } in
+                new_id <- Some nid;
+                let path = Hsm.Nid.to_string nid in
+                (* Our URI looks like .../users/namespace1~
+                   Webmachine appends the created ressource path (with a /) to
+                   that URI at this step.
+                   To avoid having a resulting URI that
+                   looks like .../users/namespace1~/namespace1~abcdef1234
+                   we have to remove the last segment from our current URI *)
+                let uri =
+                  let segments = Uri.path rd.uri |> String.split_on_char '/' in
+                  let rec without_last acc = function
+                    | [] -> assert false
+                    | [ _ ] -> acc
+                    | x :: tl when x = "" -> without_last acc tl
+                    | x :: tl -> without_last (acc ^ "/" ^ x) tl
+                  in
+                  Uri.with_path rd.uri (without_last "" segments)
+                in
+                Wm.continue path { rd with uri }
+            | _ -> error ())
+
+      method! allowed_methods rd = Wm.continue [ `PUT; `GET; `DELETE; `POST ] rd
 
       method content_types_provided rd =
         Wm.continue [ ("application/json", self#get_json) ] rd

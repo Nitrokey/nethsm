@@ -1240,6 +1240,52 @@ paths:
         - Root
         - Namespaced
       x-test-value-UserID: newOperator
+    post:
+      responses:
+        "201":
+          description: |
+            Successful creation of user.
+            The response contains a Location header,
+            e.g. "https://nethsm.local/v1/users/namespace1~I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
+          headers:
+            location:
+              description: Where to find the newly added user.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResourceId"
+        "400":
+          description: Bad request (specified properties are invalid, e.g. weak passphrase).
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. caller not administrator, or creating user in namespace not matching the caller's).
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Create a new user on NetHSM, in the namespace specified as a prefix in the path with the format 'namespace~'.
+        For example, a POST request on "https://nethsm.local/v1/users/namespace1~" will generate a user-ID and create that
+        user in "namespace1". The namespace prefix *must* be present: for creating users without a namespace, use a POST on "/v1/users".
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPostData"
+        required: true
+      security:
+        - basic: []
+      x-test-value-UserID: namespace3~
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
     delete:
       responses:
         "204":

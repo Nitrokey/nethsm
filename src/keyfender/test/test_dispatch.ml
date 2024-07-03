@@ -1604,6 +1604,73 @@ let user_operator_add_root_ns_existing =
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
+let users_post_root_invalid1 =
+  "POST on /users/~ as R-Admin fails" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST ~headers:admin_headers
+      ~body:(`String operator_json) "/users/~"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let users_post_root_invalid2 =
+  "POST on /users/~name as R-Admin fails" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST ~headers:admin_headers
+      ~body:(`String operator_json) "/users/~name"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let users_post_root_invalid3 =
+  "POST on /users/namespace1 as R-Admin fails" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST ~headers:admin_headers
+      ~body:(`String operator_json) "/users/namespace1"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let users_post_ns_root =
+  "POST on /users/ as R-Admin fails" @? fun () ->
+  let expect = info "added Jane User (xxxx): R-Operator" in
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST
+      ~headers:subadmin_headers ~expect ~body:(`String operator_json) "/users/"
+  with
+  | _, Some (`Created, _, _, _) -> true
+  | _ -> false
+
+let users_post_ns_ns =
+  "POST on /users/namespace1~ as N-Admin succeeds" @? fun () ->
+  let expect = info "added Jane User (xxxx): R-Operator" in
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST ~expect
+      ~headers:subadmin_headers ~body:(`String operator_json)
+      "/users/namespace1~"
+  with
+  | _, Some (`Created, headers, body, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> Alcotest.fail "no location headers"
+      | Some loc ->
+          Alcotest.(
+            check int
+              ("header segments: " ^ loc)
+              4
+              (List.length @@ Astring.String.cuts ~empty:false ~sep:"/" loc));
+          check_body_id body (extract_location_id loc))
+  | _ -> false
+
+let users_post_ns_ns_mismatch =
+  "POST on /users/namespace2~ as N-Admin from namespace1 fails" @? fun () ->
+  match
+    request ~hsm_state:(operational_mock ()) ~meth:`POST
+      ~headers:subadmin_headers ~body:(`String operator_json)
+      "/users/namespace2~"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let user_operator_add_empty_passphrase =
   let operator_json =
     {| { realName: "Jane User", role: "Operator", passphrase: "" } |}
@@ -3986,6 +4053,12 @@ let () =
           user_operator_add_root_ns_existing;
           user_operator_add_ns_ns;
           user_operator_add_ns_ns_mismatch;
+          users_post_ns_root;
+          users_post_ns_ns;
+          users_post_ns_ns_mismatch;
+          users_post_root_invalid1;
+          users_post_root_invalid2;
+          users_post_root_invalid3;
           user_operator_delete_root_root;
           user_operator_delete_self;
           user_operator_delete_root_ns;
