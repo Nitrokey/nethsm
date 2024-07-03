@@ -2350,23 +2350,32 @@ struct
 
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
-    let put_back stream chunk =
-      if chunk = "" then stream
-      else Lwt_stream.append (Lwt_stream.of_list [ chunk ]) stream
-
     let read_n stream n =
-      let rec read prefix =
+      let buffer = Buffer.create n in
+      let rec read () =
         let open Lwt.Infix in
         Lwt_stream.get stream >>= function
-        | None -> Lwt.return @@ Error (Bad_request, "Malformed data")
-        | Some data ->
-            let str = prefix ^ data in
-            if String.length str >= n then
-              let data, rest = Astring.String.span ~min:n ~max:n str in
-              Lwt.return @@ Ok (data, put_back stream rest)
-            else read str
+        | None -> Lwt.return_error (Bad_request, "Malformed data")
+        | Some chunk ->
+            let new_length = Buffer.length buffer + String.length chunk in
+            if new_length < n then (
+              Buffer.add_string buffer chunk;
+              (read [@tailcall]) ())
+            else
+              let remaining = n - Buffer.length buffer in
+              Buffer.add_substring buffer chunk 0 remaining;
+              let new_stream =
+                if new_length = n then stream
+                else
+                  let rest =
+                    String.sub chunk remaining (String.length chunk - remaining)
+                  in
+                  Lwt_stream.append (Lwt_stream.of_list [ rest ]) stream
+              in
+              let result = Buffer.sub buffer 0 n in
+              Lwt.return_ok (result, new_stream)
       in
-      read ""
+      read ()
 
     let decode_length data =
       let data' = Cstruct.of_string data in
