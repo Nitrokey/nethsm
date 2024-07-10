@@ -2185,6 +2185,11 @@ components:
       minLength: 1
       maxLength: 128
       type: string
+    UserID:
+      pattern: ^([a-zA-Z0-9]+~)?[a-zA-Z0-9]+$
+      minLength: 1
+      maxLength: 128
+      type: string
     Base64:
       pattern: ^[a-zA-Z0-9+/]+={0,3}$
       type: string
@@ -2324,7 +2329,7 @@ components:
       type: object
       properties:
         user:
-          $ref: "#/components/schemas/ID"
+          $ref: "#/components/schemas/UserID"
       required:
         - user
     NamespaceList:
