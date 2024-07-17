@@ -1,3 +1,7 @@
+# 1.1 (2024-07-17)
+
+* This is a release candidate. DON'T USE.
+
 # 1.0 (2023-11-27)
 
 * Initial release
