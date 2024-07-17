@@ -2350,30 +2350,55 @@ struct
 
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
-    let read_n stream n =
+    type stream_buffer = {
+      stream : string Lwt_stream.t;
+      mutable buf : string option;
+    }
+
+    let sb_of_stream stream = { stream; buf = None }
+
+    let sb_is_empty sb =
+      if sb.buf != None then Lwt.return false else Lwt_stream.is_empty sb.stream
+
+    let sb_consume_buf sb =
+      if sb.buf != None then (
+        let buf = sb.buf in
+        sb.buf <- None;
+        buf)
+      else None
+
+    let sb_get sb =
+      match sb_consume_buf sb with
+      | None -> Lwt_stream.get sb.stream
+      | x -> Lwt.return x
+
+    let sb_fold f sb acc =
+      let ( let* ) = Lwt.bind in
+      let* acc =
+        match sb_consume_buf sb with
+        | None -> Lwt.return acc
+        | Some buf -> f buf acc
+      in
+      Lwt_stream.fold_s f sb.stream acc
+
+    let sb_read_n sb n =
       let buffer = Buffer.create n in
       let rec read () =
         let open Lwt.Infix in
-        Lwt_stream.get stream >>= function
-        | None -> Lwt.return_error (Bad_request, "Malformed data")
+        sb_get sb >>= function
+        | None -> Lwt.return_error (Bad_request, "Unexpected end of data")
         | Some chunk ->
-            let new_length = Buffer.length buffer + String.length chunk in
-            if new_length < n then (
+            let needed = n - Buffer.length buffer in
+            let chunk_len = String.length chunk in
+            if needed > chunk_len then (
               Buffer.add_string buffer chunk;
               (read [@tailcall]) ())
-            else
-              let remaining = n - Buffer.length buffer in
-              Buffer.add_substring buffer chunk 0 remaining;
-              let new_stream =
-                if new_length = n then stream
-                else
-                  let rest =
-                    String.sub chunk remaining (String.length chunk - remaining)
-                  in
-                  Lwt_stream.append (Lwt_stream.of_list [ rest ]) stream
-              in
-              let result = Buffer.sub buffer 0 n in
-              Lwt.return_ok (result, new_stream)
+            else (
+              Buffer.add_substring buffer chunk 0 needed;
+              if chunk_len - needed > 0 then
+                sb.buf <- Some (String.sub chunk needed (chunk_len - needed));
+              let result = Buffer.contents buffer in
+              Lwt.return_ok result)
       in
       read ()
 
@@ -2385,15 +2410,11 @@ struct
 
     let get_length stream =
       let open Lwt_result.Infix in
-      read_n stream 3 >|= fun (data, stream') ->
-      let length = decode_length data in
-      (length, stream')
-
-    let get_data (l, s) = read_n s l
+      sb_read_n stream 3 >|= decode_length
 
     let get_field s =
       let open Lwt_result.Infix in
-      get_length s >>= get_data
+      get_length s >>= sb_read_n s
 
     let prefix_len s =
       let len_buf = Cstruct.create 3 in
@@ -2409,7 +2430,7 @@ struct
     let update_mutex = Lwt_mutex.create ()
     let update_header = "_NETHSM_UPDATE_\x00"
 
-    let update t s =
+    let update t stream =
       match t.has_changes with
       | Some _ -> Lwt.return (Error (Conflict, "Update already in progress."))
       | None ->
@@ -2417,28 +2438,29 @@ struct
               let open Lwt_result.Infix in
               (* stream contains:
                  - header '_NETHSM_UPDATE_\x00'
-                 - signature (hash of the rest)
-                 - changelog
-                 - version number
+                 - signature (hash of the rest) §
+                 - changelog §
+                 - version number §
                  - 32bit size (in blocks of 512 bytes)
                  - software image,
-                 first four are prefixed by 4 byte length *)
-              read_n s 16 >>= fun (header, s) ->
+                 §: prefixed by 4 byte length *)
+              let sb = sb_of_stream stream in
+              sb_read_n sb 16 >>= fun header ->
               (if header = update_header then Lwt.return_ok ()
                else Lwt.return_error (Bad_request, "Invalid update file"))
               >>= fun () ->
-              get_field s >>= fun (signature, s) ->
+              get_field sb >>= fun signature ->
               let hash = Hash.empty in
-              get_field s >>= fun (changes, s) ->
+              get_field sb >>= fun changes ->
               let hash =
                 Hash.feed hash (Cstruct.of_string (prefix_len changes))
               in
-              get_field s >>= fun (version, s) ->
+              get_field sb >>= fun version ->
               Lwt.return (version_of_string version) >>= fun version' ->
               let hash =
                 Hash.feed hash (Cstruct.of_string (prefix_len version))
               in
-              read_n s 4 >>= fun (blockss, s) ->
+              sb_read_n sb 4 >>= fun blockss ->
               let blocks =
                 Int32.to_int
                   (Cstruct.BE.get_uint32 (Cstruct.of_string blockss) 0)
@@ -2449,7 +2471,7 @@ struct
               Lwt_result.ok
                 (Lwt_mvar.put t.mbox (Update (blocks, platform_stream)))
               >>= fun () ->
-              Lwt_stream.fold_s
+              sb_fold
                 (fun chunk acc ->
                   match acc with
                   | Error e -> Lwt.return (Error e)
@@ -2458,7 +2480,7 @@ struct
                       let hash = Hash.feed hash (Cstruct.of_string chunk) in
                       pushf (Some chunk);
                       Lwt.return @@ Ok (left, hash))
-                s
+                sb
                 (Ok (bytes, hash))
               >>= fun (left, hash) ->
               pushf None;
@@ -2651,28 +2673,31 @@ struct
 
     let read_and_decrypt stream key =
       let ( let** ) = Lwt_result.bind in
-      let** encrypted_data, stream = decode_value stream in
+      let** encrypted_data = decode_value stream in
       let adata = Cstruct.of_string "backup" in
       let** kv = decrypt_backup ~key ~adata encrypted_data in
       let** kv = Lwt.return @@ split_kv (Cstruct.to_string kv) in
-      Lwt.return_ok (kv, stream)
+      Lwt.return_ok kv
 
     (* runs the function while the stream has items *)
-    let rec stream_while stream fn =
-      let open Lwt.Infix in
+    let stream_while stream fn =
+      let ( let* ) = Lwt.bind in
       let ( let** ) = Lwt_result.bind in
-      Lwt_stream.is_empty stream >>= function
-      | true -> Lwt.return_ok ()
-      | false ->
-          let** stream = fn stream in
-          stream_while stream fn
+      let rec go () =
+        let* empty = sb_is_empty stream in
+        if empty then Lwt.return_ok ()
+        else
+          let** () = fn stream in
+          (go [@tailcall]) ()
+      in
+      go ()
 
     module KeySet = Set.Make (Mirage_kv.Key)
 
     let restore_key ~is_operational ~backup_keys ~key ~kv stream =
       let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
-      let** (k, v), stream = read_and_decrypt stream key in
+      let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
       let should_restore_key =
@@ -2683,8 +2708,8 @@ struct
           internal_server_error Write "restoring backup (writing to KV)"
             KV.pp_write_error (KV.set kv key v)
         in
-        Lwt_result.return stream
-      else Lwt_result.return stream
+        Lwt_result.return ()
+      else Lwt_result.return ()
 
     let rec list_keys_rec ~kv prefix =
       let open Lwt_result.Infix in
@@ -2742,6 +2767,7 @@ struct
            (Ok ())
 
     let restore t json stream =
+      let sb = sb_of_stream stream in
       let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Clock.now_raw () in
       let initial_state = t.state in
@@ -2753,7 +2779,7 @@ struct
         | Error e -> Lwt.return_error (Bad_request, e)
         | Ok x -> Lwt.return_ok x
       in
-      let** header, stream = read_n stream (String.length backup_header + 1) in
+      let** header = sb_read_n sb (String.length backup_header + 1) in
       let** () =
         Lwt.return
         @@
@@ -2777,14 +2803,14 @@ struct
             in
             Error (Bad_request, msg)
       in
-      let** backup_salt, stream = decode_value stream in
+      let** backup_salt = decode_value sb in
       let backup_key =
         Crypto.key_of_passphrase
           ~salt:(Cstruct.of_string backup_salt)
           backup_passphrase
       in
       let key = Crypto.GCM.of_secret backup_key in
-      let** version_int, stream = decode_value stream in
+      let** version_int = decode_value sb in
       let adata = Cstruct.of_string "backup-version" in
       let** version_int = decrypt_backup ~key ~adata version_int in
       let** () =
@@ -2793,7 +2819,7 @@ struct
         if version = Cstruct.get_char version_int 0 then Ok ()
         else Error (Bad_request, "Internal and external version mismatch.")
       in
-      let** encrypted_domain_key, stream = decode_value stream in
+      let** encrypted_domain_key = decode_value sb in
       let adata = Cstruct.of_string "domain-key" in
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
@@ -2805,7 +2831,7 @@ struct
               let backup_keys = ref KeySet.empty in
               let** () =
                 (* while the stream has content *)
-                stream_while stream
+                stream_while sb
                   (restore_key ~is_operational ~backup_keys ~key ~kv:b)
               in
               let** () =
