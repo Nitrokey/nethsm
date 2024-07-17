@@ -361,11 +361,12 @@ build: $(S_KEYFENDER)
 ifeq ($(NO_ETCD),)
 
 $(RUN_DIR)/etcd.pid:
+	mkdir -p $(RUN_DIR)
 	etcd \
 	    --listen-client-urls 'http://169.254.169.2:2379' \
 		--advertise-client-urls 'http://169.254.169.2:2379' \
 		--data-dir $(RUN_DIR)/etcd \
-		--loglevel debug \
+		--log-level debug \
         --log-outputs $(RUN_DIR)/etcd.log \
 	    & echo $$! > $@
 
