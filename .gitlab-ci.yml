@@ -258,12 +258,12 @@ build_muen_qemu_kvm:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
-      changes:
-        paths: *coreboot_dep_paths
-      variables:
-        WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+    # - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+    #   changes:
+    #     paths: *coreboot_dep_paths
+    #   variables:
+    #     WITH_COREBOOT: "1"
+    # - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
     MUEN_HARDWARE: qemu-kvm
