@@ -1239,7 +1239,7 @@ struct
         | Some n ->
             let start = n ^ Nid.separator in
             let stop =
-              Kv_ext.Range.next_key (Bytes.of_string start)
+              Kv_ext.Range.range_end_of_prefix (Bytes.of_string start)
               |> Bytes.unsafe_to_string
             in
             Kv_ext.Range.create ~start ~stop ()

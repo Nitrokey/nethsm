@@ -312,7 +312,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     in
     let range_end =
       match Range.range_end range with
-      | None -> Range.next_key (Range.prefix range |> dir)
+      | None -> Range.range_end_of_prefix (Range.prefix range |> dir)
       | Some range_end -> Key.to_string range_end |> Bytes.of_string
     in
     let prefix_len = Bytes.length (Range.prefix range |> dir) in
@@ -388,7 +388,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
            Etcd.delete_range t.stack ~request:request_single >|= fun _ -> Ok ()))
     @@ fun () ->
     let key_dic = Mirage_kv.Key.to_string k ^ "/" |> Bytes.of_string in
-    let range_end = Keyfender.Kv_ext.Range.next_key key_dic in
+    let range_end = Keyfender.Kv_ext.Range.range_end_of_prefix key_dic in
     let request_dic = DeleteRangeRequest.make ~key:key_dic ~range_end () in
     etcd_try (fun () ->
         Etcd.delete_range t.stack ~request:request_dic >|= fun _ -> Ok ())

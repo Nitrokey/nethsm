@@ -37,7 +37,7 @@ module Range = struct
 
   (* Calculate end of range for prefix. See
      https://etcd.io/docs/v3.5/learning/api/#key-ranges *)
-  let next_key s =
+  let range_end_of_prefix s =
     let rec inc b i =
       if i < 0 then Bytes.make 1 '\x00'
       else
