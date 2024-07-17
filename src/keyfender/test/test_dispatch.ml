@@ -1475,6 +1475,35 @@ let namespaces_new_create =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
+let namespaces_shared_prefix =
+  "Deleting a namespace does not delete namespaces that share suffix"
+  @? fun () ->
+  let expect = info "created (namespace11)" in
+  let hsm_state =
+    match
+      request ~expect ~meth:`PUT
+        ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+        ~headers:admin_headers "/namespaces/namespace11"
+    with
+    | hsm_state, Some (`No_content, _, _, _) -> hsm_state
+    | _ -> Alcotest.fail "couldn't create namespace11"
+  in
+  let expect = info "removed (namespace1)" ^ info "removed (subKeyID)" in
+  let hsm_state =
+    match
+      request ~meth:`DELETE ~expect ~hsm_state ~headers:admin_headers
+        "/namespaces/namespace1"
+    with
+    | _, Some (`No_content, _, _, _) -> hsm_state
+    | _ -> Alcotest.fail "couldn't delete namespace1"
+  in
+  match request ~hsm_state ~headers:admin_headers "/namespaces" with
+  | _, Some (`OK, _, `String data, _) ->
+      let expected = {|[{"id":"namespace11"},{"id":"namespace2"}]|} in
+      Alcotest.(check string "namespace list" expected data);
+      true
+  | _ -> false
+
 let users_get =
   "GET on /users/ succeeds" @? fun () ->
   match
@@ -4036,7 +4065,9 @@ let () =
           namespaces_existing_create;
         ] );
       ( "/namespaces/namespace3",
-        [ namespaces_new_create; namespaces_new_delete ] );
+        [
+          namespaces_new_create; namespaces_new_delete; namespaces_shared_prefix;
+        ] );
       ( "/users",
         [ users_get; users_get_namespace; users_post; users_post_namespace ] );
       ( "/users/operator",

@@ -259,7 +259,6 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         Lwt.return (Error (`Etcd_error msg)))
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
-
   let disconnect _ = Lwt.return_unit
 
   type error = [ `Etcd_error of string | Mirage_kv.error ]
@@ -374,10 +373,25 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
 
   let remove t k =
-    let key = bytes_of_key k in
-    let range_end = Keyfender.Kv_ext.Range.next_key key in
-    let request = DeleteRangeRequest.make ~key ~range_end () in
-    etcd_try (fun () -> Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
+    (* We don't know if the key is meant to refer to a dictionary or a single
+       entry in the Mirage abstraction. We could check by making a (potentially
+       costly) request to the store, to see if keys of the form "KEY/..." exist.
+
+       Rather, we always handle both cases, since they are mutually exclusive:
+           - single entry: delete exactly the key "KEY"
+           - dictionary: delete the range ["KEY/"; "KEY0"[
+    *)
+    let key_single = bytes_of_key k in
+    let request_single = DeleteRangeRequest.make ~key:key_single () in
+    Lwt_result.bind
+      (etcd_try (fun () ->
+           Etcd.delete_range t.stack ~request:request_single >|= fun _ -> Ok ()))
+    @@ fun () ->
+    let key_dic = Mirage_kv.Key.to_string k ^ "/" |> Bytes.of_string in
+    let range_end = Keyfender.Kv_ext.Range.next_key key_dic in
+    let request_dic = DeleteRangeRequest.make ~key:key_dic ~range_end () in
+    etcd_try (fun () ->
+        Etcd.delete_range t.stack ~request:request_dic >|= fun _ -> Ok ())
 
   let batch t ?retries:(_ = 42) f = f t
 end
