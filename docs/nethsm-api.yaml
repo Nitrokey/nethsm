@@ -1320,7 +1320,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/UserID"
   /users/{UserID}/passphrase:
     post:
       responses:
@@ -1363,7 +1363,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/UserID"
   /users/{UserID}/tags:
     get:
       responses:
@@ -1405,7 +1405,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/UserID"
   /users/{UserID}/tags/{Tag}:
     put:
       responses:
@@ -1472,7 +1472,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/UserID"
       - name: Tag
         in: path
         required: true
