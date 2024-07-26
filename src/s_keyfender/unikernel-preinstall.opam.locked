@@ -58,8 +58,6 @@ depends: [
   "fpath" {= "0.7.3"}
   "functoria" {= "3.1.2"}
   "functoria-runtime" {= "3.1.2"}
-  "gluten" {= "0.5.0"}
-  "gluten-lwt" {= "0.5.0"}
   "gmap" {= "0.3.0"}
   "gmp-freestanding" {= "6.3.0"}
   "happy-eyeballs" {= "0.5.0"}
@@ -216,6 +214,14 @@ pin-depends: [
   [
     "hpack.dev"
     "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
+  ]
+  [
+    "gluten.dev"
+    "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
+  ]
+  [
+    "gluten-lwt.dev"
+    "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
   ]
   [
     "mirage-crypto.0.10.7"

@@ -220,6 +220,14 @@ let main =
         "hpack";
       package
         ~pin:
+          "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
+        "gluten";
+      package
+        ~pin:
+          "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
+        "gluten-lwt";
+      package
+        ~pin:
           "git+https://github.com/nitrokey/nethsm-ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
         "grpc";
       package
