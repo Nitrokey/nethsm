@@ -13,6 +13,8 @@ variables:
     - src/container/builder/**
     - .opam-repository-commit
     - .gitlab-ci.yml
+    - src/keyfender/keyfender.opam.locked
+    - src/s_keyfender/unikernel-preinstall.opam.locked
   coreboot: &coreboot_dep_paths
     - src/coreboot/**
     - keys/**
