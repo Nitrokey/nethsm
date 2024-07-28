@@ -123,7 +123,7 @@ let create_operational_mock mbox =
       >>= fun _ ->
       Hsm.User.add_tag state operator ~tag:"berlin" >>= fun _ ->
       Hsm.User.add state (user "backup") ~role:`Backup
-        ~passphrase:"test3Passphrase" ~name:"backup"
+        ~passphrase:"backupUserPassphrase" ~name:"backup"
       >>= fun _ ->
       Hsm.User.add state (user "operator2") ~role:`Operator
         ~passphrase:"test4Passphrase" ~name:"operator2"
@@ -247,7 +247,7 @@ let create_multipart_request (parts : (string * string) list) : string * string
         "At least one part must be provided to create a multipart request."
   | _ ->
       (*
-      multipart_form defines a intern data type stream as follows.  
+      multipart_form defines a intern data type stream as follows.
       type 'a stream = unit -> 'a option
       However, it does not expose any functionallity to convert such a stream to and from string.
       Therefore its intern functions for that are borrowed

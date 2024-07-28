@@ -44,7 +44,7 @@ let export_backup_current =
       "/config/backup-passphrase"
     |> Expect.no_content
   in
-  let headers = auth_header "backup" "test3Passphrase" in
+  let headers = auth_header "backup" "backupUserPassphrase" in
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in

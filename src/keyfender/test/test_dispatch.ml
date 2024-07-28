@@ -388,7 +388,7 @@ let operational_mock_with_mbox () =
       >>= fun _ ->
       Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
       Hsm.User.add state (user "backup") ~role:`Backup
-        ~passphrase:"test3Passphrase" ~name:"backup"
+        ~passphrase:"backupUserPassphrase" ~name:"backup"
       >|= fun _ -> state )
 
 let multipart_log =
@@ -481,7 +481,7 @@ let system_backup_and_restore_ok =
       "/config/backup-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
-      let headers = auth_header "backup" "test3Passphrase" in
+      let headers = auth_header "backup" "backupUserPassphrase" in
       match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
       | _hsm_state, Some (`OK, _, `Stream s, _) -> (
           let arguments =
@@ -532,7 +532,7 @@ let system_backup_and_restore_changed_devkey =
     admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
-      let headers = auth_header "backup" "test3Passphrase" in
+      let headers = auth_header "backup" "backupUserPassphrase" in
       match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
       | _hsm_state, Some (`OK, _, `Stream s, _) -> (
           let arguments =
@@ -563,8 +563,8 @@ let system_backup_and_restore_changed_devkey =
               >|= fun (y, _, _) -> y )
           in
           let expect =
-            multipart_log
-            ^ info "Device Key changed. Refreshing stored Domain Key."
+            multipart_log ^ info "Device Key changed."
+            ^ info "Rewriting stored Domain Key."
           in
           match
             request ~expect ~meth:`POST ~content_type ~body:(`String body)
@@ -605,7 +605,7 @@ let system_backup_and_restore_unattended =
       "/config/backup-passphrase"
     |> Expect.no_content
   in
-  let headers = auth_header "backup" "test3Passphrase" in
+  let headers = auth_header "backup" "backupUserPassphrase" in
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
@@ -667,7 +667,7 @@ let system_backup_and_restore_unattended_changed_devkey =
       "/config/backup-passphrase"
     |> Expect.no_content
   in
-  let headers = auth_header "backup" "test3Passphrase" in
+  let headers = auth_header "backup" "backupUserPassphrase" in
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
@@ -683,9 +683,9 @@ let system_backup_and_restore_unattended_changed_devkey =
   in
   let* hsm_state =
     let expect =
-      multipart_log
+      multipart_log ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
       ^ error "unattended boot failed with not authenticated"
-      ^ info "Device Key changed. Refreshing stored Domain Key."
     in
     let arguments =
       Yojson.Safe.to_string
@@ -731,10 +731,11 @@ let system_backup_and_restore_operational =
       "/config/backup-passphrase"
     |> Expect.no_content
   in
-  let headers = auth_header "backup" "test3Passphrase" in
+  let headers = auth_header "backup" "backupUserPassphrase" in
   let* _hsm_state, s =
     request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
   in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
   (* backup is done, let's remove a key and try to restore it *)
   let* hsm_state =
     let expect = info "removed (keyID)" in
@@ -761,7 +762,7 @@ let system_backup_and_restore_operational =
       "/namespaces/namespace3"
     |> Expect.no_content
   in
-  (* the unlock passphrase is changed, but we don't expect it to be restored *)
+  (* the unlock passphrase is changed, must be restored *)
   Lwt_main.run
     (Hsm.Config.change_unlock_passphrase hsm_state ~new_passphrase:"i am secure"
        ~current_passphrase:"unlockPassphrase")
@@ -773,7 +774,8 @@ let system_backup_and_restore_operational =
   (* restore *)
   let* hsm_state =
     let expect =
-      multipart_log
+      multipart_log ^ info "Domain Key changed."
+      ^ info "Rewriting stored Domain Key."
       ^ info "removing: /key/newKeyID\n"
       ^ info "removing: /namespace/namespace3\n"
     in
@@ -786,13 +788,19 @@ let system_backup_and_restore_operational =
             }
              : Keyfender.Json.restore_req))
     in
-    let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
     let content_type, body =
       create_multipart_request
         [ ("arguments", arguments); ("backup_data", backup_data) ]
     in
     request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
       ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after first restore it should be locked *)
+  assert (Hsm.state hsm_state = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let* hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Operational);
@@ -816,6 +824,28 @@ let system_backup_and_restore_operational =
       "/namespaces/namespace3"
     |> Expect.not_found
   in
+  (* second restore *)
+  let* hsm_state =
+    let expect = multipart_log in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after second restore it should be operational *)
+  assert (Hsm.state hsm_state = `Operational);
   ()
 
 let system_backup_post_accept_header =
@@ -833,7 +863,7 @@ let system_backup_post_accept_header =
   | hsm_state, Some (`No_content, _, _, _) -> (
       let headers =
         Header.add
-          (auth_header "backup" "test3Passphrase")
+          (auth_header "backup" "backupUserPassphrase")
           "Accept" "application/octet-stream"
       in
       match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
