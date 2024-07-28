@@ -1,4 +1,4 @@
-# 1.1 (2024-07-17)
+# 2.0 (2024-07-28)
 
 * This is a release candidate. DON'T USE.
 
