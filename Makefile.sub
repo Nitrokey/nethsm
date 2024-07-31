@@ -160,7 +160,7 @@ endif
 .PHONY: prepare
 prepare: .stamp-prepare
 
-ETCD_VER := v3.5.10
+ETCD_VER := v3.5.15
 ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
 ETCD_DIR := $(TOP_DIR)/etcd-download
 
@@ -181,7 +181,7 @@ $(API_DOCS_DIR):
 	sed -i '/layout: "StandaloneLayout"\|SwaggerUIStandalonePreset/d' /tmp/swagger-ui/dist/swagger-initializer.js
 	mkdir -p src/s_keyfender/htdocs/api_docs
 	cp -r /tmp/swagger-ui/dist/* ./src/s_keyfender/htdocs/api_docs
-	cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/nethsm-api.yaml 
+	cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/nethsm-api.yaml
 
 distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
