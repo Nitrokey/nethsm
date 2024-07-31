@@ -159,7 +159,7 @@ module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) = struct
 
   let slot_of_key key =
     match Mirage_kv.Key.segments key with
-    | _ :: v :: _ when String.equal v Version.file -> None
+    (* | _ :: v :: _ when String.equal v Version.file -> None *)
     | prefix :: _ when String.equal prefix slot_auth -> Some Authentication
     | prefix :: _ when String.equal prefix slot_key -> Some Key
     | prefix :: _ when String.equal prefix slot_namespace -> Some Namespace
