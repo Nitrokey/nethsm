@@ -73,7 +73,7 @@ EOF
 
 FROM musl AS mke2fs
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.46.5.tar.gz" -o /tmp/e2fsprogs.tar.gz
+  curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.47.1.tar.gz" -o /tmp/e2fsprogs.tar.gz
   mkdir -p /tmp/e2fsprogs/build
   tar -C /tmp/e2fsprogs --strip-components=1 -xzf /tmp/e2fsprogs.tar.gz
   cd /tmp/e2fsprogs/build
