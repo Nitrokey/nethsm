@@ -165,12 +165,12 @@ EOF
 
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  curl -sSL "https://go.dev/dl/go1.21.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL "https://go.dev/dl/go1.22.3.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  curl -sSL "https://github.com/u-root/u-root/archive/v0.10.0.tar.gz" -o /tmp/u-root.tar.gz
+  curl -sSL "https://github.com/u-root/u-root/archive/v0.14.0.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
