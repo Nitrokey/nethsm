@@ -92,7 +92,7 @@ EOF
 
 FROM musl AS sfdisk
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  curl -sSL "https://github.com/util-linux/util-linux/archive/v2.38.1.tar.gz" -o /tmp/util-linux.tar.gz
+  curl -sSL "https://github.com/util-linux/util-linux/archive/v2.40.2.tar.gz" -o /tmp/util-linux.tar.gz
   mkdir -p /tmp/util-linux
   tar -C /tmp/util-linux --strip-components=1 -xzf /tmp/util-linux.tar.gz
   cd /tmp/util-linux
