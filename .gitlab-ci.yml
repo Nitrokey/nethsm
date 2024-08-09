@@ -231,7 +231,7 @@ build_muen_prodrive_hermes:
       changes:
         paths: *coreboot_dep_paths
       variables:
-        WITH_COREBOOT: "1"
+        XWITH_COREBOOT: "0"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
@@ -355,13 +355,13 @@ test_muen_prodrive_hermes:
       echo "Backup dump:"
       python3 ../keyfender/bin/export_backup.py backupPassphrase /tmp/backup.bin
     - >-
-      { TIMEFORMAT="Total time: %R" ; time
-      NETHSM_URL="https://${NETHSM_IP}/api" REQUESTS=1000 CONNECTIONS=10
-      ./load_test.sh ; } 2>&1 | tee ${CI_PROJECT_DIR}/obj/load_test.out
+      curl -s -k -X PUT -H "content-type: application/json" -d
+      '{"ipAddress":"0.0.0.0","port":0,"logLevel":"warning"}'
+      https://admin:Administrator@${NETHSM_IP}/api/v1/config/logging
     - >-
-      TIME=$(tail -1 ${CI_PROJECT_DIR}/obj/load_test.out | sed -n 's/Total time: \(.*\)/\1/p')
-    - PERF=$(bc -l <<<"x=100/e(l(2)*${TIME}/60);scale=2;x/1")
-    - "echo Performance: ${PERF}%"
+      go run ./perftest.go -host ${NETHSM_IP}:443 -j 10
+      p256 p384 p521 rsa2048 rsa4096 ed25519 aes-cbc rnd-1024
+      p256-gen rsa2048-gen rsa4096-gen
     - |-
       printf "waiting for serial output"
       while true ; do
@@ -379,7 +379,7 @@ test_muen_prodrive_hermes:
       https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset -u
       ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
       '{"ResetType": "ForceOff"}'
-  coverage: "/(^Performance: )(.*)%/"
+  coverage: "/(^Performance Score: )(.*)%/"
 
 create_artifact_packages:
   rules:
