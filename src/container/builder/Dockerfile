@@ -139,30 +139,6 @@ RUN --mount=type=tmpfs,target=/tmp \
 COPY --chown=1000:1000 muennet-tailroom.patch /nethsm-tools/muen/components/linux/modules/muennet
 RUN patch -d /nethsm-tools/muen/components/linux/modules/muennet -i muennet-tailroom.patch
 
-FROM ada AS coreboot
-RUN --mount=type=tmpfs,target=/tmp <<EOF
-  mkdir -p /nethsm-tools/coreboot
-  git clone --depth 50 -b nethsm https://github.com/nitrokey/nethsm-coreboot.git /nethsm-tools/coreboot
-  cd /nethsm-tools/coreboot
-  git remote set-url origin https://github.com/coreboot/coreboot.git
-  git submodule update --checkout --init --depth 50
-EOF
-
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/nethsm-tools/coreboot/util/crossgcc/tarballs,uid=1000,gid=1000 bash -c "\
-  set -o pipefail; make -C /nethsm-tools/coreboot PATH=/opt/gnat/bin:$PATH CPUS=$(nproc) crossgcc-i386 | \
-  # filter backspaces
-  sed -u ':a;s/[^\cH]\cH//g;ta' \
-  "
-
-RUN --mount=type=tmpfs,target=/tmp <<EOF
-  cd /nethsm-tools/coreboot/payloads/external/GRUB2
-  git clone --depth 1 -b nethsm https://github.com/nitrokey/nethsm-grub.git grub2
-  mkdir grub2/gnulib && cd grub2/gnulib
-  git init && git remote add origin https://github.com/coreutils/gnulib
-  git fetch origin --depth 1 $(sed -n s/^GNULIB_REVISION=//p ../bootstrap.conf)
-  git reset --hard FETCH_HEAD
-EOF
-
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   curl -sSL "https://go.dev/dl/go1.22.3.linux-amd64.tar.gz" -o /tmp/go.tar.gz
@@ -215,7 +191,6 @@ COPY --link --chown=1000:1000 --from=mke2fs /nethsm-tools/bin/mke2fs /nethsm-too
 COPY --link --chown=1000:1000 --from=sfdisk /nethsm-tools/bin/sfdisk /nethsm-tools/bin/
 COPY --link --chown=1000:1000 --from=ada /opt/gnat /opt/gnat/
 COPY --link --chown=1000:1000 --from=muen /nethsm-tools/muen /nethsm-tools/muen/
-COPY --link --chown=1000:1000 --from=coreboot /nethsm-tools/coreboot /nethsm-tools/coreboot/
 COPY --link --chown=1000:1000 --from=uroot /opt/go /opt/go/
 COPY --link --chown=1000:1000 --from=uroot /nethsm-tools/u-root /nethsm-tools/u-root/
 

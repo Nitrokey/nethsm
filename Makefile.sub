@@ -470,12 +470,10 @@ MUEN_LINUX_CONFIG := $(TOP_DIR)/src/muen/linux/config-5.4-$(MUEN_HARDWARE)
 MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
 MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 
-ifeq ($(MUEN_HARDWARE),qemu-kvm)
-COREBOOT_CONFIG := $(TOP_DIR)/src/coreboot/config.nethsm_qemu_q35
-else ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
-COREBOOT_CONFIG := $(TOP_DIR)/src/coreboot/config.nethsm_prodrive_hermes_1.0
-else
+ifneq ($(MUEN_HARDWARE),qemu-kvm)
+ifneq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
 $(error Invalid MUEN_HARDWARE)
+endif
 endif
 
 OBJ_DIR := $(TOP_DIR)/obj
@@ -512,62 +510,6 @@ INSTALL_SFDISK := $(OBJ_INITRAMFS_DIR)/bin/sfdisk
 
 $(INSTALL_SFDISK): $(SFDISK)
 	cp $< $@
-
-# ------------------------------------------------------------------------------
-COREBOOT_SRC := /nethsm-tools/coreboot
-COREBOOT_ROM := $(COREBOOT_SRC)/build/coreboot.rom
-OBJ_COREBOOT_ROM := $(OBJ_DIR)/coreboot.rom
-CBFSTOOL := $(COREBOOT_SRC)/build/cbfstool
-OBJ_BIOS_SWU := $(OBJ_DIR)/bios.swu
-BIOS_BASE_SWU := src/coreboot/blobs/POC6001198032R12-RP06.00-uefi-csme-no_me-btg_p5.swu
-COREBOOT_MISC := $(COREBOOT_SRC)/misc
-COREBOOT_ACM := src/coreboot/blobs/acm_btg_csme.bin
-COREBOOT_OEM_KEY := src/coreboot/dummy_oem_key.pem
-
-$(COREBOOT_SRC)/.config: $(COREBOOT_CONFIG)
-	cd $(COREBOOT_SRC) && \
-	    make defconfig KBUILD_DEFCONFIG=$(COREBOOT_CONFIG)
-ifeq ($(USE_CCACHE),1)
-	cd $(COREBOOT_SRC) && \
-	    util/scripts/config --enable CCACHE
-endif
-
-$(COREBOOT_MISC): $(COREBOOT_ACM) $(COREBOOT_OEM_KEY)
-	mkdir -p $@
-	cp $(COREBOOT_ACM) $@/acm.bin
-	cp $(COREBOOT_OEM_KEY) $@/oem_key.pem
-
-# Coreboot does its own magic and checks out submodules depending on the
-# actual configuration at build time; unfortunately they do not provide a
-# separate Makefile target for this step, so it will be done here.
-$(COREBOOT_ROM) $(CBFSTOOL): $(COREBOOT_SRC)/.config $(COREBOOT_MISC)
-	$(MAKE) -C $(COREBOOT_SRC) CPUS=$(shell nproc)
-
-# After building Coreboot, add the trusted public key and GRUB configuration
-# file to CBFS.
-COREBOOT_GRUB_CFG := src/coreboot/grub.cfg
-
-$(OBJ_COREBOOT_ROM): $(COREBOOT_ROM) $(CBFSTOOL) $(MUEN_KEY_DIR)/key.pub $(COREBOOT_GRUB_CFG)
-	cp $< $@
-	$(CBFSTOOL) $@ add \
-	    -f $(MUEN_KEY_DIR)/key.pub -n etc/trusted.pub -t raw
-	$(CBFSTOOL) $@ add \
-	    -f $(COREBOOT_GRUB_CFG) -n etc/grub.cfg -t raw
-	$(CBFSTOOL) $@ add \
-	    -f src/coreboot/ascii.pf2 -n etc/ascii.pf2 -t raw
-
-$(OBJ_BIOS_SWU): $(OBJ_COREBOOT_ROM) $(BIOS_BASE_SWU)
-	OFFSET_ROM=$(shell strings -o -t x $(OBJ_COREBOOT_ROM) | \
-		grep -F __FMAP__ | head -1 | awk '{ print $$1; }'); \
-	OFFSET_SWU=$(shell strings -o -t x $(BIOS_BASE_SWU) | \
-		grep -F __FMAP__ | head -1 | awk '{ print $$1; }' ); \
-	cp $(BIOS_BASE_SWU) $@ ; \
-	dd if=$(OBJ_COREBOOT_ROM) of=$@ bs=16 skip=$$((0x$${OFFSET_ROM}/16)) \
-		seek=$$(((0x$${OFFSET_ROM} + 0x$${OFFSET_SWU}%0x1000)/16)) conv=notrunc
-	CID=$(strip $(shell git rev-parse HEAD | cut -b 1-8)); \
-	sed -i "s/variant uefi-csme/variant g$${CID}/" $@
-	DATE=$(strip $(shell date -I)) ; \
-	sed -i "s/6001-1970-150..../NetHSM-$${DATE}/" $@
 
 # ------------------------------------------------------------------------------
 OBJ_DATA_ETCD_DIR := $(OBJ_DATA_DIR)/etcd
@@ -771,13 +713,6 @@ ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
 ARTIFACTS += $(OBJ_INSTALLER_IMG)
 endif
 
-ifneq ($(WITH_COREBOOT),)
-ARTIFACTS += $(OBJ_COREBOOT_ROM)
-ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
-ARTIFACTS += $(OBJ_BIOS_SWU)
-endif
-endif
-
 .PHONY: build
 build: $(ARTIFACTS)
 
@@ -891,9 +826,7 @@ clean: clean-keyfender
 	$(MAKE) -C $(MUEN_DIR) --silent --no-print-directory distclean
 # Remove the Linux kernel configuration to ensure a reconfigure/rebuild if it changes
 	$(RM) $(MUEN_DIR)/components/linux/src/.config*
-	$(MAKE) -C src/coreboot/coreboot --silent --no-print-directory distclean
 # The above does not clean up the checked-out GRUB 2 properly, so do it here
-	$(RM) -r src/coreboot/coreboot/payloads/external/GRUB2/grub2
 	$(MAKE) -C src/util-linux --silent --no-print-directory distclean
 	$(RM) -r $(E2FSPROGS_DIR)
 	$(RM) $(U_ROOT_BIN)

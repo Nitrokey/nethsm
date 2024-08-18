@@ -15,11 +15,6 @@ variables:
     - .gitlab-ci.yml
     - src/keyfender/keyfender.opam.locked
     - src/s_keyfender/unikernel-preinstall.opam.locked
-  coreboot: &coreboot_dep_paths
-    - src/coreboot/**
-    - keys/**
-    - .gitlab-ci.yml
-    - Makefile*
 
 .setup_job_default: &setup_job_default
   - git config --global --add safe.directory ${CI_PROJECT_DIR}
@@ -225,13 +220,6 @@ build_dev:
 build_muen_prodrive_hermes:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        WITH_COREBOOT: "1"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
-      changes:
-        paths: *coreboot_dep_paths
-      variables:
-        XWITH_COREBOOT: "0"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
@@ -258,13 +246,6 @@ build_muen_prodrive_hermes:
 build_muen_qemu_kvm:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        WITH_COREBOOT: "1"
-    # - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
-    #   changes:
-    #     paths: *coreboot_dep_paths
-    #   variables:
-    #     WITH_COREBOOT: "1"
     # - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
