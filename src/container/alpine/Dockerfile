@@ -1,4 +1,4 @@
-ARG distro_version=alpine:3.15
+ARG distro_version=alpine:3.16
 FROM ${distro_version} AS builder
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
