@@ -665,6 +665,7 @@ OBJ_INSTALLER_IMG := $(OBJ_DIR)/installer.img
 OBJ_INSTALLER_ROOT := $(OBJ_DIR)/installer
 OBJ_INSTALLER_INITRAMFS := $(OBJ_INSTALLER_ROOT)/boot/initramfs
 INSTALLER_DIR := $(TOP_DIR)/src/installer
+INSTALLER_UINIT := $(INSTALLER_DIR)/uinit
 
 INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
 
@@ -673,7 +674,10 @@ $(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_DIR)/root/**/*)
 	cp -a $(INSTALLER_DIR)/root $@
 	sed -i s/__BUILD_TAG__/$(BUILD_TAG)/ $@/boot/grub/grub.cfg
 
-$(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT)
+$(INSTALLER_UINIT): $(INSTALLER_DIR)/uinit.go
+	cd $(INSTALLER_DIR) && go build ./uinit.go
+
+$(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT) $(INSTALLER_UINIT)
 	cd $(U_ROOT_SRC) && ./u-root \
 		-o /tmp/installer_initramfs.cpio \
 		-defaultsh="" \
@@ -683,15 +687,13 @@ $(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INST
 		-files $(ETC_DIR)/mke2fs.conf:etc/mke2fs.conf \
 		-files $(OBJ_SYSTEM_IMG):system.img.cpio \
 		-files $(OBJ_UPDATE_CHANGELOG):update.changelog \
-		-uinitcmd "/uinit" \
+		-files "$(INSTALLER_UINIT):bin/uinit" \
 		./cmds/core/init \
-		./cmds/core/elvish \
 		./cmds/core/insmod \
 		./cmds/core/echo \
 		./cmds/core/cat \
 		./cmds/core/sync \
 		./cmds/core/dd \
-		./cmds/core/sleep \
 		./cmds/core/poweroff
 	gzip -9 --stdout /tmp/installer_initramfs.cpio >$@
 	rm /tmp/installer_initramfs.cpio
