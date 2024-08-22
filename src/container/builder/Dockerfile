@@ -178,6 +178,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam
   patch -p1 -d /home/opam/gmp-6.3.0/ </home/opam/gmp-6.3.0/libgmp-fat.patch
   opam pin -y -n gmp-freestanding.6.3.0 /home/opam/gmp-6.3.0/
+  opam pin -y -n solo5-bindings-muen 'https://github.com/nitrokey/nethsm-solo5.git#nethsm'
   opam update
   OPAMJOBS=$(nproc) opam install -y dune containers ezjsonm yaml ocamlformat
   OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/keyfender.opam.locked
