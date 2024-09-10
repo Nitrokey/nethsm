@@ -59,6 +59,13 @@ let no_platform =
   in
   Key.(create "no-platform" Arg.(opt bool false doc))
 
+let device_key =
+  let doc =
+    Key.Arg.info ~doc:"Set the device key (Base64, only available if --no-platform is set to true)"
+      [ "device-key" ]
+  in
+  Key.(create "device-key" Arg.(opt (some string) None doc))
+
 let memtrace =
   let doc =
     Key.Arg.info ~doc:"Enable memtrace listener on specified port."
@@ -244,6 +251,7 @@ let main =
         abstract remote;
         abstract retry;
         abstract no_platform;
+        abstract device_key;
         abstract platform;
         abstract platform_port;
         abstract memtrace;

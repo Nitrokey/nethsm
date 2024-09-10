@@ -274,7 +274,14 @@ struct
          Log.err (fun m ->
              m "couldn't retrieve platform data: %a" pp_platform_err e);
          Lwt.fail_with "failed to retrieve platform data from platform"
-     | Ok "" -> Lwt.return dummy_platform
+     | Ok "" -> (
+         match Key_gen.device_key () with
+         | None ->  Lwt.return dummy_platform
+         | Some x ->
+            Log.info (fun m -> m "device key set with --device-key option");
+            match Base64.decode x with
+            | Ok _ ->  Lwt.return { dummy_platform with Keyfender.Json.deviceKey = x }
+            | Error _ -> Lwt.fail_with "device key is not a valid Base64 string")
      | Ok data -> (
          match Keyfender.Json.parse_platform_data data with
          | Error e ->
