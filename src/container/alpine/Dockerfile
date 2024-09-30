@@ -2,7 +2,7 @@ ARG distro_version=alpine:3.16
 FROM ${distro_version} AS builder
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add curl openssl rsync git mercurial make gcc patch musl-dev \
+  apk add curl openssl rsync git mercurial make gcc go patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
     coreutils unzip bubblewrap sudo openssh-client bash
   cd /tmp
@@ -74,6 +74,8 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   cp keyfender keyfender.unix
 EOF
 
+RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
+
 FROM ${distro_version}
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
@@ -93,4 +95,5 @@ COPY --from=builder \
   /home/opam/.opam/default/bin/solo5-hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.unix \
+  /home/opam/nethsm/src/container/alpine/tlsproxy \
   /
