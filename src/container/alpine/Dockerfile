@@ -78,7 +78,7 @@ FROM ${distro_version}
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache iptables curl gmp
-  apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing
+  apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
 
 VOLUME /data
