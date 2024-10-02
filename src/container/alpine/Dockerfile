@@ -84,7 +84,7 @@ EOF
 
 EXPOSE 8443
 
-COPY src/container/alpine/start.sh /
+COPY src/container/alpine/start-production.sh /start.sh
 COPY --from=builder \
   /home/opam/.opam/default/bin/solo5-hvt \
   /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
@@ -105,7 +105,7 @@ VOLUME /data
 
 EXPOSE 8443
 
-COPY src/container/alpine/start.sh /
+COPY src/container/alpine/start-test.sh /start.sh
 COPY --from=builder \
   /home/opam/nethsm/src/s_keyfender/keyfender.unix \
   /
