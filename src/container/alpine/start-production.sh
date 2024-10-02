@@ -51,6 +51,12 @@ fi
   &
 TLS_PROXY_PID=$!
 
+sleep 2
+if ! (pgrep tlsproxy > /dev/null) ; then 
+  echo "The TLS proxy failed to start. Terminating.";
+  exit 1
+fi
+
 if [ $ADMINPW ] ; then
 { sleep 2
   curl -k -X POST https://$KEYFENDER_IP:8443/api/v1/provision \
