@@ -38,6 +38,9 @@ if [ $MODE == "unikernel" ] ; then
 
     KEYFENDER_IP="192.168.1.1"
     TLS_PROXY_LISTEN_IP="169.254.169.2"
+  else
+    echo "The require tun and kvm devices were not found."
+    exit 1
   fi
 fi
 
