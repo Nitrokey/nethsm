@@ -76,10 +76,28 @@ EOF
 
 RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
 
-FROM ${distro_version}
+FROM ${distro_version} as nethsm_production
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache iptables curl gmp
+EOF
+
+EXPOSE 8443
+
+COPY src/container/alpine/start.sh /
+COPY --from=builder \
+  /home/opam/.opam/default/bin/solo5-hvt \
+  /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
+  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
+  /home/opam/nethsm/src/container/alpine/tlsproxy \
+  /
+
+ENTRYPOINT /start.sh
+
+FROM ${distro_version} as nethsm_test
+
+RUN --mount=type=tmpfs,target=/tmp <<EOF
+  apk add --no-cache gmp
   apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
 
@@ -88,12 +106,8 @@ VOLUME /data
 EXPOSE 8443
 
 COPY src/container/alpine/start.sh /
+COPY --from=builder \
+  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
+  /
 
 ENTRYPOINT /start.sh
-
-COPY --from=builder \
-  /home/opam/.opam/default/bin/solo5-hvt \
-  /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
-  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
-  /home/opam/nethsm/src/container/alpine/tlsproxy \
-  /
