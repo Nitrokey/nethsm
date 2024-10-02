@@ -17,6 +17,12 @@ if [ -e "$DEVICE_KEY_FILE" ] ; then
   KEYFENDER_DEVICE_KEY="--device-key=$(cat $DEVICE_KEY_FILE)"
 fi
 
+pattern="uni(x|kernel)"
+if ! [[ $MODE =~ $pattern ]]; then
+  echo "Invalid mode set. Terminating."
+  exit 1
+fi
+
 if [ -n "$DEBUG_LOG" ] ; then
   ETCD_DEBUG_LOG="--log-level debug"
   KEYFENDER_DEBUG_LOG="--logs=*:debug"
