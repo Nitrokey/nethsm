@@ -1,0 +1,72 @@
+name: nethsm
+
+networks:
+  nethsm:
+    driver: bridge
+
+volumes:
+  data:
+
+secrets:
+  ca_cert:
+    file: ./certs/ca.crt
+  etcd_client_cert:
+    file: ./certs/client.crt
+  etcd_client_key:
+    file: ./certs/client.key
+  etcd_server_cert:
+    file: ./certs/server.crt
+  etcd_server_key:
+    file: ./certs/server.key
+  device_key:
+    file: ./device_key.txt
+
+services:
+  etcd:
+    image: "quay.io/coreos/etcd:v3.5.15"
+    ports:
+      - 2379:2379
+      - 2380:2380
+    networks:
+      - nethsm
+    command: >
+      etcd
+        --data-dir=/etcd-data
+        --cert-file=/run/secrets/etcd_server_cert
+        --key-file=/run/secrets/etcd_server_key
+        --trusted-ca-file=/run/secrets/ca_cert
+        --advertise-client-urls=https://0.0.0.0:2379
+        --listen-client-urls=https://0.0.0.0:2379
+    volumes:
+      - data:/etcd-data
+    secrets:
+      - ca_cert
+      - etcd_server_cert
+      - etcd_server_key
+
+  nethsm:
+    image: "registry.git.nitrokey.com/distribution/nethsm:latest"
+    ports:
+      - 8080:8080
+      - 8443:8443
+    networks:
+      - nethsm
+    environment:
+      MODE: unikernel
+      ETCD_HOST: etcd
+      ETCD_CA_CERT: /run/secrets/ca_cert
+      ETCD_CLIENT_CERT: /run/secrets/etcd_client_cert
+      ETCD_CLIENT_KEY: /run/secrets/etcd_client_key
+    secrets:
+      - ca_cert
+      - etcd_client_cert
+      - etcd_client_key
+      - device_key
+    devices:
+      - /dev/net/tun
+      - /dev/kvm
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    depends_on:
+      - etcd
