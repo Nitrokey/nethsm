@@ -11,6 +11,7 @@ require (
 	github.com/canonical/go-tpm2 v1.7.6
 	github.com/google/nftables v0.2.0
 	github.com/u-root/u-root v0.14.0
+	golang.org/x/sys v0.25.0
 )
 
 require (
@@ -22,6 +23,5 @@ require (
 	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )

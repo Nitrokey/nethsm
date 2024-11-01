@@ -209,6 +209,14 @@
             </proc>
           </controls>
         </vmx>
+        <registers>
+          <cr4>
+            <!-- <OSSupportFXSAVE>0</OSSupportFXSAVE> -->
+            <!-- <OSSupportSIMDExceptions>0</OSSupportSIMDExceptions> -->
+            <!-- Enable XSAVE -->
+            <XSAVEEnable>1</XSAVEEnable>
+          </cr4>
+        </registers>
       </vcpu>
       <bootparams></bootparams>
       <events>
@@ -236,106 +244,135 @@
     upstream's policy/scheduling/...
   -->
   <scheduling tickRate="100000"> <!-- 1 tick = 10us -->
+    <partitions>
+      <partition name="tau0">
+        <group><subject name="tau0"/></group>
+      </partition>
+      <partition name="time">
+        <group><subject name="time"/></group>
+      </partition>
+      <partition name="dbgserver">
+        <group><subject name="dbgserver"/></group>
+      </partition>
+      <partition name="net_external">
+        <group>
+          <subject name="net_external"/>
+          <subject name="net_external_sm"/>
+        </group>
+      </partition>
+      <partition name="keyfender">
+        <group>
+          <subject name="keyfender"/>
+          <subject name="keyfender_sm"/>
+        </group>
+      </partition>
+      <partition name="platform">
+        <group>
+          <subject name="platform"/>
+          <subject name="platform_sm"/>
+        </group>
+      </partition>
+    </partitions>
     <majorFrame>
       <cpu id="0">
-        <minorFrame subject="tau0" ticks="1"/>
-        <minorFrame subject="dbgserver" ticks="9"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame partition="tau0" ticks="1"/>
+        <minorFrame partition="dbgserver" ticks="9"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
       </cpu>
       <cpu id="1">
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
       </cpu>
       <cpu id="2">
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
       </cpu>
       <cpu id="3">
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
       </cpu>
     </majorFrame>
     <majorFrame>
       <cpu id="0">
-        <minorFrame subject="time" ticks="1"/>
-        <minorFrame subject="dbgserver" ticks="9"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
-        <minorFrame subject="dbgserver" ticks="10"/>
+        <minorFrame partition="time" ticks="1"/>
+        <minorFrame partition="dbgserver" ticks="9"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
+        <minorFrame partition="dbgserver" ticks="10"/>
       </cpu>
       <cpu id="1">
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
-        <minorFrame subject="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
+        <minorFrame partition="net_external" ticks="10"/>
       </cpu>
       <cpu id="2">
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
-        <minorFrame subject="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
+        <minorFrame partition="keyfender" ticks="10"/>
       </cpu>
       <cpu id="3">
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
-        <minorFrame subject="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
+        <minorFrame partition="platform" ticks="10"/>
       </cpu>
     </majorFrame>
   </scheduling>

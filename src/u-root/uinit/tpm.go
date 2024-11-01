@@ -32,9 +32,6 @@ const (
 )
 
 var (
-	// PCR index for sealing
-	pcrIdxs = tpm2.PCRSelect{0, 2}
-
 	zeros = make([]byte, 32)
 
 	tpmCtxInstance *tpm2.TPMContext
@@ -121,6 +118,13 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 // created.
 func tpmGetPlatformData() (platformData, error) {
 	var data platformData
+	var pcrIdxs tpm2.PCRSelect
+
+	if isZ790() {
+		pcrIdxs = tpm2.PCRSelect{2}
+	} else {
+		pcrIdxs = tpm2.PCRSelect{0, 2}
+	}
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,

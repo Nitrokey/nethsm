@@ -285,7 +285,7 @@ func sPlatformActions() {
 
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
-	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid /dev/sda3 /data")
+	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + partPrefix + "3 /data")
 
 	if err := G.s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
@@ -351,7 +351,7 @@ func sPlatformActions() {
 		triggerMuenEvent("reboot")
 	case "FACTORY-RESET":
 		G.s.Logf("Formatting data partition.")
-		G.s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data /dev/sda3")
+		G.s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data " + hw.DiskPrefix + "3")
 
 		if err := G.s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)

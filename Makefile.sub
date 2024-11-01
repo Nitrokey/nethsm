@@ -140,7 +140,7 @@ $(SOFTWARE_VERSION): CHANGES.md
 ifneq ($(CCACHE_DIR),)
 	mkdir -p $(CCACHE_DIR)
 endif
-ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ifneq ($(filter $(MUEN_HARDWARE),prodrive-hermes-1.0 msi-z790-1.0),)
 	opam source gmp-freestanding --dir $(TOP_DIR)/src/gmp-freestanding
 	patch -p1 -d $(TOP_DIR)/src/gmp-freestanding <$(TOP_DIR)/src/muen/gmp-kabylake.patch
 	opam pin -y -n gmp-freestanding $(TOP_DIR)/src/gmp-freestanding
@@ -466,14 +466,12 @@ else ifeq ($(XMODE),muen)
 
 MUEN_DIR := /nethsm-tools/muen
 MUEN_POLICY_DIR := $(TOP_DIR)/src/muen/policy
-MUEN_LINUX_CONFIG := $(TOP_DIR)/src/muen/linux/config-5.4-$(MUEN_HARDWARE)
+MUEN_LINUX_CONFIG := $(TOP_DIR)/src/muen/linux/config-6.1-$(MUEN_HARDWARE)
 MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
 MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 
-ifneq ($(MUEN_HARDWARE),qemu-kvm)
-ifneq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ifeq ($(filter $(MUEN_HARDWARE),qemu-kvm prodrive-hermes-1.0 msi-z790-1.0),)
 $(error Invalid MUEN_HARDWARE)
-endif
 endif
 
 OBJ_DIR := $(TOP_DIR)/obj
@@ -610,6 +608,7 @@ endif
 
 $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	$(MUEN_GEN_CSPEC) \
+	    --disable-reset \
 	    --out_spec=$(MUEN_S_KEYFENDER_CSPEC) \
 	    $(MUEN_GEN_CSPEC_EXTRA) \
 	    $< \
@@ -617,6 +616,8 @@ $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC): $(S_KEYFENDER)
 	    $(MUEN_POLICY_OBJ_DIR)
 
 $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRAMFS)
+	bash -c "PATH=$(CCACHE_PATH)/opt/gnat/bin:$(PATH_ORIG); \
+	source /opt/gnat/muen-dev-env/env; \
 	$(MAKE) -C $(MUEN_DIR) --silent --no-print-directory \
 	    NO_PROOF=1 \
 	    SYSTEM=$(MUEN_POLICY_DIR)/xml/nethsm_basic_system.xml \
@@ -625,8 +626,7 @@ $(MUEN_PACK_IMG_CSL): $(MUEN_S_KEYFENDER) $(MUEN_S_KEYFENDER_CSPEC) $(OBJ_INITRA
 	    ADDITIONAL_HW=$(TOP_DIR)/src/muen/policy/hardware/common_hardware.xml \
 	    LINUX_CONFIG=$(MUEN_LINUX_CONFIG) \
 	    INITRAMFS=$(OBJ_INITRAMFS) \
-		PATH=$(CCACHE_PATH)/opt/gnat/bin:$(PATH_ORIG) \
-	    pack
+	    pack"
 
 OBJ_SYSTEM_IMG := $(OBJ_DIR)/system.img.cpio
 
@@ -666,6 +666,7 @@ OBJ_INSTALLER_ROOT := $(OBJ_DIR)/installer
 OBJ_INSTALLER_INITRAMFS := $(OBJ_INSTALLER_ROOT)/boot/initramfs
 INSTALLER_DIR := $(TOP_DIR)/src/installer
 INSTALLER_UINIT := $(INSTALLER_DIR)/uinit
+INSTALLER_HW_VERSION := $(INSTALLER_DIR)/.hardware_version
 
 INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
 
@@ -674,7 +675,10 @@ $(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_DIR)/root/**/*)
 	cp -a $(INSTALLER_DIR)/root $@
 	sed -i s/__BUILD_TAG__/$(BUILD_TAG)/ $@/boot/grub/grub.cfg
 
-$(INSTALLER_UINIT): $(INSTALLER_DIR)/uinit.go
+$(INSTALLER_HW_VERSION):
+	echo -n "$(MUEN_HARDWARE)" >$@
+
+$(INSTALLER_UINIT): $(INSTALLER_DIR)/uinit.go $(INSTALLER_HW_VERSION)
 	cd $(INSTALLER_DIR) && go build ./uinit.go
 
 $(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT) $(INSTALLER_UINIT)
@@ -712,6 +716,10 @@ $(OBJ_INSTALLER_IMG): $(OBJ_INSTALLER_INITRAMFS) $(OBJ_INSTALLER_ROOT) tools/gpg
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_IMG)
 
 ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ARTIFACTS += $(OBJ_INSTALLER_IMG)
+endif
+
+ifeq ($(MUEN_HARDWARE),msi-z790-1.0)
 ARTIFACTS += $(OBJ_INSTALLER_IMG)
 endif
 

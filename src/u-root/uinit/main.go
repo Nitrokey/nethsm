@@ -27,6 +27,22 @@ var buildTag string
 //go:embed .hardware_version
 var hardwareVersion string
 
+func isZ790() bool {
+	return hardwareVersion[:9] == "msi-z790-"
+}
+
+var (
+	diskDev    = "/dev/sda"
+	partPrefix = "/dev/sda"
+)
+
+func init() {
+	if isZ790() {
+		diskDev = "/dev/nvme0n1"
+		partPrefix = "/dev/nvme0n1p"
+	}
+}
+
 // globalState encapsulates global variables shared across the uinit codebase.
 // With the exception of s, which mutates, all of these are essentially
 // constants intended to be set up once in main(). There are definitely better,
@@ -58,10 +74,10 @@ var G = &globalState{
 	s:                    script.New(),
 	etcdUidGid:           1,
 	kernelRelease:        getKernelRelease(),
-	diskDevice:           "/dev/sda",
-	sysActivePartition:   "/dev/sda1",
-	sysInactivePartition: "/dev/sda2",
-	dataPartition:        "/dev/sda3",
+	diskDevice:           diskDev,
+	sysActivePartition:   partPrefix + "1",
+	sysInactivePartition: partPrefix + "2",
+	dataPartition:        partPrefix + "3",
 	tpmDevice:            "/dev/tpm0",
 	listenerProtocol:     "tcp",
 	listenerPort:         ":1023",

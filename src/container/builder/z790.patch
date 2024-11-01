@@ -1,0 +1,22 @@
+diff --git a/common/crash_audit/sk-crash_audit_types.ads b/common/crash_audit/sk-crash_audit_types.ads
+index 128403e81..64d4ce731 100644
+--- a/common/crash_audit/sk-crash_audit_types.ads
++++ b/common/crash_audit/sk-crash_audit_types.ads
+@@ -57,7 +57,7 @@ package SK.Crash_Audit_Types
+    --D @Interface
+    --D This constant specifies the maximum number of audit slots which can be
+    --D allocated/stored by the crash audit.
+-   Max_Dumps : constant := 3;
++   Max_Dumps : constant := 2;
+ 
+    type Dumpdata_Length is range 0 .. Max_Dumps
+    with
+@@ -193,7 +193,7 @@ package SK.Crash_Audit_Types
+ 
+    Null_Exception_Context : constant Exception_Context_Type;
+ 
+-   MCE_Max_Banks : constant := 20;
++   MCE_Max_Banks : constant := 22;
+ 
+    type Bank_Index_Ext_Range is new Byte range 0 .. MCE_Max_Banks
+    with

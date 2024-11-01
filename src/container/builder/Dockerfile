@@ -10,20 +10,22 @@
 #
 
 # Base image
-ARG distro_version=ubuntu:20.04
+ARG distro_version=ubuntu:22.04
 FROM ${distro_version} AS base
 
 LABEL maintainer "Sven Anderson <sven@anderson.de>"
 LABEL description "This image provides the build environment for the NetHSM project"
 
 # Muen: Required packages
-ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc binutils-dev \
-  bison bzip2 ca-certificates ccache cpio curl file flex git-core gnupg gnuplot \
-  inotify-tools kmod lcov libc6-dev libcurl4-gnutls-dev libelf-dev \
-  libfreetype6-dev libiberty-dev libncurses-dev libseccomp-dev libssl-dev \
-  libxml2-utils make mtools opensc openssh-client patch pcscd picocom pkg-config python3 python3-pip \
-  g++ git-merge-changelog python-is-python3 libtool qemu-system-x86 rsync scdaemon \
-  screen tidy unzip vim wget xfonts-unifont xorriso xsltproc xz-utils zlib1g-dev git-lfs less joe"
+ARG muen_packages="acpica-tools amtterm autoconf automake autopoint bc bison bzip2 \
+  ca-certificates ccache cpio curl file flex gawk gettext git-core \
+  gnupg inotify-tools iputils-ping iucode-tool kmod lcov libc6-dev \
+  libcurl4-gnutls-dev libelf-dev libfreetype6-dev libgmp10-dev libiberty-dev \
+  libncurses-dev libseccomp-dev libssl-dev libxml2-utils lighttpd make mtools \
+  openssh-client patch picocom pkg-config python3-minimal python3-lxml \
+  python3-colorlog python3-setuptools python3-pip python3-rangehttpserver \
+  python3-wheel qemu-system-x86 rsync screen tidy unzip vim wget \
+  xfonts-unifont xorriso xsltproc xxd xz-utils zlib1g-dev"
 
 # Mirage/Solo5/NetHSM: Required packages
 # Note: Some of these would be installed by "opam depext" automatically during
@@ -32,17 +34,20 @@ ARG nethsm_packages="cgpt e2fsprogs grub-common grub-pc-bin jq libgmp-dev \
   libseccomp-dev linux-libc-dev m4 parallel perl pkg-config zip \
   sudo libprotobuf-dev protobuf-compiler software-properties-common"
 
+ARG additional_packages="g++ zlib1g git-merge-changelog git-lfs opensc pcscd \
+  scdaemon libtool less joe"
+
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked <<EOF
   apt-get update
-  apt-get install -qq -y --no-install-recommends $muen_packages $nethsm_packages
+  apt-get install -qq -y --no-install-recommends $muen_packages $nethsm_packages $additional_packages
   add-apt-repository ppa:stefanberger/swtpm-focal
   apt-get update
   apt-get install -qq -y --no-install-recommends libtpms0 swtpm
-  pip install --no-cache-dir lxml colorlog lief
+  pip install --no-cache-dir lxml colorlog lief==0.14.1
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
@@ -56,7 +61,14 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   sudo chown opam:opam /nethsm-tools
 EOF
 
+RUN --mount=type=tmpfs,target=/tmp <<EOF
+  curl -sSL "https://github.com/alire-project/alire/releases/download/v2.0.1/alr-2.0.1-bin-x86_64-linux.zip" -o /tmp/alr.zip
+  unzip /tmp/alr.zip bin/alr -d /usr/local
+EOF
+
 USER opam
+
+ENV ALIRE_SETTINGS_DIR=/opt/gnat/alire
 
 RUN <<EOF
   mkdir -p -m 0700 /home/opam/.ssh
@@ -115,29 +127,31 @@ EOF
 FROM base AS ada
 # Muen: Install AdaCore toolchain
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  git clone --depth=1 https://github.com/AdaCore/gnat_community_install_script.git /tmp/gnat_script
-  curl -sSL "https://community.download.adacore.com/v1/f3a99d283f7b3d07293b2e1d07de00e31e332325?filename=gnat-2021-20210519-x86_64-linux-bin" -o /tmp/gnat_installer.bin
-  sudo sh /tmp/gnat_script/install_package.sh /tmp/gnat_installer.bin /opt/gnat
-  rm -rf /tmp/gnat*
+  sudo mkdir /opt/gnat
+  sudo chown opam:opam /opt/gnat
+  git clone --depth 1 https://git.codelabs.ch/alire/muen-dev-env.git /opt/gnat/muen-dev-env
+  make -C /opt/gnat/muen-dev-env -j$(nproc)
 EOF
 
 FROM ada AS muen
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   mkdir -p /nethsm-tools/muen
-  git clone --depth 1 -b v1.0.0 https://git.codelabs.ch/git/muen.git /nethsm-tools/muen
+  git clone --depth 1 -b v1.1.1 https://git.codelabs.ch/git/muen.git /nethsm-tools/muen
   git -C /nethsm-tools/muen submodule update --init --depth 50
 EOF
 
-# patch sbs-tools until it's fixed upstream
-COPY --chown=1000:1000 sbs-smartcard.patch /nethsm-tools/muen/tools/sbs
-RUN patch -d /nethsm-tools/muen/tools/sbs -i sbs-smartcard.patch -p1
+# remove ABI changes for our old solo5
+COPY --chown=1000:1000 muen-1.1.1.patch /nethsm-tools/muen
+RUN patch -d /nethsm-tools/muen -i muen-1.1.1.patch -p1
 
-RUN --mount=type=tmpfs,target=/tmp \
-  make -C /nethsm-tools/muen PATH=/opt/gnat/bin:$PATH -j$(nproc) tools
+# patches for z790
+COPY --chown=1000:1000 z790.patch /nethsm-tools/muen/
+RUN patch -d /nethsm-tools/muen -i z790.patch -p1
 
-# patch muennet until it's fixed upstream
-COPY --chown=1000:1000 muennet-tailroom.patch /nethsm-tools/muen/components/linux/modules/muennet
-RUN patch -d /nethsm-tools/muen/components/linux/modules/muennet -i muennet-tailroom.patch
+RUN --mount=type=tmpfs,target=/tmp bash -c "\
+  source /opt/gnat/muen-dev-env/env; \
+  make -C /nethsm-tools/muen -j$(nproc) tools \
+  "
 
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
@@ -203,7 +217,7 @@ ENV BUILDER_ID ${COMMIT_ID}
 
 # Setup environment
 ENV LANG C.UTF-8
-ENV PATH /opt/x86_64-linux-musl-cross/bin:/opt/go/bin:$PATH
+ENV PATH /opt/x86_64-linux-musl-cross/bin:/opt/go/bin:/opt/gnat/bin:$PATH
 WORKDIR /builds/nitrokey/nethsm
 ENTRYPOINT [ "opam", "exec", "--" ]
 CMD [ "bash" ]

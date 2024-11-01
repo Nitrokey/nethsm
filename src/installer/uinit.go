@@ -1,12 +1,20 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 )
+
+//go:embed .hardware_version
+var hardwareVersion string
+
+func isZ790() bool {
+	return hardwareVersion[:9] == "msi-z790-"
+}
 
 func main() {
 	// Load kernel modules
@@ -23,6 +31,14 @@ name="data"
 	sep := "--------------------------------------------------"
 	reset := false
 	fast := false
+
+	diskDev := "/dev/sda"
+	partPrefix := "/dev/sda"
+
+	if isZ790() {
+		diskDev = "/dev/nvme0n1"
+		partPrefix = "/dev/nvme0n1p"
+	}
 
 	// Check for factory reset command-line arguments
 	for _, arg := range os.Args[1:] {
@@ -67,16 +83,16 @@ name="data"
 	if reset {
 		fmt.Println(sep)
 		fmt.Println("Partitioning hard disk")
-		partitionDisk(partitions, "/dev/sda")
+		partitionDisk(partitions, diskDev)
 		fmt.Println(sep)
 		fmt.Println("Writing to first system partition")
-		writeToPartition(file, "/dev/sda1")
+		writeToPartition(file, partPrefix+"1")
 		fmt.Println(sep)
 		fmt.Println("Writing to second system partition")
-		writeToPartition(file, "/dev/sda2")
+		writeToPartition(file, partPrefix+"2")
 		fmt.Println(sep)
 		fmt.Println("Formatting data partition")
-		formatDataPartition("/dev/sda3")
+		formatDataPartition(partPrefix + "3")
 		fmt.Println(sep)
 		fmt.Println("Successfully installed:")
 		fmt.Println(changeLog)
@@ -85,7 +101,7 @@ name="data"
 	} else {
 		fmt.Println(sep)
 		fmt.Println("Writing to first system partition")
-		writeToPartition(file, "/dev/sda1")
+		writeToPartition(file, partPrefix+"1")
 	}
 
 	fmt.Println(sep)
@@ -108,6 +124,8 @@ func loadModules() {
 		"/lib/modules/5.16.0-4-amd64/kernel/lib/crc-t10dif.ko",
 		"/lib/modules/5.16.0-4-amd64/kernel/block/t10-pi.ko",
 		"/lib/modules/5.16.0-4-amd64/kernel/drivers/scsi/sd_mod.ko",
+		"/lib/modules/5.16.0-4-amd64/kernel/drivers/nvme/host/nvme-core.ko",
+		"/lib/modules/5.16.0-4-amd64/kernel/drivers/nvme/host/nvme.ko",
 	}
 
 	for _, module := range modules {

@@ -17,6 +17,14 @@
   </memory>
   <devices>
    <device logical="storage_controller" physical="storage_controller"/>
+   <device logical="trng" physical="trng"/>
   </devices>
  </domain>
+ <if variable="uefi_gop_rmrr_access" value="true">
+  <domain name="uefi_gop">
+   <devices>
+    <device logical="vga" physical="vga_compatible_controller_1" mapReservedMemory="true"/>
+   </devices>
+  </domain>
+ </if>
 </include>

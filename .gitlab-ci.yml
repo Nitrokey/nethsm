@@ -30,6 +30,17 @@ variables:
     "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 |
     tr -d '\n')\"}}}" > ${HOME}/.docker/config.json
 
+.save_artifacts: &save_artifacts
+  - mkdir -p ${CI_JOB_NAME}_artifacts
+  - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts || true
+  - |-
+    if [ "$CI_JOB_STATUS" == "failed" ] ; then
+      cp -a /nethsm-tools/muen/policy/obj ${CI_JOB_NAME}_artifacts/muen_policy_obj || true
+      cp -a /nethsm-tools/muen/components/obj ${CI_JOB_NAME}_artifacts/muen_components_obj || true
+      cp src/muen/policy/xml/component_unikernel.xml ${CI_JOB_NAME}_artifacts/muen_policy_obj || true
+    fi
+  - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
+
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
@@ -232,6 +243,7 @@ build_muen_prodrive_hermes:
     # - job: build_dev
     #   artifacts: false
   artifacts:
+    when: always
     name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
     paths:
@@ -239,9 +251,30 @@ build_muen_prodrive_hermes:
   before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
-    - mkdir -p ${CI_JOB_NAME}_artifacts
-    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
-    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
+  after_script: *save_artifacts
+
+build_muen_msi_z790:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  variables:
+    MODE: muen
+    MUEN_HARDWARE: msi-z790-1.0
+    GIT_LFS_SKIP_SMUDGE: 0
+  stage: build
+  needs:
+    - job: build_builder_image
+      optional: true
+  artifacts:
+    when: always
+    name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - ${CI_JOB_NAME}_artifacts
+  before_script: *setup_job_default
+  script:
+    - opam exec -- make -j$(nproc) artifacts
+  after_script: *save_artifacts
 
 build_muen_qemu_kvm:
   rules:
@@ -257,6 +290,7 @@ build_muen_qemu_kvm:
     - job: build_dev
       artifacts: false
   artifacts:
+    when: always
     name: "${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}"
     expire_in: 1 week
     paths:
@@ -264,9 +298,7 @@ build_muen_qemu_kvm:
   before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
-    - mkdir -p ${CI_JOB_NAME}_artifacts
-    - cp obj/artifacts/*/*/* ${CI_JOB_NAME}_artifacts
-    - touch ${CI_JOB_NAME}_artifacts/.$(git -C . describe --tags --always --long)
+  after_script: *save_artifacts
 
 build_ci_installer_prodrive_hermes:
   rules:
