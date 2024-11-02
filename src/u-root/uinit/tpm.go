@@ -24,6 +24,8 @@ import (
 	"github.com/canonical/go-tpm2/mu"
 	"github.com/canonical/go-tpm2/templates"
 	"github.com/canonical/go-tpm2/util"
+
+	"nethsm/hw"
 )
 
 const (
@@ -120,11 +122,7 @@ func tpmGetPlatformData() (platformData, error) {
 	var data platformData
 	var pcrIdxs tpm2.PCRSelect
 
-	if isZ790() {
-		pcrIdxs = tpm2.PCRSelect{2}
-	} else {
-		pcrIdxs = tpm2.PCRSelect{0, 2}
-	}
+	pcrIdxs = hw.MeasuredPCRs()
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
@@ -211,7 +209,7 @@ func tpmGetPlatformData() (platformData, error) {
 
 		data.FirmwareVersion = getFirmwareVersion(data.PCR)
 
-		data.HardwareVersion = hardwareVersion
+		data.HardwareVersion = hw.Version
 
 		platformDataJson, _ := json.MarshalIndent(data, "", "    ")
 		log.Printf("Platform Data: %v\n", string(platformDataJson))

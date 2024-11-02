@@ -2145,8 +2145,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RestoreRequest"
       security:
-        - {}         # for complete restore
-        - basic: []  # for partial restore
+        - {} # for complete restore
+        - basic: [] # for partial restore
       x-annotation-role:
         - Public
       x-annotation-state:
@@ -2806,7 +2806,7 @@ components:
         softwareVersion: "1.7"
         softwareBuild: f3f6292
         firmwareVersion: 1.0-devel
-        hardwareVersion: prodrive-hermes-1.0
+        hardwareVersion: prodrive-hermes-1
         deviceId: 5UMIP364R2
         akPub:
           P256: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEup7z8QYvkzkBuLryG1SgVQjlPhSFW3PzYn1l3uLNd+pSBxX0OBpslcbnmPFr5wSs/iP46+H8MFlEAYUkYv6uuQ==

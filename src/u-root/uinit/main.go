@@ -18,30 +18,9 @@ import (
 	"os"
 	"syscall"
 
-	"nethsm/uinit/script"
+	"nethsm/hw"
+	"nethsm/script"
 )
-
-//go:embed .build_tag
-var buildTag string
-
-//go:embed .hardware_version
-var hardwareVersion string
-
-func isZ790() bool {
-	return hardwareVersion[:9] == "msi-z790-"
-}
-
-var (
-	diskDev    = "/dev/sda"
-	partPrefix = "/dev/sda"
-)
-
-func init() {
-	if isZ790() {
-		diskDev = "/dev/nvme0n1"
-		partPrefix = "/dev/nvme0n1p"
-	}
-}
 
 // globalState encapsulates global variables shared across the uinit codebase.
 // With the exception of s, which mutates, all of these are essentially
@@ -74,10 +53,10 @@ var G = &globalState{
 	s:                    script.New(),
 	etcdUidGid:           1,
 	kernelRelease:        getKernelRelease(),
-	diskDevice:           diskDev,
-	sysActivePartition:   partPrefix + "1",
-	sysInactivePartition: partPrefix + "2",
-	dataPartition:        partPrefix + "3",
+	diskDevice:           hw.DiskDev,
+	sysActivePartition:   hw.DiskPrefix + "1",
+	sysInactivePartition: hw.DiskPrefix + "2",
+	dataPartition:        hw.DiskPrefix + "3",
 	tpmDevice:            "/dev/tpm0",
 	listenerProtocol:     "tcp",
 	listenerPort:         ":1023",

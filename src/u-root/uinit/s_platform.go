@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"nethsm/hw"
 )
 
 // platformListener runs the "platform" protocol on the requested protocol and
@@ -285,7 +287,7 @@ func sPlatformActions() {
 
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
-	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + partPrefix + "3 /data")
+	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + hw.DiskPrefix + "3 /data")
 
 	if err := G.s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)

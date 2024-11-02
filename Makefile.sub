@@ -23,7 +23,7 @@ NET_INTERNAL ?= tap201
 # (actual setting is performed later)
 
 # Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
-# built for. Currently supported: qemu-kvm or prodrive-hermes-1.0.
+# built for. Currently supported: qemu-kvm or prodrive-hermes-1 msi-z790-1.
 #
 # TODO: This should be persisted similarly to MODE=, or otherwise detect that
 # it changed?
@@ -129,6 +129,7 @@ endif
 
 SOFTWARE_VERSION := src/keyfender/softwareVersion
 BUILD_TAG := $(strip $(shell git -C . describe --tags --always --long))
+GO_HW_TAG := $(shell echo -n $(MUEN_HARDWARE) | tr -- - _)
 
 src/keyfender/buildTag:
 	echo $(BUILD_TAG) > $@
@@ -140,7 +141,7 @@ $(SOFTWARE_VERSION): CHANGES.md
 ifneq ($(CCACHE_DIR),)
 	mkdir -p $(CCACHE_DIR)
 endif
-ifneq ($(filter $(MUEN_HARDWARE),prodrive-hermes-1.0 msi-z790-1.0),)
+ifneq ($(filter $(MUEN_HARDWARE),prodrive-hermes-1 msi-z790-1),)
 	opam source gmp-freestanding --dir $(TOP_DIR)/src/gmp-freestanding
 	patch -p1 -d $(TOP_DIR)/src/gmp-freestanding <$(TOP_DIR)/src/muen/gmp-kabylake.patch
 	opam pin -y -n gmp-freestanding $(TOP_DIR)/src/gmp-freestanding
@@ -470,7 +471,7 @@ MUEN_LINUX_CONFIG := $(TOP_DIR)/src/muen/linux/config-6.1-$(MUEN_HARDWARE)
 MUEN_HARDWARE_XML := $(MUEN_POLICY_DIR)/hardware/nethsm-$(MUEN_HARDWARE).xml
 MUEN_PLATFORM_XML := $(MUEN_POLICY_DIR)/platform/nethsm-$(MUEN_HARDWARE).xml
 
-ifeq ($(filter $(MUEN_HARDWARE),qemu-kvm prodrive-hermes-1.0 msi-z790-1.0),)
+ifeq ($(filter $(MUEN_HARDWARE),qemu-kvm prodrive-hermes-1 msi-z790-1),)
 $(error Invalid MUEN_HARDWARE)
 endif
 
@@ -546,10 +547,9 @@ $(INSTALL_DATA_CPIO): $(OBJ_DATA_CPIO)
 OBJ_INITRAMFS_CPIO := $(OBJ_DIR)/initramfs.cpio
 OBJ_INITRAMFS := $(OBJ_DIR)/initramfs.cpio.gz
 U_ROOT_SRC := /nethsm-tools/u-root
-U_ROOT_UINIT_DIR := $(TOP_DIR)/src/u-root/uinit
+U_ROOT_DIR := $(TOP_DIR)/src/u-root
+U_ROOT_UINIT_DIR := $(U_ROOT_DIR)/uinit
 U_ROOT_UINIT := $(U_ROOT_UINIT_DIR)/uinit
-U_ROOT_BUILD_TAG := $(U_ROOT_UINIT_DIR)/.build_tag
-U_ROOT_HW_VERSION := $(U_ROOT_UINIT_DIR)/.hardware_version
 # XXX the documented shorthand of cmds/core/{foo,bar} doesn't seem to work here.
 U_ROOT_PKGS := ./cmds/core/init \
     ./cmds/core/cpio \
@@ -559,16 +559,10 @@ U_ROOT_PKGS := ./cmds/core/init \
     ./cmds/core/mkdir \
     ./cmds/core/mount \
     ./cmds/core/shutdown \
-    ./cmds/core/umount \
+    ./cmds/core/umount
 
-$(U_ROOT_BUILD_TAG):
-	echo -n "$(BUILD_TAG)" >$@
-
-$(U_ROOT_HW_VERSION):
-	echo -n "$(MUEN_HARDWARE)" >$@
-
-$(U_ROOT_UINIT): $(U_ROOT_BUILD_TAG) $(U_ROOT_HW_VERSION)
-	cd $(U_ROOT_UINIT_DIR) && go build .
+$(U_ROOT_UINIT):
+	cd $(U_ROOT_UINIT_DIR) && go build -tags $(GO_HW_TAG) .
 
 INITRAMFS_DEPS := $(INSTALL_ETCD_DAEMON) $(INSTALL_MKE2FS) $(INSTALL_ETC_DIR) $(INSTALL_SFDISK) \
     $(INSTALL_DATA_CPIO)
@@ -585,9 +579,7 @@ $(OBJ_INITRAMFS): $(U_ROOT_BIN) $(INITRAMFS_DEPS) $(U_ROOT_UINIT)
 
 # Ensure u-root initramfs is rebuilt if nethsm uinit sources change.
 # There might be a better way of doing this, but this will have to do for now.
-$(OBJ_INITRAMFS): \
-    $(wildcard $(U_ROOT_UINIT_DIR)/*.go) \
-    $(U_ROOT_UINIT_DIR)/script/script.go
+$(OBJ_INITRAMFS): $(wildcard $(U_ROOT_DIR)/**/*)
 
 # ------------------------------------------------------------------------------
 MUEN_POLICY_OBJ_DIR := $(MUEN_DIR)/policy/obj
@@ -664,34 +656,31 @@ $(OBJ_UPDATE_IMG): $(OBJ_SYSTEM_IMG) $(SIGN_UPDATE) $(OBJ_UPDATE_CHANGELOG)
 OBJ_INSTALLER_IMG := $(OBJ_DIR)/installer.img
 OBJ_INSTALLER_ROOT := $(OBJ_DIR)/installer
 OBJ_INSTALLER_INITRAMFS := $(OBJ_INSTALLER_ROOT)/boot/initramfs
-INSTALLER_DIR := $(TOP_DIR)/src/installer
-INSTALLER_UINIT := $(INSTALLER_DIR)/uinit
-INSTALLER_HW_VERSION := $(INSTALLER_DIR)/.hardware_version
+INSTALLER_DIR := $(U_ROOT_DIR)/installer
+INSTALLER_BIN := $(INSTALLER_DIR)/installer
+INSTALLER_FILES := $(TOP_DIR)/src/installer
 
 INSTALLER_INITRAMFS_DEPS := $(MKE2FS) $(SFDISK) $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_CHANGELOG)
 
-$(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_DIR)/root/**/*)
+$(OBJ_INSTALLER_ROOT): $(wildcard $(INSTALLER_FILES)/root/**/*)
 	rm -rf $@
-	cp -a $(INSTALLER_DIR)/root $@
+	cp -a $(INSTALLER_FILES)/root $@
 	sed -i s/__BUILD_TAG__/$(BUILD_TAG)/ $@/boot/grub/grub.cfg
 
-$(INSTALLER_HW_VERSION):
-	echo -n "$(MUEN_HARDWARE)" >$@
+$(INSTALLER_BIN): $(wildcard $(U_ROOT_DIR)/**/*)
+	cd $(INSTALLER_DIR) && go build -tags $(GO_HW_TAG) .
 
-$(INSTALLER_UINIT): $(INSTALLER_DIR)/uinit.go $(INSTALLER_HW_VERSION)
-	cd $(INSTALLER_DIR) && go build ./uinit.go
-
-$(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT) $(INSTALLER_UINIT)
+$(OBJ_INSTALLER_INITRAMFS): $(U_ROOT_BIN) $(INSTALLER_INITRAMFS_DEPS) $(OBJ_INSTALLER_ROOT) $(INSTALLER_BIN)
 	cd $(U_ROOT_SRC) && ./u-root \
 		-o /tmp/installer_initramfs.cpio \
 		-defaultsh="" \
-		-files $(INSTALLER_DIR)/initramfs:. \
+		-files $(INSTALLER_FILES)/initramfs:. \
 		-files $(MKE2FS):bin/mke2fs \
 		-files $(SFDISK):bin/sfdisk \
 		-files $(ETC_DIR)/mke2fs.conf:etc/mke2fs.conf \
 		-files $(OBJ_SYSTEM_IMG):system.img.cpio \
 		-files $(OBJ_UPDATE_CHANGELOG):update.changelog \
-		-files "$(INSTALLER_UINIT):bin/uinit" \
+		-files "$(INSTALLER_BIN):bin/uinit" \
 		./cmds/core/init \
 		./cmds/core/insmod \
 		./cmds/core/echo \
@@ -715,11 +704,11 @@ $(OBJ_INSTALLER_IMG): $(OBJ_INSTALLER_INITRAMFS) $(OBJ_INSTALLER_ROOT) tools/gpg
 
 ARTIFACTS := $(OBJ_SYSTEM_IMG) $(OBJ_UPDATE_IMG)
 
-ifeq ($(MUEN_HARDWARE),prodrive-hermes-1.0)
+ifeq ($(MUEN_HARDWARE),prodrive-hermes-1)
 ARTIFACTS += $(OBJ_INSTALLER_IMG)
 endif
 
-ifeq ($(MUEN_HARDWARE),msi-z790-1.0)
+ifeq ($(MUEN_HARDWARE),msi-z790-1)
 ARTIFACTS += $(OBJ_INSTALLER_IMG)
 endif
 

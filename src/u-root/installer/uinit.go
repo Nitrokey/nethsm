@@ -7,14 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"nethsm/hw"
 )
-
-//go:embed .hardware_version
-var hardwareVersion string
-
-func isZ790() bool {
-	return hardwareVersion[:9] == "msi-z790-"
-}
 
 func main() {
 	// Load kernel modules
@@ -31,14 +26,6 @@ name="data"
 	sep := "--------------------------------------------------"
 	reset := false
 	fast := false
-
-	diskDev := "/dev/sda"
-	partPrefix := "/dev/sda"
-
-	if isZ790() {
-		diskDev = "/dev/nvme0n1"
-		partPrefix = "/dev/nvme0n1p"
-	}
 
 	// Check for factory reset command-line arguments
 	for _, arg := range os.Args[1:] {
@@ -83,16 +70,16 @@ name="data"
 	if reset {
 		fmt.Println(sep)
 		fmt.Println("Partitioning hard disk")
-		partitionDisk(partitions, diskDev)
+		partitionDisk(partitions, hw.DiskDev)
 		fmt.Println(sep)
 		fmt.Println("Writing to first system partition")
-		writeToPartition(file, partPrefix+"1")
+		writeToPartition(file, hw.DiskPrefix+"1")
 		fmt.Println(sep)
 		fmt.Println("Writing to second system partition")
-		writeToPartition(file, partPrefix+"2")
+		writeToPartition(file, hw.DiskPrefix+"2")
 		fmt.Println(sep)
 		fmt.Println("Formatting data partition")
-		formatDataPartition(partPrefix + "3")
+		formatDataPartition(hw.DiskPrefix + "3")
 		fmt.Println(sep)
 		fmt.Println("Successfully installed:")
 		fmt.Println(changeLog)
@@ -101,7 +88,7 @@ name="data"
 	} else {
 		fmt.Println(sep)
 		fmt.Println("Writing to first system partition")
-		writeToPartition(file, partPrefix+"1")
+		writeToPartition(file, hw.DiskPrefix+"1")
 	}
 
 	fmt.Println(sep)

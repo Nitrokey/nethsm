@@ -311,7 +311,7 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
     make -j$(nproc) build
     ```
 
-For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
+For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
 
 #### Running
 
@@ -370,7 +370,7 @@ The build process inside the builder container needs access to the repositories 
     make -j$(nproc) build
     ```
 
-For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1.0 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
+For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
 
 Notes:
 
@@ -476,7 +476,7 @@ cargo install openapi-fuzzer
 And running
 
 ```sh
-openapi-fuzzer resend --url <url> <json result file> 
+openapi-fuzzer resend --url <url> <json result file>
 ```
 
 You can add `-H 'Authorization: Basic <b64>'` to the command line to add an authorization header (replace `<b64>` by the base64 encoded auth string)
