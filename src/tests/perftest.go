@@ -386,9 +386,9 @@ func printScore() {
 	scoreSum := 0.0
 	for _, stats := range results {
 		rps := float64(stats.numRequests) / stats.duration.Seconds()
-		scoreSum += math.Log(rps+1) * 50 / math.Log(1000)
+		scoreSum += math.Log2(rps) * 10
 	}
-	fmt.Printf("Performance Score: %.2f%%\n", scoreSum/float64(len(results)))
+	fmt.Printf("Performance Score: %.2f%%\n", (scoreSum/float64(len(results)) - 50))
 }
 
 func tests(l []benchParam) []string {

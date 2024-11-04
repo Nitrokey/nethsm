@@ -8,30 +8,29 @@ INSTALLER_URL="$1"
 is_inserted ()
 {
     local state
-    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} \
-        https://${BMC_IP}/redfish/v1/Managers/1/VirtualMedia/usb0 \
-        | jq -r .Inserted)
+    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} https://${BMC_IP}/api/msd \
+        | jq -r .result.drive.connected)
     [ "$state" = "true" ]
 }
 
 eject ()
 {
-    curl -s -k -u ${BMC_USER}:${BMC_PASS} -X POST \
-    https://${BMC_IP}/redfish/v1/Managers/1/VirtualMedia/usb0/Actions/VirtualMedia.EjectMedia
+    curl -s -k -u ${BMC_USER}:${BMC_PASS} -X POST "https://${BMC_IP}/api/msd/set_connected?connected=0"
 }
 
 insert ()
 {
-    local url=$1
-    curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
-      -d "{\"Image\":\"${url}\"}" \
-      https://${BMC_IP}/redfish/v1/Managers/1/VirtualMedia/usb0/Actions/VirtualMedia.InsertMedia
+    local file=$1
+    curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/remove?image=ci-installer.iso"
+    curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} --data-binary @${file} "https://${BMC_IP}/api/msd/write?image=ci-installer.iso"
+    curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/set_params?image=ci-installer.iso"
+    curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/set_connected?connected=1"
 }
 
 is_on ()
 {
     local state
-    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} https://${BMC_IP}/redfish/v1/Systems/1 \
+    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} https://${BMC_IP}/redfish/v1/Systems/0 \
       | jq -r .PowerState)
     [ "$state" = "On" ]
 }
@@ -41,7 +40,7 @@ power_on ()
     local state=$1
     curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
       -d '{"ResetType": "On"}' \
-      https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset
+      https://${BMC_IP}/redfish/v1/Systems/0/Actions/ComputerSystem.Reset
 }
 
 power_off ()
@@ -49,7 +48,7 @@ power_off ()
     local state=$1
     curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
       -d '{"ResetType": "ForceOff"}' \
-      https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset
+      https://${BMC_IP}/redfish/v1/Systems/0/Actions/ComputerSystem.Reset
 }
 
 if is_on; then
