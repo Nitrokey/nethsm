@@ -27,16 +27,16 @@
 
 
 <hardware>
-  <processor cpuCores="8" speed="3200000" vmxTimerRate="7">
+  <processor cpuCores="4" speed="3200000" vmxTimerRate="7">
     <cpu apicId="0"/>
-    <cpu apicId="8"/>
+    <!-- <cpu apicId="8"/> -->
     <cpu apicId="16"/>
-    <cpu apicId="24"/>
+    <!-- <cpu apicId="24"/> -->
     <cpu apicId="32"/>
-    <cpu apicId="40"/>
+    <!-- <cpu apicId="40"/> -->
     <cpu apicId="48"/>
-    <cpu apicId="56"/>
-    <!-- <cpu apicId="64"/>
+    <!-- <cpu apicId="56"/>
+    <cpu apicId="64"/>
     <cpu apicId="66"/>
     <cpu apicId="68"/>
     <cpu apicId="70"/>
