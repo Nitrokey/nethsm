@@ -372,12 +372,12 @@ test_muen_prodrive_hermes:
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh
     - |-
-      printf "waiting for serial output"
+      echo "waiting for serial output"
       while true ; do
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
-        printf "."
+        echo "."
         sleep 1
       done
       echo "done."
@@ -423,12 +423,12 @@ test_muen_msi_z790:
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh
     - |-
-      printf "waiting for serial output"
+      echo "waiting for serial output"
       while true ; do
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
-        printf "."
+        echo "."
         sleep 1
       done
       echo "done."
