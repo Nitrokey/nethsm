@@ -96,7 +96,7 @@ build_builder_image:
       --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
 
-build_container_image:
+build_container_test_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
@@ -137,7 +137,7 @@ commit_builder_image:
       then skopeo copy docker://${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
       docker://${CI_REGISTRY_IMAGE}/builder:latest ; fi
 
-commit_container_image:
+commit_container_test_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -503,7 +503,7 @@ integration_test_sdk_py:
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   stage: docker_integration_test
   needs:
-    - job: build_container_image
+    - job: build_container_test_image
   image:
     entrypoint: ["/bin/sh", "-c"]
     name: "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
