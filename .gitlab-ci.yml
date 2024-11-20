@@ -119,6 +119,29 @@ build_container_test_image:
       --opt target=nethsm_test
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 
+build_container_production_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        PUSH: "push=false"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
+  needs:
+    - job: build_builder_image
+      optional: true
+  stage: build
+  image:
+    name: moby/buildkit:rootless
+    entrypoint: [""]
+  before_script: *setup_job_buildkit
+  script:
+    - >-
+      buildctl build --frontend=dockerfile.v0 --progress=plain
+      --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
+      --local context=${CI_PROJECT_DIR}
+      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
+      --opt target=nethsm_production
+      --output type=image,name=${CI_REGISTRY_IMAGE}/production:${CI_COMMIT_SHORT_SHA},${PUSH}
+
 commit_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
