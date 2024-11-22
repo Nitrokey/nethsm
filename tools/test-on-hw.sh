@@ -2,7 +2,7 @@
 
 echo "waiting for NetHSM"
 x=0
-while ! curl -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
+while ! curl -m 1 -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
     echo "."
     ((x++>25)) && echo "time out!" && exit 1
     sleep 2
