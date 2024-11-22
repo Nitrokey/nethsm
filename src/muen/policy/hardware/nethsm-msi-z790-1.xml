@@ -14,15 +14,15 @@
      BIOS information:
        Vendor: 3mdeb
        Version: Dasharo v0.9.1
-       Date: 10/05/2024
+       Date: 11/19/2024
      Log:
        * WARNING *: Adding fake irq 16 for device with MSIs: 0000:00:02.0
        * WARNING *: Adding fake irq 16 for device with MSIs: 0000:00:14.0
        * WARNING *: Adding fake irq 16 for device with MSIs: 0000:00:17.0
        * WARNING *: Adding fake irq 16 for device with MSIs: 0000:00:1f.3
        * WARNING *: Adding fake irq 16 for device with MSIs: 0000:01:00.0
-       * WARNING *: Adding fake irq 16 for device with MSIs: 0000:04:00.0
-       * WARNING *: Adding fake irq 16 for device with MSIs: 0000:06:00.0
+       * WARNING *: Adding fake irq 16 for device with MSIs: 0000:02:00.0
+       * WARNING *: Adding fake irq 16 for device with MSIs: 0000:03:00.0
      ========================================== -->
 
 
@@ -150,9 +150,9 @@
   <memory>
     <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#0000#" size="16#1000#"/>
     <memoryBlock allocatable="false" name="System RAM" physicalAddress="16#1000#" size="16#0009_f000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#467c_9000#"/>
-    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#468c_9000#" size="16#0073_7000#"/>
-    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#0003_afc0_0000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0010_0000#" size="16#466d_6000#"/>
+    <memoryBlock allocatable="false" name="Unknown E820 type" physicalAddress="16#467d_6000#" size="16#0082_a000#"/>
+    <memoryBlock allocatable="true" name="System RAM" physicalAddress="16#0001_0000_0000#" size="16#0007_afc0_0000#"/>
     <reservedMemory name="rmrr1" physicalAddress="16#4c00_0000#" size="16#0440_0000#"/>
   </memory>
   <devices pciConfigAddress="16#c000_0000#" pciConfigSize="16#1000_0000#">
@@ -215,8 +215,8 @@
       <memory caching="UC" name="mem1" physicalAddress="16#5100_0000#" size="16#0100_0000#"/>
       <memory caching="UC" name="mem2" physicalAddress="16#6000_0000#" size="16#1000_0000#"/>
       <memory caching="UC" name="mem3" physicalAddress="16#000c_0000#" size="16#0002_0000#"/>
-      <memory caching="UC" name="mem4" physicalAddress="16#0004_b000_0000#" size="16#0700_0000#"/>
-      <memory caching="UC" name="mem5" physicalAddress="16#0004_c000_0000#" size="16#e000_0000#"/>
+      <memory caching="UC" name="mem4" physicalAddress="16#0008_b000_0000#" size="16#0700_0000#"/>
+      <memory caching="UC" name="mem5" physicalAddress="16#0008_c000_0000#" size="16#e000_0000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#c001_0000#" size="16#1000#"/>
       <ioPort end="16#103f#" name="ioport1" start="16#1000#"/>
       <reservedMemory ref="rmrr1"/>
@@ -247,8 +247,8 @@
         <identification classcode="16#0500#" deviceId="16#7a27#" revisionId="16#11#" vendorId="16#8086#"/>
         <iommuGroup id="3"/>
       </pci>
-      <memory caching="UC" name="mem1" physicalAddress="16#0004_afc0_0000#" size="16#4000#"/>
-      <memory caching="UC" name="mem2" physicalAddress="16#0004_afc0_4000#" size="16#1000#"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#0008_afc0_0000#" size="16#4000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#0008_afc0_4000#" size="16#1000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#c00a_2000#" size="16#1000#"/>
     </device>
     <device name="sata_controller_1">
@@ -313,9 +313,9 @@
       <memory caching="UC" name="mmconf" physicalAddress="16#c00f_d000#" size="16#1000#"/>
     </device>
     <device name="non-volatile_memory_controller_1">
-      <description>Silicon Motion, Inc. SM2263EN/SM2263XT (DRAM-less) NVMe SSD Controllers</description>
+      <description>Micron Technology Inc 7450 PRO NVMe SSD</description>
       <pci bus="16#01#" device="16#00#" function="0">
-        <identification classcode="16#0108#" deviceId="16#2263#" revisionId="16#03#" vendorId="16#126f#"/>
+        <identification classcode="16#0108#" deviceId="16#51c3#" revisionId="16#01#" vendorId="16#1344#"/>
         <iommuGroup id="8"/>
       </pci>
       <!-- IRQ fixed manually -->
@@ -336,8 +336,249 @@
         <msi name="msi14"/>
         <msi name="msi15"/>
         <msi name="msi16"/>
+        <!-- <msi name="msi17"/>
+        <msi name="msi18"/>
+        <msi name="msi19"/>
+        <msi name="msi20"/>
+        <msi name="msi21"/>
+        <msi name="msi22"/>
+        <msi name="msi23"/>
+        <msi name="msi24"/>
+        <msi name="msi25"/>
+        <msi name="msi26"/>
+        <msi name="msi27"/>
+        <msi name="msi28"/>
+        <msi name="msi29"/>
+        <msi name="msi30"/>
+        <msi name="msi31"/>
+        <msi name="msi32"/>
+        <msi name="msi33"/>
+        <msi name="msi34"/>
+        <msi name="msi35"/>
+        <msi name="msi36"/>
+        <msi name="msi37"/>
+        <msi name="msi38"/>
+        <msi name="msi39"/>
+        <msi name="msi40"/>
+        <msi name="msi41"/>
+        <msi name="msi42"/>
+        <msi name="msi43"/>
+        <msi name="msi44"/>
+        <msi name="msi45"/>
+        <msi name="msi46"/>
+        <msi name="msi47"/>
+        <msi name="msi48"/>
+        <msi name="msi49"/>
+        <msi name="msi50"/>
+        <msi name="msi51"/>
+        <msi name="msi52"/>
+        <msi name="msi53"/>
+        <msi name="msi54"/>
+        <msi name="msi55"/>
+        <msi name="msi56"/>
+        <msi name="msi57"/>
+        <msi name="msi58"/>
+        <msi name="msi59"/>
+        <msi name="msi60"/>
+        <msi name="msi61"/>
+        <msi name="msi62"/>
+        <msi name="msi63"/>
+        <msi name="msi64"/>
+        <msi name="msi65"/>
+        <msi name="msi66"/>
+        <msi name="msi67"/>
+        <msi name="msi68"/>
+        <msi name="msi69"/>
+        <msi name="msi70"/>
+        <msi name="msi71"/>
+        <msi name="msi72"/>
+        <msi name="msi73"/>
+        <msi name="msi74"/>
+        <msi name="msi75"/>
+        <msi name="msi76"/>
+        <msi name="msi77"/>
+        <msi name="msi78"/>
+        <msi name="msi79"/>
+        <msi name="msi80"/>
+        <msi name="msi81"/>
+        <msi name="msi82"/>
+        <msi name="msi83"/>
+        <msi name="msi84"/>
+        <msi name="msi85"/>
+        <msi name="msi86"/>
+        <msi name="msi87"/>
+        <msi name="msi88"/>
+        <msi name="msi89"/>
+        <msi name="msi90"/>
+        <msi name="msi91"/>
+        <msi name="msi92"/>
+        <msi name="msi93"/>
+        <msi name="msi94"/>
+        <msi name="msi95"/>
+        <msi name="msi96"/>
+        <msi name="msi97"/>
+        <msi name="msi98"/>
+        <msi name="msi99"/>
+        <msi name="msi100"/>
+        <msi name="msi101"/>
+        <msi name="msi102"/>
+        <msi name="msi103"/>
+        <msi name="msi104"/>
+        <msi name="msi105"/>
+        <msi name="msi106"/>
+        <msi name="msi107"/>
+        <msi name="msi108"/>
+        <msi name="msi109"/>
+        <msi name="msi110"/>
+        <msi name="msi111"/>
+        <msi name="msi112"/>
+        <msi name="msi113"/>
+        <msi name="msi114"/>
+        <msi name="msi115"/>
+        <msi name="msi116"/>
+        <msi name="msi117"/>
+        <msi name="msi118"/>
+        <msi name="msi119"/>
+        <msi name="msi120"/>
+        <msi name="msi121"/>
+        <msi name="msi122"/>
+        <msi name="msi123"/>
+        <msi name="msi124"/>
+        <msi name="msi125"/>
+        <msi name="msi126"/>
+        <msi name="msi127"/>
+        <msi name="msi128"/>
+        <msi name="msi129"/>
+        <msi name="msi130"/>
+        <msi name="msi131"/>
+        <msi name="msi132"/>
+        <msi name="msi133"/>
+        <msi name="msi134"/>
+        <msi name="msi135"/>
+        <msi name="msi136"/>
+        <msi name="msi137"/>
+        <msi name="msi138"/>
+        <msi name="msi139"/>
+        <msi name="msi140"/>
+        <msi name="msi141"/>
+        <msi name="msi142"/>
+        <msi name="msi143"/>
+        <msi name="msi144"/>
+        <msi name="msi145"/>
+        <msi name="msi146"/>
+        <msi name="msi147"/>
+        <msi name="msi148"/>
+        <msi name="msi149"/>
+        <msi name="msi150"/>
+        <msi name="msi151"/>
+        <msi name="msi152"/>
+        <msi name="msi153"/>
+        <msi name="msi154"/>
+        <msi name="msi155"/>
+        <msi name="msi156"/>
+        <msi name="msi157"/>
+        <msi name="msi158"/>
+        <msi name="msi159"/>
+        <msi name="msi160"/>
+        <msi name="msi161"/>
+        <msi name="msi162"/>
+        <msi name="msi163"/>
+        <msi name="msi164"/>
+        <msi name="msi165"/>
+        <msi name="msi166"/>
+        <msi name="msi167"/>
+        <msi name="msi168"/>
+        <msi name="msi169"/>
+        <msi name="msi170"/>
+        <msi name="msi171"/>
+        <msi name="msi172"/>
+        <msi name="msi173"/>
+        <msi name="msi174"/>
+        <msi name="msi175"/>
+        <msi name="msi176"/>
+        <msi name="msi177"/>
+        <msi name="msi178"/>
+        <msi name="msi179"/>
+        <msi name="msi180"/>
+        <msi name="msi181"/>
+        <msi name="msi182"/>
+        <msi name="msi183"/>
+        <msi name="msi184"/>
+        <msi name="msi185"/>
+        <msi name="msi186"/>
+        <msi name="msi187"/>
+        <msi name="msi188"/>
+        <msi name="msi189"/>
+        <msi name="msi190"/>
+        <msi name="msi191"/>
+        <msi name="msi192"/>
+        <msi name="msi193"/>
+        <msi name="msi194"/>
+        <msi name="msi195"/>
+        <msi name="msi196"/>
+        <msi name="msi197"/>
+        <msi name="msi198"/>
+        <msi name="msi199"/>
+        <msi name="msi200"/>
+        <msi name="msi201"/>
+        <msi name="msi202"/>
+        <msi name="msi203"/>
+        <msi name="msi204"/>
+        <msi name="msi205"/>
+        <msi name="msi206"/>
+        <msi name="msi207"/>
+        <msi name="msi208"/>
+        <msi name="msi209"/>
+        <msi name="msi210"/>
+        <msi name="msi211"/>
+        <msi name="msi212"/>
+        <msi name="msi213"/>
+        <msi name="msi214"/>
+        <msi name="msi215"/>
+        <msi name="msi216"/>
+        <msi name="msi217"/>
+        <msi name="msi218"/>
+        <msi name="msi219"/>
+        <msi name="msi220"/>
+        <msi name="msi221"/>
+        <msi name="msi222"/>
+        <msi name="msi223"/>
+        <msi name="msi224"/>
+        <msi name="msi225"/>
+        <msi name="msi226"/>
+        <msi name="msi227"/>
+        <msi name="msi228"/>
+        <msi name="msi229"/>
+        <msi name="msi230"/>
+        <msi name="msi231"/>
+        <msi name="msi232"/>
+        <msi name="msi233"/>
+        <msi name="msi234"/>
+        <msi name="msi235"/>
+        <msi name="msi236"/>
+        <msi name="msi237"/>
+        <msi name="msi238"/>
+        <msi name="msi239"/>
+        <msi name="msi240"/>
+        <msi name="msi241"/>
+        <msi name="msi242"/>
+        <msi name="msi243"/>
+        <msi name="msi244"/>
+        <msi name="msi245"/>
+        <msi name="msi246"/>
+        <msi name="msi247"/>
+        <msi name="msi248"/>
+        <msi name="msi249"/>
+        <msi name="msi250"/>
+        <msi name="msi251"/>
+        <msi name="msi252"/>
+        <msi name="msi253"/>
+        <msi name="msi254"/>
+        <msi name="msi255"/>
+        <msi name="msi256"/> -->
       </irq>
-      <memory caching="UC" name="mem1" physicalAddress="16#5060_0000#" size="16#4000#"/>
+      <memory caching="UC" name="mem1" physicalAddress="16#5060_0000#" size="16#0004_0000#"/>
+      <memory caching="UC" name="mem2" physicalAddress="16#5064_0000#" size="16#0004_0000#"/>
       <memory caching="UC" name="mmconf" physicalAddress="16#c010_0000#" size="16#1000#"/>
     </device>
     <device name="serial_controller_1">
