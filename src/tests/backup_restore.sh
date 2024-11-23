@@ -14,7 +14,7 @@ fi
 # echo "waiting for NetHSM"
 # x=0
 # while ! curl -m 1 -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
-#   echo "."
+#   printf "."
 #   ((x++>25)) && echo "time out!" && exit 1
 #   sleep 2
 # done
@@ -42,7 +42,7 @@ POST_admin /v1/system/factory-reset
 echo "waiting for NetHSM"
 x=0
 while ! curl -m 1 -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
-  echo "."
+  printf "."
   ((x++>25)) && echo "time out!" && exit 1
   sleep 2
 done

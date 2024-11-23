@@ -378,7 +378,7 @@ test_muen_prodrive_hermes:
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
-        echo "."
+        printf "."
         sleep 1
       done
       echo "done."
@@ -430,7 +430,7 @@ test_muen_msi_z790:
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
-        echo "."
+        printf "."
         sleep 1
       done
       echo "done."
