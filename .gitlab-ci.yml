@@ -360,14 +360,15 @@ test_muen_prodrive_hermes:
     paths:
       - obj/serial_out.txt
   before_script:
-    - lsof -t /dev/ttyUSB0 | xargs -r kill || true
-    - stty -F /dev/ttyUSB0 raw pass8 -echo 115200
+    - TTY=/dev/$(basename /sys/bus/usb/devices/3-2:1.0/ttyUSB?)
+    - lsof -t $TTY | xargs -r kill || true
+    - stty -F $TTY raw pass8 -echo 115200
   script:
     - rm -f /tmp/gitlab-runner/installer-hermes-*.img
     - cp obj/${CI_INSTALLER_IMG} /tmp/gitlab-runner/installer-hermes-${CI_JOB_ID}.img
     - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/gitlab-runner/installer-hermes-${CI_JOB_ID}.img"
     - rm /tmp/gitlab-runner/installer-hermes-${CI_JOB_ID}.img
-    - cat </dev/ttyUSB0 >$SERIALTXT 2>&1 &
+    - cat <$TTY >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh
@@ -414,11 +415,12 @@ test_muen_msi_z790:
     paths:
       - obj/serial_out.txt
   before_script:
-    - lsof -t /dev/ttyUSB1 | xargs -r kill || true
-    - stty -F /dev/ttyUSB1 raw pass8 -echo 115200
+    - TTY=/dev/$(basename /sys/bus/usb/devices/3-1:1.0/ttyUSB?)
+    - lsof -t $TTY | xargs -r kill || true
+    - stty -F $TTY raw pass8 -echo 115200
   script:
     - tools/deploy-on-hw-z790.sh obj/${CI_INSTALLER_IMG}
-    - cat </dev/ttyUSB1 >$SERIALTXT 2>&1 &
+    - cat <$TTY >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh
