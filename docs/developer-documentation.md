@@ -348,6 +348,29 @@ Produces
 
 For initial provisioning, you can run `src/tests/provision_test.sh`. See the other scripts in that directory for more end to end tests.
 
+### Build builder image
+
+To build the builder image the buildkit backend is needed.
+With Docker you can use the *buildx* command, but Podman requires to run the buildkit daemon in a separate container.
+
+The Docker build can be run as follows.
+
+```
+docker buildx build -f $(pwd)/src/container/builder/Dockerfile -t localhost/builder $(pwd)/src/container/builder
+```
+
+For Podman the *buildkitd* container must be started first.
+
+```
+podman run -d --name buildkitd --privileged moby/buildkit:latest
+```
+
+Afterwards the Podman build can be run as follows.
+
+```
+buildctl --addr=podman-container://buildkitd build --frontend dockerfile.v0 --local context=$(pwd)/src/container/builder --local dockerfile=$(pwd)/src/container/builder --export-cache type=inline --opt build-arg:COMMIT_ID=$(git rev-parse --short HEAD) --output type=docker,name=localhost/builder | podman load
+```
+
 ### Build with builder container
 
 The following uses the makefile target `local-container-enter`.
@@ -362,15 +385,15 @@ The default can be overwritten by setting `CONTAINER_EXECUTOR` and appending it 
     # make DOCKER_IMAGE_NAME=nethsm-builder local-container-enter
     ```
 
-The build process inside the builder container needs access to the repositories on *git.nitrokey.com*. Make sure to have a working SSH configuration inside the container.
-
 2. Build the system with:
 
     ```
     make -j$(nproc) build
     ```
 
-For building all artifacts for the ProDrive Hermes hardware add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1 WITH_COREBOOT=1` to the build command. In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
+For building all artifacts for the ProDrive Hermes hardware (NetHSM 1) add `MODE=muen MUEN_HARDWARE=prodrive-hermes-1 WITH_COREBOOT=1` to the build command.
+For building all artifacts for the MSI Z790 hardware (NetHSM 2) add `MODE=muen MUEN_HARDWARE=msi-z790-1 WITH_COREBOOT=1` to the build command.
+In case this changes the mode in the stamp file the build process will fail. In this case you have to run `make distclean` before.
 
 Notes:
 
@@ -435,6 +458,31 @@ make -j5 MODE=muen run
 ```
 
 This will start QEMU in a detached `screen` session. Note that the VGA console is not used, follow `run/serial.out` for the system console.
+
+### Build test and production image
+
+To build the test and production image the buildkit backend is needed.
+With Docker you can use the *buildx* command, but Podman requires to run the buildkit daemon in a separate container.
+The `target` option needs to be set depending on if you want to build the test or production container.
+It takes the value `nethsm_test` or `nethsm_production`.
+
+The Docker build can be run as follows, while replacing `<target>` with the respective value.
+
+```
+docker buildx build -f $(pwd)/src/container/alpine/Dockerfile -t localhost/nethsm --target <target> $(pwd)
+```
+
+For Podman the *buildkitd* container must be started first.
+
+```
+podman run -d --name buildkitd --privileged moby/buildkit:latest
+```
+
+Afterwards the Podman build can be run as follows, while replacing `<target>` with the respective value.
+
+```
+buildctl --addr=podman-container://buildkitd build --frontend dockerfile.v0 --local context=. --local dockerfile=$(pwd)/src/container/alpine --opt target=<target> --export-cache type=inline --output type=docker,name=localhost/nethsm | podman load
+```
 
 ### Release process
 

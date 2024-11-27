@@ -1,3 +1,5 @@
+# Dockerfile for NetHSM test and production container
+
 ARG distro_version=golang:alpine3.22
 FROM ${distro_version} AS builder
 

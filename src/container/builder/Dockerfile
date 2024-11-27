@@ -3,11 +3,6 @@
 #
 # Based on Muen tools/docker/Dockerfile.muen-dev-env, with additions required
 # to build a MODE=dev and MODE=muen NetHSM system.
-#
-# Building the Docker container locally:
-#
-#   docker build -t nethsm-builder -f Dockerfile.nethsm-builder .
-#
 
 # Base image
 ARG distro_version=ubuntu:22.04
