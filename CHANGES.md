@@ -1,3 +1,9 @@
+# 2.1 (2025-01-12)
+
+* Keep real MAC address of ethernet device
+* Support for new NetHSM 2 hardware (MSI Z790)
+* Upgrade to Muen 1.1.1
+
 # 2.0 (2024-08-01)
 
 * Implementation of namespaces
