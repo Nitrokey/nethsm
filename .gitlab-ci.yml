@@ -20,7 +20,7 @@ variables:
   - git config --global --add safe.directory ${CI_PROJECT_DIR}
   - git config --global --add safe.directory /nethsm-tools
   - sudo chmod 01777 /downloads
-  - "sudo chown -R 1000:1000 /downloads/*"
+  - "sudo chown -R 1000:1000 /downloads/."
   - mkdir -p /downloads/opam
   - ln -s /downloads/opam ~/.opam/download-cache
 
