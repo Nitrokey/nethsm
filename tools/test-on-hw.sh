@@ -18,5 +18,5 @@ curl -s -k -X PUT -H "content-type: application/json" -d \
     https://admin:Administrator@${NETHSM_IP}/api/v1/config/logging
 
 flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 10 \
-    p256 p384 p521 rsa2048 rsa4096 ed25519 aes-cbc rnd-1024 \
-    p256-gen rsa2048-gen rsa4096-gen
+    p256 p384 p521 rsa2048 rsa3072 rsa4096 ed25519 aes-cbc rnd-1024 \
+    p256-gen p384-gen p521-gen rsa2048-gen rsa3072-gen rsa4096-gen ed25519-gen
