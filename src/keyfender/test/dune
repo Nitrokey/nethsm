@@ -4,9 +4,8 @@
   fmt.tty
   mirage-crypto-rng.unix
   lwt.unix
-  mirage-clock-unix
-  mirage-random-test
   mirage-kv-mem
+  mirage-ptime.mock
   keyfender
   alcotest
   str)
@@ -26,7 +25,7 @@
  (package keyfender))
 
 (test
- (libraries logs.fmt fmt.tty keyfender mirage-random-test alcotest)
+ (libraries logs.fmt fmt.tty keyfender alcotest mirage-crypto-rng.unix)
  (modules test_crypto)
  (name test_crypto)
  (package keyfender))
@@ -36,8 +35,6 @@
   logs.fmt
   fmt.tty
   keyfender
-  mirage-random-test
-  mirage-clock-unix
   mirage-kv-mem
   lwt.unix
   mirage-crypto-rng.unix)
@@ -58,9 +55,7 @@
   tcpip.stack-socket
   conduit-mirage
   cohttp-mirage
-  mirage-clock-unix
-  mirage-kv-mem
-  mirage-random-test)
+  mirage-kv-mem)
  (modules test_server)
  (preprocessor_deps public.pem)
  (preprocess
@@ -84,9 +79,7 @@
   lwt.unix
   alcotest
   keyfender
-  mirage-clock-unix
-  mirage-kv-mem
-  mirage-random-test)
+  mirage-kv-mem)
  (modules test_cached_store)
  (name test_cached_store)
  (public_name test_cached_store)

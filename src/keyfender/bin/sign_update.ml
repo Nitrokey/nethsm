@@ -5,12 +5,12 @@
 let update_header = Bytes.of_string "_NETHSM_UPDATE_\x00"
 
 let write_len length =
-  let len_buf = Cstruct.create 3 in
+  let len_buf = Bytes.create 3 in
   assert (length < 1 lsl 24);
   (* TODO *)
-  Cstruct.set_uint8 len_buf 0 (length lsr 16);
-  Cstruct.BE.set_uint16 len_buf 1 (length land 0xffff);
-  Cstruct.to_bytes len_buf
+  Bytes.set_uint8 len_buf 0 (length lsr 16);
+  Bytes.set_uint16_be len_buf 1 (length land 0xffff);
+  len_buf
 
 let prepend_len s = Bytes.cat (write_len (Bytes.length s)) s
 
@@ -91,16 +91,16 @@ let sign flags key_file changelog_file version_file image_file output_file =
   let blocks = (filesize + pred block_size) / block_size in
   let pad_buf =
     let padding = block_size - (filesize mod block_size) in
-    if padding = block_size then Cstruct.empty else Cstruct.create padding
+    if padding = block_size then Bytes.empty else Bytes.create padding
   in
   let blocks_buf =
-    let l = Cstruct.create 4 in
-    Cstruct.BE.set_uint32 l 0 (Int32.of_int blocks);
+    let l = Bytes.create 4 in
+    Bytes.set_int32_be l 0 (Int32.of_int blocks);
     l
   in
-  write_chunk fd () (Cstruct.to_bytes blocks_buf);
+  write_chunk fd () blocks_buf;
   read_file_chunked image_file () false (write_chunk fd);
-  write_chunk fd () (Cstruct.to_bytes pad_buf);
+  write_chunk fd () pad_buf;
   Unix.close fd;
   let signature = openssl_sign flags key_file data_file in
   Sys.remove data_file;
@@ -121,9 +121,9 @@ let sign flags key_file changelog_file version_file image_file output_file =
   write_chunk () @@ signature;
   read_file_chunked changelog_file () true write_chunk;
   write_chunk () @@ prepend_len (Bytes.unsafe_of_string version);
-  write_chunk () @@ Cstruct.to_bytes blocks_buf;
+  write_chunk () @@ blocks_buf;
   read_file_chunked image_file () false write_chunk;
-  write_chunk () @@ Cstruct.to_bytes pad_buf;
+  write_chunk () @@ pad_buf;
   Unix.close fd;
   Ok ()
 

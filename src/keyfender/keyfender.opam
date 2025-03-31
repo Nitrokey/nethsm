@@ -1,20 +1,19 @@
 opam-version: "2.0"
 maintainer: [
-  "Stefanie Schirmer @linse"
-  "Hannes Mehnert"
+  "Nitrokey GmbH"
 ]
 authors: [
-  "Stefanie Schirmer @linse"
-  "Hannes Mehnert"
+  "See CONTRIBUTORS.md"
 ]
 homepage: "dummy"
 bug-reports: "dummy"
+license: "EUPL-1.2"
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}]
   ["dune" "runtest" "-p" name "-j" jobs "--instrument-with=bisect_ppx" {coverage}] {with-test}
 ]
-
+dev-repo: "git+https://example.com/nonexistent"
 depends: [
   "cmdliner" {>= "1.2.0"}
   "ocaml" {>= "4.08.0"}
@@ -26,18 +25,16 @@ depends: [
   "logs"
   "lwt"
   "ptime"
-  "cohttp" {= "5.0.0"}
+  "cohttp" {>= "5.0.0"}
   "rresult"
   "mirage-crypto" {>= "0.8.4"}
   "webmachine" {>= "0.7.0"}
-  "cohttp-lwt" {= "5.0.0"}
+  "cohttp-lwt" {>= "5.0.0"}
   "yojson"
-  "mirage-clock"
-  "mirage-random" {>= "2.0.0"}
   "ppx_deriving_yojson"
   "ppx_deriving"
   "ppx_blob"
-  "scrypt-kdf" {>= "1.1.0"}
+  "kdf" {>= "1.0.0"}
   "mirage-kv" {>= "3.0.0"}
   "tls" {>= "0.13.1"}
   "x509" {>= "0.13.0"}
@@ -48,40 +45,28 @@ depends: [
   "ipaddr" {>= "5.0.0"}
   "metrics" {>= "0.2.0"}
   "metrics-lwt" {>= "0.2.0"}
-  "mirage-time"
   "duration"
   "multipart_form"
   "multipart_form-lwt"
   "io-page" {>= "2.4.0"} #{with-test}
   "conduit-mirage" {>= "5.0.0"} #{with-test}
-  "cohttp-mirage" {= "5.0.0"} #{with-test}
+  "cohttp-mirage" {>= "5.0.0"} #{with-test}
   "tcpip" {>= "7.0.0"} #{with-test}
-  "mirage-clock-unix" #{with-test}
   "mirage-kv-mem" #{with-test}
-  "mirage-random-test" #{with-test}
+#  "mirage-random-test" #{with-test}
 ]
 synopsis: "Keyfender library"
 pin-depends: [
-  ["conduit-mirage.6.1.0" "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#cf5fc0ed48d40a68ce96465532b98c88c24cb6bc"]
-  ["cohttp.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["cohttp-lwt.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["cohttp-mirage.5.0.0" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e764c7536ee9537c74ec261c2036e5469741e0ae"]
-  ["mirage-crypto.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
-  ["mirage-crypto-ec.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
-  ["mirage-crypto-pk.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
-  ["mirage-crypto-rng.0.10.7" "git+https://github.com/nitrokey/nethsm-mirage-crypto.git#725bda1eb5ee2c81fb7cec3c735e9118d1d5409b"]
-]
 # These versions of CoHTTP/Conduit integrate a partially worked patch to
 # transfer to the callback the identity of the client (the `inet_addr`) for
 # MirageOS only. We did change cohttp-lwt-unix or cohttp-async for instance.
 # These patches will probably not (according to the Conduit's design) be
 # integrated upstream.
-# These patches are applied on the version 5.0.0 of CoHTTP/Conduit and they
-# are available into the branch client-ip5 into dinosaure/ocaml-cohttp &
-# dinosaure/ocaml-conduit.
-#
-# The vendored versions of the mirage-crypto libraries are the latest version
-# compatbiel with Mirage 3 (0.10.7), with the integration of upstream PRs
-# improving performance of EC signature, verification and key generation
-# (see PR 133).
-# The vendored versions should be discarded as soon as keyfender uses Mirage 4
+  ["conduit.dev" "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#aa245af5bb039ed216366e97d25acc02f12e1d4c"]
+  ["conduit-lwt.dev" "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#aa245af5bb039ed216366e97d25acc02f12e1d4c"]
+  ["conduit-mirage.dev" "git+https://github.com/nitrokey/nethsm-ocaml-conduit.git#aa245af5bb039ed216366e97d25acc02f12e1d4c"]
+  ["cohttp.dev" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e1efa0c23f7c22e83e7c24895ffbb490c76a1f24"]
+  ["cohttp-lwt.dev" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e1efa0c23f7c22e83e7c24895ffbb490c76a1f24"]
+  ["cohttp-mirage.dev" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e1efa0c23f7c22e83e7c24895ffbb490c76a1f24"]
+  ["http.dev" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e1efa0c23f7c22e83e7c24895ffbb490c76a1f24"]
+]

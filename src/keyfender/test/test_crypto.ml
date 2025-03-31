@@ -2,8 +2,9 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-let data = Mirage_random_test.generate 32
-let adata = Cstruct.of_string "my additional data"
+let () = Mirage_crypto_rng_unix.use_default ()
+let data = Mirage_crypto_rng.generate 32
+let adata = "my additional data"
 
 let ( @? ) name fn =
   Alcotest.test_case name `Quick (fun () ->
@@ -11,32 +12,32 @@ let ( @? ) name fn =
 
 let basic_enc_dec_ok_1_byte =
   "decrypting an encrypted data works" @? fun () ->
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
-  let data = Cstruct.create 1 in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 32) in
+  let data = "X" in
   let encrypted =
-    Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
+    Keyfender.Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
   in
   match Keyfender.Crypto.decrypt ~key ~adata encrypted with
-  | Ok data' -> Cstruct.equal data data'
+  | Ok data' -> String.equal data data'
   | _ -> false
 
 let basic_enc_dec_ok_multiple_bytes =
   "decrypting an encrypted data works" @? fun () ->
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 16) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 16) in
   let encrypted =
-    Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
+    Keyfender.Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
   in
   match Keyfender.Crypto.decrypt ~key ~adata encrypted with
-  | Ok data' -> Cstruct.equal data data'
+  | Ok data' -> String.equal data data'
   | _ -> false
 
 let basic_enc_dec_fail_not_authenticated =
   "decrypting an encrypted domain key fails (wrong unlock key)" @? fun () ->
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 32) in
   let encrypted =
-    Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
+    Keyfender.Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
   in
-  let key' = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
+  let key' = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 32) in
   match Keyfender.Crypto.decrypt ~key:key' ~adata encrypted with
   | Ok _ -> false
   | Error _ -> true
@@ -44,11 +45,11 @@ let basic_enc_dec_fail_not_authenticated =
 
 let basic_enc_dec_fail_bad_adata =
   "decrypting an encrypted domain key fails (wrong adata)" @? fun () ->
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 32) in
   let encrypted =
-    Keyfender.Crypto.encrypt Mirage_random_test.generate ~key ~adata data
+    Keyfender.Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
   in
-  let adata' = Cstruct.of_string "some other adata" in
+  let adata' = "some other adata" in
   match Keyfender.Crypto.decrypt ~key ~adata:adata' encrypted with
   | Ok _ -> false
   | Error _ -> true
@@ -56,21 +57,21 @@ let basic_enc_dec_fail_bad_adata =
 
 let basic_enc_dec_fail_too_small =
   "decrypting an encrypted domain key fails (bad encrypted)" @? fun () ->
-  let key = Keyfender.Crypto.GCM.of_secret (Mirage_random_test.generate 32) in
-  match Keyfender.Crypto.decrypt ~key ~adata Cstruct.empty with
+  let key = Keyfender.Crypto.GCM.of_secret (Mirage_crypto_rng.generate 32) in
+  match Keyfender.Crypto.decrypt ~key ~adata String.empty with
   | Ok _ -> false
   | Error _ -> true
 (* expecting the data too small message *)
 
 let unlock_key passphrase =
-  let salt = Cstruct.of_string "ABCDEF" in
+  let salt = "ABCDEF" in
   Keyfender.Crypto.key_of_passphrase ~salt passphrase
 
 let kdf =
   "run KDF twice results in the same unlock key" @? fun () ->
   let passphrase = "einszweidreivier" in
   let unlock = unlock_key passphrase in
-  Cstruct.equal unlock (unlock_key passphrase)
+  String.equal unlock (unlock_key passphrase)
 
 let () =
   Printexc.record_backtrace true;

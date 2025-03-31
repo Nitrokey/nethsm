@@ -9,23 +9,18 @@ let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 
 module Log = (val Logs.src_log https_src : Logs.LOG)
 
-module Time = struct
-  let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
-end
-
 module Conduit = Conduit_mirage.TCP (Tcpip_stack_socket.V4V6)
 module Conduit_tls = Conduit_mirage.TLS (Conduit)
-module Http = Cohttp_mirage.Server.Make (Conduit_tls)
-module Hsm_clock = Keyfender.Hsm_clock.Make (Pclock)
-module Store = Mirage_kv_mem.Make (Hsm_clock)
+module Srv = Cohttp_mirage.Server.Make (Conduit_tls)
+module Kv_mem = struct
+  include Mirage_kv_mem
+  let batch dict ?retries:_ f = f dict
+end
 
 module Hsm =
-  Keyfender.Hsm.Make (Mirage_random_test) (Keyfender.Kv_ext.Make_ranged (Store))
-    (Time)
-    (Mclock)
-    (Hsm_clock)
+  Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
 
-module Webserver = Keyfender.Server.Make (Mirage_random_test) (Http) (Hsm)
+module Webserver = Keyfender.Server.Make (Srv) (Hsm)
 
 let platform =
   {
@@ -41,7 +36,7 @@ let () =
   Keyfender.Crypto.set_test_params ();
   let update_key =
     match
-      X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string)
+      X509.Public_key.decode_pem [%blob "public.pem"]
     with
     | Ok (`RSA key) -> key
     | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
@@ -51,9 +46,9 @@ let () =
   Fmt_tty.setup_std_outputs ();
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Debug);
-  Mirage_crypto_rng_unix.initialize ();
+  Mirage_crypto_rng_unix.use_default ();
   Lwt_main.run
-    ( Store.connect () >>= fun store ->
+    ( Kv_mem.connect () >>= fun store ->
       Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, _) ->
       let any = Ipaddr.V4.Prefix.global in
       Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None
@@ -62,12 +57,12 @@ let () =
       >>= fun udp ->
       Tcpip_stack_socket.V4V6.connect udp tcp >>= fun stack ->
       let certificates = Hsm.own_cert hsm_state in
-      let tls_cfg = Tls.Config.server ~certificates () in
+      let tls_cfg = Result.get_ok @@ Tls.Config.server ~certificates () in
       let https_port = 4433 in
       let tls = `TLS (tls_cfg, `TCP https_port) in
       let http_port = 8080 in
       let tcp = `TCP http_port in
-      let http = Http.listen stack in
+      let http = Srv.listen stack in
       let open Webserver in
       let https =
         Log.info (fun f -> f "listening on %d/TCP" https_port);

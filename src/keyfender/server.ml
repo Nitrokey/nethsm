@@ -8,7 +8,7 @@ let access_src = Logs.Src.create "http.access" ~doc:"HTTP server access log"
 
 module Access_log = (val Logs.src_log access_src : Logs.LOG)
 
-module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
+module Make_handlers (Hsm : Hsm.S) = struct
   module WmClock = struct
     let now () =
       let now_ptime = Hsm.now () in
@@ -91,34 +91,8 @@ module Make_handlers (R : Mirage_random.S) (Hsm : Hsm.S) = struct
       ]
 end
 
-module type Server = sig
-  module IO : Cohttp_lwt.IO
-
-  type conn = IO.conn * Cohttp.Connection.t
-  type t
-
-  val respond :
-    ?headers:Cohttp.Header.t ->
-    ?flush:bool ->
-    status:Cohttp.Code.status_code ->
-    body:Cohttp_lwt.Body.t ->
-    unit ->
-    (Cohttp.Response.t * Cohttp_lwt.Body.t) Lwt.t
-
-  val make :
-    ?conn_closed:(conn -> unit) ->
-    callback:
-      (conn ->
-      Ipaddr.t ->
-      Cohttp.Request.t ->
-      Cohttp_lwt.Body.t ->
-      (Cohttp.Response.t * Cohttp_lwt.Body.t) Lwt.t) ->
-    unit ->
-    t
-end
-
-module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
-  module Handlers = Make_handlers (R) (Hsm)
+module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
+  module Handlers = Make_handlers (Hsm)
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
   let dispatch hsm_state ip request body =
@@ -157,7 +131,7 @@ module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
           (Astring.String.concat ~sep:", " path));
     Hsm.Metrics.http_status status;
     Hsm.Metrics.http_response_time (Ptime.Span.to_float_s diff);
-    Http.respond ~flush:false ~headers ~body ~status ()
+    Srv.respond ~headers ~body ~status ()
 
   (* Redirect to https *)
   let redirect port _ip request _body =
@@ -169,11 +143,11 @@ module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
     Access_log.debug (fun f ->
         f "[%s] -> [%s]" (Uri.to_string uri) (Uri.to_string new_uri));
     let headers = Cohttp.Header.init_with "location" (Uri.to_string new_uri) in
-    Http.respond ~flush:false ~headers ~status:`Moved_permanently ~body:`Empty
+    Srv.respond ~headers ~status:`Moved_permanently ~body:`Empty
       ()
 
   let serve cb =
-    let callback (_, cid) ip request body =
+    let callback _x ip request body =
       let ip =
         match ip with
         | Ipaddr.V4 ip -> ip
@@ -183,13 +157,11 @@ module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
       in
       Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
       let uri = Cohttp.Request.uri request in
-      let cid = Cohttp.Connection.to_string cid in
-      Access_log.debug (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
+      Access_log.debug (fun f -> f "[%s] serving %s." "XXX" (Uri.to_string uri));
       cb ip request body
     in
-    let conn_closed (_, cid) =
-      let cid = Cohttp.Connection.to_string cid in
-      Access_log.debug (fun f -> f "[%s] closing" cid)
+    let conn_closed _ =
+      Access_log.debug (fun f -> f "[%s] closing" "XXX")
     in
-    Http.make ~conn_closed ~callback ()
+    Srv.make ~conn_closed ~callback ()
 end

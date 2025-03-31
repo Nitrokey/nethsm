@@ -8,9 +8,7 @@ type settings = {
   cache_size : int;
 }
 
-module Make
-    (KV : Kv_ext.Typed_ranged)
-    (Monotonic_clock : Mirage_clock.MCLOCK) : sig
+module Make (KV : Kv_ext.Typed_ranged) : sig
   include
     Kv_ext.Typed_ranged
       with type value = KV.value

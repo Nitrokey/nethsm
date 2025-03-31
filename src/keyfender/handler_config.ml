@@ -101,7 +101,7 @@ struct
           | Json.Generic -> Error "Generic"
           | RSA -> Ok `RSA
           | Curve25519 -> Ok `ED25519
-          | EC_P224 -> Ok `P224
+          | EC_P224 -> Error "P224"
           | EC_P256 -> Ok `P256
           | EC_P384 -> Ok `P384
           | EC_P521 -> Ok `P521)

@@ -11,7 +11,7 @@
     stored for key [b] unless [a] and [b] are equal. The IV is generated at
     random. The encrypted value stored is a concatenation of the IV, the
     authentication tag, and the encrypted data. *)
-module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
+module Make (KV : Kv_ext.Ranged) : sig
   include
     Kv_ext.Ranged
       with type error =
@@ -32,7 +32,7 @@ module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
   val initialize :
     Version.t ->
     slot ->
-    key:Cstruct.t ->
+    key:string ->
     KV.t ->
     (t, KV.write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
@@ -40,7 +40,7 @@ module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
       [kv], and [key] is the symmetric secret for encryption and decryption. The
       version is written encrypted and authenticated to the store. *)
 
-  val v : slot -> key:Cstruct.t -> KV.t -> t
+  val v : slot -> key:string -> KV.t -> t
   (** [v slot ~key kv] is an encrypted store. *)
 
   val prepare_set : t -> key -> string -> key * string
@@ -58,7 +58,7 @@ module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
   val unlock :
     Version.t ->
     slot ->
-    key:Cstruct.t ->
+    key:string ->
     KV.t ->
     ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result
     Lwt.t
@@ -76,8 +76,8 @@ module Make (R : Mirage_random.S) (KV : Kv_ext.Ranged) : sig
   val set_version : t -> Version.t -> (unit, KV.write_error) Lwt_result.t
 
   val slot_of_key : KV.key -> slot option
-  (** [slot_of_key key] returns the slot in which the key resides, or None if 
-      it's not part of the encrypted store. [key] should be a key of the 
+  (** [slot_of_key key] returns the slot in which the key resides, or None if
+      it's not part of the encrypted store. [key] should be a key of the
       underlying store. *)
 
   val prefix_of_slot : slot -> KV.key

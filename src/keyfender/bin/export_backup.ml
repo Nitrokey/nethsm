@@ -60,9 +60,8 @@ let read_n stream n =
 *)
 
 let decode_length data =
-  let data' = Cstruct.of_string data in
-  let byte = Cstruct.get_uint8 data' 0 in
-  let len = Cstruct.BE.get_uint16 data' 1 in
+  let byte = String.get_uint8 data 0 in
+  let len = String.get_uint16_be data 1 in
   (byte lsl 16) + len
 
 (*
@@ -84,14 +83,14 @@ let version = "0"
 let err_to_msg = function Error e -> Error (`Msg e) | Ok a -> Ok a
 
 let decrypt ~key ~adata data =
-  match Crypto.decrypt ~key ~adata (Cstruct.of_string data) with
+  match Crypto.decrypt ~key ~adata data with
   | Error `Insufficient_data ->
       Error
-        ("Could not decrypt stored " ^ Cstruct.to_string adata
+        ("Could not decrypt stored " ^ adata
        ^ ". Backup is corrupted?")
   | Error `Not_authenticated ->
       Error
-        ("Could not decrypt stored " ^ Cstruct.to_string adata
+        ("Could not decrypt stored " ^ adata
        ^ ". Authentication failed midway. Backup is corrupted?")
   | Ok x -> Ok x
 
@@ -130,29 +129,29 @@ let export passphrase backup_image_filename output =
   in
   let salt, backup_data = get_field backup_data in
   let backup_key =
-    Crypto.key_of_passphrase ~salt:(Cstruct.of_string salt) passphrase
+    Crypto.key_of_passphrase ~salt passphrase
   in
   let key = Crypto.GCM.of_secret backup_key in
   let encrypted_version, backup_data = get_field backup_data in
-  let adata = Cstruct.of_string "backup-version" in
+  let adata = "backup-version" in
   let* version_int = decrypt ~key ~adata encrypted_version in
   let* () =
-    if version = Cstruct.get_char version_int 0 then Ok ()
+    if version = String.get version_int 0 then Ok ()
     else Error "Internal and external version mismatch."
   in
   let encrypted_domain_key, backup_data = get_field backup_data in
-  let adata = Cstruct.of_string "domain-key" in
+  let adata = "domain-key" in
   let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
   let rec next acc rest =
     if rest = "" then Ok acc
     else
       let item, rest = get_field rest in
-      let adata = Cstruct.of_string "backup" in
+      let adata = "backup" in
       let* key_value_pair = decrypt ~key ~adata item in
-      let key, value = get_field (Cstruct.to_string key_value_pair) in
+      let key, value = get_field key_value_pair in
       next ((key, value) :: acc) rest
   in
-  let init = [ (".locked-domain-key", Cstruct.to_string locked_domain_key) ] in
+  let init = [ (".locked-domain-key", locked_domain_key) ] in
   match next init backup_data with
   | Error e -> Error e
   | Ok kvs ->
@@ -197,5 +196,5 @@ let info_ =
   Cmd.info "export_backup" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
-  Mirage_crypto_rng_unix.initialize ();
+  Mirage_crypto_rng_unix.use_default ();
   if Cmd.(eval (v info_ term) = Exit.ok) then exit 0 else exit 1

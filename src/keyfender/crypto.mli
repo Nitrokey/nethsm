@@ -8,9 +8,9 @@ val salt_len : int
 val key_len : int
 (** The length of the symmetric key, in bytes. *)
 
-module GCM : Mirage_crypto.Cipher_block.S.GCM
+module GCM : Mirage_crypto.Block.GCM
 
-val key_of_passphrase : salt:Cstruct.t -> string -> Cstruct.t
+val key_of_passphrase : salt:string -> string -> string
 (** Derive a symmetric key from a passphrase, using SCRYPT. *)
 
 val set_test_params : unit -> unit
@@ -19,11 +19,11 @@ val set_test_params : unit -> unit
 val passphrase_salt_len : int
 (** The length of the salt used for storing the passphrase. *)
 
-val stored_passphrase : salt:Cstruct.t -> Cstruct.t -> Cstruct.t
+val stored_passphrase : salt:string -> string -> string
 (** Computes the stored passphrase from a salt and plain passphrase. *)
 
 val encrypt :
-  (int -> Cstruct.t) -> key:GCM.key -> adata:Cstruct.t -> Cstruct.t -> Cstruct.t
+  (int -> string) -> key:GCM.key -> adata:string -> string -> string
 (** [encrypt rng ~key ~adata data] encrypts [data] using AES-GCM with the
     provided [key] and additional data [adata]. The [rng] is used to generate
     the nonce. The result is a concatenation of nonce, tag, encrypted data. *)
@@ -37,9 +37,9 @@ val pp_decryption_error : decrypt_error Fmt.t
 
 val decrypt :
   key:GCM.key ->
-  adata:Cstruct.t ->
-  Cstruct.t ->
-  (Cstruct.t, decrypt_error) result
+  adata:string ->
+  string ->
+  (string, decrypt_error) result
 (** [decrypt ~key ~adata data] attempts to decrypt [data], which is a
     concatenation of nonce, tag, encrypted data. The [key] and [adata] are used
     for decryption. *)

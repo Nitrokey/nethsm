@@ -2,8 +2,46 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
+module type RW = sig
+  type nonrec error = private [> Mirage_kv.error ]
+
+  val pp_error : error Fmt.t
+
+  type t
+
+  val disconnect : t -> unit Lwt.t
+
+  type key = Mirage_kv.key
+
+  val exists :
+    t ->
+    key ->
+    ([ `Dictionary | `Value ] option, error) result Lwt.t
+
+  val get : t -> key -> (string, error) result Lwt.t
+
+  val list :
+    t ->
+    key ->
+    ((key * [ `Dictionary | `Value ]) list, error) result Lwt.t
+
+  val last_modified : t -> key -> (Ptime.t, error) result Lwt.t
+  val digest : t -> key -> (string, error) result Lwt.t
+
+  type nonrec write_error = private [> Mirage_kv.write_error ]
+
+  val pp_write_error : write_error Fmt.t
+
+  val set :
+    t -> key -> string -> (unit, write_error) result Lwt.t
+
+  val remove : t -> key -> (unit, write_error) result Lwt.t
+
+  val batch: t -> ?retries:int -> (t -> 'a Lwt.t) -> 'a Lwt.t
+end
+
 module type Typed = sig
-  include Mirage_kv.RW
+  include RW
 
   type value
   type read_error
@@ -14,7 +52,7 @@ module type Typed = sig
 end
 
 module Range = struct
-  open Mirage_kv
+  module Key = Mirage_kv.Key
 
   type t = { prefix : Key.t; start : string option; stop : string option }
   (** Range of keys of the form [prefix//start, prefix//stop[ in lexicographical
@@ -64,30 +102,32 @@ module Range = struct
 
   let first_key t = Option.map (fun start -> Key.(t.prefix / start)) t.start
   let range_end t = Option.map (fun stop -> Key.(t.prefix / stop)) t.stop
+
 end
 
 module type Ranged = sig
-  include Mirage_kv.RW
+  include RW
 
   val list_range :
     t ->
     Range.t ->
-    ((string * [ `Value | `Dictionary ]) list, error) result Lwt.t
+    ((key * [ `Value | `Dictionary ]) list, error) result Lwt.t
   (** Return all keys in range that correspond to an entry in kv *)
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
     ranged search *)
-module Make_ranged (KV : Mirage_kv.RW) : Ranged with type t = KV.t = struct
+module Make_ranged (KV : RW) : Ranged with type t = KV.t = struct
   include KV
 
   let list_range t range =
     let open Lwt_result.Infix in
     KV.list t (Range.prefix range) >|= fun items ->
-    List.filter (fun (k, _) -> Range.within range (Mirage_kv.Key.v k)) items
+    List.filter (fun (k, _) -> Range.within range k) items
 end
 
 module type Typed_ranged = sig
   include Ranged
   include Typed with type t := t and type error := error
 end
+

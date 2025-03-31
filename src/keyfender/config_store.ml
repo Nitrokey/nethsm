@@ -6,17 +6,17 @@ open Lwt.Infix
 
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
-module Make (KV : Mirage_kv.RW) = struct
+module Make (KV : Kv_ext.RW) = struct
   let config_prefix = "config"
 
   type _ k =
-    | Unlock_salt : Cstruct.t k
+    | Unlock_salt : string k
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
     | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
-    | Backup_salt : Cstruct.t k
-    | Backup_key : Cstruct.t k
+    | Backup_salt : string k
+    | Backup_key : string k
     | Log_config : (Ipaddr.V4.t * int * Logs.level) k
     | Time_offset : Ptime.span k
     | Unattended_boot : bool k
@@ -76,19 +76,21 @@ module Make (KV : Mirage_kv.RW) = struct
   let to_string : type a. a k -> a -> string =
    fun k v ->
     match (k, v) with
-    | Unlock_salt, salt -> Cstruct.to_string salt
+    | Unlock_salt, salt -> salt
     | Certificate, (server, chain) ->
         (* maybe upstream/extend X509.Certificate *)
         let encode_one crt =
           let data = X509.Certificate.encode_der crt in
-          let len_buf = Cstruct.create 4 in
-          Cstruct.BE.set_uint32 len_buf 0 (Int32.of_int (Cstruct.length data));
-          Cstruct.(to_string (append len_buf data))
+          let l = String.length data in
+          let buf = Bytes.create (l + 4) in
+          Bytes.set_int32_be buf 0 (Int32.of_int l);
+          Bytes.blit_string data 0 buf 4 l;
+          Bytes.unsafe_to_string buf
         in
         String.concat "" (List.map encode_one (server :: chain))
     | Private_key, key ->
         (* TODO encode_der (x509 0.8.1) *)
-        Cstruct.to_string (X509.Private_key.encode_pem key)
+        X509.Private_key.encode_pem key
     | Version, v -> Version.to_string v
     | Ip_config, (ip, prefix, route) ->
         let route' = match route with None -> Ipaddr.V4.any | Some x -> x in
@@ -98,15 +100,15 @@ module Make (KV : Mirage_kv.RW) = struct
             Ipaddr.V4.to_octets ip;
             Ipaddr.V4.to_octets (Ipaddr.V4.Prefix.netmask prefix);
           ]
-    | Backup_salt, s -> Cstruct.to_string s
-    | Backup_key, s -> Cstruct.to_string s
+    | Backup_salt, s -> s
+    | Backup_key, s -> s
     | Log_config, (ip, port, level) ->
-        let port_cs = Cstruct.create 2 in
-        Cstruct.BE.set_uint16 port_cs 0 port;
+        let port_cs = Bytes.create 2 in
+        Bytes.set_uint16_be port_cs 0 port;
         String.concat ""
           [
             Ipaddr.V4.to_octets ip;
-            Cstruct.to_string port_cs;
+            Bytes.unsafe_to_string port_cs;
             Logs.level_to_string (Some level);
           ]
     | Time_offset, span -> (
@@ -120,24 +122,24 @@ module Make (KV : Mirage_kv.RW) = struct
     let open Rresult.R.Infix in
     let guard p err = if p then Ok () else Error (`Msg err) in
     match key with
-    | Unlock_salt -> Ok (Cstruct.of_string data)
+    | Unlock_salt -> Ok data
     | Certificate -> (
         let rec decode data acc =
-          let total = Cstruct.length data in
+          let total = String.length data in
           if total = 0 then Ok (List.rev acc)
           else
             guard (total >= 4) "invalid data (no length field)" >>= fun () ->
-            let len = Int32.to_int (Cstruct.BE.get_uint32 data 0) in
+            let len = Option.get (Int32.unsigned_to_int (String.get_int32_be data 0)) in
             guard (total - 4 >= len) "invalid data (too short)" >>= fun () ->
-            match X509.Certificate.decode_der (Cstruct.sub data 4 len) with
-            | Ok cert -> decode (Cstruct.shift data (len + 4)) (cert :: acc)
+            match X509.Certificate.decode_der (String.sub data 4 len) with
+            | Ok cert -> decode (String.sub data (len + 4) (total - len - 4)) (cert :: acc)
             | Error e -> Error e
         in
-        match decode (Cstruct.of_string data) [] with
+        match decode data [] with
         | Ok (server :: chain) -> Ok (server, chain)
         | Ok [] -> Error (`Msg "empty certificate chain")
         | Error e -> Error e)
-    | Private_key -> X509.Private_key.decode_pem (Cstruct.of_string data)
+    | Private_key -> X509.Private_key.decode_pem data
     | Version -> Version.of_string data
     | Ip_config ->
         guard
@@ -155,8 +157,8 @@ module Make (KV : Mirage_kv.RW) = struct
          else if Ipaddr.V4.Prefix.mem route prefix then Ok (Some route)
          else Error (`Msg "route not on local network"))
         >>| fun route' -> (address, prefix, route')
-    | Backup_salt -> Ok (Cstruct.of_string data)
-    | Backup_key -> Ok (Cstruct.of_string data)
+    | Backup_salt -> Ok data
+    | Backup_key -> Ok data
     | Log_config -> (
         let ip, port, level =
           ( String.sub data 0 4,
@@ -164,7 +166,7 @@ module Make (KV : Mirage_kv.RW) = struct
             String.sub data 6 (String.length data - 6) )
         in
         Ipaddr.V4.of_octets ip >>= fun ip ->
-        let port = Cstruct.BE.get_uint16 (Cstruct.of_string port) 0 in
+        let port = String.get_uint16_be port 0 in
         match Logs.level_of_string level with
         | Error (`Msg msg) -> Error (`Msg msg)
         | Ok None -> Error (`Msg "invalid log level")

@@ -2,8 +2,6 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-module Hsm_clock = Keyfender.Hsm_clock.Make (Pclock)
-
 module Stats_store (Store : Keyfender.Kv_ext.Ranged) = struct
   include Store
 
@@ -45,9 +43,13 @@ module Stats_store (Store : Keyfender.Kv_ext.Ranged) = struct
   let connect t = { t; stats = { reads = 0; writes = 0 } }
 end
 
-module KV = Mirage_kv_mem.Make (Hsm_clock)
+module KV = struct
+  include Mirage_kv_mem
+  let batch dict ?retries:_ f = f dict
+end
+
 module Underlying_store = Stats_store (Keyfender.Kv_ext.Make_ranged (KV))
-module Cached_store = Keyfender.Cached_store.Make (Underlying_store) (Mclock)
+module Cached_store = Keyfender.Cached_store.Make (Underlying_store)
 open Lwt.Syntax
 
 let key0 = Mirage_kv.Key.v "/key0"

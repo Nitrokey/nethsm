@@ -12,7 +12,7 @@ type settings = {
   cache_size : int;
 }
 
-module Make (KV : Kv_ext.Typed_ranged) (Monotonic_clock : Mirage_clock.MCLOCK) =
+module Make (KV : Kv_ext.Typed_ranged) =
 struct
   type creation_time = int64
 
@@ -55,7 +55,7 @@ struct
     | Cache c -> c.cache <- Cache.empty c.settings.cache_size
 
   let update cache key value =
-    Cache.add key (value, Monotonic_clock.elapsed_ns ()) cache
+    Cache.add key (value, Mirage_mtime.elapsed_ns ()) cache
 
   type ('a, 'b) validation =
     | Up_to_date of 'a
@@ -64,7 +64,7 @@ struct
     | Unknown
 
   let check ~settings ~async_refresh cache id =
-    let now = Monotonic_clock.elapsed_ns () in
+    let now = Mirage_mtime.elapsed_ns () in
     let invalid_threshold = Int64.(sub now (s_to_ns settings.evict_delay_s)) in
     let stale_threshold =
       Option.bind async_refresh (fun async_refesh ->

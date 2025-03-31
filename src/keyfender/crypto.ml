@@ -2,7 +2,7 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-module GCM = Mirage_crypto.Cipher_block.AES.GCM
+module GCM = Mirage_crypto.AES.GCM
 
 (* parameters for scrypt-kdf from https://blog.filippo.io/the-scrypt-parameters/ *)
 (* uses 128 * r * n = 16MB RAM *)
@@ -22,15 +22,15 @@ let salt_len = 16
 let key_len = 32
 
 let key_of_passphrase ~salt password =
-  Scrypt_kdf.scrypt_kdf
-    ~password:(Cstruct.of_string password)
+  Scrypt.scrypt
+    ~password:password
     ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r ~p:!scrypt_params.p
     ~dk_len:(Int32.of_int key_len)
 
 let passphrase_salt_len = 16
 
 let stored_passphrase ~salt plain =
-  Mirage_crypto.Hash.SHA256.hmac ~key:salt plain
+  Digestif.SHA256.(hmac_string ~key:salt plain |> to_raw_string)
 
 (* from https://crypto.stackexchange.com/questions/5807/aes-gcm-and-its-iv-nonce-value *)
 let iv_size = 12
@@ -39,16 +39,18 @@ let encrypt rng ~key ~adata data =
   (* generate an nonce at random, encrypt, and concatenate nonce + encrypted + tag *)
   let nonce = rng iv_size in
   let cipher = GCM.authenticate_encrypt ~key ~nonce ~adata data in
-  Cstruct.append nonce cipher
+  nonce ^ cipher
 
 type decrypt_error = [ `Insufficient_data | `Not_authenticated ]
 
 let decrypt ~key ~adata data =
-  (* data is a cstruct (IV + encrypted data + tag)
+  let l = String.length data in
+  (* data is a string (IV + encrypted data + tag)
      IV is iv_size long, tag is block_size, and data of at least one byte *)
-  if Cstruct.length data <= iv_size + GCM.tag_size then Error `Insufficient_data
+  if l <= iv_size + GCM.tag_size then Error `Insufficient_data
   else
-    let nonce, data' = Cstruct.split data iv_size in
+    let nonce = String.sub data 0 iv_size in
+    let data' = String.sub data iv_size (l-iv_size) in
     match GCM.authenticate_decrypt ~key ~nonce ~adata data' with
     | None -> Error `Not_authenticated
     | Some msg -> Ok msg

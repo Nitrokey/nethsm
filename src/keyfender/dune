@@ -17,10 +17,9 @@
   mirage-crypto-pk
   webmachine
   cohttp-lwt
+  cohttp-mirage
   yojson
-  mirage-clock
-  mirage-random
-  scrypt-kdf
+  kdf.scrypt
   mirage-kv
   tls
   x509
@@ -29,7 +28,6 @@
   ipaddr
   metrics
   metrics-lwt
-  mirage-time
   duration
   lru
   multipart_form

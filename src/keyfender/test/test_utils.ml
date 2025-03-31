@@ -1,7 +1,7 @@
 open Cohttp
 open Lwt.Infix
 
-let () = Mirage_crypto_rng_unix.initialize ()
+let () = Mirage_crypto_rng_unix.use_default ()
 
 module Test_logs = struct
   let buffer = Buffer.create 1000
@@ -28,36 +28,24 @@ let warning msg = Fmt.str "test_dispatch.exe: [WARNING] %s\n" msg
 let error msg = Fmt.str "test_dispatch.exe: [ERROR] %s\n" msg
 
 module Mock_clock = struct
-  let _now = ref (1000, 0L)
-  let now_d_ps () = !_now
-  let current_tz_offset_s () = None
-  let period_d_ps () = None
-
   let one_second_later () =
-    _now := (fst !_now, Int64.add (snd !_now) 1_000_000_000_000L)
+    Mirage_ptime_set.(set (fst !now, Int64.add (snd !now) 1_000_000_000_000L))
 end
 
-module Hsm_clock = Keyfender.Hsm_clock.Make (Mock_clock)
-
-module Time = struct
-  let sleep_ns duration = Lwt_unix.sleep (Duration.to_f duration)
+module Kv_mem = struct
+  include Mirage_kv_mem
+  let batch dict ?retries:_ f = f dict
 end
-
-module Kv_mem = Mirage_kv_mem.Make (Hsm_clock)
 
 module Hsm =
   Keyfender.Hsm.Make
-    (Mirage_random_test)
     (Keyfender.Kv_ext.Make_ranged (Kv_mem))
-    (Time)
-    (Mclock)
-    (Hsm_clock)
 
-module Handlers = Keyfender.Server.Make_handlers (Mirage_random_test) (Hsm)
+module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let software_update_key =
   match
-    X509.Public_key.decode_pem ([%blob "public.pem"] |> Cstruct.of_string)
+    X509.Public_key.decode_pem [%blob "public.pem"]
   with
   | Ok (`RSA key) -> key
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
@@ -104,7 +92,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
 let copy t =
-  let v = Marshal.to_string t [] in
+  let v = Marshal.to_string t [Closures] in
   Marshal.from_string v 0
 
 let user ?namespace id = { Hsm.Nid.id; namespace }
@@ -194,7 +182,7 @@ q0PSmuPXlTzxujJ39G0gDqfeyhEn/ynw0ElbqB2sg4eA
 |}
 
 let test_key =
-  match X509.Private_key.decode_pem (Cstruct.of_string test_key_pem) with
+  match X509.Private_key.decode_pem test_key_pem with
   | Ok (`RSA key) -> key
   | _ -> assert false
 

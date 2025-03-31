@@ -307,11 +307,7 @@ module type S = sig
 end
 
 module Make
-    (Rng : Mirage_random.S)
-    (KV : Kv_ext.Ranged)
-    (Time : Mirage_time.S)
-    (Monotonic_clock : Mirage_clock.MCLOCK)
-    (Clock : Hsm_clock.HSMCLOCK) : sig
+    (KV : Kv_ext.Ranged) : sig
   include S
 
   val boot :

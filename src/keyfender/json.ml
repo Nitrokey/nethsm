@@ -273,7 +273,7 @@ let tagset_of_string m = Astring.String.cuts ~sep:"," m |> TagSet.of_list
 type key_type =
   | RSA
   | Curve25519
-  | EC_P224
+  | EC_P224 (* unsupported, only for DB backward compatibility *)
   | EC_P256
   | EC_P384
   | EC_P521
@@ -308,7 +308,7 @@ let type_matches_mechanism typ m =
           RSA_Signature_PSS_SHA512;
         ]
   | Curve25519 -> m = EdDSA_Signature
-  | EC_P224 -> m = ECDSA_Signature
+  | EC_P224 -> false
   | EC_P256 -> m = ECDSA_Signature
   | EC_P384 -> m = ECDSA_Signature
   | EC_P521 -> m = ECDSA_Signature
@@ -521,16 +521,14 @@ let assoc_list_of_yojson = function
       map l []
   | _ -> Error "Expected JSON object"
 
-type cstruct = Cstruct.t
-
-let cstruct_to_yojson cs =
-  let b64 = Base64.encode_exn (Cstruct.to_string cs) in
+let string_to_yojson cs =
+  let b64 = Base64.encode_exn cs in
   `String b64
 
-let cstruct_of_yojson = function
+let string_of_yojson = function
   | `String s -> (
       match Base64.decode s with
-      | Ok s -> Ok (Cstruct.of_string s)
+      | Ok s -> Ok s
       | Error (`Msg msg) -> Error msg)
   | _ -> Error "Expected JSON string"
 

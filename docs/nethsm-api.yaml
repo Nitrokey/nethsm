@@ -409,7 +409,7 @@ paths:
                   value:
                     mechanisms:
                       - ECDSA_Signature
-                    type: EC_P224
+                    type: EC_P256
                     operations: 242
                     restrictions:
                       tags:
@@ -489,7 +489,7 @@ paths:
           For request body with content type `application/json`:
           * *RSA* includes `primeP`, `primeQ`, and `publicExponent` properties.
             The remaining properties `privateExponent`, `modulus`, ..) are computed.
-          * *EC_P224*, *EC_P256*, *EC_P384*, *EC_P521* uses the `data` property.
+          * *EC_P256*, *EC_P384*, *EC_P521* uses the `data` property.
             Keys are the raw (big endian) scalar.
           * *Curve25519* uses the `data` property.
             Keys are the raw (little endian) key.
@@ -514,7 +514,7 @@ paths:
               ecdsa:
                 summary: P* Keys
                 value:
-                  type: EC_P224
+                  type: EC_P256
                   mechanisms:
                     - ECDSA_Signature
                   private:
@@ -813,7 +813,7 @@ paths:
             (ED25519 applies the SHA512 hash internally,
             also to derive the nonce).
           * Mode `ECDSA` expects the hashed data
-            (using SHA224 for P224, SHA256 for P256,
+            (using SHA256 for P256,
             SHA384 for P384 and SHA512 for P521).
         content:
           application/json:
@@ -2231,7 +2231,6 @@ components:
       enum:
         - RSA
         - Curve25519
-        - EC_P224
         - EC_P256
         - EC_P384
         - EC_P521
@@ -2241,7 +2240,6 @@ components:
       enum:
         - RSA
         - Curve25519
-        - EC_P224
         - EC_P256
         - EC_P384
         - EC_P521
