@@ -20,8 +20,6 @@ module type S = sig
 end
 
 module Direct
-    (Rng : Mirage_random.S)
-    (Mclock : Mirage_clock.MCLOCK)
     (Net : Mirage_net.S)
     (Eth : Ethernet.S)
     (Arp : Arp.S) : sig
@@ -29,16 +27,15 @@ module Direct
 
   val connect : Net.t -> Eth.t -> Arp.t -> t Lwt.t
 end = struct
-  module Time = OS.Time
-  module Ipv4 = Static_ipv4.Make (Rng) (Mclock) (Eth) (Arp)
-  module Ipv6 = Ipv6.Make (Net) (Eth) (Rng) (Time) (Mclock)
+  module Ipv4 = Static_ipv4.Make (Eth) (Arp)
+  module Ipv6 = Ipv6.Make (Net) (Eth)
   module Icmp = Icmpv4.Make (Ipv4)
   module Ip = Tcpip_stack_direct.IPV4V6 (Ipv4) (Ipv6)
-  module Udp = Udp.Make (Ip) (Rng)
-  module Tcp = Tcp.Flow.Make (Ip) (Time) (Mclock) (Rng)
+  module Udp = Udp.Make (Ip)
+  module Tcp = Tcp.Flow.Make (Ip)
 
   module Stack =
-    Tcpip_stack_direct.MakeV4V6 (Time) (Rng) (Net) (Eth) (Arp) (Ip) (Icmp) (Udp)
+    Tcpip_stack_direct.MakeV4V6 (Net) (Eth) (Arp) (Ip) (Icmp) (Udp)
       (Tcp)
 
   type net = Net.t

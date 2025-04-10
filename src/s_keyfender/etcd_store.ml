@@ -6,7 +6,7 @@ open Lwt.Infix
 open Rpc.Etcdserverpb
 open Kv.Mvccpb
 module Protoc = Ocaml_protoc_plugin
-module Protoc_runtime = Protoc.Runtime.Runtime'
+module Protoc_runtime = Protoc
 
 let etcd_store_src = Logs.Src.create "etcd_store"
 
@@ -61,7 +61,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     let rec loop sec =
       if sec = 0 then Lwt.return_unit
       else
-        OS.Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
+        Mirage_sleep.ns (Duration.of_sec 1) >>= fun () ->
         (loop [@tailcall]) (sec - 1)
     in
     loop sec >>= fun () ->
@@ -73,7 +73,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     Lwt.pick
       [
         TCP.create_connection (Stack.tcp stack)
-          (Ipaddr.V4 (Key_gen.platform ()), etcd_port);
+          (Ipaddr.V4 (Args.platform ()), etcd_port);
         ( timeout 5 "TCP connection to etcd timed out" >|= fun _ ->
           Error `Timeout );
       ]
@@ -120,9 +120,9 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             let conn =
               let buffered_flow = Gluten_mirage.Buffered_flow.create flow in
               H2C.create_connection ~error_handler buffered_flow >>= fun conn ->
-              let pong, pong_resolver = Lwt.task () in
-              H2C.ping conn (fun () -> Lwt.wakeup_later pong_resolver ());
-              pong >|= fun () -> conn
+              H2C.ping conn >>= function
+              | Error _-> assert false
+              | Ok () -> Lwt.return conn
             in
             Lwt.pick
               [
@@ -180,13 +180,13 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       Lwt.wakeup_later_exn stream_err_resolver (Etcd_error msg)
     in
     let do_request =
-      H2C.request ~flush_headers_immediately:false conn ~error_handler
+      H2C.request conn ~error_handler
     in
     let grpc_resp =
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
     in
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
-    | Error e -> etcd_err (Fmt.to_to_string Grpc__Status.pp e)
+    | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
     | Ok (Error e, _) -> etcd_err (Protoc_runtime.Result.show_error e)
     | Ok (Ok r, _) -> r
 
@@ -273,7 +273,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         match resp.RangeResponse.kvs with
-        | { KeyValue.mod_revision = i; _ } :: _ -> Ok (0, Int64.of_int i)
+        | { KeyValue.mod_revision = i; _ } :: _ -> Ok (Ptime.v (0, Int64.of_int i))
         | _ -> Error (`Not_found k))
 
   (** WARNING: only works on Values, will return None for dictionaries *)
@@ -315,7 +315,6 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       | None -> Range.range_end_of_prefix (Range.prefix range |> dir)
       | Some range_end -> Key.to_string range_end |> Bytes.of_string
     in
-    let prefix_len = Bytes.length (Range.prefix range |> dir) in
     let request =
       RangeRequest.(
         make ~key ~range_end ~keys_only:true ~sort_order:SortOrder.DESCEND ())
@@ -327,16 +326,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           | [] -> acc
           | { KeyValue.key = k; _ } :: t ->
               let key = Bytes.to_string k in
-              let key_len = String.length key in
-              let key_no_prefix =
-                String.sub key prefix_len (key_len - prefix_len)
-              in
-              let segments = Mirage_kv.Key.(v key_no_prefix |> segments) in
-              let res =
-                match segments with
-                | [] | [ _ ] -> (key_no_prefix, `Value)
-                | base :: _ :: _ -> (base, `Dictionary)
-              in
+              let res = (Mirage_kv.Key.v key, `Value) in
               (acc_keys [@tailcall]) (res :: acc) t
         in
         (* remove duplicates in *already sorted* list *)

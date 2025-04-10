@@ -20,66 +20,6 @@ let update_key_store_key = Key.(value @@ kv_ro ~group:"update_key_store" ())
 let update_key_store =
   generic_kv_ro ~key:update_key_store_key "update_key_store"
 
-let http_port =
-  let doc = Key.Arg.info ~doc:"Listening HTTP port." [ "http" ] in
-  Key.(create "http_port" Arg.(opt int 80 doc))
-
-let https_port =
-  let doc = Key.Arg.info ~doc:"Listening HTTPS port." [ "https" ] in
-  Key.(create "https_port" Arg.(opt int 443 doc))
-
-let remote =
-  let doc = Key.Arg.info ~doc:"Remote git repository." [ "remote" ] in
-  Key.(
-    create "remote"
-      Arg.(opt string "git://169.254.169.2/keyfender-data.git" doc))
-
-let platform =
-  let doc = Key.Arg.info ~doc:"Platform IP." [ "platform" ] in
-  let default_ip = Ipaddr.V4.of_string_exn "169.254.169.2" in
-  Key.(create "platform" Arg.(opt ipv4_address default_ip doc))
-
-let platform_port =
-  let doc = Key.Arg.info ~doc:"Platform port." [ "platform-port" ] in
-  Key.(create "platform-port" Arg.(opt int 1023 doc))
-
-(* This parameter uses an integer since mirage does not properly handle
-   (boolean) flags provided at configuration time (they are not preserved in
-   key_gen.ml). TODO report and fix upstream. *)
-let retry =
-  let doc =
-    Key.Arg.info ~doc:"Retry to connect DB until we succeed." [ "retry" ]
-  in
-  Key.(create "retry" Arg.(opt bool false doc))
-
-let no_platform =
-  let doc =
-    Key.Arg.info ~doc:"Skip platform communication (do not use in production)."
-      [ "no-platform" ]
-  in
-  Key.(create "no-platform" Arg.(opt bool false doc))
-
-let device_key =
-  let doc =
-    Key.Arg.info ~doc:"Set the device key (Base64, only available if --no-platform is set to true)"
-      [ "device-key" ]
-  in
-  Key.(create "device-key" Arg.(opt (some string) None doc))
-
-let memtrace =
-  let doc =
-    Key.Arg.info ~doc:"Enable memtrace listener on specified port."
-      [ "memtrace" ]
-  in
-  Key.(create "memtrace" Arg.(opt (some int) None doc))
-
-let no_scrypt =
-  let doc =
-    Key.Arg.info ~doc:"Use fast insecure scrypt parameters for testing."
-      [ "no-scrypt" ]
-  in
-  Key.(create "no-scrypt" Arg.(opt bool false doc))
-
 (* the IP configuration for the external/public network interface is in
    the KV store above -- i.e. only available at runtime. this implies we
    cannot yet connect the ip stack, but have to manually do that in the
@@ -90,37 +30,23 @@ type reconfigurable_stack = Reconfigurable_stack
 let reconfigurable_stack = typ Reconfigurable_stack
 
 let reconfigurable_stack_direct =
-  impl
-  @@ object
-       inherit base_configurable
-
-       method ty =
-         random @-> mclock @-> network @-> ethernet @-> arpv4
-         @-> reconfigurable_stack
-
-       method module_name = "Reconfigurable_stack.Direct"
-       method name = "reconfigurable_stackd_direct"
-
-       method! connect _ modname =
-         function
-         | [ _random; _mclock; network; ethernet; arpv4 ] ->
-             Fmt.str "%s.connect %s %s %s" modname network ethernet arpv4
-         | _ -> assert false
-     end
+     let connect _ modname =
+      function
+      | [ network; ethernet; arpv4 ] ->
+          code ~pos:__POS__ "%s.connect %s %s %s" modname network ethernet arpv4
+      | _ -> assert false
+      in
+  impl ~connect "Reconfigurable_stack.Direct" (network @-> ethernet @-> arpv4
+    @-> reconfigurable_stack)
 
 let pre_configured_stack =
-  impl
-  @@ object
-       inherit base_configurable
-       method ty = stackv4v6 @-> reconfigurable_stack
-       method module_name = "Reconfigurable_stack.Fixed"
-       method name = "pre_configured_stack"
+  let connect _ modname =
+    function
+    | [ stack ] -> code ~pos:__POS__ "%s.connect %s" modname stack
+    | _ -> assert false
+  in
+  impl ~connect "Reconfigurable_stack.Fixed" (stackv4v6 @-> reconfigurable_stack)
 
-       method! connect _ modname =
-         function
-         | [ stack ] -> Fmt.str "%s.connect %s" modname stack
-         | _ -> assert false
-     end
 
 let external_netif =
   Key.(
@@ -128,23 +54,8 @@ let external_netif =
       (netif ~group:"external" "external")
       (netif ~group:"external" "tap1"))
 
-let external_eth = etif external_netif
+let external_eth = ethif external_netif
 let external_arp = arp external_eth
-
-let tcpv4v6_of_stackv4v6 =
-  impl
-  @@ object
-       inherit base_configurable
-       method ty = stackv4v6 @-> tcpv4v6
-       method module_name = "Git_mirage_happy_eyeballs.TCPV4V6"
-       method name = "tcpv4v6_of_stackv4v6"
-
-       method! connect _ modname =
-         function
-         | [ stackv4v6 ] ->
-             Fmt.str {ocaml|%s.connect %s|ocaml} modname stackv4v6
-         | _ -> assert false
-     end
 
 let single_interface =
   let doc =
@@ -158,25 +69,17 @@ let external_reconfigurable_stack =
   if_impl
     (Key.value single_interface)
     (pre_configured_stack $ internal_stack)
-    (reconfigurable_stack_direct $ default_random $ default_monotonic_clock
-   $ external_netif $ external_eth $ external_arp)
+    (reconfigurable_stack_direct $ external_netif $ external_eth $ external_arp)
 
 let malloc_metrics_conf =
-  impl
-  @@ object
-       inherit base_configurable
-       method ty = typ ()
-       method module_name = ""
-       method name = "malloc_metrics"
-
-       method! connect info _ _ =
-         match Key.get (Info.context info) Key.target with
-         | #Mirage_key.mode_solo5 ->
-             "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics \
-              ~tags:[]))"
-         | _ -> "Lwt.return_unit"
-     end
-  |> abstract
+  let connect info _ _ =
+    match Key.get (Info.context info) Key.target with
+    | #Mirage.Key.mode_solo5 ->
+        code ~pos:__POS__ "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]))"
+    | _ -> code ~pos:__POS__ "Lwt.return_unit"
+  in
+  let packages = [ package "metrics-lwt" ] in
+  Impl.abstract (impl ~connect ~packages "malloc_metrics" (typ ()))
 
 let bisect_key =
   let doc =
@@ -185,23 +88,64 @@ let bisect_key =
   Key.(create "bisect-ppx" Arg.(flag doc))
 
 let bisect_ppx_conf =
-  impl
-  @@ object
-       inherit base_configurable
-       method ty = typ ()
-       method module_name = ""
-       method name = "bisect_ppx"
-       method! keys = [ Key.abstract bisect_key ]
+  let keys = [ Mirage.Key.v bisect_key ] in
+  let packages_v =
+    Key.if_ (Key.value bisect_key) [ package "bisect_ppx" ] []
+  in
+  Impl.abstract (impl "bisect_ppx" ~keys ~packages_v (typ ()))
 
-       method! packages =
-         Key.if_ (Key.value bisect_key) [ package "bisect_ppx" ] []
-     end
-  |> abstract
+let no_platform_key =
+  let doc =
+    Key.Arg.info ~doc:"Skip platform communication (do not use in production)."
+      [ "no-platform" ]
+  in
+  Key.(create "no-platform" Arg.(flag doc))
+
+let no_scrypt_key =
+  let doc =
+    Key.Arg.info ~doc:"Use fast insecure scrypt parameters for testing."
+      [ "no-scrypt" ]
+  in
+  Key.(create "no-scrypt" Arg.(flag doc))
+
+let memtrace_key =
+  let doc =
+    Key.Arg.info ~docv:"PORT" ~doc:"Enable memtrace listener on specified port."
+      [ "memtrace" ]
+  in
+  Key.(create "memtrace" Arg.(opt Cmdliner.Arg.(some int) None doc))
+
+type build_args = Build_args
+let build_args = typ Build_args
+
+let build_conf =
+  let arg_true = impl "Args.Conf.True" (typ ()) in
+  let arg_false = impl "Args.Conf.False" (typ ()) in
+  let bool_arg key =
+    let b = Mirage.Key.value key in
+    if_impl b arg_true arg_false
+  in
+  let dune _ = List.map Dune.stanza [
+      "(copy_files# ./etcd/*.ml)";
+      "(copy_files# ./etcd/gen/*.ml)";
+    ]
+  in
+  let keys = List.map Key.v [ memtrace_key ] in
+  let connect info _ _ =
+    let s = match Mirage.Key.get (Info.context info) memtrace_key with
+    | None -> "None"
+    | Some x -> Printf.sprintf "(Some %d)" x
+    in
+    code ~pos:__POS__ "Lwt.return Args.Conf.{ memtrace_port=%s }" s
+  in
+  impl ~keys ~connect ~dune "Args.Conf.Make" (typ () @-> typ () @-> build_args)
+  $ (bool_arg no_platform_key)
+  $ (bool_arg no_scrypt_key)
 
 let main =
   let packages =
     [
-      package "keyfender";
+      package ~pin:"../keyfender" "keyfender";
       package ~min:"7.1.2"
         ~sublibs:[ "stack-direct"; "tcp"; "udp"; "icmpv4"; "ipv6"; "ipv4" ]
         "tcpip";
@@ -209,65 +153,31 @@ let main =
       package "cohttp-mirage";
       package ~min:"3.10.4" "mirage-runtime";
       package ~min:"0.3.0" ~sublibs:[ "mirage" ] "logs-syslog";
-      package "metrics-lwt";
+      (* package "metrics-lwt"; *)
       package "digestif";
       package "memtrace-mirage";
       package ~sublibs:[ "google_types" ] "ocaml-protoc-plugin";
+      package ~max:"0.13.0" "h2-lwt";
       package
         ~pin:
-          "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
-        "h2";
-      package
-        ~pin:
-          "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
-        "h2-lwt";
-      package
-        ~pin:
-          "git+https://github.com/nitrokey/nethsm-ocaml-h2.git#41440ce9ab516ec5457128e6a10cc8037394d1f7"
-        "hpack";
-      package
-        ~pin:
-          "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
-        "gluten";
-      package
-        ~pin:
-          "git+https://github.com/nitrokey/nethsm-gluten.git#4a588f81d9db9c844c3a4aba53794f2d1c102255"
-        "gluten-lwt";
-      package
-        ~pin:
-          "git+https://github.com/nitrokey/nethsm-ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+          "git+https://github.com/dialohq/ocaml-grpc.git#b71fba7067bad2cad62df9abd8b4e190e3c4fc94"
         "grpc";
       package
         ~pin:
-          "git+https://github.com/nitrokey/nethsm-ocaml-grpc.git#0d6542c8276a4db2a7dcb1ceca50c81de2c26a73"
+          "git+https://github.com/dialohq/ocaml-grpc.git#b71fba7067bad2cad62df9abd8b4e190e3c4fc94"
         "grpc-lwt";
     ]
   in
-  let keys =
-    Key.
-      [
-        abstract http_port;
-        abstract https_port;
-        abstract remote;
-        abstract retry;
-        abstract no_platform;
-        abstract device_key;
-        abstract platform;
-        abstract platform_port;
-        abstract memtrace;
-        abstract no_scrypt;
-      ]
-  in
-  foreign ~packages ~keys
-    ~deps:[ malloc_metrics_conf; bisect_ppx_conf ]
+  main ~pos:__POS__ ~packages
+    ~deps:[ bisect_ppx_conf ; malloc_metrics_conf; ]
     "Unikernel.Main"
-    (random @-> pclock @-> mclock @-> kv_ro @-> kv_ro @-> stackv4v6
-   @-> reconfigurable_stack @-> job)
+    (kv_ro @-> kv_ro @-> stackv4v6
+     @-> reconfigurable_stack @-> build_args @-> job)
 
 let () =
   register "keyfender"
     [
-      main $ default_random $ default_posix_clock $ default_monotonic_clock
+      main
       $ update_key_store $ htdocs $ internal_stack
-      $ external_reconfigurable_stack;
+      $ external_reconfigurable_stack $ build_conf;
     ]
