@@ -95,13 +95,13 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
-KEYFENDER_CARGS ?= --no-platform=true --memtrace=1234
+KEYFENDER_CARGS ?= --no-platform --memtrace=1234
 else ifeq ($(XMODE),muen)
 TARGET := muen
 KEYFENDER_CARGS ?= --retry=true
 else ifeq ($(XMODE),test)
 TARGET := unix
-KEYFENDER_CARGS ?= --no-platform=true --single-interface --bisect-ppx --no-scrypt=true
+KEYFENDER_CARGS ?= --no-platform --single-interface --bisect-ppx --no-scrypt
 DUNE := OCAMLRUNPARAM=b dune
 DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
 OPAMVAR_coverage := true
@@ -146,15 +146,14 @@ ifneq ($(filter $(MUEN_HARDWARE),prodrive-hermes-1 msi-z790-1),)
 	patch -p1 -d $(TOP_DIR)/src/gmp-freestanding <$(TOP_DIR)/src/muen/gmp-kabylake.patch
 	opam pin -y -n gmp-freestanding $(TOP_DIR)/src/gmp-freestanding
 endif
-	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
 # generate_raml_tests.exe; we only install these when building with MODE=test.
-	opam install -y dune 'mirage>=3.10.4' 'functoria<4' 'bisect_ppx>=2.5.0' containers ezjsonm yaml ocamlformat
+	opam install -y dune mirage containers ezjsonm yaml ocamlformat
+	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 	opam install -y --deps-only --with-test keyfender
 else
-	opam install -y dune 'mirage>=3.10.4' 'functoria<4' ocamlformat
-#solo5-bindings-$(TARGET) mirage-solo5
+	opam install -y dune mirage ocamlformat
 endif
 	touch $@
 
@@ -199,8 +198,6 @@ distclean: clean
 #
 # ------------------------------------------------------------------------------
 
-KEYFENDER := src/keyfender/_build/default/keyfender.cmxa
-KEYFENDER_INSTALL := src/keyfender/_build/default/stamp-install
 ifeq "$(TARGET)" "unix"
 S_KEYFENDER := src/s_keyfender/keyfender
 else
@@ -208,13 +205,6 @@ S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
 endif
 S_KEYFENDER_PREP := src/s_keyfender/_build/default/stamp-prep
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
-
-$(KEYFENDER): .stamp-prepare
-	cd src/keyfender && $(DUNE) build $(DUNE_ARGS)
-
-$(KEYFENDER_INSTALL): $(KEYFENDER)
-	opam reinstall -y --assume-built keyfender
-	touch $@
 
 $(UPDATE_KEY):
 ifneq ($(UPDATE_KEY_SMARTCARD),1)
@@ -228,17 +218,16 @@ endif
 .PHONY: clean-keyfender
 clean-keyfender:
 	-opam remove -y keyfender
-	$(RM) $(KEYFENDER_INSTALL)
 	-cd src/keyfender && $(DUNE) clean
 	-cd src/s_keyfender && mirage clean
 	$(RM) $(UPDATE_KEY)
 
 $(S_KEYFENDER_PREP): .stamp-prepare
-	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) --allocation-policy=best-fit $(KEYFENDER_CARGS)
-	cd src/s_keyfender && $(MAKE) depend
+	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) $(KEYFENDER_CARGS)
+	cd src/s_keyfender && $(MAKE) depends
 	touch $@
 
-$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(KEYFENDER_INSTALL) $(UPDATE_KEY) $(API_DOCS_DIR)
+$(S_KEYFENDER): $(S_KEYFENDER_PREP) $(UPDATE_KEY) $(API_DOCS_DIR)
 	cd src/s_keyfender && $(MAKE) build
 
 .PHONY: build-keyfender
@@ -247,7 +236,7 @@ build-keyfender: $(S_KEYFENDER)
 .PHONY: check-format
 check-format: $(S_KEYFENDER_PREP)
 	cd src/keyfender && $(DUNE) build @fmt
-	cd src/s_keyfender && $(DUNE) build @fmt
+	cd src/s_keyfender && ocamlformat --check $$(git ls-files . | grep '\.mli\?$$')
 	cd src/tests && $(DUNE) build @fmt
 
 .PHONY: fix-format
@@ -257,7 +246,7 @@ fix-format: $(S_KEYFENDER_PREP)
 	cd src/tests && $(DUNE) fmt || true
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
-test-keyfender-lib: $(KEYFENDER)
+test-keyfender-lib:
 	cd src/keyfender && $(DUNE) runtest $(DUNE_ARGS)
 ifeq ($(XMODE),test)
 	sleep 1

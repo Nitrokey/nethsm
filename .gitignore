@@ -13,8 +13,12 @@ src/u-root/src/**/.bb/
 *.coverage
 cache/
 *~
-_opam
+_opam/
+__opam/
 etcd-download/
 keys/smartcard/private/reader_*.status
 keys/smartcard/private/scdaemon.conf
 api.json
+duniverse/
+pkg/
+tmp/

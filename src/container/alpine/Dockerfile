@@ -25,25 +25,20 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   opam init -a --disable-sandboxing --bare
 EOF
 
-ARG ocaml_version="ocaml-variants.4.14.0+options ocaml-options-only-flambda"
+ARG ocaml_version="ocaml-variants.4.14.2+options ocaml-options-only-flambda"
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam switch create default ${ocaml_version}
   opam switch set default
 EOF
 
 ARG OPAM_REPOSITORY_COMMIT
-COPY --chown=1000:1000 src/keyfender/keyfender.opam.locked /home/opam/
-COPY --chown=1000:1000 src/s_keyfender/unikernel-preinstall.opam.locked /home/opam/
 COPY --chown=1000:1000 src/container/builder/gmp-freestanding /home/opam/gmp-6.3.0/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  opam repository set-url default git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT}
   curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam
   patch -p1 -d /home/opam/gmp-6.3.0/ </home/opam/gmp-6.3.0/libgmp-fat.patch
   opam pin -y -n gmp-freestanding.6.3.0 /home/opam/gmp-6.3.0/
   opam update
-  OPAMJOBS=$(nproc) opam install -y dune
-  OPAMJOBS=$(nproc) opam install -y --deps-only --locked --ignore-pin-depends /home/opam/keyfender.opam.locked
-  OPAMJOBS=$(nproc) opam install -y --deps-only --locked --ignore-pin-depends /home/opam/unikernel-preinstall.opam.locked
+  OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
@@ -51,8 +46,6 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<
 EOF
 
 WORKDIR /home/opam/nethsm
-
-COPY src/s_keyfender/htdocs src/s_keyfender/htdocs
 
 RUN <<EOF
   mkdir -p -m 0700 ~/.ssh
@@ -66,12 +59,9 @@ EOF
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
-  opam exec -- mirage configure --no-depext -t unix --no-platform=true \
-    --http=8080 --https=8443 --single-interface --retry=true \
-    --platform=127.0.0.1
-  opam exec -- make -j$(nproc) depend
-  opam exec -- make -j$(nproc) build
-  cp keyfender keyfender.unix
+  opam exec -- mirage configure --no-depext -t unix --no-platform --single-interface
+  opam exec -- make -j$(nproc)
+  cp dist/keyfender dist/keyfender.unix
 EOF
 
 RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
@@ -87,8 +77,8 @@ EXPOSE 8443
 COPY src/container/alpine/start-production.sh /start.sh
 COPY --from=builder \
   /home/opam/.opam/default/bin/solo5-hvt \
-  /home/opam/nethsm/src/s_keyfender/keyfender.hvt \
-  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
+  /home/opam/nethsm/src/s_keyfender/dist/keyfender.hvt \
+  /home/opam/nethsm/src/s_keyfender/dist/keyfender.unix \
   /home/opam/nethsm/src/container/alpine/tlsproxy \
   /
 
@@ -107,7 +97,7 @@ EXPOSE 8443
 
 COPY src/container/alpine/start-test.sh /start.sh
 COPY --from=builder \
-  /home/opam/nethsm/src/s_keyfender/keyfender.unix \
+  /home/opam/nethsm/src/s_keyfender/dist/keyfender.unix \
   /
 
 ENTRYPOINT /start.sh

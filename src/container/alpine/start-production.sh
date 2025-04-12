@@ -61,7 +61,7 @@ fi
 TLS_PROXY_PID=$!
 
 sleep 2
-if ! (pgrep tlsproxy > /dev/null) ; then 
+if ! (pgrep tlsproxy > /dev/null) ; then
   echo "The TLS proxy failed to start. Terminating.";
   exit 1
 fi
@@ -79,7 +79,8 @@ fi
 if [ $MODE == "unix" ] ; then
   /keyfender.unix \
     $KEYFENDER_DEVICE_KEY \
-    $KEYFENDER_DEBUG_LOG &
+    $KEYFENDER_DEBUG_LOG \
+    --http=8080 --https=8443 --platform=127.0.0.1 &
 else
   /solo5-hvt \
     --net:external=tap200 \
@@ -87,7 +88,7 @@ else
     /keyfender.hvt \
     $KEYFENDER_DEVICE_KEY \
     $KEYFENDER_DEBUG_LOG \
-    &
+    --http=8080 --https=8443 --platform=127.0.0.1 &
 fi
 KEYFENDER_PID=$!
 

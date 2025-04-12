@@ -42,15 +42,17 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloa
 ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked <<EOF
+  set -ex
   apt-get update
   apt-get install -qq -y --no-install-recommends $muen_packages $nethsm_packages $additional_packages
-  add-apt-repository ppa:stefanberger/swtpm-focal
+  add-apt-repository -y ppa:stefanberger/swtpm-jammy
   apt-get update
   apt-get install -qq -y --no-install-recommends libtpms0 swtpm
   pip install --no-cache-dir lxml colorlog lief==0.14.1
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   useradd --create-home opam
   chown -R opam:opam /home/opam
   echo 'opam ALL=(ALL:ALL) NOPASSWD:ALL' > /etc/sudoers.d/opam
@@ -62,6 +64,7 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "https://github.com/alire-project/alire/releases/download/v2.0.1/alr-2.0.1-bin-x86_64-linux.zip" -o /tmp/alr.zip
   unzip /tmp/alr.zip bin/alr -d /usr/local
 EOF
@@ -71,6 +74,7 @@ USER opam
 ENV ALIRE_SETTINGS_DIR=/opt/gnat/alire
 
 RUN <<EOF
+  set -ex
   mkdir -p -m 0700 /home/opam/.ssh
   ssh-keyscan git.nitrokey.com >> /home/opam/.ssh/known_hosts
 EOF
@@ -79,12 +83,14 @@ FROM base AS musl
 # NetHSM: Install musl-cross toolchain
 # TODO: Verify hash of downloaded toolchain
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.tar.gz
   sudo tar -C /opt -xzf /tmp/musl-cross.tar.gz
 EOF
 
 FROM musl AS mke2fs
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.47.1.tar.gz" -o /tmp/e2fsprogs.tar.gz
   mkdir -p /tmp/e2fsprogs/build
   tar -C /tmp/e2fsprogs --strip-components=1 -xzf /tmp/e2fsprogs.tar.gz
@@ -104,6 +110,7 @@ EOF
 
 FROM musl AS sfdisk
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "https://github.com/util-linux/util-linux/archive/v2.40.2.tar.gz" -o /tmp/util-linux.tar.gz
   mkdir -p /tmp/util-linux
   tar -C /tmp/util-linux --strip-components=1 -xzf /tmp/util-linux.tar.gz
@@ -127,6 +134,7 @@ EOF
 FROM base AS ada
 # Muen: Install AdaCore toolchain
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   sudo mkdir /opt/gnat
   sudo chown opam:opam /opt/gnat
   git clone --depth 10 https://git.codelabs.ch/alire/muen-dev-env.git /opt/gnat/muen-dev-env
@@ -136,14 +144,11 @@ EOF
 
 FROM ada AS muen
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   mkdir -p /nethsm-tools/muen
   git clone --depth 1 -b v1.1.1 https://git.codelabs.ch/git/muen.git /nethsm-tools/muen
   git -C /nethsm-tools/muen submodule update --init --depth 50
 EOF
-
-# remove ABI changes for our old solo5
-COPY --chown=1000:1000 muen-1.1.1.patch /nethsm-tools/muen
-RUN patch -d /nethsm-tools/muen -i muen-1.1.1.patch -p1
 
 # patches for z790
 COPY --chown=1000:1000 z790.patch /nethsm-tools/muen/
@@ -151,18 +156,20 @@ RUN patch -d /nethsm-tools/muen -i z790.patch -p1
 
 RUN git config --global url."https://github.com/coreutils/gnulib".insteadOf "https://git.savannah.gnu.org/git/gnulib.git"
 
-RUN --mount=type=tmpfs,target=/tmp bash -c "\
-  source /opt/gnat/muen-dev-env/env; \
-  make -C /nethsm-tools/muen -j$(nproc) tools \
-  "
+RUN --mount=type=tmpfs,target=/tmp <<EOF bash
+  source /opt/gnat/muen-dev-env/env
+  make -C /nethsm-tools/muen -j$(nproc) tools
+EOF
 
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "https://go.dev/dl/go1.22.3.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   curl -sSL "https://github.com/u-root/u-root/archive/v0.14.0.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
@@ -172,34 +179,34 @@ EOF
 
 FROM base AS builder
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   cd /tmp
   curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh -s -- --download-only
   sudo install opam-2* /usr/local/bin/opam
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
+  set -ex
   opam init -a --disable-sandboxing --bare git+https://github.com/ocaml/opam-repository
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  OPAMJOBS=$(nproc) opam switch create default ocaml-variants.4.14.0+options ocaml-options-only-flambda
+  set -ex
+  OPAMJOBS=$(nproc) opam switch create default ocaml-variants.4.14.2+options ocaml-options-only-flambda
   opam switch set default
 EOF
 
-ARG OPAM_REPOSITORY_COMMIT
-COPY --chown=1000:1000 keyfender.opam.locked /home/opam/
-COPY --chown=1000:1000 unikernel-preinstall.opam.locked /home/opam/
 COPY --chown=1000:1000 gmp-freestanding /home/opam/gmp-6.3.0/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  opam repository set-url default git+https://github.com/ocaml/opam-repository#${OPAM_REPOSITORY_COMMIT}
-  curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam
+  set -ex
+  curl -sSL "https://ftp.hosteurope.de/mirror/ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz" -o /tmp/gmp.tar.xz
+  echo b4043dd2964ab1a858109da85c44de224384f352 /tmp/gmp.tar.xz | sha1sum -c --quiet
+  tar Jxpf /tmp/gmp.tar.xz -C /home/opam
   patch -p1 -d /home/opam/gmp-6.3.0/ </home/opam/gmp-6.3.0/libgmp-fat.patch
   opam pin -y -n gmp-freestanding.6.3.0 /home/opam/gmp-6.3.0/
   opam pin -y -n solo5-bindings-muen 'https://github.com/nitrokey/nethsm-solo5.git#nethsm'
   opam update
   OPAMJOBS=$(nproc) opam install -y dune containers ezjsonm yaml ocamlformat
-  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/keyfender.opam.locked
-  OPAMJOBS=$(nproc) opam install -y --deps-only --with-test --locked --ignore-pin-depends /home/opam/unikernel-preinstall.opam.locked
 EOF
 
 # Remove opam cache directory
@@ -213,9 +220,7 @@ COPY --link --chown=1000:1000 --from=uroot /opt/go /opt/go/
 COPY --link --chown=1000:1000 --from=uroot /nethsm-tools/u-root /nethsm-tools/u-root/
 
 ARG COMMIT_ID
-LABEL opam_repo_commit ${OPAM_REPOSITORY_COMMIT}
 LABEL builder_id ${COMMIT_ID}
-ENV OPAM_REPO_COMMIT ${OPAM_REPOSITORY_COMMIT}
 ENV BUILDER_ID ${COMMIT_ID}
 
 # Setup environment

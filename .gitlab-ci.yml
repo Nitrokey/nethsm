@@ -11,10 +11,7 @@ variables:
 .dependency_paths:
   builder: &builder_dep_paths
     - src/container/builder/**
-    - .opam-repository-commit
     - .gitlab-ci.yml
-    - src/keyfender/keyfender.opam.locked
-    - src/s_keyfender/unikernel-preinstall.opam.locked
 
 .setup_job_default: &setup_job_default
   - git config --global --add safe.directory ${CI_PROJECT_DIR}
@@ -86,8 +83,6 @@ build_builder_image:
     entrypoint: [""]
   before_script: *setup_job_buildkit
   script:
-    - cp src/keyfender/keyfender.opam.locked src/container/builder/
-    - cp src/s_keyfender/unikernel-preinstall.opam.locked src/container/builder/
     - >-
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
