@@ -59,7 +59,6 @@ struct
   module KV_store = Etcd_store.KV_RW (Stack_nodelay (Internal_stack))
   module Hsm = Keyfender.Hsm.Make (KV_store)
   module Webserver = Keyfender.Server.Make (Srv) (Hsm)
-
   module Log_reporter = Mirage_logs
   module Syslog = Logs_syslog_mirage.Udp (Ext_stack)
 
@@ -93,60 +92,60 @@ struct
             Log.err (fun m ->
                 m "couldn't connect to platform (while sending %s)" cmd);
             Error `Timeout );
-          (T.create_connection (Internal_stack.tcp stack)
-             (Ipaddr.V4 (Args.platform ()), Args.platform_port ())
-           >>= function
-           | Error e ->
-               Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
-           | Ok flow -> (
-               T.write flow (Cstruct.of_string (cmd ^ "\n")) >>= function
-               | Error we ->
-                   T.close flow >|= fun () ->
-                   Error (`Write (Fmt.to_to_string T.pp_write_error we))
-               | Ok () -> (
-                   let rec read data =
-                     T.read flow >>= function
-                     | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
-                     | Ok (`Data d) ->
-                         let data' = Cstruct.append data d in
-                         let str = Cstruct.to_string data' in
-                         let get_data off str =
-                           let str =
-                             Astring.String.drop ~min:off ~max:off str
-                           in
-                           if Astring.String.is_prefix ~affix:" " str then
-                             Astring.String.drop ~min:1 ~max:1 str
-                           else str
-                         in
-                         if Astring.String.is_suffix ~affix:"\n" str then
-                           T.close flow >|= fun () ->
-                           let str =
-                             Astring.String.drop ~rev:true ~min:1 ~max:1 str
-                           in
-                           if Astring.String.is_prefix ~affix:"OK" str then
-                             Ok (get_data 2 str)
-                           else if Astring.String.is_prefix ~affix:"ERROR" str
-                           then Error (`Remote (get_data 5 str))
-                           else Error (`Parse str)
-                         else (read [@tailcall]) data'
-                     | Error e ->
-                         T.close flow >|= fun () ->
-                         Error (`Read (Fmt.to_to_string T.pp_error e))
-                   in
-                   (match additional_data with
-                   | None -> Lwt.return (Ok ())
-                   | Some f ->
-                       let write data =
-                         T.write flow (Cstruct.of_string data) >>= function
-                         | Error we ->
-                             T.close flow >|= fun () ->
-                             Error (Fmt.to_to_string T.pp_write_error we)
-                         | Ok () -> Lwt.return (Ok ())
-                       in
-                       f write)
-                   >>= function
-                   | Ok () -> read Cstruct.empty
-                   | Error e -> Lwt.return (Error (`Additional e)))));
+          ( T.create_connection (Internal_stack.tcp stack)
+              (Ipaddr.V4 (Args.platform ()), Args.platform_port ())
+          >>= function
+            | Error e ->
+                Lwt.return (Error (`Create (Fmt.to_to_string T.pp_error e)))
+            | Ok flow -> (
+                T.write flow (Cstruct.of_string (cmd ^ "\n")) >>= function
+                | Error we ->
+                    T.close flow >|= fun () ->
+                    Error (`Write (Fmt.to_to_string T.pp_write_error we))
+                | Ok () -> (
+                    let rec read data =
+                      T.read flow >>= function
+                      | Ok `Eof -> T.close flow >|= fun () -> Error `Eof
+                      | Ok (`Data d) ->
+                          let data' = Cstruct.append data d in
+                          let str = Cstruct.to_string data' in
+                          let get_data off str =
+                            let str =
+                              Astring.String.drop ~min:off ~max:off str
+                            in
+                            if Astring.String.is_prefix ~affix:" " str then
+                              Astring.String.drop ~min:1 ~max:1 str
+                            else str
+                          in
+                          if Astring.String.is_suffix ~affix:"\n" str then
+                            T.close flow >|= fun () ->
+                            let str =
+                              Astring.String.drop ~rev:true ~min:1 ~max:1 str
+                            in
+                            if Astring.String.is_prefix ~affix:"OK" str then
+                              Ok (get_data 2 str)
+                            else if Astring.String.is_prefix ~affix:"ERROR" str
+                            then Error (`Remote (get_data 5 str))
+                            else Error (`Parse str)
+                          else (read [@tailcall]) data'
+                      | Error e ->
+                          T.close flow >|= fun () ->
+                          Error (`Read (Fmt.to_to_string T.pp_error e))
+                    in
+                    (match additional_data with
+                    | None -> Lwt.return (Ok ())
+                    | Some f ->
+                        let write data =
+                          T.write flow (Cstruct.of_string data) >>= function
+                          | Error we ->
+                              T.close flow >|= fun () ->
+                              Error (Fmt.to_to_string T.pp_write_error we)
+                          | Ok () -> Lwt.return (Ok ())
+                        in
+                        f write)
+                    >>= function
+                    | Ok () -> read Cstruct.empty
+                    | Error e -> Lwt.return (Error (`Additional e)))) );
         ])
 
   let startTrngListener stack port =
@@ -163,12 +162,16 @@ struct
       let split_data data =
         let len = String.length data in
         if len < trng_block_len then (String.empty, data)
-        else String.(sub data 0 trng_block_len, sub data trng_block_len (len-trng_block_len))
+        else
+          String.
+            ( sub data 0 trng_block_len,
+              sub data trng_block_len (len - trng_block_len) )
       in
       Internal_stack.UDP.listen (Internal_stack.udp stack) ~port
         (fun ~src ~dst:_ ~src_port:_ data ->
           (match src with
-          | Ipaddr.V4 ip when ip = platform_ip -> push (Some (Cstruct.to_string data))
+          | Ipaddr.V4 ip when ip = platform_ip ->
+              push (Some (Cstruct.to_string data))
           | ip ->
               Log.warn (fun m ->
                   m "Dropping TRNG package from unknown source: %a" Ipaddr.pp ip));
@@ -187,8 +190,8 @@ struct
               if String.length trng_data = trng_block_len then (
                 Log.debug (fun m ->
                     m "Received %d bytes of data from TRNG: %a ..."
-                      trng_block_len Hex.pp (Hex.of_string
-                      (String.sub trng_data 0 8)));
+                      trng_block_len Hex.pp
+                      (Hex.of_string (String.sub trng_data 0 8)));
                 let block_len = trng_block_len / pools in
                 for i = 0 to pred pools do
                   let offset = i * block_len in
@@ -236,7 +239,8 @@ struct
       firmwareVersion = "N/A";
     }
 
-  let start update_key_store assets internal_stack ext_stack (conf_args : Args.Conf.args) () () =
+  let start update_key_store assets internal_stack ext_stack
+      (conf_args : Args.Conf.args) () () =
     if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params ();
     let entropy_port = 4444 in
     startTrngListener internal_stack entropy_port >>= fun () ->
@@ -270,40 +274,44 @@ struct
          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
          Lwt.fail_with "store not readable")
     >>= fun () ->
-    (write_platform internal_stack "PLATFORM-DATA" >>= function
-     | Error e ->
-         Log.err (fun m ->
-             m "couldn't retrieve platform data: %a" pp_platform_err e);
-         Lwt.fail_with "failed to retrieve platform data from platform"
-     | Ok "" -> (
-         match Args.device_key () with
-         | None ->  Lwt.return dummy_platform
-         | Some x ->
-            Log.info (fun m -> m "device key set with --device-key option");
-            match Base64.decode x with
-            | Ok _ ->  Lwt.return { dummy_platform with Keyfender.Json.deviceKey = x }
-            | Error _ -> Lwt.fail_with "device key is not a valid Base64 string")
-     | Ok data -> (
-         match Keyfender.Json.parse_platform_data data with
-         | Error e ->
-             Log.err (fun m ->
-                 m "couldn't parse platform data: %s\ndata: %s" e data);
-             Lwt.fail_with "failed to parse platform data from platform"
-         | Ok x -> Lwt.return x))
+    ( write_platform internal_stack "PLATFORM-DATA" >>= function
+      | Error e ->
+          Log.err (fun m ->
+              m "couldn't retrieve platform data: %a" pp_platform_err e);
+          Lwt.fail_with "failed to retrieve platform data from platform"
+      | Ok "" -> (
+          match Args.device_key () with
+          | None -> Lwt.return dummy_platform
+          | Some x -> (
+              Log.info (fun m -> m "device key set with --device-key option");
+              match Base64.decode x with
+              | Ok _ ->
+                  Lwt.return
+                    { dummy_platform with Keyfender.Json.deviceKey = x }
+              | Error _ ->
+                  Lwt.fail_with "device key is not a valid Base64 string"))
+      | Ok data -> (
+          match Keyfender.Json.parse_platform_data data with
+          | Error e ->
+              Log.err (fun m ->
+                  m "couldn't parse platform data: %s\ndata: %s" e data);
+              Lwt.fail_with "failed to parse platform data from platform"
+          | Ok x -> Lwt.return x) )
     >>= fun platform ->
-    (Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
-     | Error e ->
-         Log.err (fun m ->
-             m "couldn't retrieve update key: %a" Update_key.pp_error e);
-         Lwt.fail_with "missing update key"
-     | Ok data -> (
-         match X509.Public_key.decode_pem data with
-         | Ok (`RSA key) -> Lwt.return key
-         | Ok _ ->
-             Log.err (fun m ->
-                 m "No RSA key from manufacturer. Contact manufacturer.");
-             Lwt.fail_with "update key not in RSA format"
-         | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)))
+    ( Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
+      | Error e ->
+          Log.err (fun m ->
+              m "couldn't retrieve update key: %a" Update_key.pp_error e);
+          Lwt.fail_with "missing update key"
+      | Ok data -> (
+          match X509.Public_key.decode_pem data with
+          | Ok (`RSA key) -> Lwt.return key
+          | Ok _ ->
+              Log.err (fun m ->
+                  m "No RSA key from manufacturer. Contact manufacturer.");
+              Lwt.fail_with "update key not in RSA format"
+          | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)
+          ) )
     >>= fun update_key ->
     Hsm.boot ~cache_settings ~platform update_key store
     >>= fun (hsm_state, mvar, res_mvar) ->
@@ -318,8 +326,7 @@ struct
         Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)
       else
         let logs = Log_reporter.create () in
-        Logs.set_reporter
-          (Keyfender.Logs_sequence_number.reporter logs)
+        Logs.set_reporter (Keyfender.Logs_sequence_number.reporter logs)
     and setup_http_listener http =
       let http_port = Args.http_port () in
       let tcp = `TCP http_port in
@@ -330,11 +337,11 @@ struct
       match Tls.Config.server ~certificates () with
       | Error e -> assert false
       | Ok tls_cfg ->
-      let https_port = Args.https_port () in
-      let tls = `TLS (tls_cfg, `TCP https_port) in
-      let open Webserver in
-      Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
-      http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
+          let https_port = Args.https_port () in
+          let tls = `TLS (tls_cfg, `TCP https_port) in
+          let open Webserver in
+          Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
+          http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
     and write_to_platform cmd =
       write_platform internal_stack (Hsm.cb_to_string cmd) >|= function
       | Ok _ -> ()
@@ -385,11 +392,11 @@ struct
                  (Error (Fmt.to_to_string pp_platform_err e)))
           >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Commit_update as cmd ->
-          (write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
-           | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
-           | Error e ->
-               Lwt_mvar.put res_mvar
-                 (Error (Fmt.to_to_string pp_platform_err e)))
+          ( write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Error e ->
+                Lwt_mvar.put res_mvar
+                  (Error (Fmt.to_to_string pp_platform_err e)) )
           >>= fun () -> (handle_cb [@tailcall]) http
     in
     Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->

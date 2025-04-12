@@ -306,8 +306,7 @@ module type S = sig
   end
 end
 
-module Make
-    (KV : Kv_ext.Ranged) : sig
+module Make (KV : Kv_ext.Ranged) : sig
   include S
 
   val boot :

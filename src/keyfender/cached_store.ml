@@ -12,8 +12,7 @@ type settings = {
   cache_size : int;
 }
 
-module Make (KV : Kv_ext.Typed_ranged) =
-struct
+module Make (KV : Kv_ext.Typed_ranged) = struct
   type creation_time = int64
 
   module Cache =

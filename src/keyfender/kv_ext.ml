@@ -13,17 +13,11 @@ module type RW = sig
 
   type key = Mirage_kv.key
 
-  val exists :
-    t ->
-    key ->
-    ([ `Dictionary | `Value ] option, error) result Lwt.t
-
+  val exists : t -> key -> ([ `Dictionary | `Value ] option, error) result Lwt.t
   val get : t -> key -> (string, error) result Lwt.t
 
   val list :
-    t ->
-    key ->
-    ((key * [ `Dictionary | `Value ]) list, error) result Lwt.t
+    t -> key -> ((key * [ `Dictionary | `Value ]) list, error) result Lwt.t
 
   val last_modified : t -> key -> (Ptime.t, error) result Lwt.t
   val digest : t -> key -> (string, error) result Lwt.t
@@ -31,13 +25,9 @@ module type RW = sig
   type nonrec write_error = private [> Mirage_kv.write_error ]
 
   val pp_write_error : write_error Fmt.t
-
-  val set :
-    t -> key -> string -> (unit, write_error) result Lwt.t
-
+  val set : t -> key -> string -> (unit, write_error) result Lwt.t
   val remove : t -> key -> (unit, write_error) result Lwt.t
-
-  val batch: t -> ?retries:int -> (t -> 'a Lwt.t) -> 'a Lwt.t
+  val batch : t -> ?retries:int -> (t -> 'a Lwt.t) -> 'a Lwt.t
 end
 
 module type Typed = sig
@@ -55,7 +45,7 @@ module Range = struct
   module Key = Mirage_kv.Key
 
   type t = { prefix : Key.t; start : string option; stop : string option }
-  (** Range of keys of the form [prefix//start, prefix//stop[ in lexicographical
+  (*  Range of keys of the form [prefix//start, prefix//stop[ in lexicographical
       order.
       - start and stop correspond to a range for *one segment*:
         there is no way to describe a range spanning over multiple
@@ -102,16 +92,13 @@ module Range = struct
 
   let first_key t = Option.map (fun start -> Key.(t.prefix / start)) t.start
   let range_end t = Option.map (fun stop -> Key.(t.prefix / stop)) t.stop
-
 end
 
 module type Ranged = sig
   include RW
 
   val list_range :
-    t ->
-    Range.t ->
-    ((key * [ `Value | `Dictionary ]) list, error) result Lwt.t
+    t -> Range.t -> ((key * [ `Value | `Dictionary ]) list, error) result Lwt.t
   (** Return all keys in range that correspond to an entry in kv *)
 end
 
@@ -130,4 +117,3 @@ module type Typed_ranged = sig
   include Ranged
   include Typed with type t := t and type error := error
 end
-

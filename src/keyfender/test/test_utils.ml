@@ -34,19 +34,15 @@ end
 
 module Kv_mem = struct
   include Mirage_kv_mem
+
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm =
-  Keyfender.Hsm.Make
-    (Keyfender.Kv_ext.Make_ranged (Kv_mem))
-
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let software_update_key =
-  match
-    X509.Public_key.decode_pem [%blob "public.pem"]
-  with
+  match X509.Public_key.decode_pem [%blob "public.pem"] with
   | Ok (`RSA key) -> key
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
   | Error (`Msg m) -> invalid_arg m
@@ -92,7 +88,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
 let good_platform mbox = Lwt_mvar.put mbox (Ok ())
 
 let copy t =
-  let v = Marshal.to_string t [Closures] in
+  let v = Marshal.to_string t [ Closures ] in
   Marshal.from_string v 0
 
 let user ?namespace id = { Hsm.Nid.id; namespace }
@@ -192,17 +188,17 @@ let hsm_with_key ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock () in
   Lwt_main.run
-    (Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions
-     >>= function
-     | Ok () when and_namespace = None -> Lwt.return state
-     | Ok () -> (
-         let namespace = Option.get and_namespace in
-         Hsm.Key.add_pem ~namespace state mechanisms ~id:"subKeyID" test_key_pem
-           no_restrictions
-         >|= function
-         | Ok () -> state
-         | Error _ -> assert false)
-     | Error _ -> assert false)
+    ( Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions
+    >>= function
+      | Ok () when and_namespace = None -> Lwt.return state
+      | Ok () -> (
+          let namespace = Option.get and_namespace in
+          Hsm.Key.add_pem ~namespace state mechanisms ~id:"subKeyID"
+            test_key_pem no_restrictions
+          >|= function
+          | Ok () -> state
+          | Error _ -> assert false)
+      | Error _ -> assert false )
 
 let auth_header user pass =
   let base64 = Base64.encode_string (user ^ ":" ^ pass) in

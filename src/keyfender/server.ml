@@ -104,19 +104,19 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
     Access_log.debug (fun m ->
         m "request headers %s"
           (Cohttp.Header.to_string (Cohttp.Request.headers request)));
-    (Lwt.catch
-       (fun () ->
-         Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request)
-       (fun e ->
-         if e = Out_of_memory then Gc.compact ();
-         Lwt.return_some
-           ( `Service_unavailable,
-             Cohttp.Header.init (),
-             `String (Printexc.to_string e),
-             [] ))
-     >|= function
-     | None -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
-     | Some result -> result)
+    ( Lwt.catch
+        (fun () ->
+          Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request)
+        (fun e ->
+          if e = Out_of_memory then Gc.compact ();
+          Lwt.return_some
+            ( `Service_unavailable,
+              Cohttp.Header.init (),
+              `String (Printexc.to_string e),
+              [] ))
+    >|= function
+      | None -> (`Not_found, Cohttp.Header.init (), `String "Not found", [])
+      | Some result -> result )
     >>= fun (status, headers, body, path) ->
     let stop = Hsm.now () in
     let diff = Ptime.diff stop start in
@@ -143,8 +143,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
     Access_log.debug (fun f ->
         f "[%s] -> [%s]" (Uri.to_string uri) (Uri.to_string new_uri));
     let headers = Cohttp.Header.init_with "location" (Uri.to_string new_uri) in
-    Srv.respond ~headers ~status:`Moved_permanently ~body:`Empty
-      ()
+    Srv.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
 
   let serve cb =
     let callback _x ip request body =
@@ -160,8 +159,6 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
       Access_log.debug (fun f -> f "[%s] serving %s." "XXX" (Uri.to_string uri));
       cb ip request body
     in
-    let conn_closed _ =
-      Access_log.debug (fun f -> f "[%s] closing" "XXX")
-    in
+    let conn_closed _ = Access_log.debug (fun f -> f "[%s] closing" "XXX") in
     Srv.make ~conn_closed ~callback ()
 end

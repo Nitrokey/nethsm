@@ -85,9 +85,7 @@ let err_to_msg = function Error e -> Error (`Msg e) | Ok a -> Ok a
 let decrypt ~key ~adata data =
   match Crypto.decrypt ~key ~adata data with
   | Error `Insufficient_data ->
-      Error
-        ("Could not decrypt stored " ^ adata
-       ^ ". Backup is corrupted?")
+      Error ("Could not decrypt stored " ^ adata ^ ". Backup is corrupted?")
   | Error `Not_authenticated ->
       Error
         ("Could not decrypt stored " ^ adata
@@ -128,9 +126,7 @@ let export passphrase backup_image_filename output =
         Error msg
   in
   let salt, backup_data = get_field backup_data in
-  let backup_key =
-    Crypto.key_of_passphrase ~salt passphrase
-  in
+  let backup_key = Crypto.key_of_passphrase ~salt passphrase in
   let key = Crypto.GCM.of_secret backup_key in
   let encrypted_version, backup_data = get_field backup_data in
   let adata = "backup-version" in

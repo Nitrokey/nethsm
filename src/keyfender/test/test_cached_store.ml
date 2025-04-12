@@ -45,6 +45,7 @@ end
 
 module KV = struct
   include Mirage_kv_mem
+
   let batch dict ?retries:_ f = f dict
 end
 

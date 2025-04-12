@@ -8,18 +8,17 @@ open Lwt.Infix
 let https_src = Logs.Src.create "keyfender" ~doc:"Keyfender (NetHSM)"
 
 module Log = (val Logs.src_log https_src : Logs.LOG)
-
 module Conduit = Conduit_mirage.TCP (Tcpip_stack_socket.V4V6)
 module Conduit_tls = Conduit_mirage.TLS (Conduit)
 module Srv = Cohttp_mirage.Server.Make (Conduit_tls)
+
 module Kv_mem = struct
   include Mirage_kv_mem
+
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm =
-  Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
-
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
 module Webserver = Keyfender.Server.Make (Srv) (Hsm)
 
 let platform =
@@ -35,9 +34,7 @@ let platform =
 let () =
   Keyfender.Crypto.set_test_params ();
   let update_key =
-    match
-      X509.Public_key.decode_pem [%blob "public.pem"]
-    with
+    match X509.Public_key.decode_pem [%blob "public.pem"] with
     | Ok (`RSA key) -> key
     | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
     | Error (`Msg m) -> invalid_arg m

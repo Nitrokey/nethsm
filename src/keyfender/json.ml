@@ -527,9 +527,7 @@ let string_to_yojson cs =
 
 let string_of_yojson = function
   | `String s -> (
-      match Base64.decode s with
-      | Ok s -> Ok s
-      | Error (`Msg msg) -> Error msg)
+      match Base64.decode s with Ok s -> Ok s | Error (`Msg msg) -> Error msg)
   | _ -> Error "Expected JSON string"
 
 type system_info = {

@@ -129,10 +129,15 @@ module Make (KV : Kv_ext.RW) = struct
           if total = 0 then Ok (List.rev acc)
           else
             guard (total >= 4) "invalid data (no length field)" >>= fun () ->
-            let len = Option.get (Int32.unsigned_to_int (String.get_int32_be data 0)) in
+            let len =
+              Option.get (Int32.unsigned_to_int (String.get_int32_be data 0))
+            in
             guard (total - 4 >= len) "invalid data (too short)" >>= fun () ->
             match X509.Certificate.decode_der (String.sub data 4 len) with
-            | Ok cert -> decode (String.sub data (len + 4) (total - len - 4)) (cert :: acc)
+            | Ok cert ->
+                decode
+                  (String.sub data (len + 4) (total - len - 4))
+                  (cert :: acc)
             | Error e -> Error e
         in
         match decode data [] with

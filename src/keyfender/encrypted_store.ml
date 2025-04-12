@@ -54,7 +54,10 @@ module Make (KV : Kv_ext.Ranged) = struct
     KV.exists t.kv (prefix t key) >|= lift_kv_err
 
   let filter_version items =
-    List.filter (fun (data, _) -> not (String.equal Version.file (Mirage_kv.Key.basename data))) items
+    List.filter
+      (fun (data, _) ->
+        not (String.equal Version.file (Mirage_kv.Key.basename data)))
+      items
 
   let list t key =
     with_key_check key @@ fun () ->
@@ -92,7 +95,9 @@ module Make (KV : Kv_ext.Ranged) = struct
   let prepare_set t key value =
     let key' = prefix t key in
     let adata = Mirage_kv.Key.to_string key' in
-    let encrypted = Crypto.encrypt Mirage_crypto_rng.generate ~key:t.key ~adata value in
+    let encrypted =
+      Crypto.encrypt Mirage_crypto_rng.generate ~key:t.key ~adata value
+    in
     (key', encrypted)
 
   let raw_set t key value =

@@ -30,23 +30,20 @@ type reconfigurable_stack = Reconfigurable_stack
 let reconfigurable_stack = typ Reconfigurable_stack
 
 let reconfigurable_stack_direct =
-     let connect _ modname =
-      function
-      | [ network; ethernet; arpv4 ] ->
-          code ~pos:__POS__ "%s.connect %s %s %s" modname network ethernet arpv4
-      | _ -> assert false
-      in
-  impl ~connect "Reconfigurable_stack.Direct" (network @-> ethernet @-> arpv4
-    @-> reconfigurable_stack)
+  let connect _ modname = function
+    | [ network; ethernet; arpv4 ] ->
+        code ~pos:__POS__ "%s.connect %s %s %s" modname network ethernet arpv4
+    | _ -> assert false
+  in
+  impl ~connect "Reconfigurable_stack.Direct"
+    (network @-> ethernet @-> arpv4 @-> reconfigurable_stack)
 
 let pre_configured_stack =
-  let connect _ modname =
-    function
+  let connect _ modname = function
     | [ stack ] -> code ~pos:__POS__ "%s.connect %s" modname stack
     | _ -> assert false
   in
   impl ~connect "Reconfigurable_stack.Fixed" (stackv4v6 @-> reconfigurable_stack)
-
 
 let external_netif =
   Key.(
@@ -75,7 +72,9 @@ let malloc_metrics_conf =
   let connect info _ _ =
     match Key.get (Info.context info) Key.target with
     | #Mirage.Key.mode_solo5 ->
-        code ~pos:__POS__ "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics ~tags:[]))"
+        code ~pos:__POS__
+          "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics \
+           ~tags:[]))"
     | _ -> code ~pos:__POS__ "Lwt.return_unit"
   in
   let packages = [ package "metrics-lwt" ] in
@@ -89,9 +88,7 @@ let bisect_key =
 
 let bisect_ppx_conf =
   let keys = [ Mirage.Key.v bisect_key ] in
-  let packages_v =
-    Key.if_ (Key.value bisect_key) [ package "bisect_ppx" ] []
-  in
+  let packages_v = Key.if_ (Key.value bisect_key) [ package "bisect_ppx" ] [] in
   Impl.abstract (impl "bisect_ppx" ~keys ~packages_v (typ ()))
 
 let no_platform_key =
@@ -116,6 +113,7 @@ let memtrace_key =
   Key.(create "memtrace" Arg.(opt Cmdliner.Arg.(some int) None doc))
 
 type build_args = Build_args
+
 let build_args = typ Build_args
 
 let build_conf =
@@ -125,22 +123,21 @@ let build_conf =
     let b = Mirage.Key.value key in
     if_impl b arg_true arg_false
   in
-  let dune _ = List.map Dune.stanza [
-      "(copy_files# ./etcd/*.ml)";
-      "(copy_files# ./etcd/gen/*.ml)";
-    ]
+  let dune _ =
+    List.map Dune.stanza
+      [ "(copy_files# ./etcd/*.ml)"; "(copy_files# ./etcd/gen/*.ml)" ]
   in
   let keys = List.map Key.v [ memtrace_key ] in
   let connect info _ _ =
-    let s = match Mirage.Key.get (Info.context info) memtrace_key with
-    | None -> "None"
-    | Some x -> Printf.sprintf "(Some %d)" x
+    let s =
+      match Mirage.Key.get (Info.context info) memtrace_key with
+      | None -> "None"
+      | Some x -> Printf.sprintf "(Some %d)" x
     in
     code ~pos:__POS__ "Lwt.return Args.Conf.{ memtrace_port=%s }" s
   in
   impl ~keys ~connect ~dune "Args.Conf.Make" (typ () @-> typ () @-> build_args)
-  $ (bool_arg no_platform_key)
-  $ (bool_arg no_scrypt_key)
+  $ bool_arg no_platform_key $ bool_arg no_scrypt_key
 
 let main =
   let packages =
@@ -169,15 +166,14 @@ let main =
     ]
   in
   main ~pos:__POS__ ~packages
-    ~deps:[ bisect_ppx_conf ; malloc_metrics_conf; ]
+    ~deps:[ bisect_ppx_conf; malloc_metrics_conf ]
     "Unikernel.Main"
-    (kv_ro @-> kv_ro @-> stackv4v6
-     @-> reconfigurable_stack @-> build_args @-> job)
+    (kv_ro @-> kv_ro @-> stackv4v6 @-> reconfigurable_stack @-> build_args
+   @-> job)
 
 let () =
   register "keyfender"
     [
-      main
-      $ update_key_store $ htdocs $ internal_stack
+      main $ update_key_store $ htdocs $ internal_stack
       $ external_reconfigurable_stack $ build_conf;
     ]

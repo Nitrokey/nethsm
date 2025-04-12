@@ -315,9 +315,7 @@ module Log = (val Logs.src_log hsm_src : Logs.LOG)
 let build_tag = String.trim [%blob "buildTag"]
 let software_version = String.trim [%blob "softwareVersion"]
 
-module Make
-    (KV : Kv_ext.Ranged) =
-struct
+module Make (KV : Kv_ext.Ranged) = struct
   module Metrics = struct
     let db = Hashtbl.create 13
     let retrieve () = Hashtbl.fold (fun k v acc -> (k, v) :: acc) db []
@@ -634,8 +632,7 @@ struct
     end
 
     module User_store =
-      Cached_store.Make
-        (Json_store.Make (Encrypted_store) (User_info))
+      Cached_store.Make (Json_store.Make (Encrypted_store) (User_info))
 
     module Key_info = struct
       (* how a key is persisted in the kv store. note that while mirage-crypto
@@ -653,11 +650,7 @@ struct
         match p with
         | Generic s -> `Assoc [ (raw_tag, `String (Base64.encode_string s)) ]
         | X509 p ->
-            `Assoc
-              [
-                ( pem_tag,
-                  `String (X509.Private_key.encode_pem p));
-              ]
+            `Assoc [ (pem_tag, `String (X509.Private_key.encode_pem p)) ]
 
       let priv_of_yojson = function
         | `Assoc [ (tag, `String data) ] when tag = raw_tag -> (
@@ -681,8 +674,7 @@ struct
     end
 
     module Key_store =
-      Cached_store.Make
-        (Json_store.Make (Encrypted_store) (Key_info))
+      Cached_store.Make (Json_store.Make (Encrypted_store) (Key_info))
 
     module Namespace_info = struct
       type t = string [@@deriving yojson]
@@ -690,8 +682,7 @@ struct
     end
 
     module Namespace_store =
-      Cached_store.Make
-        (Json_store.Make (Encrypted_store) (Namespace_info))
+      Cached_store.Make (Json_store.Make (Encrypted_store) (Namespace_info))
   end
 
   open Stores
@@ -802,9 +793,7 @@ struct
     Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
 
   let make_store_keys dk =
-    let extend k t =
-      Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string)
-    in
+    let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
     (extend dk "auth_store", extend dk "key_store", extend dk "namespace_store")
 
   let load_keys kv device_key pass_key =
@@ -932,15 +921,15 @@ struct
   let boot_config_store ~cache_settings kv device_key =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
-      (Config_store.get_opt kv Time_offset >|= function
-       | None -> ()
-       | Some span -> (
-           let (`Raw now_raw) = Hsm_clock.now_raw () in
-           match Ptime.add_span now_raw span with
-           | None ->
-               Log.warn (fun m ->
-                   m "time offset from config store out of range")
-           | Some ts -> Hsm_clock.set ts))
+      ( Config_store.get_opt kv Time_offset >|= function
+        | None -> ()
+        | Some span -> (
+            let (`Raw now_raw) = Hsm_clock.now_raw () in
+            match Ptime.add_span now_raw span with
+            | None ->
+                Log.warn (fun m ->
+                    m "time offset from config store out of range")
+            | Some ts -> Hsm_clock.set ts) )
     >>= fun () ->
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
       (Config_store.get kv Unlock_salt)
@@ -974,18 +963,13 @@ struct
               Config_store.pp_error e);
         default_network_configuration
 
-  let random n =
-    Base64.encode_string @@ Mirage_crypto_rng.generate n
+  let random n = Base64.encode_string @@ Mirage_crypto_rng.generate n
 
   let generate_id () =
     let (`Hex id) = Hex.of_string (Mirage_crypto_rng.generate 10) in
     id
 
-  (** Storage schema:
-        /namespace_1
-        ...
-        /namespace_n
-  *)
+  (** Storage schema: /namespace_1 ... /namespace_n *)
   module Namespace = struct
     let ns_src = Logs.Src.create "hsm.namespace" ~doc:"HSM namespace log"
 
@@ -1024,18 +1008,18 @@ struct
           let store = ns_store t in
           let key = Mirage_kv.Key.v n in
           internal_server_error Read "Exists key" Namespace_store.pp_read_error
-            (Namespace_store.get store key >|= function
-             | Ok n' when n = n' -> Ok true
-             | Error (`Store (`Not_found _)) -> Ok false
-             | Error (`Store (`Kv (`Not_found _))) -> Ok false
-             | Ok n' ->
-                 Logs.err (fun f ->
-                     f
-                       "Namespace %s exists but its entry contains the wrong \
-                        name (%s). Corrupted store?"
-                       n n');
-                 Error (`Store (`Not_found key))
-             | Error e -> Error e)
+            ( Namespace_store.get store key >|= function
+              | Ok n' when n = n' -> Ok true
+              | Error (`Store (`Not_found _)) -> Ok false
+              | Error (`Store (`Kv (`Not_found _))) -> Ok false
+              | Ok n' ->
+                  Logs.err (fun f ->
+                      f
+                        "Namespace %s exists but its entry contains the wrong \
+                         name (%s). Corrupted store?"
+                        n n');
+                  Error (`Store (`Not_found key))
+              | Error e -> Error e )
 
     let create t = function
       | None -> Lwt_result.fail (Bad_request, "Root namespace always exists")
@@ -1067,7 +1051,8 @@ struct
               Lwt.return
                 (Error
                    ( Internal_server_error,
-                     "Namespace store contains dictionary: " ^ (Mirage_kv.Key.to_string n) ))
+                     "Namespace store contains dictionary: "
+                     ^ Mirage_kv.Key.to_string n ))
           | n, `Value -> Lwt.return_ok (Mirage_kv.Key.basename n))
         xs
       >|= fun l ->
@@ -1099,20 +1084,13 @@ struct
               (Bad_request, Fmt.str "Namespace %s does not exist" n)
   end
 
-  (** Storage schema:
-        /r_user_1
-        ...
-        /r_user_n
-        /namespace_1~n1_user_1
-        ...
-        /namespace_1~n1_user_m
-        ...
-        /namespace_n~nn_user_m
+  (** Storage schema: /r_user_1 ... /r_user_n /namespace_1~n1_user_1 ...
+      /namespace_1~n1_user_m ... /namespace_n~nn_user_m
 
-        All functions take explicit nids (namespace, id) parameters, and never
-        process a fully-qualified user name like "ns~id" as a single string.
-        Parsing a string into a nid is assumed to be done in user-facing layers.
-        *)
+      All functions take explicit nids (namespace, id) parameters, and never
+      process a fully-qualified user name like "ns~id" as a single string.
+      Parsing a string into a nid is assumed to be done in user-facing layers.
+  *)
   module User = struct
     module Info = User_info
 
@@ -1173,8 +1151,10 @@ struct
                 User_store.pp_read_error e);
           Lwt.return false
       | Ok user -> (
-          if (* Check that namespace exists already *)
-             user.role <> role then Lwt.return false
+          if
+            (* Check that namespace exists already *)
+            user.role <> role
+          then Lwt.return false
           else
             Namespace.exists t nid.namespace >|= function
             | Error _ | Ok false -> false
@@ -1184,9 +1164,9 @@ struct
       let open Lwt_result.Infix in
       let store = in_store t in
       internal_server_error Read "Exists user" User_store.pp_error
-        (User_store.exists store (make_store_key nid) >|= function
-         | None -> false
-         | Some _ -> true)
+        ( User_store.exists store (make_store_key nid) >|= function
+          | None -> false
+          | Some _ -> true )
 
     let get t nid =
       let store = in_store t in
@@ -1195,16 +1175,8 @@ struct
 
     let prepare_user ~name ~passphrase ~role =
       let salt = Mirage_crypto_rng.generate Crypto.passphrase_salt_len in
-      let digest =
-        Crypto.stored_passphrase ~salt passphrase
-      in
-      {
-        User_info.name;
-        salt;
-        digest;
-        role;
-        tags = Json.TagSet.empty;
-      }
+      let digest = Crypto.stored_passphrase ~salt passphrase in
+      { User_info.name; salt; digest; role; tags = Json.TagSet.empty }
 
     let add t nid ~role ~passphrase ~name =
       let open Lwt_result.Infix in
@@ -1245,7 +1217,10 @@ struct
             (Lwt_result.fail e)
       | Ok xs ->
           Lwt.return_ok
-            (List.filter_map (function id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None) xs)
+            (List.filter_map
+               (function
+                 | id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None)
+               xs)
 
     let remove t nid =
       let open Lwt_result.Infix in
@@ -1262,16 +1237,8 @@ struct
         (read store nid)
       >>= fun user ->
       let salt' = Mirage_crypto_rng.generate Crypto.passphrase_salt_len in
-      let digest' =
-        Crypto.stored_passphrase ~salt:salt' passphrase
-      in
-      let user' =
-        {
-          user with
-          salt = salt';
-          digest = digest';
-        }
-      in
+      let digest' = Crypto.stored_passphrase ~salt:salt' passphrase in
+      let user' = { user with salt = salt'; digest = digest' } in
       write store nid user' >|= fun () ->
       Access.info (fun m -> m "changed %a (%s) passphrase" Nid.pp nid user.name)
 
@@ -1326,16 +1293,8 @@ struct
       | Error _ -> None
   end
 
-  (** Storage schema:
-        /root_key_n
-        ...
-        /root_key_n
-        /.namespace_1/ns_key1
-        ...
-        /.namespace_1/ns_key_n
-        ...
-        /.namespace_n/ns_key_n
-  *)
+  (** Storage schema: /root_key_n ... /root_key_n /.namespace_1/ns_key1 ...
+      /.namespace_1/ns_key_n ... /.namespace_n/ns_key_n *)
   module Key = struct
     let key_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
 
@@ -1358,9 +1317,9 @@ struct
       let store = key_store t in
       let key = make_store_key ?namespace id in
       internal_server_error Read "Exists key" Encrypted_store.pp_error
-        (Key_store.exists store key >|= function
-         | None -> false
-         | Some _ -> true)
+        ( Key_store.exists store key >|= function
+          | None -> false
+          | Some _ -> true )
 
     let validate_restrictions ~user_info (restrictions : Json.restrictions) =
       if Json.TagSet.is_empty restrictions.tags then Ok ()
@@ -1406,7 +1365,10 @@ struct
             validate_restrictions ~user_info k.restrictions |> Result.is_ok
           in
           let values_id =
-            List.filter_map (function id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None) xs
+            List.filter_map
+              (function
+                | id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None)
+              xs
           in
           if is_admin || not filter_by_restrictions then
             (* bypass filter *)
@@ -1482,15 +1444,15 @@ struct
 
     open Stores.Key_info
 
-    let add_json ?namespace ~id t mechanisms typ (key:Json.private_key) restrictions =
+    let add_json ?namespace ~id t mechanisms typ (key : Json.private_key)
+        restrictions =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s" msg ctx data
       in
       let to_z ctx data =
         match Base64.decode data with
-        | Ok num ->
-            Ok (Mirage_crypto_pk.Z_extra.of_octets_be num)
+        | Ok num -> Ok (Mirage_crypto_pk.Z_extra.of_octets_be num)
         | Error (`Msg msg) -> b64err msg ctx data
       in
       let b64_data data =
@@ -1499,8 +1461,10 @@ struct
         | Error (`Msg m) -> b64err m "data" data
       in
       let open Rresult.R.Infix in
-      let prv t = X509.Private_key.of_string ~seed_or_data:`Data t key.data >>| fun p ->
-        X509 p in
+      let prv t =
+        X509.Private_key.of_string ~seed_or_data:`Data t key.data >>| fun p ->
+        X509 p
+      in
       match
         match typ with
         | Json.RSA ->
@@ -1576,7 +1540,9 @@ struct
           Lwt_list.filter_map_s
             (function
               | _, `Dictionary -> Lwt.return None
-              | id, `Value -> remove ~namespace t ~id:(Mirage_kv.Key.basename id) >|= fun r -> Some r)
+              | id, `Value ->
+                  remove ~namespace t ~id:(Mirage_kv.Key.basename id)
+                  >|= fun r -> Some r)
             xs
           >|= List.fold_left
                 (function Error e -> fun _ -> Error e | _ -> fun x -> x)
@@ -1597,21 +1563,23 @@ struct
             ( Json.rsa_public_key_to_yojson { Json.modulus; publicExponent },
               Json.RSA )
         | X509 (`ED25519 k) ->
-            let data = Ed25519.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string in
+            let data =
+              Ed25519.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string
+            in
             (Json.ec_public_key_to_yojson { Json.data }, Json.Curve25519)
         | X509 (`P256 k) ->
             let data =
-              P256.Dsa.(pub_of_priv k |> pub_to_octets ) |> Base64.encode_string
+              P256.Dsa.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string
             in
             (Json.ec_public_key_to_yojson { Json.data }, Json.EC_P256)
         | X509 (`P384 k) ->
             let data =
-              P384.Dsa.(pub_of_priv k |> pub_to_octets ) |> Base64.encode_string
+              P384.Dsa.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string
             in
             (Json.ec_public_key_to_yojson { Json.data }, Json.EC_P384)
         | X509 (`P521 k) ->
             let data =
-              P521.Dsa.(pub_of_priv k |> pub_to_octets ) |> Base64.encode_string
+              P521.Dsa.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string
             in
             (Json.ec_public_key_to_yojson { Json.data }, Json.EC_P521)
         | Generic _ -> (`Null, Json.Generic)
@@ -1744,7 +1712,8 @@ struct
                      match decrypt_mode with
                      | Json.RAW -> (
                          try
-                           Some (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_data)
+                           Some
+                             (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_data)
                          with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
                      | PKCS1 ->
                          Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_data
@@ -1767,15 +1736,11 @@ struct
                            Error (Bad_request, "AES-CBC decrypt requires IV")
                        | Some iv -> (
                            try
-                             let iv =
-                               Base64.decode_exn iv
-                             in
-                             let key =
-                               Mirage_crypto.AES.CBC.of_secret key
-                             in
+                             let iv = Base64.decode_exn iv in
+                             let key = Mirage_crypto.AES.CBC.of_secret key in
                              Ok
-                               (Mirage_crypto.AES.CBC.decrypt ~key
-                                  ~iv encrypted_data)
+                               (Mirage_crypto.AES.CBC.decrypt ~key ~iv
+                                  encrypted_data)
                            with Invalid_argument err ->
                              Error (Bad_request, "Decryption failed: " ^ err)))
                    | _ ->
@@ -1823,16 +1788,13 @@ struct
                            | None ->
                                Mirage_crypto_rng.generate
                                  Mirage_crypto.AES.CBC.block_size
-                           | Some iv ->
-                               Base64.decode_exn iv
+                           | Some iv -> Base64.decode_exn iv
                          in
-                         let key = Mirage_crypto.AES.CBC.of_secret key
-                         in
+                         let key = Mirage_crypto.AES.CBC.of_secret key in
                          Ok
-                           ( Mirage_crypto.AES.CBC.encrypt ~key ~iv
-                               message_data |> Base64.encode_string,
-                             Some (Base64.encode_string iv)
-                           )
+                           ( Mirage_crypto.AES.CBC.encrypt ~key ~iv message_data
+                             |> Base64.encode_string,
+                             Some (Base64.encode_string iv) )
                        with Invalid_argument err ->
                          Error (Bad_request, "Encryption failed: " ^ err)))
                | _ ->
@@ -1868,8 +1830,7 @@ struct
             Lwt.return
               ( (match (key_data.priv, sign_mode) with
                 | X509 (`RSA key), Json.PKCS1 -> (
-                    try
-                      Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign)
+                    try Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign)
                     with Mirage_crypto_pk.Rsa.Insufficient_key ->
                       Error (Bad_request, "Signing failure: RSA key too short.")
                     )
@@ -1878,8 +1839,7 @@ struct
                     (match (priv, sign_mode) with
                     | `RSA _, Json.PSS_MD5 ->
                         Ok (`RSA_PSS, `MD5, `Digest to_sign)
-                    | `RSA _, PSS_SHA1 ->
-                        Ok (`RSA_PSS, `SHA1, `Digest to_sign)
+                    | `RSA _, PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign)
                     | `RSA _, PSS_SHA224 ->
                         Ok (`RSA_PSS, `SHA224, `Digest to_sign)
                     | `RSA _, PSS_SHA256 ->
@@ -2051,9 +2011,9 @@ struct
     let unattended_boot t =
       let open Lwt_result.Infix in
       internal_server_error Read "Read unattended boot" Config_store.pp_error
-        (Config_store.get_opt t.kv Unattended_boot >|= function
-         | None -> false
-         | Some v -> v)
+        ( Config_store.get_opt t.kv Unattended_boot >|= function
+          | None -> false
+          | Some v -> v )
 
     let set_unattended_boot t status =
       let open Lwt_result.Infix in
@@ -2099,8 +2059,7 @@ struct
 
     let tls_cert_pem t =
       let chain = t.cert :: t.chain in
-      Lwt.return
-        (X509.Certificate.encode_pem_multiple chain)
+      Lwt.return (X509.Certificate.encode_pem_multiple chain)
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
@@ -2108,9 +2067,7 @@ struct
          - the chain itself is properly signed (i.e. a full chain missing the TA)
          --> take the last element as TA (unchecked), and verify the chain!
       *)
-      match
-        X509.Certificate.decode_pem_multiple cert_data
-      with
+      match X509.Certificate.decode_pem_multiple cert_data with
       | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
@@ -2270,7 +2227,7 @@ struct
             in
             Lwt.return_ok
               (String.equal backup_key
-                (Crypto.key_of_passphrase ~salt passphrase))
+                 (Crypto.key_of_passphrase ~salt passphrase))
       in
       if valid then Lwt.return_ok ()
       else Lwt.return_error (Forbidden, "backup passphrase is incorrect.")
@@ -2414,18 +2371,14 @@ struct
               get_field sb >>= fun signature ->
               let hash = Hash.empty in
               get_field sb >>= fun changes ->
-              let hash =
-                Hash.feed_string hash (prefix_len changes)
-              in
+              let hash = Hash.feed_string hash (prefix_len changes) in
               get_field sb >>= fun version ->
               Lwt.return (version_of_string version) >>= fun version' ->
-              let hash =
-                Hash.feed_string hash (prefix_len version)
-              in
+              let hash = Hash.feed_string hash (prefix_len version) in
               sb_read_n sb 4 >>= fun blockss ->
-              let blocks = Option.get
-                (Int32.unsigned_to_int
-                  (String.get_int32_be blockss 0))
+              let blocks =
+                Option.get
+                  (Int32.unsigned_to_int (String.get_int32_be blockss 0))
               in
               let hash = Hash.feed_string hash blockss in
               let bytes = 512 * blocks in
@@ -2538,8 +2491,7 @@ struct
                         Crypto.encrypt Mirage_crypto_rng.generate
                           ~key:backup_key ~adata data
                       in
-                      push
-                        (Some (prefix_len encrypted_data))
+                      push (Some (prefix_len encrypted_data))
                   | Error e ->
                       Log.err (fun m ->
                           m "Error %a while retrieving value %a during backup."
@@ -2573,7 +2525,8 @@ struct
               push (Some (prefix_len backup_salt));
               let encrypted_version =
                 let adata = "backup-version" in
-                Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata version_str
+                Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                  ~adata version_str
               in
               push (Some (prefix_len encrypted_version));
               let encryption_key = t.device_key in
@@ -2587,8 +2540,8 @@ struct
               | Ok locked_domkey ->
                   let encrypted_domkey =
                     let adata = "domain-key" in
-                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata
-                      locked_domkey
+                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                      ~adata locked_domkey
                   in
                   push (Some (prefix_len encrypted_domkey));
                   backup_directory t.kv push backup_key' Mirage_kv.Key.empty
@@ -2680,8 +2633,7 @@ struct
           | Error e -> fun _ -> Lwt_result.fail e
           | Ok acc -> (
               function
-              | key, `Value ->
-                  Lwt_result.return (key :: acc)
+              | key, `Value -> Lwt_result.return (key :: acc)
               | prefix, `Dictionary ->
                   list_keys_rec ~kv prefix >>= fun subkeys ->
                   Lwt_result.return (subkeys @ acc)))
@@ -2763,11 +2715,7 @@ struct
             Error (Bad_request, msg)
       in
       let** salt = decode_value sb in
-      let backup_key =
-        Crypto.key_of_passphrase
-          ~salt
-          backup_passphrase
-      in
+      let backup_key = Crypto.key_of_passphrase ~salt backup_passphrase in
       let key = Crypto.GCM.of_secret backup_key in
       let** version_int = decode_value sb in
       let adata = "backup-version" in
@@ -2808,8 +2756,7 @@ struct
                   *)
                   Domain_key_store.get b Attended ~encryption_key >>= function
                   | Ok old_locked_domain_key
-                    when String.equal locked_domain_key old_locked_domain_key
-                    ->
+                    when String.equal locked_domain_key old_locked_domain_key ->
                       Lwt_result.return true
                   | Ok _ ->
                       Log.info (fun m -> m "Domain Key changed.");

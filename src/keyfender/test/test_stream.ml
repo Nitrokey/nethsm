@@ -7,12 +7,11 @@ open Lwt.Infix
 
 module Kv_mem = struct
   include Mirage_kv_mem
+
   let batch dict ?retries:_ f = f dict
 end
-module Hsm =
-  Keyfender.Hsm.Make
-    (Keyfender.Kv_ext.Make_ranged (Kv_mem))
 
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let request hsm_state ?(body = `Empty) ?(meth = `GET)
@@ -25,9 +24,7 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET)
   Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
 
 let update_key =
-  match
-    X509.Public_key.decode_pem [%blob "public.pem"]
-  with
+  match X509.Public_key.decode_pem [%blob "public.pem"] with
   | Ok (`RSA key) -> key
   | Ok _ -> invalid_arg "No RSA key from manufacturer. Contact manufacturer."
   | Error (`Msg m) -> invalid_arg m

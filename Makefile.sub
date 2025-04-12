@@ -224,11 +224,10 @@ clean-keyfender:
 
 $(S_KEYFENDER_PREP): .stamp-prepare
 	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) $(KEYFENDER_CARGS)
-	cd src/s_keyfender && $(MAKE) depends
 	touch $@
 
 $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(UPDATE_KEY) $(API_DOCS_DIR)
-	cd src/s_keyfender && $(MAKE) build
+	cd src/s_keyfender && $(MAKE) all
 
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)

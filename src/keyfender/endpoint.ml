@@ -188,8 +188,8 @@ struct
     in
     aux rd fs
 
-  (** R-Role ([no_namespace] + [role])
-      User is Root (no namespace) and has given role *)
+  (** R-Role ([no_namespace] + [role]) User is Root (no namespace) and has given
+      role *)
   class r_role ?r_exclude_meths hsm_state role ip =
     object
       inherit role hsm_state role ip as role
@@ -204,12 +204,11 @@ struct
       - this is a strict check: if the caller is a R-User and target a N-User,
         the check will fail, despite the higher privileges of the caller
       - the check is *relaxed* (i.e. the above situation would pass) if either:
-        - the target's namespace has not been created yet (since no member of
-          that namespace could be the caller anyway)
-        - the HTTP method is explicitly given in [root_allowed_for]
+      - the target's namespace has not been created yet (since no member of that
+        namespace could be the caller anyway)
+      - the HTTP method is explicitly given in [root_allowed_for]
       - the check is completely disabled in the HTTP method is explicitly given
-        in exclude_meths
-  *)
+        in exclude_meths *)
   class target_same_namespace ?(root_allowed_for = []) ?exclude_meths hsm_state
     =
     object
@@ -276,12 +275,12 @@ struct
     object (self)
       method virtual private to_json : body Wm.provider
 
-      method content_types_provided
-          : ((string * body Wm.provider) list, body) Wm.op =
+      method content_types_provided :
+          ((string * body Wm.provider) list, body) Wm.op =
         Wm.continue [ ("application/json", self#to_json) ]
 
-      method content_types_accepted
-          : ((string * body Wm.acceptor) list, body) Wm.op =
+      method content_types_accepted :
+          ((string * body Wm.acceptor) list, body) Wm.op =
         Wm.continue []
     end
 
@@ -289,12 +288,12 @@ struct
     object (self)
       method virtual private of_json : Yojson.Safe.t -> body Wm.acceptor
 
-      method content_types_accepted
-          : ((string * body Wm.acceptor) list, body) Wm.op =
+      method content_types_accepted :
+          ((string * body Wm.acceptor) list, body) Wm.op =
         Wm.continue [ ("application/json", self#parse_json) ]
 
-      method content_types_provided
-          : ((string * body Wm.provider) list, body) Wm.op =
+      method content_types_provided :
+          ((string * body Wm.provider) list, body) Wm.op =
         Wm.continue [ ("application/json", Wm.continue `Empty) ]
 
       method private parse_json rd =
@@ -314,12 +313,12 @@ struct
     object (self)
       method virtual process_post : (bool, body) Wm.op
 
-      method content_types_accepted
-          : ((string * body Wm.acceptor) list, body) Wm.op =
+      method content_types_accepted :
+          ((string * body Wm.acceptor) list, body) Wm.op =
         Wm.continue [ ("application/json", self#process_post) ]
 
-      method content_types_provided
-          : ((string * body Wm.provider) list, body) Wm.op =
+      method content_types_provided :
+          ((string * body Wm.provider) list, body) Wm.op =
         Wm.continue [ ("application/json", Wm.continue `Empty) ]
 
       method allowed_methods : (Cohttp.Code.meth list, body) Wm.op =

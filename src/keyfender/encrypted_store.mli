@@ -30,11 +30,7 @@ module Make (KV : Kv_ext.Ranged) : sig
   val slot_to_string : slot -> string
 
   val initialize :
-    Version.t ->
-    slot ->
-    key:string ->
-    KV.t ->
-    (t, KV.write_error) result Lwt.t
+    Version.t -> slot -> key:string -> KV.t -> (t, KV.write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
@@ -53,7 +49,8 @@ module Make (KV : Kv_ext.Ranged) : sig
   (** The type of connection failures. *)
 
   val pp_connect_error : connect_error Fmt.t
-  (** [pp_connect_error ppf err] pretty-prints the connect error [err] on [ppf]. *)
+  (** [pp_connect_error ppf err] pretty-prints the connect error [err] on [ppf].
+  *)
 
   val unlock :
     Version.t ->
@@ -62,9 +59,9 @@ module Make (KV : Kv_ext.Ranged) : sig
     KV.t ->
     ([ `Kv of t | `Version_greater of Version.t * t ], connect_error) result
     Lwt.t
-  (** [unlock version typ ~key kv] connects to a store, using [kv] as
-      persistent storage, [typ] is the prefix for all keys read and written to
-      [kv], and [key] is the symmetric secret for encryption and decryption. The
+  (** [unlock version typ ~key kv] connects to a store, using [kv] as persistent
+      storage, [typ] is the prefix for all keys read and written to [kv], and
+      [key] is the symmetric secret for encryption and decryption. The
       [stored_version] is read and authenticated from the store, to verify that
       the key is correct. The [stored_version] and [version] are compared. If
       they are equal [`Kv kv] is returned, if [version] is greater,

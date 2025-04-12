@@ -22,10 +22,8 @@ let salt_len = 16
 let key_len = 32
 
 let key_of_passphrase ~salt password =
-  Scrypt.scrypt
-    ~password:password
-    ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r ~p:!scrypt_params.p
-    ~dk_len:(Int32.of_int key_len)
+  Scrypt.scrypt ~password ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r
+    ~p:!scrypt_params.p ~dk_len:(Int32.of_int key_len)
 
 let passphrase_salt_len = 16
 
@@ -50,7 +48,7 @@ let decrypt ~key ~adata data =
   if l <= iv_size + GCM.tag_size then Error `Insufficient_data
   else
     let nonce = String.sub data 0 iv_size in
-    let data' = String.sub data iv_size (l-iv_size) in
+    let data' = String.sub data iv_size (l - iv_size) in
     match GCM.authenticate_decrypt ~key ~nonce ~adata data' with
     | None -> Error `Not_authenticated
     | Some msg -> Ok msg

@@ -13,3 +13,7 @@ dune
 dune-project
 dune.build
 dune.config
+duniverse
+mirage
+dist
+_build

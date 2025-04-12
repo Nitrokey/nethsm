@@ -241,14 +241,13 @@ let prefix_and_pad s =
 
 let sign_update u =
   let signature =
-    Mirage_crypto_pk.Rsa.PKCS1.sign ~hash:`SHA256 ~key:update_key
-      (`Message u)
+    Mirage_crypto_pk.Rsa.PKCS1.sign ~hash:`SHA256 ~key:update_key (`Message u)
   in
   let length = String.length signature in
   let len_buf = Bytes.create 3 in
   Bytes.set_uint8 len_buf 0 (length lsr 16);
   Bytes.set_uint16_be len_buf 1 (length land 0xffff);
-  "_NETHSM_UPDATE_\x00" ^ (Bytes.unsafe_to_string len_buf) ^ signature
+  "_NETHSM_UPDATE_\x00" ^ Bytes.unsafe_to_string len_buf ^ signature
 
 let system_update_ok =
   "a request for /system/update with authenticated user returns 200"
@@ -2842,9 +2841,7 @@ let operator_keys_key_sign =
           | Error _ -> false
           | Ok decoded -> (
               let key = Mirage_crypto_pk.Rsa.pub_of_priv test_key in
-              match
-                Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key decoded
-              with
+              match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key decoded with
               | Some msg -> String.equal msg message
               | None -> false))
       | _ -> false)
@@ -2949,8 +2946,7 @@ let operator_keys_key_sign_and_decrypt =
                           match
                             Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key decoded
                           with
-                          | Some msg ->
-                              String.equal msg message
+                          | Some msg -> String.equal msg message
                           | None -> false))
                   | _ -> false)
               | _ -> false))
@@ -2966,12 +2962,12 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 let hsm_with_ed25519_key () =
   let hsm_state = operational_mock () in
   Lwt_main.run
-    (Hsm.Key.add_pem hsm_state
-       Keyfender.Json.(MS.singleton EdDSA_Signature)
-       ~id:"keyID" ed25519_priv_pem no_restrictions
-     >|= function
-     | Ok () -> hsm_state
-     | Error _ -> assert false)
+    ( Hsm.Key.add_pem hsm_state
+        Keyfender.Json.(MS.singleton EdDSA_Signature)
+        ~id:"keyID" ed25519_priv_pem no_restrictions
+    >|= function
+      | Ok () -> hsm_state
+      | Error _ -> assert false )
 
 let ed25519_priv =
   match X509.Private_key.decode_pem ed25519_priv_pem with
@@ -3027,8 +3023,7 @@ let keys_key_get_ed25519 =
 
 let ed25519_json =
   let b64 =
-    Base64.encode_string
-         (Mirage_crypto_ec.Ed25519.priv_to_octets ed25519_priv)
+    Base64.encode_string (Mirage_crypto_ec.Ed25519.priv_to_octets ed25519_priv)
   in
   Printf.sprintf
     {| { mechanisms: [ "EdDSA_Signature" ], type: "Curve25519", private: { data: "%s" } } |}
@@ -3679,7 +3674,7 @@ module Oaep_sha384 = Mirage_crypto_pk.Rsa.OAEP (Digestif.SHA384)
 module Oaep_sha512 = Mirage_crypto_pk.Rsa.OAEP (Digestif.SHA512)
 
 let enc_test_data =
-    "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcd"
+  "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcd"
 
 let crypto_rsa_decrypt () =
   let algos =
@@ -3773,12 +3768,11 @@ let crypto_rsa_pkcs1_sign () =
   | Ok signature -> (
       assert (signature = signature_hc);
       let b64_dec = Base64.decode_exn signature in
-      match
-        Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key:rsa2048_pub b64_dec
-      with
+      match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key:rsa2048_pub b64_dec with
       | None -> false
       | Some raw ->
-          String.equal raw Digestif.SHA1.(digest_string sign_test_data |> to_raw_string))
+          String.equal raw
+            Digestif.SHA1.(digest_string sign_test_data |> to_raw_string))
   | _ -> false
 
 let crypto_rsa_pss_sign () =
@@ -3818,8 +3812,7 @@ let crypto_rsa_pss_sign () =
       | Ok signature -> (
           let b64_dec = Base64.decode_exn signature in
           match
-            X509.Public_key.verify hash ~scheme:`RSA_PSS
-              ~signature:b64_dec
+            X509.Public_key.verify hash ~scheme:`RSA_PSS ~signature:b64_dec
               (`RSA rsa2048_pub) (`Message sign_test_data)
           with
           | Ok () -> true
@@ -3855,8 +3848,7 @@ let crypto_ed25519_sign () =
       assert (exp_sig = signature);
       let b64_dec = Base64.decode_exn signature in
       match
-        X509.Public_key.verify `SHA512 ~scheme:`ED25519
-          ~signature:b64_dec
+        X509.Public_key.verify `SHA512 ~scheme:`ED25519 ~signature:b64_dec
           ed25519_pub (`Message sign_test_data)
       with
       | Ok () -> true
@@ -3889,8 +3881,7 @@ let crypto_ecdsa_sign () =
         `Quick
         (fun () ->
           let hsm = operational_mock () in
-          add_pem hsm ~id:"test" mechs
-            (X509.Private_key.encode_pem priv);
+          add_pem hsm ~id:"test" mechs (X509.Private_key.encode_pem priv);
           let pub = X509.Private_key.public priv in
           let signature =
             Lwt_main.run
@@ -3902,9 +3893,8 @@ let crypto_ecdsa_sign () =
           in
           Alcotest.(check string) ("same signature for " ^ txt) sign signature;
           let b64_dec = Base64.decode signature |> get_ok_result "base64" in
-          X509.Public_key.verify hash ~scheme:`ECDSA
-            ~signature:b64_dec
-            pub (`Message sign_test_data)
+          X509.Public_key.verify hash ~scheme:`ECDSA ~signature:b64_dec pub
+            (`Message sign_test_data)
           |> get_ok_result "verify"))
     algos
 
@@ -3926,12 +3916,8 @@ let crypto_aes_cbc_encrypt () =
       | Ok (cipher_b64, Some iv_b64) ->
           let iv = Base64.decode_exn iv_b64 in
           let key = Mirage_crypto.AES.CBC.of_secret secret in
-          let encrypted =
-            Base64.decode_exn cipher_b64
-          in
-          let m =
-            Mirage_crypto.AES.CBC.decrypt ~key ~iv encrypted
-          in
+          let encrypted = Base64.decode_exn cipher_b64 in
+          let m = Mirage_crypto.AES.CBC.decrypt ~key ~iv encrypted in
           String.equal m aes_message
       | Ok (_, None) | Error _ -> assert false)
     sizes
@@ -3945,9 +3931,7 @@ let crypto_aes_cbc_decrypt () =
       let hsm = operational_mock () in
       let secret = Mirage_crypto_rng.generate (size / 8) in
       add_generic hsm ~id:"test" mechs secret;
-      let iv =
-        Mirage_crypto_rng.generate Mirage_crypto.AES.CBC.block_size
-      in
+      let iv = Mirage_crypto_rng.generate Mirage_crypto.AES.CBC.block_size in
       let key = Mirage_crypto.AES.CBC.of_secret secret in
       let encrypted =
         Mirage_crypto.AES.CBC.encrypt ~key ~iv aes_message

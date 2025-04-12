@@ -121,7 +121,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
               let buffered_flow = Gluten_mirage.Buffered_flow.create flow in
               H2C.create_connection ~error_handler buffered_flow >>= fun conn ->
               H2C.ping conn >>= function
-              | Error _-> assert false
+              | Error _ -> assert false
               | Ok () -> Lwt.return conn
             in
             Lwt.pick
@@ -179,9 +179,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             req_esc);
       Lwt.wakeup_later_exn stream_err_resolver (Etcd_error msg)
     in
-    let do_request =
-      H2C.request conn ~error_handler
-    in
+    let do_request = H2C.request conn ~error_handler in
     let grpc_resp =
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
     in
@@ -273,7 +271,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         match resp.RangeResponse.kvs with
-        | { KeyValue.mod_revision = i; _ } :: _ -> Ok (Ptime.v (0, Int64.of_int i))
+        | { KeyValue.mod_revision = i; _ } :: _ ->
+            Ok (Ptime.v (0, Int64.of_int i))
         | _ -> Error (`Not_found k))
 
   (** WARNING: only works on Values, will return None for dictionaries *)

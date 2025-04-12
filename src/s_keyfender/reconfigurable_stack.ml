@@ -19,10 +19,7 @@ module type S = sig
   val stack : t -> Stack.t
 end
 
-module Direct
-    (Net : Mirage_net.S)
-    (Eth : Ethernet.S)
-    (Arp : Arp.S) : sig
+module Direct (Net : Mirage_net.S) (Eth : Ethernet.S) (Arp : Arp.S) : sig
   include S
 
   val connect : Net.t -> Eth.t -> Arp.t -> t Lwt.t
@@ -35,8 +32,7 @@ end = struct
   module Tcp = Tcp.Flow.Make (Ip)
 
   module Stack =
-    Tcpip_stack_direct.MakeV4V6 (Net) (Eth) (Arp) (Ip) (Icmp) (Udp)
-      (Tcp)
+    Tcpip_stack_direct.MakeV4V6 (Net) (Eth) (Arp) (Ip) (Icmp) (Udp) (Tcp)
 
   type net = Net.t
   type eth = Eth.t
