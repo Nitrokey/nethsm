@@ -218,7 +218,7 @@
           </cr4>
         </registers>
       </vcpu>
-      <bootparams></bootparams>
+      <bootparams>--allocation-policy=best-fit --retry</bootparams>
       <events>
         <source>
           <group name="vmx_exit">

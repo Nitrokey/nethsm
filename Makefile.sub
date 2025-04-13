@@ -19,7 +19,7 @@ NET_EXTERNAL ?= tap200
 NET_INTERNAL ?= tap201
 
 # Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
-# for the Keyfender unikernel. Default for MODE=muen is '--retry=true'.
+# for the Keyfender unikernel. Default for MODE=muen is '--retry'.
 # (actual setting is performed later)
 
 # Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
@@ -98,12 +98,13 @@ TARGET := hvt
 KEYFENDER_CARGS ?= --no-platform --memtrace=1234
 else ifeq ($(XMODE),muen)
 TARGET := muen
-KEYFENDER_CARGS ?= --retry=true
+KEYFENDER_CARGS ?=
 else ifeq ($(XMODE),test)
 TARGET := unix
 KEYFENDER_CARGS ?= --no-platform --single-interface --bisect-ppx --no-scrypt
 DUNE := OCAMLRUNPARAM=b dune
 DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
+MAKE_ARGS := DUNE_INSTRUMENT_WITH=bisect_ppx
 OPAMVAR_coverage := true
 export OPAMVAR_coverage
 else
@@ -146,14 +147,14 @@ ifneq ($(filter $(MUEN_HARDWARE),prodrive-hermes-1 msi-z790-1),)
 	patch -p1 -d $(TOP_DIR)/src/gmp-freestanding <$(TOP_DIR)/src/muen/gmp-kabylake.patch
 	opam pin -y -n gmp-freestanding $(TOP_DIR)/src/gmp-freestanding
 endif
+	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
 # generate_raml_tests.exe; we only install these when building with MODE=test.
-	opam install -y dune mirage containers ezjsonm yaml ocamlformat
-	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
+	opam install -y dune mirage containers ezjsonm yaml ocamlformat bisect_ppx
 	opam install -y --deps-only --with-test keyfender
 else
-	opam install -y dune mirage ocamlformat
+	opam install -y dune mirage ocamlformat solo5 mirage-solo5
 endif
 	touch $@
 
@@ -227,7 +228,10 @@ $(S_KEYFENDER_PREP): .stamp-prepare
 	touch $@
 
 $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(UPDATE_KEY) $(API_DOCS_DIR)
-	cd src/s_keyfender && $(MAKE) all
+	cd src/s_keyfender && $(MAKE) lock $(MAKE_ARGS)
+	cd src/s_keyfender && $(MAKE) install-switch $(MAKE_ARGS)
+	cd src/s_keyfender && $(MAKE) pull $(MAKE_ARGS)
+	cd src/s_keyfender && $(MAKE) build $(MAKE_ARGS)
 
 .PHONY: build-keyfender
 build-keyfender: $(S_KEYFENDER)
@@ -253,6 +257,7 @@ ifeq ($(XMODE),test)
 endif
 
 test-keyfender-e2e: $(KEYFENDER)
+	cd src/keyfender && $(DUNE) build $(DUNE_ARGS) test/test_server.exe
 	pkill test_server.exe && wait || true
 	cd src/tests && \
 	    ../keyfender/_build/default/test/test_server.exe &
@@ -401,16 +406,13 @@ test-keyfender-api: $(S_KEYFENDER) | $(ETCD_DIR)
 	sleep 1
 	bisect-ppx-report summary --coverage-path=src/tests/generated
 
-.PHONY: build
-build: $(KEYFENDER)
-
 .stamp-test-%: test-%
 	touch $@
 
 .PHONY: coverage-summary
 # Generate a summary coverage report. Runs all test-keyfender-* targets if not
 # previously run in this tree.
-coverage-summary: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-test-keyfender-e2e
+coverage-summary: .stamp-test-keyfender-e2e .stamp-test-keyfender-lib .stamp-test-keyfender-api
 	mkdir -p $(TOP_DIR)/obj
 	bisect-ppx-report cobertura \
 		--coverage-path=src/tests \
@@ -418,6 +420,7 @@ coverage-summary: .stamp-test-keyfender-api .stamp-test-keyfender-lib .stamp-tes
 		--coverage-path=src/s_keyfender \
 		--source-path=src/keyfender \
 		--source-path=src/s_keyfender \
+		--source-path=src/s_keyfender/_build/default \
 		$(TOP_DIR)/obj/cobertura.xml
 	bisect-ppx-report summary \
 	    --coverage-path=src/tests \

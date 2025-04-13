@@ -142,8 +142,8 @@ let build_conf =
 let main =
   let packages =
     [
-      package ~pin:"../keyfender" "keyfender";
-      package ~min:"7.1.2"
+      package "keyfender";
+      package
         ~sublibs:[ "stack-direct"; "tcp"; "udp"; "icmpv4"; "ipv6"; "ipv4" ]
         "tcpip";
       package "conduit-mirage";

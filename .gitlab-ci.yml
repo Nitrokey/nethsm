@@ -87,7 +87,6 @@ build_builder_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
       --local context="${CI_PROJECT_DIR}/src/container/builder"
-      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       --output type=image,name=${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA},${PUSH}
 
@@ -110,7 +109,6 @@ build_container_test_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
       --local context=${CI_PROJECT_DIR}
-      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --opt target=nethsm_test
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 
@@ -229,6 +227,7 @@ test_keyfender:
         path: obj/cobertura.xml
     paths:
       - "src/keyfender/_build/default/test/_build/_tests/"
+      - "src/tests/_build/_tests/"
   before_script: *setup_job_default
   script:
     - opam exec -- make check-format || (echo "formatting check failed, please run 'make fix-format'" ; exit 1)

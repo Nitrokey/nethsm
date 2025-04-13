@@ -72,9 +72,8 @@
 (cram
  (deps ./test_logs.exe))
 
-(executable
+(test
  (libraries logs.fmt fmt.tty lwt.unix alcotest keyfender mirage-kv-mem)
  (modules test_cached_store)
  (name test_cached_store)
- (public_name test_cached_store)
  (package keyfender))

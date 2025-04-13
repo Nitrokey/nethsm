@@ -31,7 +31,6 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   opam switch set default
 EOF
 
-ARG OPAM_REPOSITORY_COMMIT
 COPY --chown=1000:1000 src/container/builder/gmp-freestanding /home/opam/gmp-6.3.0/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   curl -sSL "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz" | tar Jxpf - -C /home/opam

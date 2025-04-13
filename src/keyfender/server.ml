@@ -94,6 +94,8 @@ end
 module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
   module Handlers = Make_handlers (Hsm)
 
+  let cid conn = Cohttp.Connection.to_string conn [@@alert "-deprecated"]
+
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
   let dispatch hsm_state ip request body =
     let start = Hsm.now () in
@@ -146,7 +148,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
     Srv.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
 
   let serve cb =
-    let callback _x ip request body =
+    let callback (_, conn) ip request body =
       let ip =
         match ip with
         | Ipaddr.V4 ip -> ip
@@ -156,9 +158,13 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
       in
       Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
       let uri = Cohttp.Request.uri request in
-      Access_log.debug (fun f -> f "[%s] serving %s." "XXX" (Uri.to_string uri));
+      let cid = cid conn in
+      Access_log.debug (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));
       cb ip request body
     in
-    let conn_closed _ = Access_log.debug (fun f -> f "[%s] closing" "XXX") in
+    let conn_closed (_, conn) =
+      let cid = cid conn in
+      Access_log.debug (fun f -> f "[%s] closing" cid)
+    in
     Srv.make ~conn_closed ~callback ()
 end

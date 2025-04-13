@@ -116,11 +116,9 @@ module KeyfenderUnikernel : BACKEND = struct
          v "../../../../etcd-download/etcdctl" % "del" % "" % "--from-key=true")
     )
     |> Result.get_ok;
-    UnixApp.start ~process:"../../../s_keyfender/main.native"
+    UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
       ~args:
-        [|
-          "main.native"; "--platform=127.0.0.1"; "--http=8080"; "--https=8443";
-        |]
+        [| "keyfender"; "--platform=127.0.0.1"; "--http=8080"; "--https=8443" |]
       ~message:"listening on 8443/TCP for HTTPS" ()
 
   let stop t = UnixApp.stop t
