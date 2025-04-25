@@ -125,7 +125,7 @@ let build_conf =
   in
   let dune _ =
     List.map Dune.stanza
-      [ "(copy_files# ./etcd/*.ml)"; "(copy_files# ./etcd/gen/*.ml)" ]
+      [ (* "(copy_files# ./etcd/*.ml)"; "(copy_files# ./etcd/gen/*.ml)" *) ]
   in
   let keys = List.map Key.v [ memtrace_key ] in
   let connect info _ _ =
@@ -153,7 +153,7 @@ let main =
       (* package "metrics-lwt"; *)
       package "digestif";
       package "memtrace-mirage";
-      package ~sublibs:[ "google_types" ] "ocaml-protoc-plugin";
+      package ~libs:[ "etcd_client" ] "ocaml";
       package ~max:"0.13.0" "h2-lwt";
       package
         ~pin:

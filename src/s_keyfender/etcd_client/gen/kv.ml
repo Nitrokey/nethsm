@@ -10,7 +10,7 @@
   Parameters:
     debug=false
     annot='[@@deriving show { with_path = false}]'
-    opens=[Stubs; Google_types]
+    opens=[]
     int64_as_int=true
     int32_as_int=true
     fixed_as_int=false
@@ -19,8 +19,6 @@
 *)
 [@@@ocaml.alert "-protobuf"] (* Disable deprecation warnings for protobuf*)
 
-open Stubs [@@warning "-33"]
-open Google_types [@@warning "-33"]
 (**/**)
 module Runtime' = Ocaml_protoc_plugin [@@warning "-33"]
 module Imported'modules = struct

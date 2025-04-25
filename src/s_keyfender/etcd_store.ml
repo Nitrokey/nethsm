@@ -3,10 +3,12 @@
 *)
 
 open Lwt.Infix
-open Rpc.Etcdserverpb
-open Kv.Mvccpb
-module Protoc = Ocaml_protoc_plugin
-module Protoc_runtime = Protoc
+(* open Rpc.Etcdserverpb
+open Kv.Mvccpb *)
+(* open Etcd_client *)
+
+open Etcd_client.Rpc.Etcdserverpb
+open Etcd_client.Kv.Mvccpb
 
 let etcd_store_src = Logs.Src.create "etcd_store"
 
@@ -185,33 +187,35 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     in
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
     | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
-    | Ok (Error e, _) -> etcd_err (Protoc_runtime.Result.show_error e)
+    | Ok (Error e, _) -> etcd_err (Etcd_client.Result.show_error e)
     | Ok (Ok r, _) -> r
 
   let put stack ~(request : PutRequest.t) : PutResponse.t Lwt.t =
-    let request = PutRequest.to_proto request |> Protoc.Writer.contents in
+    let request = PutRequest.to_proto request |> Etcd_client.Writer.contents in
     let decode = function
       | None -> etcd_err "no PutResponse"
-      | Some s -> Protoc.Reader.create s |> PutResponse.from_proto
+      | Some s -> Etcd_client.Reader.create s |> PutResponse.from_proto
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
 
   let range stack ~(request : RangeRequest.t) : RangeResponse.t Lwt.t =
-    let request = RangeRequest.to_proto request |> Protoc.Writer.contents in
+    let request =
+      RangeRequest.to_proto request |> Etcd_client.Writer.contents
+    in
     let decode = function
       | None -> etcd_err "no RangeResponse"
-      | Some s -> Protoc.Reader.create s |> RangeResponse.from_proto
+      | Some s -> Etcd_client.Reader.create s |> RangeResponse.from_proto
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request ~decode
 
   let delete_range stack ~(request : DeleteRangeRequest.t) :
       DeleteRangeResponse.t Lwt.t =
     let request =
-      DeleteRangeRequest.to_proto request |> Protoc.Writer.contents
+      DeleteRangeRequest.to_proto request |> Etcd_client.Writer.contents
     in
     let decode = function
       | None -> etcd_err "no DeleteRangeResponse"
-      | Some s -> Protoc.Reader.create s |> DeleteRangeResponse.from_proto
+      | Some s -> Etcd_client.Reader.create s |> DeleteRangeResponse.from_proto
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
       ~decode

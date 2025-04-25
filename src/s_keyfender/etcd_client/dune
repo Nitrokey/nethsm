@@ -1,0 +1,5 @@
+(include_subdirs unqualified)
+
+(library
+ (name etcd_client)
+ (libraries base64 ptime))
