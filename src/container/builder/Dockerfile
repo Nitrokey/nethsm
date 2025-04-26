@@ -129,7 +129,8 @@ FROM base AS ada
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   sudo mkdir /opt/gnat
   sudo chown opam:opam /opt/gnat
-  git clone --depth 1 https://git.codelabs.ch/alire/muen-dev-env.git /opt/gnat/muen-dev-env
+  git clone --depth 10 https://git.codelabs.ch/alire/muen-dev-env.git /opt/gnat/muen-dev-env
+  git -C /opt/gnat/muen-dev-env reset --hard 38fac6533c3251e7cc67e5b16fcc5a9775c1d9cc
   make -C /opt/gnat/muen-dev-env -j$(nproc)
 EOF
 

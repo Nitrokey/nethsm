@@ -400,7 +400,7 @@ test_muen_msi_z790:
       - ($CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     NETHSM_IP: 192.168.1.1
-    BMC_IP: 192.168.2.142
+    BMC_IP: 192.168.100.104
     BMC_USER: admin
     BMC_PASS: admin
     HTTP_SERVER: 192.168.144.1
