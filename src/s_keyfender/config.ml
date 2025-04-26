@@ -73,8 +73,8 @@ let malloc_metrics_conf =
     match Key.get (Info.context info) Key.target with
     | #Mirage.Key.mode_solo5 ->
         code ~pos:__POS__
-          "Lwt.return (Metrics_lwt.periodically (OS.MM.malloc_metrics \
-           ~tags:[]))"
+          "Lwt.return (Metrics_lwt.periodically (Solo5_os.Memory.metrics \
+           ~quick:true ~tags:Metrics.Tags.[] ()))"
     | _ -> code ~pos:__POS__ "Lwt.return_unit"
   in
   let packages = [ package "metrics-lwt" ] in
