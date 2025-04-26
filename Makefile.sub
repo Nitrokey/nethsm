@@ -154,7 +154,7 @@ ifeq ($(XMODE),test)
 	opam install -y dune mirage containers ezjsonm yaml ocamlformat bisect_ppx
 	opam install -y --deps-only --with-test keyfender
 else
-	opam install -y dune mirage ocamlformat solo5 mirage-solo5
+	opam install -y dune mirage ocamlformat solo5 mirage-solo5 cstruct
 endif
 	touch $@
 
@@ -200,9 +200,9 @@ distclean: clean
 # ------------------------------------------------------------------------------
 
 ifeq "$(TARGET)" "unix"
-S_KEYFENDER := src/s_keyfender/keyfender
+S_KEYFENDER := src/s_keyfender/dist/keyfender
 else
-S_KEYFENDER := src/s_keyfender/keyfender.$(TARGET)
+S_KEYFENDER := src/s_keyfender/dist/keyfender.$(TARGET)
 endif
 S_KEYFENDER_PREP := src/s_keyfender/_build/default/stamp-prep
 UPDATE_KEY = src/s_keyfender/update_key_store/key.pem
@@ -618,6 +618,9 @@ $(OBJ_SYSTEM_IMG): $(MUEN_PACK_IMG_CSL) tools/muen-mksysimage.sh
 	gpgconf --homedir $(MUEN_KEY_DIR)/private --kill all
 
 SIGN_UPDATE := src/keyfender/_build/default/bin/sign_update.exe
+
+$(SIGN_UPDATE):
+	cd src/keyfender && $(DUNE) build bin/sign_update.exe
 
 OBJ_UPDATE_IMG := $(OBJ_DIR)/update.img.bin
 OBJ_UPDATE_CHANGELOG := $(OBJ_DIR)/update.changelog
