@@ -198,9 +198,8 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   set -ex
-  opam pin -y -n solo5 'https://github.com/nitrokey/nethsm-solo5.git#nethsm-new'
   opam update
-  OPAMJOBS=$(nproc) opam install -y dune containers ezjsonm yaml ocamlformat
+  OPAMJOBS=$(nproc) opam install -y dune mirage cstruct containers ezjsonm yaml ocamlformat
 EOF
 
 # Remove opam cache directory
