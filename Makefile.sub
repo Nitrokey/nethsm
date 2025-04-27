@@ -154,6 +154,7 @@ ifeq ($(XMODE),test)
 	opam install -y dune mirage containers ezjsonm yaml ocamlformat bisect_ppx
 	opam install -y --deps-only --with-test keyfender
 else
+	opam pin -y -n solo5 'https://github.com/nitrokey/nethsm-solo5.git#nethsm-new'
 	opam install -y dune mirage ocamlformat solo5 mirage-solo5 cstruct
 endif
 	touch $@
