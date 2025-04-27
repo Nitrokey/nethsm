@@ -196,15 +196,9 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   opam switch set default
 EOF
 
-COPY --chown=1000:1000 gmp-freestanding /home/opam/gmp-6.3.0/
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   set -ex
-  curl -sSL "https://ftp.hosteurope.de/mirror/ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz" -o /tmp/gmp.tar.xz
-  echo b4043dd2964ab1a858109da85c44de224384f352 /tmp/gmp.tar.xz | sha1sum -c --quiet
-  tar Jxpf /tmp/gmp.tar.xz -C /home/opam
-  patch -p1 -d /home/opam/gmp-6.3.0/ </home/opam/gmp-6.3.0/libgmp-fat.patch
-  opam pin -y -n gmp-freestanding.6.3.0 /home/opam/gmp-6.3.0/
-  opam pin -y -n solo5-bindings-muen 'https://github.com/nitrokey/nethsm-solo5.git#nethsm'
+  opam pin -y -n solo5 'https://github.com/nitrokey/nethsm-solo5.git#nethsm-new'
   opam update
   OPAMJOBS=$(nproc) opam install -y dune containers ezjsonm yaml ocamlformat
 EOF
