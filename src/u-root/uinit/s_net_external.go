@@ -14,7 +14,7 @@ import (
 const (
 	extIface     = "eth0"
 	intIface     = "net0"
-	keyfenderMAC = "b2:e0:5a:97:07:c2"
+	keyfenderMAC = "0a:0b:0c:0d:0e:02"
 )
 
 var broadcastMAC = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
