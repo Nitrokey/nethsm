@@ -125,6 +125,11 @@ func tpmGetPlatformData() (platformData, error) {
 	pcrIdxs = hw.MeasuredPCRs()
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
+		if err != nil {
+			log.Printf("DictionaryAttackLockReset: %w\n", err)
+		}
+
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
 			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 256, tpm2.ECCCurveNIST_P384),
 			nil, nil, nil)
