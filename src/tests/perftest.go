@@ -75,6 +75,12 @@ var benchParams = []benchParam{
 		msgLen: 64,
 	},
 	{
+		algo:   "rsa1024",
+		data:   `{"mechanisms":["RSA_Signature_PKCS1"],"type":"RSA","length":1024}`,
+		opMode: "PKCS1",
+		msgLen: 32,
+	},
+	{
 		algo:   "rsa2048",
 		data:   `{"mechanisms":["RSA_Signature_PKCS1"],"type":"RSA","length":2048}`,
 		opMode: "PKCS1",
