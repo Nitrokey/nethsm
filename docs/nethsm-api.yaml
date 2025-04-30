@@ -2892,21 +2892,21 @@ components:
     PemCSR:
       example: |
         -----BEGIN CERTIFICATE REQUEST-----
-        MIICpzCCAY8CAQAwYjFgMAkGA1UEBhMCREUwDQYDVQQHDAZCZXJsaW4wDwYDVQQK
-        DAhOaXRyb2tleTATBgNVBAMMDG5ldGhzbS5sb2NhbDAeBgkqhkiG9w0BCQEWEWlu
-        Zm9Abml0cm9rZXkuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
-        x7ghfro+VEepYmy2V7HPn5PSRdmGzxewcpmzxTtrZ10BygbEqhPsAr4fWI9pG7iR
-        Xzeza7DMjrQptzKsfSy6dBFmSEZer+hJxuOdhBG/FX6pjwRrZpbOQxyr+aTlE3jm
-        2XP12Cqx0wsYGIoJlWHbGb90IAx9zpdYQgHoJZ4x5ims5vo7h3puPEyVycJH5fMB
-        B9h+2Bxc4BxaPKMm15JR1B7ToB3g16SJY2B1t/aqNmqSBZC4HP1fCuSbBm83OgqR
-        hdk1P6r/vqOVKrxVupDqKkdcf/dRBiQalJ9tQbVbs9OOYfQ6n25GvJTvGtqOEugg
-        it32tV16JXCZjnYePAvtNwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBABVz67ib
-        ngef9acHkwTYHHQk3MHxQRSLOxUKoDjk1URMgJ2hgL5HR91yQ3gBPxVuEGWdEQXJ
-        C4sM9S3OoM5yFJFj56Y8MaASHFo58V5N1FaFqf3BbVKNzM4Jgrtghw1teJU45xZR
-        0+sjA0YjVJwGnNXfBJdQVNXgWJcXy4bmPSaF7khxDnoP7dmxMcpQ2HKL8X9E/kef
-        KOhz+HtlCWoqwD77aR3wKrYWdn+fwMeTRGNpJLPdKl7vyleb8pjtWUYnNTIP4Zh+
-        BLX93udZxl8sVpJBnLcIWplwJB16hxk5ZODjWUOrhkwZ0MbiPFbKkihc8GMLLEyp
-        dHRjrbgAUrx5DuY=
+        MIICrzCCAZcCAQAwajEVMBMGA1UEAwwMbmV0aHNtLmxvY2FsMQswCQYDVQQGEwJE
+        RTEPMA0GA1UEBwwGQmVybGluMREwDwYDVQQKDAhOaXRyb2tleTEgMB4GCSqGSIb3
+        DQEJARYRaW5mb0BuaXRyb2tleS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw
+        ggEKAoIBAQDHuCF+uj5UR6libLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wC
+        vh9Yj2kbuJFfN7NrsMyOtCm3Mqx9LLp0EWZIRl6v6EnG452EEb8VfqmPBGtmls5D
+        HKv5pOUTeObZc/XYKrHTCxgYigmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48
+        TJXJwkfl8wEH2H7YHFzgHFo8oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K
+        5JsGbzc6CpGF2TU/qv++o5UqvFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8
+        lO8a2o4S6CCK3fa1XXolcJmOdh48C+03AgMBAAGgADANBgkqhkiG9w0BAQsFAAOC
+        AQEAl+w1YsevmF6vqmvU8gnPe9tf/CLSwx3/vH8G81cS7CTL97rrQq/LLVDnFChe
+        NHKyiNzoziyyO/bkK79bWiKdtwqvLjgWva3yj9I12ZJqNz029m9fDW4m5Ad+GXtd
+        KaT06RZTyKAOOrqZOjqws9XED6VwIXNwEduQLZiyO/w/jTfyfv4R0JufNjGZCU20
+        bktFyswpkWngz5US5AAxse9Dq+Iih/6QRtjy0guFGJUP6Wae16fbC8+kwiWWdYM6
+        3we910+2Kb3kfmYrIUrGUHuwyLhVlM3Xox0fJ7OylUDr/+qbvdav3B56ii8+zcy3
+        hqHy6w5safHH/pH7QGRiMZmKHQ==
         -----END CERTIFICATE REQUEST-----
       type: string
     PemCert:

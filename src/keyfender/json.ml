@@ -46,36 +46,20 @@ let decode_subject json =
 
 let to_distinguished_name subject =
   let open X509.Distinguished_name in
-  let res = Relative_distinguished_name.empty in
-  let add = Relative_distinguished_name.add in
-  let res =
-    if subject.commonName <> "" then add (CN subject.commonName) res else res
+  let rdn s attr =
+    if s = "" then None
+    else Some (Relative_distinguished_name.singleton (attr s))
   in
-  let res =
-    if subject.countryName <> "" then add (C subject.countryName) res else res
-  in
-  let res =
-    if subject.localityName <> "" then add (L subject.localityName) res else res
-  in
-  let res =
-    if subject.stateOrProvinceName <> "" then
-      add (ST subject.stateOrProvinceName) res
-    else res
-  in
-  let res =
-    if subject.organizationName <> "" then add (O subject.organizationName) res
-    else res
-  in
-  let res =
-    if subject.organizationalUnitName <> "" then
-      add (OU subject.organizationalUnitName) res
-    else res
-  in
-  let res =
-    if subject.emailAddress <> "" then add (Mail subject.emailAddress) res
-    else res
-  in
-  [ res ]
+  List.filter_map Fun.id
+    [
+      rdn subject.commonName (fun s -> CN s);
+      rdn subject.countryName (fun s -> C s);
+      rdn subject.localityName (fun s -> L s);
+      rdn subject.stateOrProvinceName (fun s -> ST s);
+      rdn subject.organizationName (fun s -> O s);
+      rdn subject.organizationalUnitName (fun s -> OU s);
+      rdn subject.emailAddress (fun s -> Mail s);
+    ]
 
 let decode_time s =
   (* since ~sub:true is _not_ passed to of_rfc3339,
