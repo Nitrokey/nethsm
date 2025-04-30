@@ -149,6 +149,8 @@ RUN patch -d /nethsm-tools/muen -i muen-1.1.1.patch -p1
 COPY --chown=1000:1000 z790.patch /nethsm-tools/muen/
 RUN patch -d /nethsm-tools/muen -i z790.patch -p1
 
+RUN git config --global url."https://github.com/coreutils/gnulib".insteadOf "https://git.savannah.gnu.org/git/gnulib.git"
+
 RUN --mount=type=tmpfs,target=/tmp bash -c "\
   source /opt/gnat/muen-dev-env/env; \
   make -C /nethsm-tools/muen -j$(nproc) tools \
