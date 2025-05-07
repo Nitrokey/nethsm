@@ -1,3 +1,8 @@
+# 2.2 (2025-05-07)
+
+* Fix of invalid TPM DA protection in NetHSM 2
+* Fix of CSR format
+
 # 2.1 (2025-01-12)
 
 * Keep real MAC address of ethernet device
