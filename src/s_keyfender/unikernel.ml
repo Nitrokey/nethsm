@@ -241,10 +241,14 @@ struct
 
   let start update_key_store assets internal_stack ext_stack
       (conf_args : Args.Conf.args) () () =
-    if not (Args.start ()) then Lwt.fail_with "--start parameter required" else
-    let () = if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params () in
+    let ( let* ) = Lwt.bind in
+    let* () =
+      if not (Args.start ()) then Lwt.fail_with "--start parameter required"
+      else Lwt.return_unit
+    in
+    if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params ();
     let entropy_port = 4444 in
-    startTrngListener internal_stack entropy_port >>= fun () ->
+    let* () = startTrngListener internal_stack entropy_port in
     let sleep e =
       Log.warn (fun m ->
           m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
@@ -255,25 +259,28 @@ struct
       | Ok store -> Lwt.return store
       | Error e ->
           let err = Fmt.to_to_string KV_store.pp_error e in
-          sleep err >>= fun () -> (store_connect [@tailcall]) ()
+          let* () = sleep err in
+          (store_connect [@tailcall]) ()
     in
-    store_connect () >>= fun store ->
+    let* store = store_connect () in
     Logs.app (fun m -> m "connected to store");
-    (let ini = Mirage_kv.Key.v ".initialized" in
-     KV_store.exists store ini >>= function
-     | Ok None -> (
-         KV_store.set store ini "" >>= function
-         | Ok () -> Lwt.return_unit
-         | Error e ->
-             Log.err (fun m ->
-                 m "couldn't write to store %a" KV_store.pp_write_error e);
-             Lwt.fail_with "store not writable")
-     | Ok (Some _) -> Lwt.return_unit
-     | Error e ->
-         Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
-         Lwt.fail_with "store not readable")
-    >>= fun () ->
-    ( write_platform internal_stack "PLATFORM-DATA" >>= function
+    let ini = Mirage_kv.Key.v ".initialized" in
+    let* () =
+      KV_store.exists store ini >>= function
+      | Ok None -> (
+          KV_store.set store ini "" >>= function
+          | Ok () -> Lwt.return_unit
+          | Error e ->
+              Log.err (fun m ->
+                  m "couldn't write to store %a" KV_store.pp_write_error e);
+              Lwt.fail_with "store not writable")
+      | Ok (Some _) -> Lwt.return_unit
+      | Error e ->
+          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
+          Lwt.fail_with "store not readable"
+    in
+    let* platform =
+      write_platform internal_stack "PLATFORM-DATA" >>= function
       | Error e ->
           Log.err (fun m ->
               m "couldn't retrieve platform data: %a" pp_platform_err e);
@@ -295,9 +302,10 @@ struct
               Log.err (fun m ->
                   m "couldn't parse platform data: %s\ndata: %s" e data);
               Lwt.fail_with "failed to parse platform data from platform"
-          | Ok x -> Lwt.return x) )
-    >>= fun platform ->
-    ( Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
+          | Ok x -> Lwt.return x)
+    in
+    let* update_key =
+      Update_key.get update_key_store (Mirage_kv.Key.v "key.pem") >>= function
       | Error e ->
           Log.err (fun m ->
               m "couldn't retrieve update key: %a" Update_key.pp_error e);
@@ -310,10 +318,11 @@ struct
                   m "No RSA key from manufacturer. Contact manufacturer.");
               Lwt.fail_with "update key not in RSA format"
           | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)
-          ) )
-    >>= fun update_key ->
-    Hsm.boot ~cache_settings ~platform update_key store
-    >>= fun (hsm_state, mvar, res_mvar) ->
+          )
+    in
+    let* hsm_state, mvar, res_mvar =
+      Hsm.boot ~cache_settings ~platform update_key store
+    in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
       if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0 then
@@ -349,14 +358,14 @@ struct
               m "error %a communicating with platform" pp_platform_err e)
     in
     let reconfigure_network cidr gateway =
-      Ext_reconfigurable_stack.setup ext_stack ?gateway cidr >>= fun () ->
+      let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
-      Hsm.Config.log hsm_state >|= fun log ->
+      let* log = Hsm.Config.log hsm_state in
       setup_log stack log;
-      http
+      Lwt.return http
     in
     let rec handle_cb http =
       Lwt_mvar.take mvar >>= function
@@ -364,43 +373,48 @@ struct
           setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
           (handle_cb [@tailcall]) http
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
-          Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
+          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           write_to_platform cmd
       | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
           (handle_cb [@tailcall]) http
       | Hsm.Network (cidr, gateway) ->
-          Ext_reconfigurable_stack.disconnect ext_stack >>= fun () ->
-          reconfigure_network cidr gateway >>= fun http ->
+          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
+          let* http = reconfigure_network cidr gateway in
           (handle_cb [@tailcall]) http
       | Hsm.Update (blocks, stream) as cmd ->
-          (let additional_data write =
-             write (string_of_int blocks ^ "\n") >>= fun r ->
-             Lwt_stream.fold_s
-               (fun chunk acc ->
-                 match acc with
-                 | Ok () -> write chunk
-                 | Error e -> Lwt.return (Error e))
-               stream r
-           in
-           write_platform ~additional_data internal_stack (Hsm.cb_to_string cmd)
-           >>= function
-           | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
-           | Error e ->
-               Lwt_mvar.put res_mvar
-                 (Error (Fmt.to_to_string pp_platform_err e)))
-          >>= fun () -> (handle_cb [@tailcall]) http
-      | Hsm.Commit_update as cmd ->
-          ( write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+          let additional_data write =
+            let* r = write (string_of_int blocks ^ "\n") in
+            Lwt_stream.fold_s
+              (fun chunk acc ->
+                match acc with
+                | Ok () -> write chunk
+                | Error e -> Lwt.return (Error e))
+              stream r
+          in
+          let* () =
+            write_platform ~additional_data internal_stack
+              (Hsm.cb_to_string cmd)
+            >>= function
             | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
             | Error e ->
                 Lwt_mvar.put res_mvar
-                  (Error (Fmt.to_to_string pp_platform_err e)) )
-          >>= fun () -> (handle_cb [@tailcall]) http
+                  (Error (Fmt.to_to_string pp_platform_err e))
+          in
+          (handle_cb [@tailcall]) http
+      | Hsm.Commit_update as cmd ->
+          let* () =
+            write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Error e ->
+                Lwt_mvar.put res_mvar
+                  (Error (Fmt.to_to_string pp_platform_err e))
+          in
+          (handle_cb [@tailcall]) http
     in
-    Hsm.network_configuration hsm_state >>= fun (ip, net, gateway) ->
+    let* ip, net, gateway = Hsm.network_configuration hsm_state in
     let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
-    reconfigure_network cidr gateway >>= fun http ->
+    let* http = reconfigure_network cidr gateway in
     (match conf_args.memtrace_port with
     | None -> ()
     | Some port ->
