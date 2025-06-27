@@ -80,7 +80,7 @@ if [ $MODE == "unix" ] ; then
   /keyfender.unix \
     $KEYFENDER_DEVICE_KEY \
     $KEYFENDER_DEBUG_LOG \
-    --http=8080 --https=8443 --platform=127.0.0.1 &
+    --http=8080 --https=8443 --platform=127.0.0.1 --start &
 else
   /solo5-hvt \
     --net:external=tap200 \
@@ -88,7 +88,7 @@ else
     /keyfender.hvt \
     $KEYFENDER_DEVICE_KEY \
     $KEYFENDER_DEBUG_LOG \
-    --http=8080 --https=8443 --platform=127.0.0.1 &
+    --http=8080 --https=8443 --platform=127.0.0.1 --start &
 fi
 KEYFENDER_PID=$!
 

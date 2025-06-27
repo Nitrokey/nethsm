@@ -241,7 +241,8 @@ struct
 
   let start update_key_store assets internal_stack ext_stack
       (conf_args : Args.Conf.args) () () =
-    if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params ();
+    if not (Args.start ()) then Lwt.fail_with "--start parameter required" else
+    let () = if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params () in
     let entropy_port = 4444 in
     startTrngListener internal_stack entropy_port >>= fun () ->
     let sleep e =
@@ -254,9 +255,7 @@ struct
       | Ok store -> Lwt.return store
       | Error e ->
           let err = Fmt.to_to_string KV_store.pp_error e in
-          if Args.retry () then
-            sleep err >>= fun () -> (store_connect [@tailcall]) ()
-          else Lwt.fail_with err
+          sleep err >>= fun () -> (store_connect [@tailcall]) ()
     in
     store_connect () >>= fun store ->
     Logs.app (fun m -> m "connected to store");

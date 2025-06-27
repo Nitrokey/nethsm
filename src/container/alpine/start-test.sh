@@ -31,7 +31,7 @@ if [ $ADMINPW ] ; then
 }&
 fi
 
-/keyfender.unix $KEYFENDER_DEBUG_LOG --http=8080 --https=8443 --platform=127.0.0.1 &
+/keyfender.unix $KEYFENDER_DEBUG_LOG --http=8080 --https=8443 --platform=127.0.0.1 --start &
 KEYFENDER_PID=$!
 
 _signal_termination() {

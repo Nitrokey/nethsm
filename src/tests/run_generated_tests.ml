@@ -118,7 +118,13 @@ module KeyfenderUnikernel : BACKEND = struct
     |> Result.get_ok;
     UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
       ~args:
-        [| "keyfender"; "--platform=127.0.0.1"; "--http=8080"; "--https=8443" |]
+        [|
+          "keyfender";
+          "--platform=127.0.0.1";
+          "--http=8080";
+          "--https=8443";
+          "--start";
+        |]
       ~message:"listening on 8443/TCP for HTTPS" ()
 
   let stop t = UnixApp.stop t

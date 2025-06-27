@@ -18,8 +18,8 @@ NET_EXTERNAL ?= tap200
 # "Internal" (169.254.169.0/24) network.
 NET_INTERNAL ?= tap201
 
-# Set KEYFENDER_CARGS=arguments to override arguments passed to mirage configure
-# for the Keyfender unikernel. Default for MODE=muen is '--retry'.
+# Set KEYFENDER_CONFIG_ARGS=arguments to override arguments passed to mirage configure
+# for the Keyfender unikernel.
 # (actual setting is performed later)
 
 # Set MUEN_HARDWARE to the specific hardware platform the Muen system is being
@@ -95,14 +95,14 @@ XMODE := dev
 endif
 ifeq ($(XMODE),dev)
 TARGET := hvt
-KEYFENDER_CARGS ?= --no-platform --memtrace=1234
+KEYFENDER_CONFIG_ARGS ?= --no-platform --memtrace=1234
 else ifeq ($(XMODE),muen)
 TARGET := muen
-KEYFENDER_CARGS ?=
+KEYFENDER_CONFIG_ARGS ?=
 MAKE_ARGS := GMP_TARGET=kabylake-solo5-none
 else ifeq ($(XMODE),test)
 TARGET := unix
-KEYFENDER_CARGS ?= --no-platform --single-interface --bisect-ppx --no-scrypt
+KEYFENDER_CONFIG_ARGS ?= --no-platform --single-interface --bisect-ppx --no-scrypt
 DUNE := OCAMLRUNPARAM=b dune
 DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
 MAKE_ARGS := DUNE_INSTRUMENT_WITH=bisect_ppx
@@ -223,7 +223,7 @@ clean-keyfender:
 	$(RM) $(UPDATE_KEY)
 
 $(S_KEYFENDER_PREP): .stamp-prepare
-	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) $(KEYFENDER_CARGS)
+	cd src/s_keyfender && mirage configure --no-depext -t $(TARGET) $(KEYFENDER_CONFIG_ARGS)
 	touch $@
 
 $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(UPDATE_KEY) $(API_DOCS_DIR)

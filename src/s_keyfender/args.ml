@@ -26,9 +26,9 @@ let platform_port =
   in
   Mirage_runtime.register_arg Arg.(value & opt int 1023 doc)
 
-let retry =
+let start =
   let doc =
-    Arg.info ~docs ~doc:"Retry to connect DB until we succeed." [ "retry" ]
+    Arg.info ~docs ~doc:"Safeguard flag. Always required." [ "start" ]
   in
   Mirage_runtime.register_arg Arg.(value & flag doc)
 
@@ -41,14 +41,6 @@ let device_key =
       [ "device-key" ]
   in
   Mirage_runtime.register_arg Arg.(value & opt (some string) None doc)
-
-(* let memtrace =
-  let doc =
-    Arg.info ~docs ~docv:"PORT" ~doc:"Enable memtrace listener on specified port."
-      [ "memtrace" ]
-  in
-  Mirage_runtime.register_arg Arg.(value & opt (some int) None doc)
- *)
 
 module Conf = struct
   module type Bool = sig
