@@ -25,6 +25,18 @@ module Stack_nodelay (Stack : Tcpip.Stack.V4V6) = struct
 
     let write = Stack.TCP.write_nodelay
     let writev = Stack.TCP.writev_nodelay
+
+    let listen t ~port ?keepalive fn =
+      let fn flow =
+        Lwt.catch
+          (fun () -> fn flow)
+          (fun e ->
+            close flow >>= fun () ->
+            if e = Out_of_memory then Gc.compact ();
+            Lwt.return_unit)
+      in
+      Stack.TCP.listen t ~port ?keepalive fn
+
   end
 end
 

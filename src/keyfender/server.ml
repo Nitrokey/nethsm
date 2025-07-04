@@ -136,7 +136,7 @@ module Make (R : Mirage_random.S) (Http : Server) (Hsm : Hsm.S) = struct
        (fun e ->
          if e = Out_of_memory then Gc.compact ();
          Lwt.return_some
-           ( `Internal_server_error,
+           ( `Service_unavailable,
              Cohttp.Header.init (),
              `String (Printexc.to_string e),
              [] ))
