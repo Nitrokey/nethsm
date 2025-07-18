@@ -2,6 +2,9 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
+(** RW is a copy of the old Mirage_kv.RW interface. The changes don't seem to
+    make sense for us and anyway it's doubtful if we should keep the `Dictionary
+    type, since it doesn't fit to etcd's keys. *)
 module type RW = sig
   type nonrec error = private [> Mirage_kv.error ]
 

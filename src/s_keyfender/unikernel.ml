@@ -36,7 +36,6 @@ module Stack_nodelay (Stack : Tcpip.Stack.V4V6) = struct
             Lwt.return_unit)
       in
       Stack.TCP.listen t ~port ?keepalive fn
-
   end
 end
 

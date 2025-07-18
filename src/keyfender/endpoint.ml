@@ -188,8 +188,8 @@ struct
     in
     aux rd fs
 
-  (** R-Role ([no_namespace] + [role]) User is Root (no namespace) and has given
-      role *)
+  (*  R-Role ([no_namespace] + [role])
+      User is Root (no namespace) and has given role *)
   class r_role ?r_exclude_meths hsm_state role ip =
     object
       inherit role hsm_state role ip as role
@@ -199,14 +199,14 @@ struct
         join_ops ~join:( || ) [ role#forbidden; namespace#forbidden ]
     end
 
-  (** For endpoints managing users, ensure that the target and caller are
+  (*  For endpoints managing users, ensure that the target and caller are
       strictly in the same namespace.
       - this is a strict check: if the caller is a R-User and target a N-User,
         the check will fail, despite the higher privileges of the caller
       - the check is *relaxed* (i.e. the above situation would pass) if either:
-      - the target's namespace has not been created yet (since no member of that
-        namespace could be the caller anyway)
-      - the HTTP method is explicitly given in [root_allowed_for]
+        - the target's namespace has not been created yet (since no member of that
+          namespace could be the caller anyway)
+        - the HTTP method is explicitly given in [root_allowed_for]
       - the check is completely disabled in the HTTP method is explicitly given
         in exclude_meths *)
   class target_same_namespace ?(root_allowed_for = []) ?exclude_meths hsm_state

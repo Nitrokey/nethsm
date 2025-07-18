@@ -689,7 +689,7 @@ module Make (KV : Kv_ext.Ranged) = struct
 
   type keys = {
     domain_key : string;
-    (* needed when unlock passphrase changes and likely for unattended boot *)
+        (* needed when unlock passphrase changes and likely for unattended boot *)
     auth_store : User_store.t;
     key_store : Key_store.t;
     namespace_store : Namespace_store.t;
@@ -969,7 +969,11 @@ module Make (KV : Kv_ext.Ranged) = struct
     let (`Hex id) = Hex.of_string (Mirage_crypto_rng.generate 10) in
     id
 
-  (** Storage schema: /namespace_1 ... /namespace_n *)
+  (*  Storage schema:
+        /namespace_1
+        ...
+        /namespace_n
+  *)
   module Namespace = struct
     let ns_src = Logs.Src.create "hsm.namespace" ~doc:"HSM namespace log"
 
@@ -1084,12 +1088,19 @@ module Make (KV : Kv_ext.Ranged) = struct
               (Bad_request, Fmt.str "Namespace %s does not exist" n)
   end
 
-  (** Storage schema: /r_user_1 ... /r_user_n /namespace_1~n1_user_1 ...
-      /namespace_1~n1_user_m ... /namespace_n~nn_user_m
+  (*  Storage schema:
+        /r_user_1
+        ...
+        /r_user_n
+        /namespace_1~n1_user_1
+        ...
+        /namespace_1~n1_user_m
+        ...
+        /namespace_n~nn_user_m
 
-      All functions take explicit nids (namespace, id) parameters, and never
-      process a fully-qualified user name like "ns~id" as a single string.
-      Parsing a string into a nid is assumed to be done in user-facing layers.
+        All functions take explicit nids (namespace, id) parameters, and never
+        process a fully-qualified user name like "ns~id" as a single string.
+        Parsing a string into a nid is assumed to be done in user-facing layers.
   *)
   module User = struct
     module Info = User_info
@@ -1293,8 +1304,16 @@ module Make (KV : Kv_ext.Ranged) = struct
       | Error _ -> None
   end
 
-  (** Storage schema: /root_key_n ... /root_key_n /.namespace_1/ns_key1 ...
-      /.namespace_1/ns_key_n ... /.namespace_n/ns_key_n *)
+  (*  Storage schema:
+        /root_key_n
+        ...
+        /root_key_n
+        /.namespace_1/ns_key1
+        ...
+        /.namespace_1/ns_key_n
+        ...
+        /.namespace_n/ns_key_n
+  *)
   module Key = struct
     let key_src = Logs.Src.create "hsm.key" ~doc:"HSM key log"
 
