@@ -145,7 +145,7 @@ ifneq ($(CCACHE_DIR),)
 endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 ifeq ($(XMODE),muen)
-	opam pin -y -n solo5 'https://github.com/nitrokey/nethsm-solo5.git#nethsm-new'
+	opam pin -y -n solo5 'https://github.com/Nitrokey/nethsm-solo5.git#4560f69ca2f9b75752b41c37d5b6266deecc73d7'
 endif
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
