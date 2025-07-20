@@ -3229,6 +3229,62 @@ let keys_key_restrictions_tags_delete =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
+let keys_key_restrictions_tags_delete_namespace =
+  Alcotest.test_case "deleting a tag for a key in a namespace works" `Quick
+  @@ fun () ->
+  let hsm_state = operational_mock () in
+  let get_tags s =
+    let fail () = Alcotest.fail "Invalid key object in JSON" in
+    match Yojson.Safe.from_string s with
+    | `Assoc key -> (
+        match List.assoc "restrictions" key with
+        | `Assoc restrictions -> (
+            match List.assoc_opt "tags" restrictions with
+            | Some (`List tags) ->
+                List.map (function `String x -> x | _ -> fail ()) tags
+            | _ -> [])
+        | _ -> fail ())
+    | _ -> fail ()
+  in
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "mykey" }|}
+  in
+  let expect = info "created (mykey)" in
+  (match
+     request ~expect ~meth:`POST ~hsm_state ~headers:subadmin_headers
+       ~body:(`String generate_json) "/keys/generate"
+   with
+  | _, Some (`Created, _, _, _) -> ()
+  | _ -> Alcotest.fail "generate key failed");
+  let expect = info "update (mykey): added tag \"berlin\"" in
+  (match
+     request ~expect ~meth:`PUT ~hsm_state ~headers:subadmin_headers
+       "/keys/mykey/restrictions/tags/berlin"
+   with
+  | _, Some (`No_content, _, _, _) -> ()
+  | _ -> Alcotest.fail "adding a tag failed");
+  (match
+     request ~meth:`GET ~hsm_state ~headers:subadmin_headers "/keys/mykey"
+   with
+  | _, Some (`OK, _, `String body, _) ->
+      let tags = get_tags body in
+      Alcotest.(check (list string)) "key has tag berlin" tags [ "berlin" ]
+  | _ -> Alcotest.fail "getting the key failed");
+  let expect = info "update (mykey): removed tag \"berlin\"" in
+  (match
+     request ~expect ~meth:`DELETE ~hsm_state ~headers:subadmin_headers
+       "/keys/mykey/restrictions/tags/berlin"
+   with
+  | _, Some (`No_content, _, _, _) -> ()
+  | _ -> Alcotest.fail "removing a tag failed");
+  match
+    request ~meth:`GET ~hsm_state ~headers:subadmin_headers "/keys/mykey"
+  with
+  | _, Some (`OK, _, `String body, _) ->
+      let tags = get_tags body in
+      Alcotest.(check (list string)) "key has no tags" tags []
+  | _ -> Alcotest.fail "getting the key failed"
+
 let keys_key_restrictions_tags_sign_ok =
   "POST on /keys/keyID/sign with an user matching the tag succeeds" @? fun () ->
   match
@@ -4179,6 +4235,7 @@ let () =
         [
           keys_key_restrictions_tags_put;
           keys_key_restrictions_tags_delete;
+          keys_key_restrictions_tags_delete_namespace;
           keys_key_restrictions_tags_sign_ok;
           keys_key_restrictions_tags_sign_fail;
         ] );
