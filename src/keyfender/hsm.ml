@@ -1688,7 +1688,8 @@ module Make (KV : Kv_ext.Ranged) = struct
           { Json.tags = Json.TagSet.remove tag key.restrictions.tags }
         in
         Access.info (fun f -> f "update (%s): removed tag %S" id tag);
-        encode_and_write t id { key with restrictions = restrictions' }
+        encode_and_write t ?namespace id
+          { key with restrictions = restrictions' }
         >|= fun () -> true)
       else Lwt.return_ok false
 
