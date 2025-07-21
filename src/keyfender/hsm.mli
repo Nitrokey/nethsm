@@ -162,17 +162,17 @@ module type S = sig
 
   module Key : sig
     val exists :
-      ?namespace:string -> t -> id:string -> (bool, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
       user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
     val add_json :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -182,7 +182,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val add_pem :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -191,7 +191,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val generate :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.key_type ->
@@ -201,53 +201,56 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val remove :
-      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_json :
-      ?namespace:string -> t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
+      namespace:string option ->
+      t ->
+      id:string ->
+      (Yojson.Safe.t, error) result Lwt.t
 
     val get_pem :
-      ?namespace:string -> t -> id:string -> (string, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       Json.subject_req ->
       (string, error) result Lwt.t
 
     val get_cert :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       ((string * string) option, error) result Lwt.t
 
     val set_cert :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       content_type:string ->
       string ->
       (unit, error) result Lwt.t
 
     val remove_cert :
-      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_restrictions :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       tag:string ->
       (bool, error) result Lwt.t
 
     val remove_restriction_tags :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       tag:string ->
@@ -257,7 +260,7 @@ module type S = sig
 
     val decrypt :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       iv:string option ->
@@ -267,7 +270,7 @@ module type S = sig
 
     val encrypt :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       iv:string option ->
@@ -277,7 +280,7 @@ module type S = sig
 
     val sign :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       Json.sign_mode ->
@@ -285,12 +288,13 @@ module type S = sig
       (string, error) result Lwt.t
 
     val list_digest :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
       string option Lwt.t
 
-    val digest : ?namespace:string -> t -> id:string -> string option Lwt.t
+    val digest :
+      namespace:string option -> t -> id:string -> string option Lwt.t
 
     val remove_all_in_namespace :
       t -> namespace:string -> (unit, error) result Lwt.t

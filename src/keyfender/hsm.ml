@@ -156,17 +156,17 @@ module type S = sig
 
   module Key : sig
     val exists :
-      ?namespace:string -> t -> id:string -> (bool, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
       user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
     val add_json :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -176,7 +176,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val add_pem :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.MS.t ->
@@ -185,7 +185,7 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val generate :
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       t ->
       Json.key_type ->
@@ -195,53 +195,56 @@ module type S = sig
       (unit, error) result Lwt.t
 
     val remove :
-      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_json :
-      ?namespace:string -> t -> id:string -> (Yojson.Safe.t, error) result Lwt.t
+      namespace:string option ->
+      t ->
+      id:string ->
+      (Yojson.Safe.t, error) result Lwt.t
 
     val get_pem :
-      ?namespace:string -> t -> id:string -> (string, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (string, error) result Lwt.t
 
     val csr_pem :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       Json.subject_req ->
       (string, error) result Lwt.t
 
     val get_cert :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       ((string * string) option, error) result Lwt.t
 
     val set_cert :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       content_type:string ->
       string ->
       (unit, error) result Lwt.t
 
     val remove_cert :
-      ?namespace:string -> t -> id:string -> (unit, error) result Lwt.t
+      namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
     val get_restrictions :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       (Json.restrictions, error) result Lwt.t
 
     val add_restriction_tags :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       tag:string ->
       (bool, error) result Lwt.t
 
     val remove_restriction_tags :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       id:string ->
       tag:string ->
@@ -251,7 +254,7 @@ module type S = sig
 
     val decrypt :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       iv:string option ->
@@ -261,7 +264,7 @@ module type S = sig
 
     val encrypt :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       iv:string option ->
@@ -271,7 +274,7 @@ module type S = sig
 
     val sign :
       t ->
-      ?namespace:string ->
+      namespace:string option ->
       id:string ->
       user_nid:Nid.t ->
       Json.sign_mode ->
@@ -279,12 +282,13 @@ module type S = sig
       (string, error) result Lwt.t
 
     val list_digest :
-      ?namespace:string ->
+      namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
       string option Lwt.t
 
-    val digest : ?namespace:string -> t -> id:string -> string option Lwt.t
+    val digest :
+      namespace:string option -> t -> id:string -> string option Lwt.t
 
     val remove_all_in_namespace :
       t -> namespace:string -> (unit, error) result Lwt.t
@@ -1327,14 +1331,14 @@ module Make (KV : Kv_ext.Ranged) = struct
       | _ -> assert false
     (* checked by webmachine Handler_keys.service_available *)
 
-    let make_store_key ?namespace id =
+    let make_store_key ~namespace id =
       let prefix = Namespace.key_prefix namespace in
       Mirage_kv.Key.(prefix / id)
 
-    let exists ?namespace t ~id =
+    let exists ~namespace t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      let key = make_store_key ?namespace id in
+      let key = make_store_key ~namespace id in
       internal_server_error Read "Exists key" Encrypted_store.pp_error
         ( Key_store.exists store key >|= function
           | None -> false
@@ -1349,10 +1353,10 @@ module Make (KV : Kv_ext.Ranged) = struct
     (* boilerplate for dumping keys whose operations changed *)
     let cached_operations = Hashtbl.create 7
 
-    let get_key t ?namespace id =
+    let get_key t ~namespace id =
       let open Lwt_result.Infix in
       let store = key_store t in
-      let key = make_store_key ?namespace id in
+      let key = make_store_key ~namespace id in
       internal_server_error Read "Read key" Key_store.pp_read_error
         (Key_store.get store key)
       >>= fun key ->
@@ -1368,7 +1372,7 @@ module Make (KV : Kv_ext.Ranged) = struct
       let range = Namespace.file_range namespace in
       Key_store.list_range store range
 
-    let list ?namespace t ~filter_by_restrictions ~user_nid =
+    let list ~namespace t ~filter_by_restrictions ~user_nid =
       let open Lwt.Infix in
       efficient_list t namespace >>= function
       | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt_result.return []
@@ -1395,7 +1399,7 @@ module Make (KV : Kv_ext.Ranged) = struct
           else
             (* keep only usable keys *)
             let filter id =
-              get_key t id >|= function
+              get_key t ~namespace:None id >|= function
               | Ok k when is_usable k -> Some id
               | _ -> None
             in
@@ -1414,14 +1418,14 @@ module Make (KV : Kv_ext.Ranged) = struct
                       x >>= function
                       | Error e -> Lwt.return (Error e)
                       | Ok () -> (
-                          get_key t ?namespace id >>= function
+                          get_key t ~namespace id >>= function
                           | Error (_, msg) ->
                               (* this should not happen *)
                               Log.err (fun m ->
                                   m "error %s while retrieving key %s" msg id);
                               Lwt.return (Ok ())
                           | Ok k -> (
-                              let key = make_store_key ?namespace id in
+                              let key = make_store_key ~namespace id in
                               Key_store.set b key k >>= function
                               | Ok () -> Lwt.return (Ok ())
                               | Error e ->
@@ -1434,17 +1438,17 @@ module Make (KV : Kv_ext.Ranged) = struct
           | Ok () -> Hashtbl.clear cached_operations
           | Error _ -> ())
 
-    let encode_and_write t ?namespace id key =
-      let store = key_store t and kv_key = make_store_key ?namespace id in
+    let encode_and_write t ~namespace id key =
+      let store = key_store t and kv_key = make_store_key ~namespace id in
       Hashtbl.remove cached_operations (namespace, id);
       with_write_lock (fun () ->
           internal_server_error Write "Write key" Key_store.pp_write_error
             (Key_store.set store kv_key key))
 
-    let add ?namespace ~id t mechanisms priv restrictions =
+    let add ~namespace ~id t mechanisms priv restrictions =
       let open Lwt_result.Infix in
       let store = key_store t in
-      let key = make_store_key ?namespace id in
+      let key = make_store_key ~namespace id in
       internal_server_error Read "Exist key" Key_store.pp_error
         (Key_store.exists store key)
       >>= function
@@ -1452,7 +1456,7 @@ module Make (KV : Kv_ext.Ranged) = struct
           Lwt.return
             (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
-          encode_and_write t ?namespace id
+          encode_and_write t ~namespace id
             { mechanisms; priv; cert = None; operations = 0; restrictions }
           >|= fun () ->
           Access.info (fun f -> f "created (%s)" id);
@@ -1463,7 +1467,7 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     open Stores.Key_info
 
-    let add_json ?namespace ~id t mechanisms typ (key : Json.private_key)
+    let add_json ~namespace ~id t mechanisms typ (key : Json.private_key)
         restrictions =
       let b64err msg ctx data =
         Rresult.R.error_msgf
@@ -1500,12 +1504,12 @@ module Make (KV : Kv_ext.Ranged) = struct
         | EC_P521 -> prv `P521
       with
       | Error (`Msg e) -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ?namespace ~id t mechanisms priv restrictions
+      | Ok priv -> add ~namespace ~id t mechanisms priv restrictions
 
-    let add_pem ?namespace ~id t mechanisms data restrictions =
+    let add_pem ~namespace ~id t mechanisms data restrictions =
       match X509.Private_key.decode_pem data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ?namespace ~id t mechanisms (X509 priv) restrictions
+      | Ok priv -> add ~namespace ~id t mechanisms (X509 priv) restrictions
 
     let generate_x509 typ ~length =
       let open Rresult in
@@ -1532,17 +1536,17 @@ module Make (KV : Kv_ext.Ranged) = struct
       | EC_P384 -> gen `P384
       | EC_P521 -> gen `P521
 
-    let generate ?namespace ~id t typ mechanisms ~length restrictions =
+    let generate ~namespace ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
       Lwt.return (generate_key typ ~length) >>= fun priv ->
       Metrics.key_op `Generate;
-      add ?namespace ~id t mechanisms priv restrictions
+      add ~namespace ~id t mechanisms priv restrictions
 
-    let remove ?namespace t ~id =
+    let remove ~namespace t ~id =
       let open Lwt_result.Infix in
       let store = key_store t in
       Hashtbl.remove cached_operations (namespace, id);
-      let key = make_store_key ?namespace id in
+      let key = make_store_key ~namespace id in
       with_write_lock (fun () ->
           internal_server_error Write "Remove key" Key_store.pp_write_error
             ( Key_store.remove store key >|= fun () ->
@@ -1560,17 +1564,18 @@ module Make (KV : Kv_ext.Ranged) = struct
             (function
               | _, `Dictionary -> Lwt.return None
               | id, `Value ->
-                  remove ~namespace t ~id:(Mirage_kv.Key.basename id)
+                  remove ~namespace:(Some namespace) t
+                    ~id:(Mirage_kv.Key.basename id)
                   >|= fun r -> Some r)
             xs
           >|= List.fold_left
                 (function Error e -> fun _ -> Error e | _ -> fun x -> x)
                 (Ok ())
 
-    let get_json ?namespace t ~id =
+    let get_json ~namespace t ~id =
       let open Lwt_result.Infix in
       let open Mirage_crypto_ec in
-      get_key t ?namespace id >|= fun pkey ->
+      get_key t ~namespace id >|= fun pkey ->
       let public, typ =
         match pkey.priv with
         | X509 (`RSA k) ->
@@ -1612,9 +1617,9 @@ module Make (KV : Kv_ext.Ranged) = struct
           restrictions = pkey.restrictions;
         }
 
-    let get_pem ?namespace t ~id =
+    let get_pem ~namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       Lwt_result.lift
       @@
       match key.priv with
@@ -1623,9 +1628,9 @@ module Make (KV : Kv_ext.Ranged) = struct
           Ok (X509.Public_key.encode_pem pub)
       | Generic _ -> Error (Bad_request, "Generic keys have no public key")
 
-    let csr_pem t ?namespace ~id subject =
+    let csr_pem t ~namespace ~id subject =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       let subject' = Json.to_distinguished_name subject in
       Lwt_result.lift
       @@
@@ -1638,57 +1643,57 @@ module Make (KV : Kv_ext.Ranged) = struct
       | Generic _ ->
           Error (Bad_request, "Generic keys can't create certificates")
 
-    let get_cert ?namespace t ~id =
+    let get_cert ~namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >|= fun key -> key.cert
+      get_key t ~namespace id >|= fun key -> key.cert
 
-    let set_cert t ?namespace ~id ~content_type data =
+    let set_cert t ~namespace ~id ~content_type data =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       match key.cert with
       | Some _ ->
           Lwt.return (Error (Conflict, "Key already contains a certificate"))
       | None ->
           let key' = { key with cert = Some (content_type, data) } in
-          encode_and_write t ?namespace id key'
+          encode_and_write t ~namespace id key'
 
-    let remove_cert ?namespace t ~id =
+    let remove_cert ~namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       match key.cert with
       | None ->
           Lwt.return
             (Error (Not_found, "There is no certificate for this KeyID."))
       | Some _ ->
           let key' = { key with cert = None } in
-          encode_and_write t ?namespace id key'
+          encode_and_write t ~namespace id key'
 
-    let get_restrictions ?namespace t ~id =
+    let get_restrictions ~namespace t ~id =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >|= fun key -> key.restrictions
+      get_key t ~namespace id >|= fun key -> key.restrictions
 
-    let add_restriction_tags ?namespace t ~id ~tag =
+    let add_restriction_tags ~namespace t ~id ~tag =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       if not (Json.TagSet.mem tag key.restrictions.tags) then (
         let restrictions' =
           { Json.tags = Json.TagSet.add tag key.restrictions.tags }
         in
         Access.info (fun f -> f "update (%s): added tag %S" id tag);
-        encode_and_write t ?namespace id
+        encode_and_write t ~namespace id
           { key with restrictions = restrictions' }
         >|= fun () -> true)
       else Lwt.return_ok false
 
-    let remove_restriction_tags ?namespace t ~id ~tag =
+    let remove_restriction_tags ~namespace t ~id ~tag =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= fun key ->
+      get_key t ~namespace id >>= fun key ->
       if Json.TagSet.mem tag key.restrictions.tags then (
         let restrictions' =
           { Json.tags = Json.TagSet.remove tag key.restrictions.tags }
         in
         Access.info (fun f -> f "update (%s): removed tag %S" id tag);
-        encode_and_write t ?namespace id
+        encode_and_write t ~namespace id
           { key with restrictions = restrictions' }
         >|= fun () -> true)
       else Lwt.return_ok false
@@ -1709,9 +1714,9 @@ module Make (KV : Kv_ext.Ranged) = struct
       in
       Result.map (fun () -> key_data) validation |> Lwt.return
 
-    let decrypt t ?namespace ~id ~user_nid ~iv decrypt_mode data =
+    let decrypt t ~namespace ~id ~user_nid ~iv decrypt_mode data =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      get_key t ~namespace id >>= validate_restrictions t ~user_nid
       >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
@@ -1781,9 +1786,9 @@ module Make (KV : Kv_ext.Ranged) = struct
                  ( Bad_request,
                    "Key mechanisms do not allow requested decryption." ))
 
-    let encrypt t ?namespace ~id ~user_nid ~iv encrypt_mode data =
+    let encrypt t ~namespace ~id ~user_nid ~iv encrypt_mode data =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      get_key t ~namespace id >>= validate_restrictions t ~user_nid
       >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       Lwt_result.lift
@@ -1830,9 +1835,9 @@ module Make (KV : Kv_ext.Ranged) = struct
                  ( Bad_request,
                    "Key mechanisms do not allow requested encryption." ))
 
-    let sign t ?namespace ~id ~user_nid sign_mode data =
+    let sign t ~namespace ~id ~user_nid sign_mode data =
       let open Lwt_result.Infix in
-      get_key t ?namespace id >>= validate_restrictions t ~user_nid
+      get_key t ~namespace id >>= validate_restrictions t ~user_nid
       >>= fun key_data ->
       let oneline = Astring.String.(concat ~sep:"" (cuts ~sep:"\n" data)) in
       match Base64.decode oneline with
@@ -1888,7 +1893,7 @@ module Make (KV : Kv_ext.Ranged) = struct
               (Error
                  (Bad_request, "Key mechanisms do not allow requested signing."))
 
-    let list_digest ?namespace t ~filter_by_restrictions =
+    let list_digest ~namespace t ~filter_by_restrictions =
       let open Lwt.Infix in
       if filter_by_restrictions then Lwt.return_none
       else
@@ -1898,10 +1903,10 @@ module Make (KV : Kv_ext.Ranged) = struct
         | Ok digest -> Some (to_hex digest)
         | Error _ -> None
 
-    let digest ?namespace t ~id =
+    let digest ~namespace t ~id =
       let open Lwt.Infix in
       let store = key_store t in
-      Key_store.digest store (make_store_key ?namespace id) >|= function
+      Key_store.digest store (make_store_key ~namespace id) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
   end

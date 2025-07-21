@@ -745,8 +745,8 @@ let system_backup_and_restore_operational =
   (* add key, we'll check that it's removed after restore *)
   Lwt_main.run
     (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
-     Hsm.Key.add_pem hsm_state mechanisms ~id:"newKeyID" test_key_pem
-       no_restrictions)
+     Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
+       test_key_pem no_restrictions)
   |> Result.get_ok;
   (* do the same with namespaces *)
   let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
@@ -2964,7 +2964,7 @@ let hsm_with_ed25519_key () =
   Lwt_main.run
     ( Hsm.Key.add_pem hsm_state
         Keyfender.Json.(MS.singleton EdDSA_Signature)
-        ~id:"keyID" ed25519_priv_pem no_restrictions
+        ~namespace:None ~id:"keyID" ed25519_priv_pem no_restrictions
     >|= function
       | Ok () -> hsm_state
       | Error _ -> assert false )
@@ -3064,7 +3064,8 @@ let add_generic state ~id ms key =
   in
   match
     Lwt_main.run
-      (Hsm.Key.add_json ~id state ms Generic json_key no_restrictions)
+      (Hsm.Key.add_json ~namespace:None ~id state ms Generic json_key
+         no_restrictions)
   with
   | Ok () -> ()
   | Error _ -> assert false
@@ -3192,7 +3193,8 @@ let hsm_with_tags () =
   in
   let tags = Keyfender.Json.TagSet.singleton "berlin" in
   Lwt_main.run
-    (Hsm.Key.generate ~id:"keyID" hsm_state RSA ms ~length:1024 { tags })
+    (Hsm.Key.generate ~namespace:None ~id:"keyID" hsm_state RSA ms ~length:1024
+       { tags })
   |> Result.get_ok;
   hsm_state
 
@@ -3353,7 +3355,7 @@ let keys_key_cert_get =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:"keyID"
+      (Hsm.Key.set_cert hsm_state ~namespace:None ~id:"keyID"
          ~content_type:"application/octet-stream" "data")
   in
   match request ~headers:operator_headers ~hsm_state "/keys/keyID/cert" with
@@ -3384,7 +3386,7 @@ let keys_key_cert_get_accept_header =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:"keyID"
+      (Hsm.Key.set_cert hsm_state ~namespace:None ~id:"keyID"
          ~content_type:"application/octet-stream" "data")
   in
   let headers_with_accept accept =
@@ -3454,7 +3456,7 @@ let keys_key_cert_delete =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:"keyID"
+      (Hsm.Key.set_cert hsm_state ~namespace:None ~id:"keyID"
          ~content_type:"application/octet-stream" "data")
   in
   match
@@ -3503,7 +3505,7 @@ let keys_key_version_cert_get_fails =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:".version"
+      (Hsm.Key.set_cert hsm_state ~namespace:None ~id:".version"
          ~content_type:"application/octet-stream" "data")
   in
   match request ~headers:operator_headers ~hsm_state "/keys/.version/cert" with
@@ -3525,7 +3527,7 @@ let keys_key_version_cert_delete_fails =
   let hsm_state = hsm_with_key () in
   let _ =
     Lwt_main.run
-      (Hsm.Key.set_cert hsm_state ~id:".version"
+      (Hsm.Key.set_cert hsm_state ~namespace:None ~id:".version"
          ~content_type:"application/octet-stream" "data")
   in
   match
@@ -3718,7 +3720,10 @@ let rsa2048_pub =
   | _ -> assert false
 
 let add_pem state ~id ms key =
-  match Lwt_main.run (Hsm.Key.add_pem ~id state ms key no_restrictions) with
+  match
+    Lwt_main.run
+      (Hsm.Key.add_pem ~namespace:None ~id state ms key no_restrictions)
+  with
   | Ok () -> ()
   | Error _ -> assert false
 
@@ -3791,8 +3796,8 @@ let crypto_rsa_decrypt () =
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
       match
         Lwt_main.run
-          (Hsm.Key.decrypt hsm ~id:"test" ~iv:None ~user_nid:(user "operator")
-             dec_mode enc_data)
+          (Hsm.Key.decrypt hsm ~namespace:None ~id:"test" ~iv:None
+             ~user_nid:(user "operator") dec_mode enc_data)
       with
       | Ok data ->
           let b64_dec = Base64.decode_exn data in
@@ -3817,7 +3822,7 @@ let crypto_rsa_pkcs1_sign () =
   in
   match
     Lwt_main.run
-      (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+      (Hsm.Key.sign hsm ~namespace:None ~id:"test" ~user_nid:(user "operator")
          Keyfender.Json.PKCS1
          (b64_and_hash `SHA1 sign_test_data))
   with
@@ -3862,7 +3867,8 @@ let crypto_rsa_pss_sign () =
       add_pem hsm ~id:"test" mechs rsa2048_priv_pem;
       match
         Lwt_main.run
-          (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator") sign_mode
+          (Hsm.Key.sign hsm ~namespace:None ~id:"test"
+             ~user_nid:(user "operator") sign_mode
              (b64_and_hash hash sign_test_data))
       with
       | Ok signature -> (
@@ -3893,7 +3899,7 @@ let crypto_ed25519_sign () =
   add_pem hsm ~id:"test" mechs ed25519_priv_pem;
   match
     Lwt_main.run
-      (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
+      (Hsm.Key.sign hsm ~namespace:None ~id:"test" ~user_nid:(user "operator")
          Keyfender.Json.EdDSA
          (Base64.encode_exn sign_test_data))
   with
@@ -3941,8 +3947,8 @@ let crypto_ecdsa_sign () =
           let pub = X509.Private_key.public priv in
           let signature =
             Lwt_main.run
-              (Hsm.Key.sign hsm ~id:"test" ~user_nid:(user "operator")
-                 Keyfender.Json.ECDSA
+              (Hsm.Key.sign hsm ~namespace:None ~id:"test"
+                 ~user_nid:(user "operator") Keyfender.Json.ECDSA
                  (b64_and_hash hash sign_test_data))
             |> Result.map_error (fun (_, s) -> `Msg s)
             |> get_ok_result "sign"
@@ -3965,8 +3971,8 @@ let crypto_aes_cbc_encrypt () =
       add_generic hsm ~id:"test" mechs secret;
       match
         Lwt_main.run
-          (Hsm.Key.encrypt hsm ~id:"test" ~user_nid:(user "operator") ~iv:None
-             AES_CBC
+          (Hsm.Key.encrypt hsm ~namespace:None ~id:"test"
+             ~user_nid:(user "operator") ~iv:None AES_CBC
              (Base64.encode_string aes_message))
       with
       | Ok (cipher_b64, Some iv_b64) ->
@@ -3996,8 +4002,8 @@ let crypto_aes_cbc_decrypt () =
       let iv = Some (Base64.encode_string iv) in
       match
         Lwt_main.run
-          (Hsm.Key.decrypt hsm ~id:"test" ~user_nid:(user "operator") ~iv
-             AES_CBC encrypted)
+          (Hsm.Key.decrypt hsm ~namespace:None ~id:"test"
+             ~user_nid:(user "operator") ~iv AES_CBC encrypted)
       with
       | Ok m -> String.equal m (Base64.encode_string aes_message)
       | Error _ -> assert false)

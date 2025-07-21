@@ -53,7 +53,7 @@ struct
         let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
         let namespace = user_nid.namespace in
         let filter_by_restrictions = self#filter_by_restrictions rd in
-        Hsm.Key.list ?namespace ~filter_by_restrictions ~user_nid hsm_state
+        Hsm.Key.list ~namespace ~filter_by_restrictions ~user_nid hsm_state
         >>= function
         | Error e -> Endpoint.respond_error e rd
         | Ok keys ->
@@ -72,7 +72,7 @@ struct
         let id = Option.get new_id in
         let ok (key : Json.private_key_req) =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.add_json ?namespace hsm_state ~id key.mechanisms key.typ
+          Hsm.Key.add_json ~namespace hsm_state ~id key.mechanisms key.typ
             key.priv key.restrictions
           >>= function
           | Ok () ->
@@ -107,7 +107,7 @@ struct
                 (* must succeed since we set it ourselves, and webmachine ensures that it already happened. *)
                 let id = Option.get new_id in
                 let namespace = Endpoint.get_namespace rd in
-                Hsm.Key.add_pem ?namespace hsm_state ~id mechanisms pem
+                Hsm.Key.add_pem ~namespace hsm_state ~id mechanisms pem
                   restrictions
                 >>= function
                 | Ok () ->
@@ -153,7 +153,7 @@ struct
       method! generate_etag rd =
         let filter_by_restrictions = self#filter_by_restrictions rd in
         let namespace = Endpoint.get_namespace rd in
-        Hsm.Key.list_digest hsm_state ?namespace ~filter_by_restrictions
+        Hsm.Key.list_digest hsm_state ~namespace ~filter_by_restrictions
         >>= fun digest -> Wm.continue digest rd
     end
 
@@ -178,7 +178,7 @@ struct
             | id, _ -> id
           in
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.generate ?namespace hsm_state ~id key.typ key.mechanisms
+          Hsm.Key.generate ~namespace hsm_state ~id key.typ key.mechanisms
             ~length:key.length key.restrictions
           >>= function
           | Ok () ->
@@ -257,13 +257,13 @@ struct
       method! generate_etag rd =
         let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
         let namespace = Endpoint.get_namespace rd in
-        Hsm.Key.digest hsm_state ?namespace ~id >>= fun digest ->
+        Hsm.Key.digest hsm_state ~namespace ~id >>= fun digest ->
         Wm.continue digest rd
 
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -274,7 +274,7 @@ struct
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Error e -> Endpoint.respond_error e rd
           | Ok does_exist -> (
               if not does_exist then
@@ -292,7 +292,7 @@ struct
                         For now, the only allowed Content-Type is application/octet-stream.
                         It was decided to also store the Content-Type, to easily add more content types later.
                     *)
-                    Hsm.Key.set_cert ?namespace hsm_state ~id
+                    Hsm.Key.set_cert ~namespace hsm_state ~id
                       ~content_type:"application/octet-stream" content
                     >>= function
                     | Ok () ->
@@ -313,7 +313,7 @@ struct
       method private get_cert rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.get_cert hsm_state ?namespace ~id >>= function
+          Hsm.Key.get_cert hsm_state ~namespace ~id >>= function
           | Error e -> Endpoint.respond_error e rd
           | Ok None -> Wm.respond (Cohttp.Code.code_of_status `Not_found) rd
           | Ok (Some (content_type, data)) ->
@@ -328,7 +328,7 @@ struct
       method! delete_resource rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.remove_cert hsm_state ?namespace ~id >>= function
+          Hsm.Key.remove_cert hsm_state ~namespace ~id >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -372,7 +372,7 @@ struct
       method private get_json rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.get_json ~id hsm_state ?namespace >>= function
+          Hsm.Key.get_json ~id hsm_state ~namespace >>= function
           | Error e -> Endpoint.respond_error e rd
           | Ok public_key ->
               let body = Yojson.Safe.to_string public_key in
@@ -385,7 +385,7 @@ struct
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok id (key : Json.private_key_req) =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.add_json ?namespace hsm_state ~id key.mechanisms key.typ
+          Hsm.Key.add_json ~namespace hsm_state ~id key.mechanisms key.typ
             key.priv key.restrictions
           >>= function
           | Ok () -> Wm.continue true rd
@@ -409,7 +409,7 @@ struct
             | Ok { mechanisms; restrictions } ->
                 let ok id =
                   let namespace = Endpoint.get_namespace rd in
-                  Hsm.Key.add_pem ?namespace hsm_state ~id mechanisms pem
+                  Hsm.Key.add_pem ~namespace hsm_state ~id mechanisms pem
                     restrictions
                   >>= function
                   | Ok () -> Wm.continue true rd
@@ -426,7 +426,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -435,7 +435,7 @@ struct
       method! delete_resource rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.remove hsm_state ?namespace ~id >>= function
+          Hsm.Key.remove hsm_state ~namespace ~id >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -457,7 +457,7 @@ struct
       method! generate_etag rd =
         let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
         let namespace = Endpoint.get_namespace rd in
-        Hsm.Key.digest hsm_state ?namespace ~id >>= fun digest ->
+        Hsm.Key.digest hsm_state ~namespace ~id >>= fun digest ->
         Wm.continue digest rd
     end
 
@@ -469,7 +469,7 @@ struct
       method private get_pem rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.get_pem hsm_state ?namespace ~id >>= function
+          Hsm.Key.get_pem hsm_state ~namespace ~id >>= function
           | Error e -> Endpoint.respond_error e rd
           | Ok data -> Wm.continue (`String data) rd
         in
@@ -478,7 +478,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -500,7 +500,7 @@ struct
       method! generate_etag rd =
         let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
         let namespace = Endpoint.get_namespace rd in
-        Hsm.Key.digest hsm_state ?namespace ~id >>= fun digest ->
+        Hsm.Key.digest hsm_state ~namespace ~id >>= fun digest ->
         Wm.continue digest rd
     end
 
@@ -518,7 +518,7 @@ struct
           | Error e -> Endpoint.respond_error (Bad_request, e) rd
           | Ok subject -> (
               let namespace = Endpoint.get_namespace rd in
-              Hsm.Key.csr_pem ?namespace hsm_state ~id subject >>= function
+              Hsm.Key.csr_pem ~namespace hsm_state ~id subject >>= function
               | Error e -> Endpoint.respond_error e rd
               | Ok csr_pem ->
                   let rd' = { rd with resp_body = `String csr_pem } in
@@ -529,7 +529,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -567,7 +567,7 @@ struct
             Endpoint.Access.get_user rd.Webmachine.Rd.req_headers
           in
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.decrypt ?namespace hsm_state ~id ~user_nid ~iv:dec.iv dec.mode
+          Hsm.Key.decrypt ~namespace hsm_state ~id ~user_nid ~iv:dec.iv dec.mode
             dec.encrypted
           >>= function
           | Ok decrypted ->
@@ -588,7 +588,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -619,7 +619,7 @@ struct
             Endpoint.Access.get_user rd.Webmachine.Rd.req_headers
           in
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.encrypt ?namespace hsm_state ~id ~user_nid ~iv:dec.iv dec.mode
+          Hsm.Key.encrypt ~namespace hsm_state ~id ~user_nid ~iv:dec.iv dec.mode
             dec.message
           >>= function
           | Ok (encrypted, iv) ->
@@ -641,7 +641,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -672,7 +672,7 @@ struct
             Endpoint.Access.get_user rd.Webmachine.Rd.req_headers
           in
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.sign ?namespace hsm_state ~id ~user_nid sign.mode sign.message
+          Hsm.Key.sign ~namespace hsm_state ~id ~user_nid sign.mode sign.message
           >>= function
           | Ok signature ->
               let json =
@@ -692,7 +692,7 @@ struct
       method! resource_exists rd =
         let ok id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
@@ -734,14 +734,14 @@ struct
         in
         let key_exists id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.get_restrictions hsm_state ?namespace ~id >>= function
+          Hsm.Key.get_restrictions hsm_state ~namespace ~id >>= function
           | Ok restrictions ->
               Endpoint.lookup_path_info (tag_exists restrictions) "tag" rd
           | Error e -> Endpoint.respond_error e rd
         in
         let ok_key_id id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok exists when exists = true -> key_exists id
           | Ok _ -> Wm.continue false rd
           | Error e -> Endpoint.respond_error e rd
@@ -751,7 +751,7 @@ struct
       method private put_resource rd =
         let ok_tag ~id tag =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.add_restriction_tags hsm_state ?namespace ~id ~tag
+          Hsm.Key.add_restriction_tags hsm_state ~namespace ~id ~tag
           >>= function
           | Ok true -> Wm.continue true rd
           | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
@@ -759,7 +759,7 @@ struct
         in
         let ok_key_id id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ?namespace ~id >>= function
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
           | Ok exists when exists = true ->
               Endpoint.lookup_path_info (ok_tag ~id) "tag" rd
           | Ok _ -> Endpoint.respond_status (`Not_found, "key not found") rd
@@ -770,7 +770,7 @@ struct
       method! delete_resource rd =
         let ok_tag ~id tag =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.remove_restriction_tags hsm_state ?namespace ~id ~tag
+          Hsm.Key.remove_restriction_tags hsm_state ~namespace ~id ~tag
           >>= function
           | Ok res -> Wm.continue res rd
           | Error e -> Endpoint.respond_error e rd

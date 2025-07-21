@@ -188,13 +188,13 @@ let hsm_with_key ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock () in
   Lwt_main.run
-    ( Hsm.Key.add_pem state mechanisms ~id:"keyID" test_key_pem no_restrictions
+    ( Hsm.Key.add_pem state mechanisms ~namespace:None ~id:"keyID" test_key_pem
+        no_restrictions
     >>= function
       | Ok () when and_namespace = None -> Lwt.return state
       | Ok () -> (
-          let namespace = Option.get and_namespace in
-          Hsm.Key.add_pem ~namespace state mechanisms ~id:"subKeyID"
-            test_key_pem no_restrictions
+          Hsm.Key.add_pem ~namespace:and_namespace state mechanisms
+            ~id:"subKeyID" test_key_pem no_restrictions
           >|= function
           | Ok () -> state
           | Error _ -> assert false)
