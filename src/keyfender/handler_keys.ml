@@ -4,6 +4,10 @@
 
 open Lwt.Infix
 
+(* use stdlib's filter_map implementation, which is the naive acc+rev,
+   with the identity function *)
+let tailrec_map f = List.filter_map (fun x -> Some (f x))
+
 module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) =
 struct
   module Access = Access.Make (Wm) (Hsm)
@@ -58,7 +62,7 @@ struct
         | Error e -> Endpoint.respond_error e rd
         | Ok keys ->
             let items =
-              List.map (fun key -> `Assoc [ ("id", `String key) ]) keys
+              tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
             in
             let body = Yojson.Safe.to_string (`List items) in
             Wm.continue (`String body) rd
