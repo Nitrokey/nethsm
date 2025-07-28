@@ -166,7 +166,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     in
     let handler write_body read_body =
       let read_body_with_timeout =
-        Lwt.pick [ read_body; timeout 5 "gRPC request timeout" >>= etcd_err ]
+        Lwt.pick [ read_body; timeout 10 "gRPC request timeout" >>= etcd_err ]
       in
       Grpc_lwt.Client.Rpc.unary ~f request write_body read_body_with_timeout
     in
@@ -188,13 +188,34 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
     | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
     | Ok (Error e, _) -> etcd_err (Etcd_client.Result.show_error e)
-    | Ok (Ok r, _) -> r
+    | Ok (Ok None, status) ->
+        let open Grpc.Status in
+        let err =
+          Fmt.str "no response! status = (code: %a, msg: %a)" pp_code
+            (code status)
+            Fmt.(option string)
+            (message status)
+        in
+        etcd_err err
+    | Ok (Ok (Some r), _) -> r
+
+  let txn stack ~(request : TxnRequest.t) : TxnResponse.t Lwt.t =
+    let request = TxnRequest.to_proto request |> Etcd_client.Writer.contents in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> TxnResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Txn" ~request ~decode
 
   let put stack ~(request : PutRequest.t) : PutResponse.t Lwt.t =
     let request = PutRequest.to_proto request |> Etcd_client.Writer.contents in
     let decode = function
-      | None -> etcd_err "no PutResponse"
-      | Some s -> Etcd_client.Reader.create s |> PutResponse.from_proto
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> PutResponse.from_proto |> Result.map Option.some
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
 
@@ -203,8 +224,10 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       RangeRequest.to_proto request |> Etcd_client.Writer.contents
     in
     let decode = function
-      | None -> etcd_err "no RangeResponse"
-      | Some s -> Etcd_client.Reader.create s |> RangeResponse.from_proto
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> RangeResponse.from_proto |> Result.map Option.some
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request ~decode
 
@@ -214,8 +237,10 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       DeleteRangeRequest.to_proto request |> Etcd_client.Writer.contents
     in
     let decode = function
-      | None -> etcd_err "no DeleteRangeResponse"
-      | Some s -> Etcd_client.Reader.create s |> DeleteRangeResponse.from_proto
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> DeleteRangeResponse.from_proto |> Result.map Option.some
     in
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
       ~decode
@@ -229,23 +254,53 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
      Request.read_json_body_as
        (JsonSupport.unwrap Etcdserverpb_compaction_response.of_yojson)
        resp body *)
-
-  (* let txn ~ctx ~req =
-     let uri = Request.build_uri "/v3/kv/txn" in
-     let body =
-       Request.write_as_json_body Etcdserverpb_txn_request.to_yojson req
-     in
-     C.call ~ctx `POST uri ~headers ~body >>= fun (resp, body) ->
-     Request.read_json_body_as
-       (JsonSupport.unwrap Etcdserverpb_txn_response.of_yojson)
-       resp body *)
 end
 
 module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   module Key = Mirage_kv.Key
   module Etcd = Etcd_api (Stack)
 
-  type t = { stack : Stack.t }
+  module Txn_batcher = struct
+    type t = {
+      max_txn_size : int;
+      mutable txns : TxnRequest.t list;
+      mutable ops_buffer : RequestOp.t list;
+      mutable cur_buf_size : int;
+    }
+
+    let create ?(max_txn_size = 128) () =
+      { max_txn_size; txns = []; ops_buffer = []; cur_buf_size = 0 }
+
+    let flush_buffer t =
+      let req = TxnRequest.make ~success:t.ops_buffer () in
+      t.txns <- req :: t.txns;
+      t.ops_buffer <- [];
+      t.cur_buf_size <- 0
+
+    let add_op t op =
+      let op = RequestOp.make ~request:op () in
+      t.ops_buffer <- op :: t.ops_buffer;
+      t.cur_buf_size <- t.cur_buf_size + 1;
+      if t.cur_buf_size >= t.max_txn_size then flush_buffer t;
+      Lwt_result.return ()
+
+    let finalize t stack =
+      if t.cur_buf_size > 0 then flush_buffer t;
+      let counter = ref 0 in
+      let promises =
+        Lwt_list.map_s
+          (fun request ->
+            Etcd.txn stack ~request >>= fun r ->
+            counter := !counter + t.max_txn_size;
+            Log.debug (fun f -> f "batch: applied %d ops" !counter);
+            Lwt.return r)
+          t.txns
+      in
+      t.txns <- [];
+      promises
+  end
+
+  type t = { stack : Stack.t; mode : [ `Normal | `Batch of Txn_batcher.t ] }
   type key = Key.t
 
   let etcd_try f =
@@ -343,7 +398,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
   let connect stack =
-    let store = { stack } in
+    let store = { stack; mode = `Normal } in
     get store (Key.v ".doesnotexist") >|= function
     | Ok _ | Error (`Not_found _) -> Ok store
     | Error e -> Error e
@@ -363,7 +418,10 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let key = bytes_of_key k in
     let value = Bytes.of_string v in
     let request = PutRequest.make ~key ~value () in
-    etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
+    match t.mode with
+    | `Normal ->
+        etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
+    | `Batch b -> Txn_batcher.add_op b (`Request_put request)
 
   let remove t k =
     (* We don't know if the key is meant to refer to a dictionary or a single
@@ -375,16 +433,28 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
            - dictionary: delete the range ["KEY/"; "KEY0"[
     *)
     let key_single = bytes_of_key k in
+    let exec_req ~request =
+      match t.mode with
+      | `Normal ->
+          etcd_try (fun () ->
+              Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
+      | `Batch b -> Txn_batcher.add_op b (`Request_delete_range request)
+    in
     let request_single = DeleteRangeRequest.make ~key:key_single () in
-    Lwt_result.bind
-      (etcd_try (fun () ->
-           Etcd.delete_range t.stack ~request:request_single >|= fun _ -> Ok ()))
-    @@ fun () ->
+    Lwt_result.bind (exec_req ~request:request_single) @@ fun () ->
     let key_dic = Mirage_kv.Key.to_string k ^ "/" |> Bytes.of_string in
     let range_end = Keyfender.Kv_ext.Range.range_end_of_prefix key_dic in
     let request_dic = DeleteRangeRequest.make ~key:key_dic ~range_end () in
-    etcd_try (fun () ->
-        Etcd.delete_range t.stack ~request:request_dic >|= fun _ -> Ok ())
+    exec_req ~request:request_dic
 
-  let batch t ?retries:(_ = 42) f = f t
+  let batch t ?retries:(_ = 42) f =
+    let batcher = Txn_batcher.create () in
+    f { t with mode = `Batch batcher } >>= fun value ->
+    etcd_try (fun () ->
+        Txn_batcher.finalize batcher t.stack >|= fun _resp -> Ok ())
+    >|= fun res ->
+    match res with
+    | Ok () -> value
+    | Error (`Etcd_error msg) -> raise (Etcd_error msg)
+    | Error _ -> raise (Etcd_error "unknown error")
 end

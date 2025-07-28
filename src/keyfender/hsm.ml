@@ -2032,10 +2032,6 @@ module Make (KV : Kv_ext.Ranged) = struct
               KV.pp_write_error
               (Config_store.set b Certificate (t.cert, t.chain))
             >>= fun () ->
-            internal_server_error Write "Initializing configuration store"
-              KV.pp_write_error
-              (Config_store.set b Version Version.current)
-            >>= fun () ->
             let auth_store =
               Encrypted_store.v Authentication ~key:auth_store_key t.kv
             in
@@ -2852,96 +2848,95 @@ module Make (KV : Kv_ext.Ranged) = struct
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
       in
+      (* when the mode is operational, we have to clear
+         user and keys that are not in the backup. *)
+      let backup_keys = ref KeySet.empty in
       with_write_lock (fun () ->
-          KV.batch t.kv (fun b ->
-              (* when the mode is operational, we have to clear
-                  user and keys that are not in the backup. *)
-              let backup_keys = ref KeySet.empty in
-              let** () =
+          let** () =
+            KV.batch t.kv (fun b ->
                 (* while the stream has content *)
                 stream_while sb
-                  (restore_key ~is_operational ~backup_keys ~key ~kv:b)
-              in
-              let** dk_rewritten =
-                (* the domain key and/or device key might have changed if
-                   restored to a fresh or different device, so refresh the store
+                  (restore_key ~is_operational ~backup_keys ~key ~kv:b))
+          in
+          let** dk_rewritten =
+            (* the domain key and/or device key might have changed if
+               restored to a fresh or different device, so refresh the store
                 *)
-                let encryption_key = t.device_key in
-                let open Lwt.Infix in
-                let** dk_still_valid =
-                  (* there are 2 cases, where the stored domain key is valid:
-                     1. the Domain Key Store has been restored during a full restore
-                        from a backup created on the same device (same Device Key)
-                     2. after operational restore from a backup with same Domain
-                        Key and Unlock Passphrase as the current one
-                  *)
-                  Domain_key_store.get b Attended ~encryption_key >>= function
-                  | Ok old_locked_domain_key
-                    when String.equal locked_domain_key old_locked_domain_key ->
-                      Lwt_result.return true
-                  | Ok _ ->
-                      Log.info (fun m -> m "Domain Key changed.");
-                      Lwt_result.return false
-                  | Error _ ->
-                      Log.info (fun m -> m "Device Key changed.");
-                      Lwt_result.return false
-                in
-                if not dk_still_valid then (
-                  Log.info (fun m -> m "Rewriting stored Domain Key.");
-                  let** () =
-                    internal_server_error Write "Write locked domain key"
-                      KV.pp_write_error
-                      (Domain_key_store.set b Attended ~encryption_key
-                         locked_domain_key)
-                  in
-                  Lwt_result.return true)
-                else Lwt_result.return false
-              in
+            let encryption_key = t.device_key in
+            let open Lwt.Infix in
+            let** dk_still_valid =
+              (* there are 2 cases, where the stored domain key is valid:
+                 1. the Domain Key Store has been restored during a full restore
+                    from a backup created on the same device (same Device Key)
+                 2. after operational restore from a backup with same Domain
+                    Key and Unlock Passphrase as the current one
+              *)
+              Domain_key_store.get t.kv Attended ~encryption_key >>= function
+              | Ok old_locked_domain_key
+                when String.equal locked_domain_key old_locked_domain_key ->
+                  Lwt_result.return true
+              | Ok _ ->
+                  Log.info (fun m -> m "Domain Key changed.");
+                  Lwt_result.return false
+              | Error _ ->
+                  Log.info (fun m -> m "Device Key changed.");
+                  Lwt_result.return false
+            in
+            if not dk_still_valid then (
+              Log.info (fun m -> m "Rewriting stored Domain Key.");
               let** () =
+                internal_server_error Write "Write locked domain key"
+                  KV.pp_write_error
+                  (Domain_key_store.set t.kv Attended ~encryption_key
+                     locked_domain_key)
+              in
+              Lwt_result.return true)
+            else Lwt_result.return false
+          in
+          let** () =
+            KV.batch t.kv (fun b ->
                 if is_operational then
-                  (* we remove keys and users that not present in the
-                      backup.
+                  (* we remove keys and users that not present in the backup.
                      if namespace store is not present in backup, the current
                      one will be emptied (all namespaces deleted) but will stay
                      provisioned. *)
                   remove_extra_keys ~kv:b !backup_keys
-                else Lwt_result.return ()
+                else Lwt_result.return ())
+          in
+          let** () =
+            if (not is_operational) || dk_rewritten then (
+              (* If the restore was
+                  - unprovisioned, or
+                  - provisioned but with a new Domain Key
+                 the end state after restore is locked.
+                 if namespace store is not present in backup, it will be
+                 provisioned here. *)
+              let** new_state =
+                boot_config_store ~cache_settings:t.cache_settings t.kv
+                  t.device_key
               in
-              let** () =
-                if (not is_operational) || dk_rewritten then (
-                  (* If the restore was
-                      - unprovisioned, or
-                      - provisioned but with a new Domain Key
-                     the end state after restore is locked.
-                     if namespace store is not present in backup, it will be
-                     provisioned here. *)
-                  let** new_state =
-                    boot_config_store ~cache_settings:t.cache_settings b
-                      t.device_key
-                  in
-                  t.state <- new_state;
-                  Lwt_result.return ())
-                else Lwt_result.return ()
-              in
-              (match t.state with
-              | Operational v ->
-                  User_store.clear_cache v.auth_store;
-                  Key_store.clear_cache v.key_store;
-                  Namespace_store.clear_cache v.namespace_store
-              | _ -> ());
-              let (`Raw stop_ts) = Hsm_clock.now_raw () in
-              match new_time with
-              | None -> Lwt.return_ok ()
-              | Some new_time -> (
-                  let elapsed = Ptime.diff stop_ts start_ts in
-                  match Ptime.add_span new_time elapsed with
-                  | Some ts -> set_time_offset b ts
-                  | None ->
-                      t.state <- initial_state;
-                      Lwt.return
-                      @@ Error
-                           ( Bad_request,
-                             "Invalid system time in restore request" ))))
+              t.state <- new_state;
+              Lwt_result.return ())
+            else Lwt_result.return ()
+          in
+          (match t.state with
+          | Operational v ->
+              User_store.clear_cache v.auth_store;
+              Key_store.clear_cache v.key_store;
+              Namespace_store.clear_cache v.namespace_store
+          | _ -> ());
+          let (`Raw stop_ts) = Hsm_clock.now_raw () in
+          match new_time with
+          | None -> Lwt.return_ok ()
+          | Some new_time -> (
+              let elapsed = Ptime.diff stop_ts start_ts in
+              match Ptime.add_span new_time elapsed with
+              | Some ts -> set_time_offset t.kv ts
+              | None ->
+                  t.state <- initial_state;
+                  Lwt.return
+                  @@ Error
+                       (Bad_request, "Invalid system time in restore request")))
   end
   (* module System *)
 
