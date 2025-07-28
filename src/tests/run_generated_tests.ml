@@ -94,7 +94,14 @@ module KeyfenderUnikernel : BACKEND = struct
 
     let etcd_process =
       Unix.open_process_args_full "../../etcd-download/etcd"
-        [| "etcd"; "--log-level=warn"; "--data-dir"; Fpath.to_string etcd_dir |]
+        [|
+          "etcd";
+          "--log-level=warn";
+          "--max-txn-ops";
+          "256";
+          "--data-dir";
+          Fpath.to_string etcd_dir;
+        |]
         (Unix.environment ())
     in
     let etcd_pid = Unix.process_full_pid etcd_process in
@@ -247,20 +254,24 @@ let tests_endpoint (module B : BACKEND) () =
   (* 6: server tear down *)
   Bos.(OS.Cmd.run Cmd.(v "./shutdown.sh")) |> ignore
 
-let tests (module B : BACKEND) =
-  ls "generated"
+let tests_of_dir (module B : BACKEND) dir prefix =
+  ls dir
   |> List.map (fun endpoint ->
-         ( endpoint,
+         ( prefix ^ ":" ^ endpoint,
            [
              ( Alcotest.test_case "OK" `Quick @@ fun () ->
-               in_dir ("generated/" ^ endpoint) (tests_endpoint (module B)) );
+               in_dir (dir ^ "/" ^ endpoint) (tests_endpoint (module B)) );
            ] ))
+
+let api_tests backend = tests_of_dir backend "generated" "API"
+let custom_tests backend = tests_of_dir backend "load" "LOAD"
+let tests backend = api_tests backend @ custom_tests backend
 
 let main (module B : BACKEND) =
   let ctx = B.init () in
   try
     Fun.protect ~finally:(fun () -> B.finish ctx) @@ fun () ->
-    Alcotest.run ~and_exit:false ~argv:Sys.argv "api" (tests (module B))
+    Alcotest.run ~and_exit:false ~argv:Sys.argv "unikernel" (tests (module B))
   with Alcotest.Test_error -> exit 1
 
 let () = main (module KeyfenderUnikernel)

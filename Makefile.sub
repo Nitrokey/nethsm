@@ -399,7 +399,7 @@ else ifeq ($(XMODE),test)
 .PHONY: test-keyfender-api
 test-keyfender-api: $(S_KEYFENDER) | $(ETCD_DIR)
 	cd src/tests && $(DUNE) exec ./generate_api_tests.exe
-	cd src/tests && $(DUNE) exec ./run_generated_tests.exe
+	cd src/tests && $(DUNE) exec ./run_generated_tests.exe -- test 'API:'
 	# For this test we want to consider ALL coverage files under
 	# src/tests/generated
 	sleep 1
@@ -407,6 +407,10 @@ test-keyfender-api: $(S_KEYFENDER) | $(ETCD_DIR)
 
 .stamp-test-%: test-%
 	touch $@
+
+test-keyfender-load: $(S_KEYFENDER) | $(ETCD_DIR)
+	cd src/tests && $(DUNE) exec ./run_generated_tests.exe -- test 'LOAD:'
+	sleep 1
 
 .PHONY: coverage-summary
 # Generate a summary coverage report. Runs all test-keyfender-* targets if not
