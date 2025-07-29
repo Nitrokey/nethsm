@@ -157,11 +157,11 @@ let main =
       package ~max:"0.13.0" "h2-lwt";
       package
         ~pin:
-          "git+https://github.com/dialohq/ocaml-grpc.git#b71fba7067bad2cad62df9abd8b4e190e3c4fc94"
+          "git+https://github.com/dialohq/ocaml-grpc.git#b629b55fc15964c5e9455058725519d3f7cfc9a7"
         "grpc";
       package
         ~pin:
-          "git+https://github.com/dialohq/ocaml-grpc.git#b71fba7067bad2cad62df9abd8b4e190e3c4fc94"
+          "git+https://github.com/dialohq/ocaml-grpc.git#b629b55fc15964c5e9455058725519d3f7cfc9a7"
         "grpc-lwt";
     ]
   in
