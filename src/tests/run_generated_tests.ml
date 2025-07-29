@@ -98,7 +98,7 @@ module KeyfenderUnikernel : BACKEND = struct
           "etcd";
           "--log-level=warn";
           "--max-txn-ops";
-          "256";
+          "512";
           "--data-dir";
           Fpath.to_string etcd_dir;
         |]

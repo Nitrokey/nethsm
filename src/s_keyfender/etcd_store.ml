@@ -268,7 +268,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       mutable cur_buf_size : int;
     }
 
-    let create ?(max_txn_size = 128) () =
+    let create ?(max_txn_size = 512) () =
       { max_txn_size; txns = []; ops_buffer = []; cur_buf_size = 0 }
 
     let flush_buffer t =

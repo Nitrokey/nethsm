@@ -317,6 +317,7 @@ func sPlatformActions() {
 		" --v2-deprecation=gone"+
 		" --enable-v2=false"+
 		" --proxy=off"+
+		" --max-txn-ops=512"+
 		" --force-new-cluster=true"+
 		// " --log-level debug"+
 		"")
