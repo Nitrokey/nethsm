@@ -3925,6 +3925,10 @@ let crypto_ecdsa_sign () =
       (`SHA256, X509.Private_key.generate ~seed `P256, "P256");
       (`SHA384, X509.Private_key.generate ~seed `P384, "P384");
       (`SHA512, X509.Private_key.generate ~seed `P521, "P521");
+      (`SHA256, X509.Private_key.generate ~seed `P256K1, "P256K1");
+      (`SHA256, X509.Private_key.generate ~seed `BRAINPOOLP256, "BRAINPOOLP256");
+      (`SHA384, X509.Private_key.generate ~seed `BRAINPOOLP384, "BRAINPOOLP384");
+      (`SHA512, X509.Private_key.generate ~seed `BRAINPOOLP512, "BRAINPOOLP512");
     ]
   in
   List.map
