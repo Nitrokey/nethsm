@@ -3922,22 +3922,13 @@ let crypto_ecdsa_sign () =
   let seed = String.make 16 '\000' in
   let algos =
     [
-      ( `SHA256,
-        X509.Private_key.generate ~seed `P256,
-        "MEUCIQC3LKyNLNwZ+UhQ4tXzlbQdsnBzJuN/a6EbHl+N7J42XgIgRdacwWqGIatrRSdn9AEQ3RXRkNhiKHYmTmn8e3MKAYg=",
-        "P256" );
-      ( `SHA384,
-        X509.Private_key.generate ~seed `P384,
-        "MGUCMQDO9eNxo4+IAoZpxqMvQvAeitP+D+5h1WiWBFRECdAN75uhGdGa9I9B0Ei3fv1uAE8CMH25z78MU+VqU1a+i1M2AEoVd7Jpj3CRnaYne78KgwXNnUr4nGDkvjcDyTutXhInjA==",
-        "P384" );
-      ( `SHA512,
-        X509.Private_key.generate ~seed `P521,
-        "MIGIAkIAxUNirK+/g6PtdsTFjXqcc+B7S4OCw0ZAwUWYvYa+IQtitW0LTK8nUkbOytEW/UZJq+d7+fPDBdI3O/kHOkFTu4ECQgDltV5EgDZnpjcsdH15Jm5kxzstOvgFUCi0EWhLn6mUeMSq2rZZUZZI3/6o5SgEwL4p6kkRLRPXo/btBJqY5BJUrw==",
-        "P521" );
+      (`SHA256, X509.Private_key.generate ~seed `P256, "P256");
+      (`SHA384, X509.Private_key.generate ~seed `P384, "P384");
+      (`SHA512, X509.Private_key.generate ~seed `P521, "P521");
     ]
   in
   List.map
-    (fun (hash, priv, sign, txt) ->
+    (fun (hash, priv, txt) ->
       Alcotest.test_case
         ("signing with ECDSA " ^ txt ^ " succeeds")
         `Quick
@@ -3953,7 +3944,6 @@ let crypto_ecdsa_sign () =
             |> Result.map_error (fun (_, s) -> `Msg s)
             |> get_ok_result "sign"
           in
-          Alcotest.(check string) ("same signature for " ^ txt) sign signature;
           let b64_dec = Base64.decode signature |> get_ok_result "base64" in
           X509.Public_key.verify hash ~scheme:`ECDSA ~signature:b64_dec pub
             (`Message sign_test_data)

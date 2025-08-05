@@ -1921,7 +1921,7 @@ module Make (KV : Kv_ext.Ranged) = struct
                     >>= fun (scheme, hash, data) ->
                     Rresult.R.reword_error
                       (function `Msg m -> (Bad_request, m))
-                      (X509.Private_key.sign hash ~scheme priv data))
+                      (X509.Private_key.sign ~rand_k:true hash ~scheme priv data))
               >>| fun signature ->
                 Metrics.key_op `Sign;
                 Hashtbl.replace cached_operations (namespace, id)

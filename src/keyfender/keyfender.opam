@@ -75,7 +75,7 @@ pin-depends: [
   ["mirage-crypto-rng.dev" "git+https://github.com/Nitrokey/nethsm-mirage-crypto.git#f19b618a49dd1d19356ac82fe04eef62c9abad20"]
   ["mirage-crypto-rng-mirage.dev" "git+https://github.com/Nitrokey/nethsm-mirage-crypto.git#f19b618a49dd1d19356ac82fe04eef62c9abad20"]
   ["mirage-crypto-ec.dev" "git+https://github.com/Nitrokey/nethsm-mirage-crypto.git#f19b618a49dd1d19356ac82fe04eef62c9abad20"]
-  ["x509.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-x509.git#6d4bd232ddf1907516192656816c428c005f0d3e"]
+  ["x509.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-x509.git#46a8e5d131de953a0fb4079b51fc9fa11a274ee9"]
   ["tls.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-tls.git#0ceda41bbb7241d865dd490e0663862d29621567"]
   ["tls-lwt.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-tls.git#0ceda41bbb7241d865dd490e0663862d29621567"]
   ["tls-mirage.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-tls.git#0ceda41bbb7241d865dd490e0663862d29621567"]
