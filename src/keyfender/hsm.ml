@@ -1496,12 +1496,16 @@ module Make (KV : Kv_ext.Ranged) = struct
             to_z "publicExponent" key.publicExponent >>= fun e ->
             Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q >>| fun key ->
             X509 (`RSA key)
-        | Json.Generic -> b64_data key.data >>| fun k -> Generic k
-        | Json.Curve25519 -> prv `ED25519
-        | EC_P224 -> Error (`Msg "P224 is unssuported")
+        | Generic -> b64_data key.data >>| fun k -> Generic k
+        | Curve25519 -> prv `ED25519
+        | EC_P224 -> Error (`Msg "P224 is unsupported")
         | EC_P256 -> prv `P256
         | EC_P384 -> prv `P384
         | EC_P521 -> prv `P521
+        | EC_P256K1 -> prv `P256K1
+        | BRAINPOOLP256 -> prv `BRAINPOOLP256
+        | BRAINPOOLP384 -> prv `BRAINPOOLP384
+        | BRAINPOOLP512 -> prv `BRAINPOOLP512
       with
       | Error (`Msg e) -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~namespace ~id t mechanisms priv restrictions
@@ -1535,6 +1539,10 @@ module Make (KV : Kv_ext.Ranged) = struct
       | EC_P256 -> gen `P256
       | EC_P384 -> gen `P384
       | EC_P521 -> gen `P521
+      | EC_P256K1 -> gen `P256K1
+      | BRAINPOOLP256 -> gen `BRAINPOOLP256
+      | BRAINPOOLP384 -> gen `BRAINPOOLP384
+      | BRAINPOOLP512 -> gen `BRAINPOOLP512
 
     let generate ~namespace ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
@@ -1606,6 +1614,30 @@ module Make (KV : Kv_ext.Ranged) = struct
               P521.Dsa.(pub_of_priv k |> pub_to_octets) |> Base64.encode_string
             in
             (Json.ec_public_key_to_yojson { Json.data }, Json.EC_P521)
+        | X509 (`P256K1 k) ->
+            let data =
+              P256k1.Dsa.(pub_of_priv k |> pub_to_octets)
+              |> Base64.encode_string
+            in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.EC_P256K1)
+        | X509 (`BRAINPOOLP256 k) ->
+            let data =
+              BrainpoolP256.Dsa.(pub_of_priv k |> pub_to_octets)
+              |> Base64.encode_string
+            in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.BRAINPOOLP256)
+        | X509 (`BRAINPOOLP384 k) ->
+            let data =
+              BrainpoolP384.Dsa.(pub_of_priv k |> pub_to_octets)
+              |> Base64.encode_string
+            in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.BRAINPOOLP384)
+        | X509 (`BRAINPOOLP512 k) ->
+            let data =
+              BrainpoolP512.Dsa.(pub_of_priv k |> pub_to_octets)
+              |> Base64.encode_string
+            in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.BRAINPOOLP512)
         | Generic _ -> (`Null, Json.Generic)
       in
       Json.public_key_to_yojson
@@ -1878,6 +1910,13 @@ module Make (KV : Kv_ext.Ranged) = struct
                     | `P256 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign)
                     | `P384 _, ECDSA -> Ok (`ECDSA, `SHA384, `Digest to_sign)
                     | `P521 _, ECDSA -> Ok (`ECDSA, `SHA512, `Digest to_sign)
+                    | `P256K1 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign)
+                    | `BRAINPOOLP256 _, ECDSA ->
+                        Ok (`ECDSA, `SHA256, `Digest to_sign)
+                    | `BRAINPOOLP384 _, ECDSA ->
+                        Ok (`ECDSA, `SHA384, `Digest to_sign)
+                    | `BRAINPOOLP512 _, ECDSA ->
+                        Ok (`ECDSA, `SHA512, `Digest to_sign)
                     | _ -> Error (Bad_request, "invalid sign mode"))
                     >>= fun (scheme, hash, data) ->
                     Rresult.R.reword_error

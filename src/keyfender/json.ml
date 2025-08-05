@@ -277,6 +277,10 @@ type key_type =
   | EC_P256
   | EC_P384
   | EC_P521
+  | EC_P256K1
+  | BRAINPOOLP256
+  | BRAINPOOLP384
+  | BRAINPOOLP512
   | Generic
 [@@deriving yojson]
 
@@ -312,6 +316,10 @@ let type_matches_mechanism typ m =
   | EC_P256 -> m = ECDSA_Signature
   | EC_P384 -> m = ECDSA_Signature
   | EC_P521 -> m = ECDSA_Signature
+  | EC_P256K1 -> m = ECDSA_Signature
+  | BRAINPOOLP256 -> m = ECDSA_Signature
+  | BRAINPOOLP384 -> m = ECDSA_Signature
+  | BRAINPOOLP512 -> m = ECDSA_Signature
   | Generic -> List.mem m [ AES_Encryption_CBC; AES_Decryption_CBC ]
 
 type rsa_public_key = { modulus : string; publicExponent : string }

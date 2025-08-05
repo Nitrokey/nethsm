@@ -98,13 +98,15 @@ struct
         let ok (key : Json.tls_generate_key_req) =
           let open Lwt.Infix in
           (match key.typ with
-          | Json.Generic -> Error "Generic"
           | RSA -> Ok `RSA
           | Curve25519 -> Ok `ED25519
-          | EC_P224 -> Error "P224"
           | EC_P256 -> Ok `P256
           | EC_P384 -> Ok `P384
-          | EC_P521 -> Ok `P521)
+          | EC_P521 -> Ok `P521
+          | BRAINPOOLP256 -> Ok `BRAINPOOLP256
+          | BRAINPOOLP384 -> Ok `BRAINPOOLP384
+          | BRAINPOOLP512 -> Ok `BRAINPOOLP512
+          | x -> Error (Json.key_type_to_yojson x |> Yojson.Safe.to_string))
           |> function
           | Error typ ->
               Endpoint.respond_error

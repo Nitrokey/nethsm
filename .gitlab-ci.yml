@@ -131,7 +131,6 @@ build_container_production_image:
       buildctl build --frontend=dockerfile.v0 --progress=plain
       --local dockerfile=${CI_PROJECT_DIR}/src/container/alpine
       --local context=${CI_PROJECT_DIR}
-      --opt build-arg:OPAM_REPOSITORY_COMMIT=$(cat .opam-repository-commit)
       --opt target=nethsm_production
       --output type=image,name=${CI_REGISTRY_IMAGE}/production:${CI_COMMIT_SHORT_SHA},${PUSH}
 
