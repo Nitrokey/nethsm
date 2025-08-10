@@ -105,6 +105,36 @@ var benchParams = []benchParam{
 		msgLen: 32,
 	},
 	{
+		algo:   "p256k1",
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"EC_P256K1"}`,
+		opMode: "ECDSA",
+		msgLen: 32,
+	},
+	{
+		algo:   "p256k1-bip340",
+		data:   `{"mechanisms":["BIP340_Signature"],"type":"EC_P256K1"}`,
+		opMode: "BIP340",
+		msgLen: 32,
+	},
+	{
+		algo:   "brainpoolp256",
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP256"}`,
+		opMode: "ECDSA",
+		msgLen: 32,
+	},
+	{
+		algo:   "brainpoolp384",
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP384"}`,
+		opMode: "ECDSA",
+		msgLen: 48,
+	},
+	{
+		algo:   "brainpoolp512",
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP512"}`,
+		opMode: "ECDSA",
+		msgLen: 64,
+	},
+	{
 		algo:   "aes-cbc",
 		data:   `{"mechanisms":["AES_Encryption_CBC"],"type":"Generic","length":256}`,
 		op:     "encrypt",
@@ -262,7 +292,7 @@ func doBench(name string, url, auth string,
 	close(quit)
 	jobs.Wait()
 	stats.duration = last.Sub(start)
-	fmt.Printf("%11.11s (%ds|%dc): ", name, durationFlag, jobFlag)
+	fmt.Printf("%13.13s (%ds|%dc): ", name, durationFlag, jobFlag)
 	printStats(stats)
 	results = append(results, stats)
 }
