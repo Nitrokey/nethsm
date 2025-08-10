@@ -781,6 +781,8 @@ paths:
               r appened with s, in total 64 bytes (each 32 bytes).
             * Mode `ECDSA` returns the ASN.1 DER encoded signature
               (a SEQUENCE of INTEGER r INTEGER s).
+            * Mode `BIP340` returns the BIP-340 encoded signature:
+              r appened with s, in total 64 bytes (each 32 bytes).
           content:
             application/json:
               schema:
@@ -809,12 +811,14 @@ paths:
           For request body with content type `application/json`:
           * Mode `PKCS1` expects the already hashed data.
           * Mode `PSS_*` expects the already hashed data.
-          * Mode `EdDSA` expects the raw message
+          * Mode `EdDSA` expects any message
             (ED25519 applies the SHA512 hash internally,
             also to derive the nonce).
           * Mode `ECDSA` expects the hashed data
             (using SHA256 for P256,
             SHA384 for P384 and SHA512 for P521).
+          * Mode `BIP340` expects any message
+            (BIP-340 applies the tagged SHA256 hash internally).
         content:
           application/json:
             schema:
@@ -2270,6 +2274,7 @@ components:
         - RSA_Signature_PSS_SHA512
         - EdDSA_Signature
         - ECDSA_Signature
+        - BIP340_Signature
         - AES_Encryption_CBC
         - AES_Decryption_CBC
       type: string
@@ -2300,6 +2305,7 @@ components:
         - PSS_SHA512
         - EdDSA
         - ECDSA
+        - BIP340
       type: string
     KeyList:
       example:

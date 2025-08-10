@@ -207,6 +207,7 @@ type mechanism =
   | RSA_Signature_PSS_SHA512
   | EdDSA_Signature
   | ECDSA_Signature
+  | BIP340_Signature
   | AES_Encryption_CBC
   | AES_Decryption_CBC
 [@@deriving yojson, ord]
@@ -316,7 +317,7 @@ let type_matches_mechanism typ m =
   | EC_P256 -> m = ECDSA_Signature
   | EC_P384 -> m = ECDSA_Signature
   | EC_P521 -> m = ECDSA_Signature
-  | EC_P256K1 -> m = ECDSA_Signature
+  | EC_P256K1 -> List.mem m [ ECDSA_Signature; BIP340_Signature ]
   | BRAINPOOLP256 -> m = ECDSA_Signature
   | BRAINPOOLP384 -> m = ECDSA_Signature
   | BRAINPOOLP512 -> m = ECDSA_Signature
@@ -412,6 +413,7 @@ type sign_mode =
   | PSS_SHA512
   | EdDSA
   | ECDSA
+  | BIP340
 [@@deriving yojson]
 
 let mechanism_of_sign_mode = function
@@ -424,6 +426,7 @@ let mechanism_of_sign_mode = function
   | PSS_SHA512 -> RSA_Signature_PSS_SHA512
   | EdDSA -> EdDSA_Signature
   | ECDSA -> ECDSA_Signature
+  | BIP340 -> BIP340_Signature
 
 let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [ s ])

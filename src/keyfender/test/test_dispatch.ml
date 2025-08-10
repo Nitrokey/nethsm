@@ -3954,6 +3954,30 @@ let crypto_ecdsa_sign () =
           |> get_ok_result "verify"))
     algos
 
+let crypto_bip340_sign () =
+  let mechs = Keyfender.Json.MS.singleton Keyfender.Json.BIP340_Signature in
+  let seed = String.make 16 '\000' in
+  let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
+  let msg = Digestif.SHA256.(digest_string sign_test_data |> to_raw_string) in
+  let priv, pub = Mirage_crypto_ec.P256k1.Dsa_bip340.generate ~g () in
+  Alcotest.test_case "signing with BIP-340 succeeds" `Quick (fun () ->
+      let hsm = operational_mock () in
+      add_pem hsm ~id:"test" mechs (X509.Private_key.encode_pem (`P256K1 priv));
+      let sig_b64 =
+        Lwt_main.run
+          (Hsm.Key.sign hsm ~namespace:None ~id:"test"
+             ~user_nid:(user "operator") Keyfender.Json.BIP340
+             (Base64.encode_exn msg))
+        |> Result.map_error (fun (_, s) -> `Msg s)
+        |> get_ok_result "sign"
+      in
+      let sig_bin = Base64.decode sig_b64 |> get_ok_result "base64" in
+      Alcotest.(check int "BIP-340 sig length" 64 (String.length sig_bin));
+      let sig_pair = String.(sub sig_bin 0 32, sub sig_bin 32 32) in
+      if Mirage_crypto_ec.P256k1.Dsa_bip340.verify_bip340 ~key:pub sig_pair msg
+      then ()
+      else Alcotest.fail "verify")
+
 let crypto_aes_cbc_encrypt () =
   let mechs = Keyfender.Json.MS.singleton Keyfender.Json.AES_Encryption_CBC in
   let sizes = [ 128; 192; 256 ] in
@@ -4319,6 +4343,7 @@ let () =
       ("RSA PSS sign", crypto_rsa_pss_sign ());
       ("ED25519 sign", [ crypto_ed25519_sign () ]);
       ("ECDSA sign", crypto_ecdsa_sign ());
+      ("BIP-340 sign", [ crypto_bip340_sign () ]);
       ("AES-CBC encrypt", crypto_aes_cbc_encrypt ());
       ("AES-CBC decrypt", crypto_aes_cbc_decrypt ());
     ]

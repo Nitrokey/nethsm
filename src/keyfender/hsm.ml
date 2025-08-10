@@ -1891,6 +1891,15 @@ module Make (KV : Kv_ext.Ranged) = struct
                     with Mirage_crypto_pk.Rsa.Insufficient_key ->
                       Error (Bad_request, "Signing failure: RSA key too short.")
                     )
+                | X509 (`P256K1 key), BIP340 -> (
+                    try
+                      let r, s =
+                        Mirage_crypto_ec.P256k1.Dsa_bip340.sign_bip340 ~key
+                          to_sign
+                      in
+                      Ok (r ^ s)
+                    with Invalid_argument x ->
+                      Error (Bad_request, "Signing failure: " ^ x))
                 | Generic _, _ -> Error (Bad_request, "Generic keys can't sign.")
                 | X509 priv, _ ->
                     (match (priv, sign_mode) with
