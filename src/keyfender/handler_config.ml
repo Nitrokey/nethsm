@@ -103,9 +103,9 @@ struct
           | EC_P256 -> Ok `P256
           | EC_P384 -> Ok `P384
           | EC_P521 -> Ok `P521
-          | BRAINPOOLP256 -> Ok `BRAINPOOLP256
-          | BRAINPOOLP384 -> Ok `BRAINPOOLP384
-          | BRAINPOOLP512 -> Ok `BRAINPOOLP512
+          | BrainpoolP256 -> Ok `BrainpoolP256
+          | BrainpoolP384 -> Ok `BrainpoolP384
+          | BrainpoolP512 -> Ok `BrainpoolP512
           | x -> Error (Json.key_type_to_yojson x |> Yojson.Safe.to_string))
           |> function
           | Error typ ->

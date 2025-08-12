@@ -2239,9 +2239,9 @@ components:
         - EC_P384
         - EC_P521
         - EC_P256K1
-        - BRAINPOOLP256
-        - BRAINPOOLP384
-        - BRAINPOOLP512
+        - BrainpoolP256
+        - BrainpoolP384
+        - BrainpoolP512
         - Generic
       type: string
     TlsKeyType:
@@ -2251,9 +2251,9 @@ components:
         - EC_P256
         - EC_P384
         - EC_P521
-        - BRAINPOOLP256
-        - BRAINPOOLP384
-        - BRAINPOOLP512
+        - BrainpoolP256
+        - BrainpoolP384
+        - BrainpoolP512
       type: string
     KeyMechanism:
       enum:

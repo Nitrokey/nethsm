@@ -71,6 +71,6 @@ pin-depends: [
   ["http.dev" "git+https://github.com/nitrokey/nethsm-ocaml-cohttp.git#e1efa0c23f7c22e83e7c24895ffbb490c76a1f24"]
   ["gmp.dev" "git+https://github.com/Nitrokey/nethsm-ocaml-gmp.git#57bed33b309832b4db321692768ebf4a720f4678"]
   ["mirage-crypto-ec.2.0.1" "git+https://github.com/Nitrokey/nethsm-mirage-crypto.git#e30fb4dd59bc47cd3b73343a5ebd78eab57f07ba"]
-  ["x509.1.0.6" "git+https://github.com/Nitrokey/nethsm-ocaml-x509.git#46a8e5d131de953a0fb4079b51fc9fa11a274ee9"]
-  ["tls.2.0.1" "git+https://github.com/Nitrokey/nethsm-ocaml-tls.git#0ceda41bbb7241d865dd490e0663862d29621567"]
+  ["x509.1.0.6" "git+https://github.com/Nitrokey/nethsm-ocaml-x509.git#a3e3753b35f84c163f5f82429e788fc765a1b9c3"]
+  ["tls.2.0.1" "git+https://github.com/Nitrokey/nethsm-ocaml-tls.git#ceb00fd1ae7d315caf7f70727e65c270892c9ad6"]
 ]

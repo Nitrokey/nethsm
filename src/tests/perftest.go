@@ -118,19 +118,19 @@ var benchParams = []benchParam{
 	},
 	{
 		algo:   "brainpoolp256",
-		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP256"}`,
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BrainpoolP256"}`,
 		opMode: "ECDSA",
 		msgLen: 32,
 	},
 	{
 		algo:   "brainpoolp384",
-		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP384"}`,
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BrainpoolP384"}`,
 		opMode: "ECDSA",
 		msgLen: 48,
 	},
 	{
 		algo:   "brainpoolp512",
-		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BRAINPOOLP512"}`,
+		data:   `{"mechanisms":["ECDSA_Signature"],"type":"BrainpoolP512"}`,
 		opMode: "ECDSA",
 		msgLen: 64,
 	},
