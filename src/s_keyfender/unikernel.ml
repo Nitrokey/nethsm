@@ -413,6 +413,15 @@ struct
     in
     let* ip, net, gateway = Hsm.network_configuration hsm_state in
     let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
+    let* () =
+      if not Conf_args.no_platform then (
+        (* wait for S-Net to startup *)
+        let delay = 4 in
+        Log.info (fun m ->
+            m "Waiting %n seconds to make sure S-Net is up" delay);
+        Mirage_sleep.ns (Duration.of_sec delay))
+      else Lwt.return_unit
+    in
     let* http = reconfigure_network cidr gateway in
     (match conf_args.memtrace_port with
     | None -> ()
