@@ -580,7 +580,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/public.pem:
     get:
       responses:
@@ -621,7 +621,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/csr.pem:
     post:
       responses:
@@ -666,7 +666,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/decrypt:
     post:
       responses:
@@ -723,7 +723,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/encrypt:
     post:
       responses:
@@ -767,7 +767,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/sign:
     post:
       responses:
@@ -839,7 +839,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}/cert:
     get:
       responses:
@@ -940,7 +940,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
         x-test-value: myKey1
   /keys/{KeyID}/restrictions/tags/{Tag}:
     put:
@@ -1009,7 +1009,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /namespaces:
     get:
       responses:
@@ -1098,7 +1098,7 @@ paths:
         in: path
         required: true
         schema:
-          type: string
+          $ref: "#/components/schemas/ID"
   /users:
     get:
       responses:
@@ -2185,12 +2185,12 @@ components:
       minLength: 10
       type: string
     ID:
-      pattern: ^[a-zA-Z0-9]+$
+      pattern: ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$
       minLength: 1
       maxLength: 128
       type: string
     UserID:
-      pattern: ^([a-zA-Z0-9]+~)?[a-zA-Z0-9]+$
+      pattern: ^([a-zA-Z0-9][a-zA-Z0-9_.-]*~)?[a-zA-Z0-9][a-zA-Z0-9_.-]*$
       minLength: 1
       maxLength: 128
       type: string
