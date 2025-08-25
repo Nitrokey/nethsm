@@ -1756,12 +1756,51 @@ let user_operator_add_invalid_id2 =
   | _ -> false
 
 let user_operator_add_invalid_id3 =
-  "PUT on /users/test-user/ fails (not alphanum)" @? fun () ->
-  let id = "test-user" in
+  "PUT on /users/test+user/ fails (invalid char)" @? fun () ->
+  let id = "test+user" in
   match
     admin_put_request ~body:(`String operator_json) ("/users/" ^ id ^ "/")
   with
   | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_valid_id_with_dash =
+  "PUT on /users/test-user succeeds (dash allowed)" @? fun () ->
+  let id = "test-user" in
+  let expect = info ("added Jane User (" ^ id ^ "): R-Operator") in
+  match
+    admin_put_request ~expect ~body:(`String operator_json) ("/users/" ^ id)
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc ("/api/v1/users/" ^ id))
+  | _ -> false
+
+let user_operator_add_valid_id_with_underscore =
+  "PUT on /users/test_user succeeds (underscore allowed)" @? fun () ->
+  let id = "test_user" in
+  let expect = info ("added Jane User (" ^ id ^ "): R-Operator") in
+  match
+    admin_put_request ~expect ~body:(`String operator_json) ("/users/" ^ id)
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc ("/api/v1/users/" ^ id))
+  | _ -> false
+
+let user_operator_add_valid_id_with_dot =
+  "PUT on /users/test.user succeeds (dot allowed)" @? fun () ->
+  let id = "test.user" in
+  let expect = info ("added Jane User (" ^ id ^ "): R-Operator") in
+  match
+    admin_put_request ~expect ~body:(`String operator_json) ("/users/" ^ id)
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc ("/api/v1/users/" ^ id))
   | _ -> false
 
 let user_operator_add_invalid_id4 =
@@ -1773,6 +1812,24 @@ let user_operator_add_invalid_id4 =
 let user_operator_add_invalid_id5 =
   "PUT on /users/user~/ fails (empty user id)" @? fun () ->
   match admin_put_request ~body:(`String operator_json) "/users/user~/" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_invalid_id_starts_with_underscore =
+  "PUT on /users/_user fails (starts with underscore)" @? fun () ->
+  match admin_put_request ~body:(`String operator_json) "/users/_user" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_invalid_id_starts_with_dash =
+  "PUT on /users/-user fails (starts with dash)" @? fun () ->
+  match admin_put_request ~body:(`String operator_json) "/users/-user" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let user_operator_add_invalid_id_starts_with_dot =
+  "PUT on /users/.user fails (starts with dot)" @? fun () ->
+  match admin_put_request ~body:(`String operator_json) "/users/.user" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -2395,9 +2452,81 @@ let keys_generate_invalid_id =
   match admin_post_request ~body:(`String generate_json) "/keys/generate" with
   | _, Some (`Bad_request, _, `String reply, _) ->
       let expected =
-        {|{"message":"ID may only contain alphanumeric characters."}|}
+        {|{"message":"ID may only contain alphanumeric characters, underscores, dashes, and dots."}|}
       in
       String.equal reply expected
+  | _ -> false
+
+let keys_generate_valid_id_with_dash =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "test-key" }|}
+  in
+  "POST on /keys/generate with dash ID succeeds" @? fun () ->
+  let expect = info "created (test-key)" in
+  match
+    admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc "/api/v1/keys/test-key")
+  | _ -> false
+
+let keys_generate_valid_id_with_underscore =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "test_key" }|}
+  in
+  "POST on /keys/generate with underscore ID succeeds" @? fun () ->
+  let expect = info "created (test_key)" in
+  match
+    admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc "/api/v1/keys/test_key")
+  | _ -> false
+
+let keys_generate_valid_id_with_dot =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "test.key" }|}
+  in
+  "POST on /keys/generate with dot ID succeeds" @? fun () ->
+  let expect = info "created (test.key)" in
+  match
+    admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  with
+  | _, Some (`Created, headers, _, _) -> (
+      match Cohttp.Header.get headers "location" with
+      | None -> false
+      | Some loc -> String.equal loc "/api/v1/keys/test.key")
+  | _ -> false
+
+let keys_generate_invalid_id_starts_with_underscore =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "_key" }|}
+  in
+  "POST on /keys/generate with ID starting with underscore fails" @? fun () ->
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_generate_invalid_id_starts_with_dash =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "-key" }|}
+  in
+  "POST on /keys/generate with ID starting with dash fails" @? fun () ->
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_generate_invalid_id_starts_with_dot =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: ".key" }|}
+  in
+  "POST on /keys/generate with ID starting with dot fails" @? fun () ->
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
 let keys_generate_invalid_id_length =
@@ -4151,8 +4280,14 @@ let () =
           user_operator_add_invalid_id;
           user_operator_add_invalid_id2;
           user_operator_add_invalid_id3;
+          user_operator_add_valid_id_with_dash;
+          user_operator_add_valid_id_with_underscore;
+          user_operator_add_valid_id_with_dot;
           user_operator_add_invalid_id4;
           user_operator_add_invalid_id5;
+          user_operator_add_invalid_id_starts_with_underscore;
+          user_operator_add_invalid_id_starts_with_dash;
+          user_operator_add_invalid_id_starts_with_dot;
           user_operator_add_root_root;
           user_operator_add_ns_root;
           user_operator_add_root_ns;
@@ -4227,6 +4362,12 @@ let () =
         [
           keys_generate;
           keys_generate_invalid_id;
+          keys_generate_valid_id_with_dash;
+          keys_generate_valid_id_with_underscore;
+          keys_generate_valid_id_with_dot;
+          keys_generate_invalid_id_starts_with_underscore;
+          keys_generate_invalid_id_starts_with_dash;
+          keys_generate_invalid_id_starts_with_dot;
           keys_generate_invalid_id_length;
           keys_generate_invalid_mech;
           keys_generate_no_mech;

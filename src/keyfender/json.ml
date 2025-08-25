@@ -449,9 +449,11 @@ type tls_generate_key_req = {
 }
 [@@deriving yojson]
 
-let is_alphanum s =
+let has_valid_chars s =
   Astring.String.for_all
-    (function 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' -> true | _ -> false)
+    (function
+      | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' | '.' -> true
+      | _ -> false)
     s
 
 let valid_id id =
@@ -459,7 +461,14 @@ let valid_id id =
   >>= fun () ->
   guard (String.length id <= 128) "ID cannot be longer than 128 characters."
   >>= fun () ->
-  guard (is_alphanum id) "ID may only contain alphanumeric characters."
+  guard (has_valid_chars id)
+    "ID may only contain alphanumeric characters, underscores, dashes, and \
+     dots."
+  >>= fun () ->
+  guard
+    (not
+       (String.get id 0 = '_' || String.get id 0 = '-' || String.get id 0 = '.'))
+    "ID cannot start with underscore, dash, or dot."
   >>| fun () -> id
 
 let decode_generate_key_req s =
