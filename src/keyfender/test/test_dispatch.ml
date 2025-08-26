@@ -183,6 +183,31 @@ let system_shutdown_namespaced_fails =
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
+let system_shutdown_operational_requires_auth =
+  "a request for /system/shutdown in Operational state is rejected without \
+   authentication"
+  @? fun () ->
+  match
+    request ~meth:`POST ~hsm_state:(operational_mock ()) "/system/shutdown"
+  with
+  | _, Some (`Unauthorized, _, _, _) -> true
+  | _ -> false
+
+let system_shutdown_unprovisioned_no_auth =
+  "a request for /system/shutdown in Unprovisioned state works without \
+   authentication"
+  @? fun () ->
+  match request ~meth:`POST "/system/shutdown" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
+let system_shutdown_locked_no_auth =
+  "a request for /system/shutdown in Locked state works without authentication"
+  @? fun () ->
+  match request ~meth:`POST ~hsm_state:(locked_mock ()) "/system/shutdown" with
+  | _, Some (`No_content, _, _, _) -> true
+  | _ -> false
+
 let system_factory_reset_ok =
   "a request for /system/factory-reset with authenticated user returns 200"
   @? fun () ->
@@ -4182,7 +4207,13 @@ let () =
         ] );
       ("/system/reboot", [ system_reboot_ok; system_reboot_namespaced_fails ]);
       ( "/system/shutdown",
-        [ system_shutdown_ok; system_shutdown_namespaced_fails ] );
+        [
+          system_shutdown_ok;
+          system_shutdown_namespaced_fails;
+          system_shutdown_operational_requires_auth;
+          system_shutdown_unprovisioned_no_auth;
+          system_shutdown_locked_no_auth;
+        ] );
       ( "/system/factory-reset",
         [ system_factory_reset_ok; system_factory_reset_namespaced_fails ] );
       ( "/system/update",

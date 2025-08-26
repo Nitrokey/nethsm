@@ -1975,20 +1975,27 @@ paths:
         "204":
           description: About to shut down NetHSM.
         "401":
-          description: Authentication required but none provided.
+          description: Authentication required but none provided (only in Operational state).
         "403":
-          description: Access denied (e.g. user is in namespace)
+          description: Access denied (e.g. user is in namespace, only in Operational state)
         "406":
           description: Content type in Accept header not supported.
-        "412":
-          description: Precondition failed (NetHSM was not *Operational*).
-      description: Shut down NetHSM.
+      description: |
+        Shut down NetHSM.
+
+        Authentication behavior varies by NetHSM state:
+        - **Operational**: Requires Administrator authentication
+        - **Locked** or **Unprovisioned**: No authentication required
       security:
-        - basic: []
+        - basic: [] # when Operational
+        - {} # when Unprovisioned or Locked
       x-annotation-role:
         - Administrator
+        - Public
       x-annotation-state:
         - Operational
+        - Unprovisioned
+        - Locked
       x-annotation-caller-namespace:
         - Root
   /system/factory-reset:

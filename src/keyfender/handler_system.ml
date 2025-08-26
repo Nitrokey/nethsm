@@ -45,13 +45,28 @@ struct
   class shutdown hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
-      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      inherit!
+        Endpoint.input_state_validated
+          hsm_state
+          [ `Operational; `Locked; `Unprovisioned ]
+
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
+      inherit! Endpoint.r_role hsm_state `Administrator ip as r_role
 
       method! process_post rd =
         Hsm.System.shutdown hsm_state >>= fun () -> Wm.continue true rd
+
+      method! is_authorized rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned -> Wm.continue `Authorized rd
+        | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
+
+      method! forbidden rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned -> Wm.continue false rd
+        | `Operational -> r_role#forbidden rd
     end
 
   class factory_reset hsm_state ip =

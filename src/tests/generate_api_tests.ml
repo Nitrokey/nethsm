@@ -337,9 +337,8 @@ let tests_for_states meth path cmd (response_code, response_body)
        write_cmd (outdir ^ "/400_wrong_json_cmd.sh") wrong_json_cmd);
 
     (* prepare wrong auth header if endpoint requires authentication *)
-    (match role with
-    | None -> ()
-    | Some r ->
+    (match (role, state) with
+    | Some r, "Operational" ->
         let current_auth = auth_header (passphrase r) in
         let someone_else =
           match r with
@@ -370,7 +369,8 @@ let tests_for_states meth path cmd (response_code, response_body)
             Printf.sprintf "%s %s  -D 401_no_auth_headers.out -o /dev/null \n\n"
               cmd' no_auth
           in
-          write_cmd (outdir ^ "/401_no_auth_cmd.sh") no_auth_cmd);
+          write_cmd (outdir ^ "/401_no_auth_cmd.sh") no_auth_cmd
+    | _, _ -> ());
 
     let other_method = "PATCH" in
     let wrong_meth =
