@@ -203,6 +203,13 @@ module type S = sig
     val remove :
       namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
+    val move :
+      namespace:string option ->
+      t ->
+      current_id:string ->
+      new_id:string ->
+      (unit, error) result Lwt.t
+
     val get_json :
       namespace:string option ->
       t ->

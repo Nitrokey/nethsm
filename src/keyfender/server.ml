@@ -72,6 +72,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ("/keys/:id/encrypt", fun () -> new Keys.handler_encrypt hsm_state ip);
         ("/keys/:id/sign", fun () -> new Keys.handler_sign hsm_state ip);
         ("/keys/:id/cert", fun () -> new Keys.handler_cert hsm_state ip);
+        ("/keys/:id/move", fun () -> new Keys.handler_move hsm_state ip);
         ( "/keys/:id/restrictions/tags/:tag",
           fun () -> new Keys.handler_restrictions_tags hsm_state ip );
         ("/namespaces", fun () -> new Namespace.handler_namespaces hsm_state ip);

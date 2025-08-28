@@ -708,6 +708,54 @@ struct
         Wm.continue [ ("application/json", self#sign) ] rd
     end
 
+  class handler_move hsm_state ip =
+    object (self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.no_cache
+
+      method private move rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        let ok current_id new_id =
+          let namespace = Endpoint.get_namespace rd in
+          Hsm.Key.move hsm_state ~namespace ~current_id ~new_id >>= function
+          | Ok () ->
+              let body =
+                `Assoc [ ("id", `String new_id) ] |> Yojson.Basic.to_string
+              in
+              let rd' = { rd with resp_body = `String body } in
+              Wm.continue true rd'
+          | Error e -> Endpoint.respond_error e rd
+        in
+        let ok current_id =
+          Json.decode_move_key_req content
+          |> Endpoint.err_to_bad_request (ok current_id) rd
+        in
+        Endpoint.lookup_path_info ok "id" rd
+
+      method! resource_exists rd =
+        let ok id =
+          let namespace = Endpoint.get_namespace rd in
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
+          | Ok does_exist -> Wm.continue does_exist rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Endpoint.lookup_path_info ok "id" rd
+
+      method! process_post rd = self#move rd
+      method! allowed_methods rd = Wm.continue [ `POST ] rd
+
+      method content_types_provided rd =
+        Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
+
+      method content_types_accepted rd =
+        Wm.continue [ ("application/json", self#move) ] rd
+
+      method! is_authorized = Access.is_authorized hsm_state ip
+    end
+
   class handler_restrictions_tags hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length

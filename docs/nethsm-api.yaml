@@ -942,6 +942,54 @@ paths:
         schema:
           $ref: "#/components/schemas/ID"
         x-test-value: myKey1
+  /keys/{KeyID}/move:
+    post:
+      responses:
+        "200":
+          description: Key was successfully moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResourceId"
+        "400":
+          description: Bad request (invalid JSON or empty newId).
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (Administrator role required).
+        "404":
+          description: Key for KeyID not found in namespace.
+        "409":
+          description: A key with the new ID already exists.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Move a key by changing its identifier. The key content remains unchanged,
+        but it will be accessible under the new identifier. The old identifier
+        becomes invalid after successful move.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveKeyRequest"
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
+      x-test-value-KeyID: myKey1
+    parameters:
+      - name: KeyID
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
+        x-test-value: myKey1
   /keys/{KeyID}/restrictions/tags/{Tag}:
     put:
       responses:
@@ -2795,6 +2843,15 @@ components:
       required:
         - newPassphrase
         - currentPassphrase
+    MoveKeyRequest:
+      example:
+        newId: ab0d5df406ddad1075ab
+      type: object
+      properties:
+        newId:
+          $ref: "#/components/schemas/ID"
+      required:
+        - newId
     RestoreRequest:
       type: object
       properties:

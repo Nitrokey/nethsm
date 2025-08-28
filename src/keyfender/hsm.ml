@@ -197,6 +197,13 @@ module type S = sig
     val remove :
       namespace:string option -> t -> id:string -> (unit, error) result Lwt.t
 
+    val move :
+      namespace:string option ->
+      t ->
+      current_id:string ->
+      new_id:string ->
+      (unit, error) result Lwt.t
+
     val get_json :
       namespace:string option ->
       t ->
@@ -1559,6 +1566,47 @@ module Make (KV : Kv_ext.Ranged) = struct
           internal_server_error Write "Remove key" Key_store.pp_write_error
             ( Key_store.remove store key >|= fun () ->
               Access.info (fun m -> m "removed (%s)" id) ))
+
+    let move ~namespace t ~current_id ~new_id =
+      let open Lwt_result.Infix in
+      let store = key_store t in
+      let current_key = make_store_key ~namespace current_id in
+      let new_key = make_store_key ~namespace new_id in
+      with_write_lock (fun () ->
+          (* Check if new key already exists *)
+          internal_server_error Read "Check new key exists" Key_store.pp_error
+            (Key_store.exists store new_key)
+          >>= function
+          | Some _ ->
+              Lwt.return
+                (Error
+                   (Conflict, Printf.sprintf "Key '%s' already exists" new_id))
+          | None ->
+              (* Get the key data *)
+              internal_server_error Read "Get key data" Key_store.pp_read_error
+                (Key_store.get store current_key)
+              >>= fun key_data ->
+              let operations =
+                match
+                  Hashtbl.find_opt cached_operations (namespace, current_id)
+                with
+                | None -> key_data.operations
+                | Some v -> v
+              in
+              let key_data = { key_data with operations } in
+              (* Write to new location *)
+              internal_server_error Write "Write moved key"
+                Key_store.pp_write_error
+                (Key_store.set store new_key key_data)
+              >>= fun () ->
+              (* Remove old location *)
+              internal_server_error Write "Remove old key"
+                Key_store.pp_write_error
+                (Key_store.remove store current_key)
+              >|= fun () ->
+              (* Update cache *)
+              Hashtbl.remove cached_operations (namespace, current_id);
+              Access.info (fun m -> m "moved (%s) to (%s)" current_id new_id))
 
     let remove_all_in_namespace t ~namespace =
       let open Lwt.Infix in

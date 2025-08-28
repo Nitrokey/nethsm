@@ -3637,6 +3637,82 @@ let keys_key_cert_delete_invalid_id =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+(* Move key tests *)
+let move_request = {|{ "newId": "new_key_id" }|}
+let invalid_move_request = {|{ "newId": "" }|}
+let conflicting_move_request = {|{ "newId": "keyID" }|}
+
+let keys_key_move_success =
+  "POST on /keys/keyID/move succeeds" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  let expect = info "moved (keyID) to (new_key_id)" in
+  match
+    admin_post_request ~expect ~body:(`String move_request) ~hsm_state
+      "/keys/keyID/move"
+  with
+  | hsm_state, Some (`OK, _, `String body, _) -> (
+      match Yojson.Safe.from_string body with
+      | `Assoc [ ("id", `String new_id) ] when new_id = "new_key_id" -> (
+          let expect = info "moved (new_key_id) to (keyID)" in
+          match
+            admin_post_request ~expect ~body:(`String conflicting_move_request)
+              ~hsm_state "/keys/new_key_id/move"
+          with
+          | _, Some (`OK, _, `String _, _) -> true
+          | _ -> false)
+      | _ -> false)
+  | _ -> false
+
+let keys_key_move_not_found =
+  "POST on /keys/nonexistent/move fails (key not found)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    admin_post_request ~body:(`String move_request) ~hsm_state
+      "/keys/nonexistent/move"
+  with
+  | _, Some (`Not_found, _, _, _) -> true
+  | _ -> false
+
+let keys_key_move_empty_id =
+  "POST on /keys/keyID/move fails (empty new_id)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    admin_post_request ~body:(`String invalid_move_request) ~hsm_state
+      "/keys/keyID/move"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_key_move_conflict =
+  "POST on /keys/keyID/move fails (new_id already exists)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    admin_post_request ~body:(`String conflicting_move_request) ~hsm_state
+      "/keys/keyID/move"
+  with
+  | _, Some (`Conflict, _, _, _) -> true
+  | _ -> false
+
+let keys_key_move_invalid_json =
+  "POST on /keys/keyID/move fails (invalid JSON)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    admin_post_request ~body:(`String "{invalid json}") ~hsm_state
+      "/keys/keyID/move"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_key_move_forbidden =
+  "POST on /keys/keyID/move fails (insufficient permissions)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    request ~meth:`POST ~headers:operator_headers ~body:(`String move_request)
+      ~hsm_state "/keys/keyID/move"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let keys_key_version_get_fails =
   "GET on /keys/.version fails" @? fun () ->
   match
@@ -4489,6 +4565,15 @@ let () =
           keys_key_cert_delete;
           keys_key_cert_delete_not_found;
           keys_key_cert_delete_invalid_id;
+        ] );
+      ( "/keys/keyID/move",
+        [
+          keys_key_move_success;
+          keys_key_move_not_found;
+          keys_key_move_empty_id;
+          keys_key_move_conflict;
+          keys_key_move_invalid_json;
+          keys_key_move_forbidden;
         ] );
       ( "/keys/version",
         [ keys_key_version_get_fails; keys_key_version_delete_fails ] );
