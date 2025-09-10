@@ -76,7 +76,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       [
         TCP.create_connection (Stack.tcp stack)
           (Ipaddr.V4 (Args.platform ()), etcd_port);
-        ( timeout 5 "TCP connection to etcd timed out" >|= fun _ ->
+        ( timeout 120 "TCP connection to etcd timed out" >|= fun _ ->
           Error `Timeout );
       ]
     >|= function
