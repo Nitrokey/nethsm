@@ -27,11 +27,18 @@ struct
     | Error m -> respond_error (Bad_request, m) rd
     | Ok data -> ok data
 
-  let lookup_path_info ok key rd =
+  let is_glob id = String.ends_with ~suffix:"*" id
+
+  let lookup_path_info ?(allow_glob = false) ok key rd =
     err_to_bad_request ok rd
       (match Webmachine.Rd.lookup_path_info key rd with
       | None -> Error "no ID provided"
-      | Some x -> Json.valid_id x)
+      | Some x ->
+          let id =
+            if allow_glob && is_glob x then String.sub x 0 (String.length x - 1)
+            else x
+          in
+          Result.map (fun _ -> x) (Json.valid_id id))
 
   let lookup_path_nid ok rd =
     err_to_bad_request ok rd

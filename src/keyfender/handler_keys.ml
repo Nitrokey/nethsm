@@ -373,16 +373,38 @@ struct
                     Wm.continue true rd))
         | _ -> Wm.continue true rd
 
+      (* special case where GET "/keys/xxx*" is treated as GET "/keys"
+         restricted to the subset of keys starting with xxx. Empty prefix is
+         not allowed (since checked by Json.is_valid) *)
+      method private list_keys_prefix prefix rd =
+        let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
+        let namespace = user_nid.namespace in
+        Hsm.Key.list ~with_prefix:prefix ~namespace
+          ~filter_by_restrictions:false ~user_nid hsm_state
+        >>= function
+        | Error e -> Endpoint.respond_error e rd
+        | Ok keys ->
+            let items =
+              tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
+            in
+            let body = Yojson.Safe.to_string (`List items) in
+            Wm.continue (`String body) rd
+
       method private get_json rd =
         let ok id =
-          let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.get_json ~id hsm_state ~namespace >>= function
-          | Error e -> Endpoint.respond_error e rd
-          | Ok public_key ->
-              let body = Yojson.Safe.to_string public_key in
-              Wm.continue (`String body) rd
+          if Endpoint.is_glob id then
+            (* treat id as a prefix for a key listing instead *)
+            let prefix = String.sub id 0 (String.length id - 1) in
+            self#list_keys_prefix prefix rd
+          else
+            let namespace = Endpoint.get_namespace rd in
+            Hsm.Key.get_json ~id hsm_state ~namespace >>= function
+            | Error e -> Endpoint.respond_error e rd
+            | Ok public_key ->
+                let body = Yojson.Safe.to_string public_key in
+                Wm.continue (`String body) rd
         in
-        Endpoint.lookup_path_info ok "id" rd
+        Endpoint.lookup_path_info ~allow_glob:true ok "id" rd
 
       method private set_json rd =
         let body = rd.Webmachine.Rd.req_body in
@@ -429,12 +451,14 @@ struct
 
       method! resource_exists rd =
         let ok id =
-          let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.exists hsm_state ~namespace ~id >>= function
-          | Ok does_exist -> Wm.continue does_exist rd
-          | Error e -> Endpoint.respond_error e rd
+          if Endpoint.is_glob id then Wm.continue true rd
+          else
+            let namespace = Endpoint.get_namespace rd in
+            Hsm.Key.exists hsm_state ~namespace ~id >>= function
+            | Ok does_exist -> Wm.continue does_exist rd
+            | Error e -> Endpoint.respond_error e rd
         in
-        Endpoint.lookup_path_info ok "id" rd
+        Endpoint.lookup_path_info ~allow_glob:true ok "id" rd
 
       method! delete_resource rd =
         let ok id =

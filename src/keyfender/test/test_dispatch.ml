@@ -2676,6 +2676,70 @@ let keys_generate_generic_fail =
       | Some _ -> false)
   | _ -> false
 
+let keys_key_glob =
+  "GET on /keys/pfx* returns matching keys" @? fun () ->
+  match
+    request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/k*"
+  with
+  | _, Some (`OK, _, `String body, _) -> String.equal body {|[{"id":"keyID"}]|}
+  | _ -> false
+
+let keys_key_glob_invalid =
+  "GET on /keys/* fails" @? fun () ->
+  match
+    request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/*"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_key_glob_empty =
+  "GET on /keys/pfx* returns empty list if nothing matches" @? fun () ->
+  match
+    request ~headers:admin_headers ~hsm_state:(hsm_with_key ())
+      "/keys/impossibleprefix*"
+  with
+  | _, Some (`OK, _, `String body, _) -> String.equal body {|[]|}
+  | _ -> false
+
+let keys_key_glob_ns =
+  "GET on /keys/pfx* behaves like /keys w.r.t. namespaces" @? fun () ->
+  let n1 =
+    match
+      request ~headers:subadmin_headers
+        ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+        "/keys/s*"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"subKeyID"}]|}
+    | _ -> false
+  in
+  let n2 =
+    match
+      request ~headers:admin_headers
+        ~hsm_state:(hsm_with_key ~and_namespace:"namespace1" ())
+        "/keys/k*"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"keyID"}]|}
+    | _ -> false
+  in
+  let n3 =
+    match
+      request ~headers:subadmin_headers ~hsm_state:(hsm_with_key ()) "/keys/x*"
+    with
+    | _, Some (`OK, _, `String body, _) -> String.equal body "[]"
+    | _ -> false
+  in
+  let n4 =
+    match
+      request ~headers:admin_headers ~hsm_state:(hsm_with_key ()) "/keys/k*"
+    with
+    | _, Some (`OK, _, `String body, _) ->
+        String.equal body {|[{"id":"keyID"}]|}
+    | _ -> false
+  in
+  n1 && n2 && n3 && n4
+
 let keys_key_get =
   "GET on /keys/keyID succeeds" @? fun () ->
   match
@@ -4530,6 +4594,10 @@ let () =
           keys_key_get_generic;
           keys_key_put_generic;
           keys_key_get_with_restrictions;
+          keys_key_glob;
+          keys_key_glob_invalid;
+          keys_key_glob_empty;
+          keys_key_glob_ns;
         ] );
       ( "/keys/keyID/restrictions/tags",
         [
