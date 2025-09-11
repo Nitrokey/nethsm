@@ -261,6 +261,7 @@ paths:
         Get a list of the identifiers of all keys that are currently stored in NetHSM.
         If the caller is in a namespace, only keys in that namespace are returned.
         Separate requests need to be made to request the individual key data.
+        To fetch only a subset of keys, consider using `/keys/pfx*`.
       parameters:
         - name: filter
           in: query
@@ -385,6 +386,7 @@ paths:
               encoded affine coordinates x and y).
             * Curve25519 keys are 32 byte, and follow the RFC8032 5.1.2 encoding \
               (little endian, x over y).
+
           content:
             application/json:
               schema:
@@ -451,7 +453,14 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Retrieve the public key.
+      description: |
+        Retrieve a single public key.
+
+        As a special case, if KeyID ends with a `*` (e.g. `/keys/prefix*`), this
+        endpoints behaves like `/keys` and returns the subset of all accessible
+        keys that start with the given `prefix`. On large key stores, this is
+        more performant that calling `/keys` and filtering afterwards. Refer to
+        `/keys` for a specification of the reponses in this case.
       security:
         - basic: []
       x-annotation-role:
