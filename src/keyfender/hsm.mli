@@ -165,6 +165,7 @@ module type S = sig
       namespace:string option -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
+      ?with_prefix:string ->
       namespace:string option ->
       t ->
       filter_by_restrictions:bool ->

@@ -50,7 +50,9 @@ module Range = struct
   type t = { prefix : Key.t; start : string option; stop : string option }
   (*  Range of keys of the form [prefix//start, prefix//stop[ in lexicographical
       order.
-      - start and stop correspond to a range for *one segment*:
+      - prefix is expected to represent a Mirage_kv *directory*. Any prefix
+        within a directory should be represented with start/stop.
+      - start and stop correspond to a range within *one directory*:
         there is no way to describe a range spanning over multiple
         hierarchical levels.
       - start is inclusive, stop is exclusive

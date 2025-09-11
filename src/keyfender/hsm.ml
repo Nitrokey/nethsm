@@ -159,6 +159,7 @@ module type S = sig
       namespace:string option -> t -> id:string -> (bool, error) result Lwt.t
 
     val list :
+      ?with_prefix:string ->
       namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
@@ -1374,14 +1375,25 @@ module Make (KV : Kv_ext.Ranged) = struct
       in
       Lwt.return (Ok { key with operations })
 
-    let efficient_list t namespace =
+    let efficient_list t ?with_prefix namespace =
       let store = key_store t in
       let range = Namespace.file_range namespace in
+      let range =
+        match with_prefix with
+        | Some prefix when prefix <> "" ->
+            let start = prefix in
+            let stop =
+              Kv_ext.Range.range_end_of_prefix (Bytes.of_string start)
+              |> Bytes.unsafe_to_string
+            in
+            { range with start = Some start; stop = Some stop }
+        | _ -> range
+      in
       Key_store.list_range store range
 
-    let list ~namespace t ~filter_by_restrictions ~user_nid =
+    let list ?with_prefix ~namespace t ~filter_by_restrictions ~user_nid =
       let open Lwt.Infix in
-      efficient_list t namespace >>= function
+      efficient_list t ?with_prefix namespace >>= function
       | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt_result.return []
       | Error e ->
           internal_server_error Read "List keys" Key_store.pp_error
