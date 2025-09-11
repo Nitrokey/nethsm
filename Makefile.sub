@@ -187,8 +187,8 @@ distclean: clean
 	-opam pin remove -y $(TOP_DIR)/src/keyfender#HEAD
 	$(RM) src/keyfender/buildTag
 	$(RM) $(SOFTWARE_VERSION)
-	$(RM) $(ETCD_DIR)
-	$(RM) $(API_DOCS_DIR)
+	$(RM) -rf $(ETCD_DIR)
+	$(RM) -rf $(API_DOCS_DIR)
 	$(RM) .stamp-prepare
 
 # ------------------------------------------------------------------------------
