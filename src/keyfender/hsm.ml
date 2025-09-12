@@ -2144,17 +2144,15 @@ module Make (KV : Kv_ext.Ranged) = struct
                 (Config_store.set t.kv Unattended_boot status)
               >>= fun () ->
               if status then
-                KV.batch t.kv (fun b ->
-                    let encryption_key = t.device_key in
-                    internal_server_error Write "Write unattended Domain Key"
-                      KV.pp_write_error
-                      (Domain_key_store.set b Unattended ~encryption_key
-                         keys.domain_key))
+                let encryption_key = t.device_key in
+                internal_server_error Write "Write unattended Domain Key"
+                  KV.pp_write_error
+                  (Domain_key_store.set t.kv Unattended ~encryption_key
+                     keys.domain_key)
               else
-                KV.batch t.kv (fun b ->
-                    internal_server_error Write "Remove unattended Domain Key"
-                      KV.pp_write_error
-                      (Domain_key_store.remove b Unattended)))
+                internal_server_error Write "Remove unattended Domain Key"
+                  KV.pp_write_error
+                  (Domain_key_store.remove t.kv Unattended))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
