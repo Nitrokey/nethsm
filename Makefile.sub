@@ -360,6 +360,7 @@ $(RUN_DIR)/etcd.pid:
 		--advertise-client-urls 'http://169.254.169.2:2379' \
 		--data-dir $(RUN_DIR)/etcd \
 		--log-level debug \
+		--max-txn-ops 512 \
         --log-outputs $(RUN_DIR)/etcd.log \
 	    & echo $$! > $@
 

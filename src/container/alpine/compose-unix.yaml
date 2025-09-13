@@ -37,6 +37,7 @@ services:
         --trusted-ca-file=/run/secrets/ca_cert
         --advertise-client-urls=https://0.0.0.0:2379
         --listen-client-urls=https://0.0.0.0:2379
+        --max-txn-ops=512
     volumes:
       - data:/etcd-data
     secrets:

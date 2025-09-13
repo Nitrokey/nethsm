@@ -16,7 +16,7 @@ etcd \
   --advertise-client-urls "http://$ETCD_IP:$ETCD_PORT" \
   --data-dir /data \
   --host-whitelist "$KEYFENDER_IP" \
-  --max-tnx-ops 512 \
+  --max-txn-ops 512 \
   $ETCD_DEBUG_LOG \
   2>&1 | sed "s/^/[etcd] /" \
   &
