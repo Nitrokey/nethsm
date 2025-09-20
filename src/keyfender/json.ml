@@ -95,12 +95,6 @@ let decode_passphrase_change json =
   valid_passphrase ~name:"passphrase" passphrase.newPassphrase >>| fun () ->
   (passphrase.newPassphrase, passphrase.currentPassphrase)
 
-type move_key_req = { newId : string } [@@deriving yojson]
-
-let decode_move_key_req data =
-  decode move_key_req_of_yojson data >>= fun move_req ->
-  nonempty ~name:"newId" move_req.newId >>| fun () -> move_req.newId
-
 type provision_req = {
   unlockPassphrase : string;
   adminPassphrase : string;
@@ -493,6 +487,12 @@ let decode_generate_key_req s =
   guard (MS.cardinal r.mechanisms > 0) "Empty set of mechanisms" >>= fun () ->
   let empty_or_valid id = if String.length id = 0 then Ok "" else valid_id id in
   empty_or_valid r.id >>| fun _ -> r
+
+type move_key_req = { newId : string } [@@deriving yojson]
+
+let decode_move_key_req data =
+  decode move_key_req_of_yojson data >>= fun move_req ->
+  nonempty ~name:"newId" move_req.newId >>= fun () -> valid_id move_req.newId
 
 type role = [ `Administrator | `Operator | `Metrics | `Backup ]
 [@@deriving yojson]
