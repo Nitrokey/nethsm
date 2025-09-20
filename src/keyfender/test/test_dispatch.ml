@@ -2554,6 +2554,15 @@ let keys_generate_invalid_id_starts_with_dot =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let keys_generate_invalid_id_utf8 =
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "küy" }|}
+  in
+  {|POST on /keys/generate with ID with küy fails|} @? fun () ->
+  match admin_post_request ~body:(`String generate_json) "/keys/generate" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
 let keys_generate_invalid_id_length =
   let generate_json =
     {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890" }|}
@@ -2761,7 +2770,7 @@ let keys_key_put_pem =
   | _ -> false
 
 let keys_key_put_already_there =
-  "PUT on /keys/keyID succeeds" @? fun () ->
+  "PUT on existing /keys/keyID fails" @? fun () ->
   match
     admin_put_request ~hsm_state:(hsm_with_key ()) ~body:(`String key_json)
       "/keys/keyID"
@@ -2772,6 +2781,12 @@ let keys_key_put_already_there =
 let keys_key_put_invalid_id =
   "PUT on /keys/keyID fails (invalid ID)" @? fun () ->
   match admin_put_request ~body:(`String key_json) "/keys//" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let keys_key_put_invalid_utf8_id =
+  "PUT on /keys/keyID fails (invalid UTF-8 ID)" @? fun () ->
+  match admin_put_request ~body:(`String key_json) "/keys/küy" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -3639,8 +3654,9 @@ let keys_key_cert_delete_invalid_id =
 
 (* Move key tests *)
 let move_request = {|{ "newId": "new_key_id" }|}
-let invalid_move_request = {|{ "newId": "" }|}
+let empty_move_request = {|{ "newId": "" }|}
 let conflicting_move_request = {|{ "newId": "keyID" }|}
+let invalid_move_request = {|{ "newId": "küy" }|}
 
 let keys_key_move_success =
   "POST on /keys/keyID/move succeeds" @? fun () ->
@@ -3677,7 +3693,7 @@ let keys_key_move_empty_id =
   "POST on /keys/keyID/move fails (empty new_id)" @? fun () ->
   let hsm_state = hsm_with_key () in
   match
-    admin_post_request ~body:(`String invalid_move_request) ~hsm_state
+    admin_post_request ~body:(`String empty_move_request) ~hsm_state
       "/keys/keyID/move"
   with
   | _, Some (`Bad_request, _, _, _) -> true
@@ -3691,6 +3707,16 @@ let keys_key_move_conflict =
       "/keys/keyID/move"
   with
   | _, Some (`Conflict, _, _, _) -> true
+  | _ -> false
+
+let keys_key_move_invalid_id =
+  "POST on /keys/keyID/move fails (invalid ID)" @? fun () ->
+  let hsm_state = hsm_with_key () in
+  match
+    admin_post_request ~body:(`String invalid_move_request) ~hsm_state
+      "/keys/keyID/move"
+  with
+  | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
 let keys_key_move_invalid_json =
@@ -4475,6 +4501,7 @@ let () =
           keys_generate_invalid_id_starts_with_underscore;
           keys_generate_invalid_id_starts_with_dash;
           keys_generate_invalid_id_starts_with_dot;
+          keys_generate_invalid_id_utf8;
           keys_generate_invalid_id_length;
           keys_generate_invalid_mech;
           keys_generate_no_mech;
@@ -4494,6 +4521,7 @@ let () =
           keys_key_put_pem;
           keys_key_put_already_there;
           keys_key_put_invalid_id;
+          keys_key_put_invalid_utf8_id;
           keys_key_delete;
           keys_key_delete_not_found;
           keys_key_delete_invalid_id;
@@ -4572,6 +4600,7 @@ let () =
           keys_key_move_not_found;
           keys_key_move_empty_id;
           keys_key_move_conflict;
+          keys_key_move_invalid_id;
           keys_key_move_invalid_json;
           keys_key_move_forbidden;
         ] );
