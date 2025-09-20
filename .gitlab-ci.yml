@@ -75,6 +75,7 @@ build_builder_image:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         PUSH: "push=false"
+        NO_CACHE: "--no-cache"
     - if: $BUILDER_TAG != "latest"
   stage: prepare
   needs: []
@@ -84,7 +85,10 @@ build_builder_image:
   before_script: *setup_job_buildkit
   script:
     - >-
+      [ -n "$NO_CACHE" ] &&  rm -rf /downloads/*
+    - >-
       buildctl build --frontend=dockerfile.v0 --progress=plain
+      ${NO_CACHE}
       --local dockerfile=${CI_PROJECT_DIR}/src/container/builder
       --local context="${CI_PROJECT_DIR}/src/container/builder"
       --opt build-arg:COMMIT_ID=${CI_COMMIT_SHORT_SHA}
