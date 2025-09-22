@@ -229,7 +229,7 @@ $(S_KEYFENDER_PREP): .stamp-prepare
 $(S_KEYFENDER): $(S_KEYFENDER_PREP) $(UPDATE_KEY) $(API_DOCS_DIR)
 	cd src/s_keyfender && $(MAKE) lock $(MAKE_ARGS)
 	cd src/s_keyfender && $(MAKE) install-switch $(MAKE_ARGS)
-	cd src/s_keyfender && $(MAKE) pull $(MAKE_ARGS)
+	cd src/s_keyfender && flock $$(opam var root)/download-cache/.monorepo-lock $(MAKE) pull $(MAKE_ARGS)
 	cd src/s_keyfender && $(MAKE) build $(MAKE_ARGS)
 
 .PHONY: build-keyfender
