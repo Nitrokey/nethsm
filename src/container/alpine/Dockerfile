@@ -33,7 +33,7 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   opam update
-  OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage
+  OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage=4.9.0
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
