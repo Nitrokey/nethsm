@@ -48,6 +48,9 @@ workflow:
         paths: *builder_dep_paths
       variables:
         BUILDER_TAG: ${CI_COMMIT_SHORT_SHA}
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        BUILDER_TAG: ${CI_COMMIT_SHORT_SHA}
     - when: always
 
 default:
@@ -103,6 +106,8 @@ build_container_test_image:
   needs:
     - job: build_builder_image
       optional: true
+    - job: build_dev
+      artifacts: false
   stage: build
   image:
     name: moby/buildkit:rootless
@@ -125,6 +130,8 @@ build_container_production_image:
   needs:
     - job: build_builder_image
       optional: true
+    - job: build_container_test_image
+      artifacts: false
   stage: build
   image:
     name: moby/buildkit:rootless
