@@ -77,7 +77,7 @@ build_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
-        PUSH: "push=false"
+        # PUSH: "push=false"
         NO_CACHE: "--no-cache"
     - if: $BUILDER_TAG != "latest"
   stage: prepare
@@ -147,14 +147,16 @@ build_container_production_image:
 
 commit_builder_image:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
+    # - if: $CI_PIPELINE_SOURCE == "schedule"
+    #   when: never
     - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image:
     name: quay.io/skopeo/stable:latest
     entrypoint: [""]
-  needs: []
+  needs:
+    - job: build_builder_image
+      optional: true
   before_script:
     - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
