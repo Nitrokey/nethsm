@@ -919,6 +919,24 @@ module Make (KV : Kv_ext.Ranged) = struct
               ~pp_error:X509.Validation.pp_signature_error e
         | Ok cert -> (cert, priv))
 
+  let create_csr_extensions subject =
+    match subject.Json.subjectAltNames with
+    | Some [] -> None
+    | Some names ->
+        let san_names = X509.General_name.(add DNS names empty) in
+        let ext_map =
+          X509.Extension.(add Subject_alt_name (false, san_names) empty)
+        in
+        Some X509.Signing_request.Ext.(add Extensions ext_map empty)
+    | None ->
+        let san_names =
+          X509.General_name.(add DNS [ subject.commonName ] empty)
+        in
+        let ext_map =
+          X509.Extension.(add Subject_alt_name (false, san_names) empty)
+        in
+        Some X509.Signing_request.Ext.(add Extensions ext_map empty)
+
   let certificate_chain kv =
     let open Lwt_result.Infix in
     lwt_error_fatal "get private key from configuration store"
@@ -1723,12 +1741,13 @@ module Make (KV : Kv_ext.Ranged) = struct
     let csr_pem t ~namespace ~id subject =
       let open Lwt_result.Infix in
       get_key t ~namespace id >>= fun key ->
-      let subject' = Json.to_distinguished_name subject in
+      let dn = Json.to_distinguished_name subject in
+      let extensions = create_csr_extensions subject in
       Lwt_result.lift
       @@
       match key.priv with
       | X509 p -> (
-          match X509.Signing_request.create subject' p with
+          match X509.Signing_request.create dn ?extensions p with
           | Error (`Msg e) ->
               Error (Bad_request, "creating signing request: " ^ e)
           | Ok c -> Ok (X509.Signing_request.encode_pem c))
@@ -2246,8 +2265,9 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     let tls_csr_pem t subject =
       let dn = Json.to_distinguished_name subject in
+      let extensions = create_csr_extensions subject in
       Lwt.return
-        (match X509.Signing_request.create dn t.key with
+        (match X509.Signing_request.create dn ?extensions t.key with
         | Ok csr -> Ok (X509.Signing_request.encode_pem csr)
         | Error (`Msg m) -> Error (Bad_request, "while creating CSR: " ^ m))
 

@@ -1190,6 +1190,30 @@ let subject =
 
 let common_name_only = {|{ "commonName": "nethsm.local" }|}
 
+let subject_empty_san =
+  {|{
+    "countryName": "DE",
+    "stateOrProvinceName": "",
+    "localityName": "Berlin",
+    "organizationName": "Nitrokey",
+    "organizationalUnitName": "",
+    "commonName": "nethsm.local",
+    "emailAddress": "info@nitrokey.com",
+    "subjectAltNames": []
+  }|}
+
+let subject_custom_san =
+  {|{
+    "countryName": "DE",
+    "stateOrProvinceName": "",
+    "localityName": "Berlin",
+    "organizationName": "Nitrokey",
+    "organizationalUnitName": "",
+    "commonName": "nethsm.local",
+    "emailAddress": "info@nitrokey.com",
+    "subjectAltNames": ["test1.example.com", "test2.example.com"]
+  }|}
+
 let post_config_tls_csr_pem =
   "post tls csr pem file succeeds" @? fun () ->
   match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
@@ -1226,6 +1250,71 @@ let post_config_tls_csr_pem_fails =
     admin_post_request ~body:(`String bad_subject) "/config/tls/csr.pem"
   with
   | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let post_config_tls_csr_pem_san =
+  "post tls csr pem contains SAN extension with common name" @? fun () ->
+  match admin_post_request ~body:(`String subject) "/config/tls/csr.pem" with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some (_, general_names) -> (
+                  match X509.General_name.find DNS general_names with
+                  | Some dns_names -> List.mem "nethsm.local" dns_names
+                  | None -> false)
+              | None -> false)
+          | None -> false)
+      | Error _ -> false)
+  | _ -> false
+
+let post_config_tls_csr_pem_empty_san =
+  "post tls csr pem with empty subjectAltNames has no SAN extension"
+  @? fun () ->
+  match
+    admin_post_request ~body:(`String subject_empty_san) "/config/tls/csr.pem"
+  with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some _ -> false (* Should not have SAN extension *)
+              | None -> true (* Correctly has no SAN extension *))
+          | None -> true
+          (* Correctly has no extensions at all *))
+      | Error _ -> false)
+  | _ -> false
+
+let post_config_tls_csr_pem_custom_san =
+  "post tls csr pem with custom subjectAltNames contains specified names"
+  @? fun () ->
+  match
+    admin_post_request ~body:(`String subject_custom_san) "/config/tls/csr.pem"
+  with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some (_, general_names) -> (
+                  match X509.General_name.find DNS general_names with
+                  | Some dns_names ->
+                      List.mem "test1.example.com" dns_names
+                      && List.mem "test2.example.com" dns_names
+                      && not (List.mem "nethsm.local" dns_names)
+                      (* Should NOT contain commonName *)
+                  | None -> false)
+              | None -> false)
+          | None -> false)
+      | Error _ -> false)
   | _ -> false
 
 let post_config_tls_generate =
@@ -2963,6 +3052,80 @@ let operator_keys_key_csr_pem_no_common_name =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let operator_keys_key_csr_pem_san =
+  "POST on /keys/keyID/csr.pem contains SAN extension with common name"
+  @? fun () ->
+  match
+    request ~meth:`POST ~headers:operator_headers ~body:(`String subject)
+      ~hsm_state:(hsm_with_key ()) "/keys/keyID/csr.pem"
+  with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some (_, general_names) -> (
+                  match X509.General_name.find DNS general_names with
+                  | Some dns_names -> List.mem "nethsm.local" dns_names
+                  | None -> false)
+              | None -> false)
+          | None -> false)
+      | Error _ -> false)
+  | _ -> false
+
+let operator_keys_key_csr_pem_empty_san =
+  "POST on /keys/keyID/csr.pem with empty subjectAltNames has no SAN extension"
+  @? fun () ->
+  match
+    request ~meth:`POST ~headers:operator_headers
+      ~body:(`String subject_empty_san) ~hsm_state:(hsm_with_key ())
+      "/keys/keyID/csr.pem"
+  with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some _ -> false (* Should not have SAN extension *)
+              | None -> true (* Correctly has no SAN extension *))
+          | None -> true
+          (* Correctly has no extensions at all *))
+      | Error _ -> false)
+  | _ -> false
+
+let operator_keys_key_csr_pem_custom_san =
+  "POST on /keys/keyID/csr.pem with custom subjectAltNames contains specified \
+   names"
+  @? fun () ->
+  match
+    request ~meth:`POST ~headers:operator_headers
+      ~body:(`String subject_custom_san) ~hsm_state:(hsm_with_key ())
+      "/keys/keyID/csr.pem"
+  with
+  | _, Some (`OK, _, `String body, _) -> (
+      match X509.Signing_request.decode_pem body with
+      | Ok csr -> (
+          let info = X509.Signing_request.info csr in
+          match X509.Signing_request.Ext.find Extensions info.extensions with
+          | Some extensions -> (
+              match X509.Extension.find Subject_alt_name extensions with
+              | Some (_, general_names) -> (
+                  match X509.General_name.find DNS general_names with
+                  | Some dns_names ->
+                      List.mem "test1.example.com" dns_names
+                      && List.mem "test2.example.com" dns_names
+                      && not (List.mem "nethsm.local" dns_names)
+                      (* Should NOT contain commonName *)
+                  | None -> false)
+              | None -> false)
+          | None -> false)
+      | Error _ -> false)
+  | _ -> false
+
 let operator_keys_key_csr_pem_not_found =
   "POST on /keys/keyID/csr.pem fails (ID not found)" @? fun () ->
   match
@@ -4441,6 +4604,9 @@ let () =
           post_config_tls_csr_pem;
           post_config_tls_csr_pem2;
           post_config_tls_csr_pem_fails;
+          post_config_tls_csr_pem_san;
+          post_config_tls_csr_pem_empty_san;
+          post_config_tls_csr_pem_custom_san;
         ] );
       ( "/config/tls/generate",
         [
@@ -4621,6 +4787,9 @@ let () =
           operator_keys_key_csr_pem;
           operator_keys_key_csr_pem_common_name_only;
           operator_keys_key_csr_pem_no_common_name;
+          operator_keys_key_csr_pem_san;
+          operator_keys_key_csr_pem_empty_san;
+          operator_keys_key_csr_pem_custom_san;
           operator_keys_key_csr_pem_not_found;
           operator_keys_key_csr_pem_invalid_id;
         ] );

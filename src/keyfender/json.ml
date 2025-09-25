@@ -37,6 +37,7 @@ type subject_req = {
   organizationName : (string[@default ""]);
   organizationalUnitName : (string[@default ""]);
   emailAddress : (string[@default ""]);
+  subjectAltNames : (string list option[@default None]);
 }
 [@@deriving yojson]
 
