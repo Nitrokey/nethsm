@@ -127,7 +127,7 @@ func tpmGetPlatformData() (platformData, error) {
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
 		if err != nil {
-			log.Printf("DictionaryAttackLockReset: %w\n", err)
+			log.Printf("DictionaryAttackLockReset: %v\n", err)
 		}
 
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
