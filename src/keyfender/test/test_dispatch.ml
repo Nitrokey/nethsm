@@ -512,7 +512,7 @@ let system_backup_and_restore_ok =
             Yojson.Safe.to_string
               (Keyfender.Json.restore_req_to_yojson
                  ({
-                    backupPassphrase = backup_passphrase;
+                    backupPassphrase = Some backup_passphrase;
                     systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
                   }
                    : Keyfender.Json.restore_req))
@@ -544,6 +544,59 @@ let system_backup_and_restore_ok =
       | _ -> false)
   | _ -> false
 
+let system_backup_and_restore_no_backuppassphrase_fails =
+  "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
+  let backup_passphrase = "backup passphrase" in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
+  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  match
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+  with
+  | hsm_state, Some (`No_content, _, _, _) -> (
+      let headers = auth_header "backup" "backupUserPassphrase" in
+      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
+          let arguments =
+            Yojson.Safe.to_string
+              (Keyfender.Json.restore_req_to_yojson
+                 ({
+                    backupPassphrase = None;
+                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+                  }
+                   : Keyfender.Json.restore_req))
+          in
+          let backup_data =
+            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
+          in
+          let content_type, body =
+            create_multipart_request
+              [ ("arguments", arguments); ("backup_data", backup_data) ]
+          in
+          let expect =
+            "test_dispatch.exe: [DEBUG] Partial state of the multipart/form \
+             stream.\n\
+             test_dispatch.exe: [DEBUG] Capacity of the internal queue: 4096 \
+             byte(s).\n\
+             test_dispatch.exe: [DEBUG] Length of the internal queue: 0 byte(s).\n\
+             test_dispatch.exe: [DEBUG] Decode a 8-bit part.\n\
+             test_dispatch.exe: [DEBUG] Decode a 8-bit part.\n"
+          in
+          match
+            request ~expect ~meth:`POST ~content_type ~body:(`String body)
+              "/system/restore"
+          with
+          | _, Some (`Bad_request, _, `String b, _) ->
+              Alcotest.(check string)
+                "body" b {|{"message":"No backupPassphrase provided"}|};
+              true
+          | _ -> false)
+      | _ -> false)
+  | _ -> false
+
 let system_backup_and_restore_changed_devkey =
   "/system/restore with changed device key and unlock -> operational"
   @? fun () ->
@@ -563,7 +616,7 @@ let system_backup_and_restore_changed_devkey =
             Yojson.Safe.to_string
               (Keyfender.Json.restore_req_to_yojson
                  ({
-                    backupPassphrase = backup_passphrase;
+                    backupPassphrase = Some backup_passphrase;
                     systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
                   }
                    : Keyfender.Json.restore_req))
@@ -645,7 +698,7 @@ let system_backup_and_restore_unattended =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
            ({
-              backupPassphrase = backup_passphrase;
+              backupPassphrase = Some backup_passphrase;
               systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
             }
              : Keyfender.Json.restore_req))
@@ -715,7 +768,7 @@ let system_backup_and_restore_unattended_changed_devkey =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
            ({
-              backupPassphrase = backup_passphrase;
+              backupPassphrase = Some backup_passphrase;
               systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
             }
              : Keyfender.Json.restore_req))
@@ -739,6 +792,53 @@ let system_backup_and_restore_unattended_changed_devkey =
   Alcotest.(check string)
     "state" "locked"
     (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
+let system_backup_and_restore_operational_without_backuppassphrase =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational without \
+     backuppassphrase"
+    `Quick
+  @@ fun () ->
+  let backup_passphrase = "backup passphrase" in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
+  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  let* hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  (* backup is done, let's remove a key and try to restore it *)
+  let* hsm_state =
+    let expect = info "removed (keyID)" in
+    request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
+      "/keys/keyID"
+    |> Expect.no_content
+  in
+  (* restore *)
+  let* hsm_state =
+    let expect = multipart_log in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", "{}"); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  assert (Hsm.state hsm_state = `Operational);
+  (* check that deleted keys are restored *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
+  in
+  ()
 
 let system_backup_and_restore_operational =
   Alcotest.test_case "a request for /system/restore succeeds while operational"
@@ -807,7 +907,7 @@ let system_backup_and_restore_operational =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
            ({
-              backupPassphrase = backup_passphrase;
+              backupPassphrase = Some backup_passphrase;
               systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
             }
              : Keyfender.Json.restore_req))
@@ -855,7 +955,7 @@ let system_backup_and_restore_operational =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
            ({
-              backupPassphrase = backup_passphrase;
+              backupPassphrase = Some backup_passphrase;
               systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
             }
              : Keyfender.Json.restore_req))
@@ -4569,10 +4669,12 @@ let () =
       ( "/system/backup",
         [
           system_backup_and_restore_ok;
+          system_backup_and_restore_no_backuppassphrase_fails;
           system_backup_and_restore_unattended;
           system_backup_and_restore_unattended_changed_devkey;
           system_backup_and_restore_changed_devkey;
           system_backup_and_restore_operational;
+          system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
         ] );
       ( "/unlock",

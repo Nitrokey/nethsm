@@ -111,7 +111,7 @@ let decode_provision_req json =
   (b.unlockPassphrase, b.adminPassphrase, time)
 
 type restore_req = {
-  backupPassphrase : string;
+  backupPassphrase : (string option[@default None]);
   systemTime : (string option[@default None]);
 }
 [@@deriving yojson]

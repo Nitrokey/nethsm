@@ -2832,7 +2832,7 @@ module Make (KV : Kv_ext.Ranged) = struct
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
-      let** new_time, backup_passphrase =
+      let** new_time, backup_passphrase_opt =
         match Json.decode_restore_req json with
         | Error e -> Lwt.return_error (Bad_request, e)
         | Ok x -> Lwt.return_ok x
@@ -2862,7 +2862,23 @@ module Make (KV : Kv_ext.Ranged) = struct
             Error (Bad_request, msg)
       in
       let** salt = decode_value sb in
-      let backup_key = Crypto.key_of_passphrase ~salt backup_passphrase in
+      let** backup_key =
+        match backup_passphrase_opt with
+        | None ->
+            let** salt' =
+              if is_operational then
+                internal_server_error Read "Read backup salt"
+                  Config_store.pp_error
+                  (Config_store.get_opt t.kv Backup_salt)
+              else Lwt.return_ok None
+            in
+            if Some salt = salt' then
+              internal_server_error Read "Read backup key" Config_store.pp_error
+                (Config_store.get t.kv Backup_key)
+            else Lwt.return_error (Bad_request, "No backupPassphrase provided")
+        | Some backup_passphrase ->
+            Lwt.return_ok @@ Crypto.key_of_passphrase ~salt backup_passphrase
+      in
       let key = Crypto.GCM.of_secret backup_key in
       let** version_int = decode_value sb in
       let adata = "backup-version" in
