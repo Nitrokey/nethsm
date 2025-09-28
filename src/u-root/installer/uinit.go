@@ -48,10 +48,11 @@ name="data"
 	}
 
 	// Print header
-	fmt.Println(`
+	fmt.Print(`
 **************************************
 * Nitrokey NetHSM Software Installer *
 **************************************
+
 `)
 
 	changeLog := readFile("/update.changelog")

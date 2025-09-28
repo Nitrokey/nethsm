@@ -34,7 +34,7 @@ import (
 // Therefore, I decided to re-use the production quality "sfdisk" utility from
 // util-linux instead. This code performs the equivalent of:
 //
-//     sfdisk -d diskDevice | (swap the first two partitions) | sfdisk diskDevice
+//	sfdisk -d diskDevice | (swap the first two partitions) | sfdisk diskDevice
 //
 // The output of "sfdisk" looks something like this, with line numbers:
 //
@@ -60,7 +60,7 @@ import (
 // of the path name specifies the index of that partitions entry in the GPT.
 // Therefore, it is not sufficient to just swap lines 9 and 10, we must also
 // ensure that the end digit reflects the intended order.
-func gptSwapPartitions(diskDevice string) (error) {
+func gptSwapPartitions(diskDevice string) error {
 	// Read the GPT, piping output to stdout.
 	cmd := exec.Command("sfdisk", "-d", diskDevice)
 	stdout, err := cmd.StdoutPipe()
@@ -82,18 +82,18 @@ func gptSwapPartitions(diskDevice string) (error) {
 	if scanner.Err() != nil {
 		stdout.Close()
 		cmd.Wait()
-		return fmt.Errorf("Parse error reading GPT: %v", scanner.Err())
+		return fmt.Errorf("parse error reading GPT: %v", scanner.Err())
 	}
 	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("sfdisk failed to read GPT: %v")
+		return fmt.Errorf("sfdisk failed to read GPT: %w", err)
 	}
 
 	// Basic sanity check: Ensure we read exactly 11 lines and lines[7] is
 	// blank (separating the header from the partition entries).
 	if len(lines) != 11 {
-		return fmt.Errorf("Parse error reading GPT")
+		return fmt.Errorf("parse error reading GPT")
 	} else if lines[7] != "" {
-		return fmt.Errorf("Parse error reading GPT")
+		return fmt.Errorf("parse error reading GPT")
 	}
 
 	// Swap lines[8] with lines[9], and correct the end digits (see
@@ -139,7 +139,7 @@ func gptSwapPartitions(diskDevice string) (error) {
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("sfdisk failed to write GPT: %v", err)
 	}
-	if err := <- cerr; err != nil {
+	if err := <-cerr; err != nil {
 		return fmt.Errorf("sfdisk failed to write GPT: %v", err)
 	}
 

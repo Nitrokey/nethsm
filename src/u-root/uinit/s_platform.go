@@ -32,7 +32,7 @@ import (
 func platformListener(result chan string) {
 	listener, err := net.Listen(G.listenerProtocol, G.listenerPort)
 	if err != nil {
-		log.Fatal("Unable to launch listener on %s%s: %v", G.listenerProtocol,
+		log.Fatalf("Unable to launch listener on %s%s: %v", G.listenerProtocol,
 			G.listenerPort, err)
 	}
 	defer listener.Close()
@@ -135,8 +135,8 @@ func platformListener(result chan string) {
 			// ParseUint() with a bitSize of 0 guarantees that the value can
 			// fit in an int.
 			updateBlocks := int(paramU64)
-			if !(updateBlocks > 0) {
-				err := fmt.Errorf("Update size must be >0")
+			if updateBlocks <= 0 {
+				err := fmt.Errorf("update size must be >0")
 				return errorResponse(err), err, false
 			}
 
@@ -190,8 +190,8 @@ func platformListener(result chan string) {
 		// COMMIT-UPDATE
 		doCommitUpdate := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested COMMIT-UPDATE.", remoteAddr)
-			if haveUpdate == false {
-				err := fmt.Errorf("No UPDATE in progress")
+			if !haveUpdate {
+				err := fmt.Errorf("no UPDATE in progress")
 				return errorResponse(err), err, false
 			}
 
@@ -227,7 +227,7 @@ func platformListener(result chan string) {
 			terminalCommand = true
 		default:
 			log.Printf("[%s] Unknown command, closing connection.", remoteAddr)
-			response = errorResponse(fmt.Errorf("Unknown command"))
+			response = errorResponse(fmt.Errorf("unknown command"))
 		}
 
 		// If doXXX() returned an error, log it.
@@ -255,10 +255,8 @@ func sPlatformActions() {
 	// Load TPM kernel modules first, as platformListener needs TPM for
 	// GetDeviceKey().
 	G.s.Logf("Loading TPM driver")
-	G.s.Execf("/bbin/insmod /lib/modules/" + G.kernelRelease +
-		"/kernel/drivers/char/tpm/tpm_tis_core.ko")
-	G.s.Execf("/bbin/insmod /lib/modules/" + G.kernelRelease +
-		"/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0")
+	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
+	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
 	// Refuse to continue if the above failed.
 	if err := G.s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
@@ -306,7 +304,7 @@ func sPlatformActions() {
 	}
 
 	G.s.Logf("Starting etcd server")
-	G.s.BackgroundExecAsf(G.etcdUidGid, "/bin/etcd"+
+	G.s.BackgroundExecAsf(G.etcdUIDGID, "/bin/etcd"+
 		" --listen-client-urls=http://169.254.169.2:2379"+
 		" --advertise-client-urls="+
 		" --data-dir=/data/etcd"+

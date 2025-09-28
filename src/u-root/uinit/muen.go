@@ -15,7 +15,7 @@ import (
 // Uses global Script context.
 func mountMuenFs() {
 	G.s.Logf("Loading muenfs")
-	G.s.Execf("/bbin/insmod /lib/modules/" + G.kernelRelease + "/extra/muenfs.ko")
+	G.s.Execf("/bbin/insmod /lib/modules/%s/extra/muenfs.ko", G.kernelRelease)
 	G.s.Execf("/bbin/mkdir -p /muenfs")
 	G.s.Execf("/bbin/mount -t muenfs none /muenfs")
 }
@@ -24,14 +24,14 @@ func mountMuenFs() {
 // Uses global Script context.
 func mountMuenEvents() {
 	G.s.Logf("Loading muenevents")
-	G.s.Execf("/bbin/insmod /lib/modules/" + G.kernelRelease + "/extra/muenevents.ko")
+	G.s.Execf("/bbin/insmod /lib/modules/%s/extra/muenevents.ko", G.kernelRelease)
 	G.s.Execf("/bbin/mkdir -p /muenevents")
 	G.s.Execf("/bbin/mount -t muenevents none /muenevents")
 }
 
 // Trigger muen event.
 func triggerMuenEvent(event string) {
-	f, err := os.OpenFile("/muenevents/"+event, os.O_WRONLY, 0600)
+	f, err := os.OpenFile("/muenevents/"+event, os.O_WRONLY, 0o600)
 	if err != nil {
 		log.Printf("Error triggering event '%s': %v", event, err)
 		return

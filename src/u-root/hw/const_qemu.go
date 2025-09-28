@@ -1,4 +1,4 @@
-//go:build qemu_kvm
+//go:build !prodrive_hermes_1 && !msi_z790_1
 
 package hw
 

@@ -22,8 +22,8 @@ import (
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/linux"
 	"github.com/canonical/go-tpm2/mu"
-	"github.com/canonical/go-tpm2/templates"
-	"github.com/canonical/go-tpm2/util"
+	"github.com/canonical/go-tpm2/objectutil"
+	"github.com/canonical/go-tpm2/policyutil"
 
 	"nethsm/hw"
 )
@@ -42,7 +42,7 @@ var (
 
 // must be in sync with platform_data in src/keyfender/json.ml
 type platformData struct {
-	DeviceId        string            `json:"deviceId"`
+	DeviceID        string            `json:"deviceId"`
 	DeviceKey       []byte            `json:"deviceKey"`
 	PCR             map[int]string    `json:"pcr"`
 	AKPub           map[string][]byte `json:"akPub"`
@@ -54,11 +54,14 @@ func withTPMContext(f func(*tpm2.TPMContext) error) error {
 	tpmCtxMutex.Lock()
 	defer tpmCtxMutex.Unlock()
 	if tpmCtxInstance == nil {
-		tcti, err := linux.OpenDevice(G.tpmDevice)
+		tpmDev, err := linux.DefaultTPM2Device()
 		if err != nil {
 			panic(err)
 		}
-		tpmCtxInstance = tpm2.NewTPMContext(tcti)
+		tpmCtxInstance, err = tpm2.OpenTPMDevice(tpmDev)
+		if err != nil {
+			panic(err)
+		}
 	}
 	return f(tpmCtxInstance)
 }
@@ -74,14 +77,14 @@ func tpmRand() (buf []byte, err error) {
 // encoding without I, O, 0, 1
 const base32Chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-func getIdFromAk(akPub *tpm2.Public) string {
+func getIDFromAk(akPub *tpm2.Public) string {
 	akName := akPub.Name().Digest()
 	return base32.NewEncoding(base32Chars).EncodeToString(akName[:7])[:10]
 }
 
 func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	ak256Ctx, ak256Pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil,
-		templates.NewRestrictedECCSigningKeyWithDefaults(),
+		objectutil.NewECCAttestationKeyTemplate(),
 		nil, nil, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("create AK256: %w", err)
@@ -94,7 +97,10 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	}
 
 	ak384Ctx, ak384Pub, _, _, _, err := tpm.CreatePrimary(tpm.EndorsementHandleContext(), nil,
-		templates.NewRestrictedECCSigningKey(tpm2.HashAlgorithmSHA384, nil, tpm2.ECCCurveNIST_P384),
+		objectutil.NewECCAttestationKeyTemplate(
+			objectutil.WithNameAlg(tpm2.HashAlgorithmSHA384),
+			objectutil.WithECCCurve(tpm2.ECCCurveNIST_P384),
+			objectutil.WithECCScheme(tpm2.ECCSchemeECDSA, tpm2.HashAlgorithmSHA384)),
 		nil, nil, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("create AK384: %w", err)
@@ -106,11 +112,11 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 		return "", nil, fmt.Errorf("marshal AK384: %w", err)
 	}
 
-	deviceId := getIdFromAk(ak256Pub)
+	deviceID := getIDFromAk(ak256Pub)
 	akPub := make(map[string][]byte)
 	akPub["P256"] = ak256Der
 	akPub["P384"] = ak384Der
-	return deviceId, akPub, nil
+	return deviceID, akPub, nil
 }
 
 // tpmGetPlatformData returns TPM derived data of the NetHSM.
@@ -120,9 +126,7 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 // created.
 func tpmGetPlatformData() (platformData, error) {
 	var data platformData
-	var pcrIdxs tpm2.PCRSelect
-
-	pcrIdxs = hw.MeasuredPCRs()
+	var pcrIdxs tpm2.PCRSelect = hw.MeasuredPCRs()
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
 		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
@@ -131,7 +135,10 @@ func tpmGetPlatformData() (platformData, error) {
 		}
 
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
-			templates.NewECCStorageKey(tpm2.HashAlgorithmSHA384, tpm2.SymObjectAlgorithmAES, 256, tpm2.ECCCurveNIST_P384),
+			objectutil.NewECCStorageKeyTemplate(
+				objectutil.WithNameAlg(tpm2.HashAlgorithmSHA384),
+				objectutil.WithSymmetricScheme(tpm2.SymObjectAlgorithmAES, 256, tpm2.SymModeCFB),
+				objectutil.WithECCCurve(tpm2.ECCCurveNIST_P384)),
 			nil, nil, nil)
 		if err != nil {
 			return fmt.Errorf("create SRK: %w", err)
@@ -148,17 +155,17 @@ func tpmGetPlatformData() (platformData, error) {
 
 		for _, i := range pcrIdxs {
 			if bytes.Equal(pcrValues[tpm2.HashAlgorithmSHA256][i], zeros) {
-				return fmt.Errorf("PCR-%d is empty!", i)
+				return fmt.Errorf("PCR-%d is empty", i)
 			}
 		}
 
 		deviceKey, err := unsealDeviceKey(tpm, srkCtx)
 		if err != nil {
-			return fmt.Errorf("Unsealing Device Key failed: %w\n", err)
+			return fmt.Errorf("unsealing Device Key failed: %w", err)
 		}
 		if len(deviceKey) == 0 {
 			if !randIsFullySeeded() {
-				return fmt.Errorf("waiting for TRNG seeding timed out.")
+				return fmt.Errorf("waiting for TRNG seeding timed out")
 			}
 			deviceKey = make([]byte, 32)
 			_, err = crand.Read(deviceKey)
@@ -175,7 +182,7 @@ func tpmGetPlatformData() (platformData, error) {
 				return fmt.Errorf("unsealing new Device Key failed: %w", err)
 			}
 			if !bytes.Equal(deviceKey, key2) {
-				return fmt.Errorf("unsealed Device Key does not match generated key.")
+				return fmt.Errorf("unsealed Device Key does not match generated key")
 			}
 			log.Printf("Created and sealed new Device Key\n")
 		} else {
@@ -185,9 +192,7 @@ func tpmGetPlatformData() (platformData, error) {
 		// cap PCRs afterwards to inhibit unsealing the Device Key again
 		for _, i := range pcrIdxs {
 			tpm.PCRExtend(tpm.PCRHandleContext(i),
-				tpm2.NewTaggedHashListBuilder().
-					Append(tpm2.HashAlgorithmSHA256, zeros).
-					MustFinish(),
+				tpm2.TaggedHashList{tpm2.MakeTaggedHash(tpm2.HashAlgorithmSHA256, zeros)},
 				nil)
 		}
 		_, err = unsealDeviceKey(tpm, srkCtx)
@@ -207,7 +212,7 @@ func tpmGetPlatformData() (platformData, error) {
 			data.PCR[i] = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][i])
 		}
 
-		data.DeviceId, data.AKPub, err = tpmGetAKData(tpm)
+		data.DeviceID, data.AKPub, err = tpmGetAKData(tpm)
 		if err != nil {
 			return fmt.Errorf("getting AK data failed: %w", err)
 		}
@@ -216,8 +221,8 @@ func tpmGetPlatformData() (platformData, error) {
 
 		data.HardwareVersion = hw.Version
 
-		platformDataJson, _ := json.MarshalIndent(data, "", "    ")
-		log.Printf("Platform Data: %v\n", string(platformDataJson))
+		platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
+		log.Printf("Platform Data: %v\n", string(platformDataJSON))
 
 		data.DeviceKey = deviceKey
 
@@ -237,7 +242,7 @@ func sealDeviceKey(
 	pcrSelection tpm2.PCRSelectionList,
 ) error {
 	// Build the sealed object template
-	template := templates.NewSealedObject(tpm2.HashAlgorithmSHA384)
+	template := objectutil.NewSealedObjectTemplate(objectutil.WithNameAlg(tpm2.HashAlgorithmSHA384))
 
 	// Disallow passphrase authorization for the user role
 	template.Attrs &^= tpm2.AttrUserWithAuth
@@ -248,15 +253,17 @@ func sealDeviceKey(
 		return err
 	}
 
-	digest, err := util.ComputePCRDigest(tpm2.HashAlgorithmSHA384, pcrSelection, values)
+	digest, err := policyutil.ComputePCRDigest(tpm2.HashAlgorithmSHA384, pcrSelection, values)
 	if err != nil {
 		return err
 	}
 
-	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA384)
-	trial.PolicyPCR(digest, pcrSelection)
+	auth, err := policyutil.NewPolicyBuilder(tpm2.HashAlgorithmSHA384).RootBranch().PolicyPCRDigest(digest, pcrSelection)
+	if err != nil {
+		return err
+	}
 
-	template.AuthPolicy = trial.GetDigest()
+	template.AuthPolicy = auth
 
 	sensitive := &tpm2.SensitiveCreate{Data: secret}
 
@@ -274,12 +281,15 @@ func sealDeviceKey(
 
 	// Encode the sealed object
 	sealedDeviceKey, err := mu.MarshalToBytes(priv, pub, pcrSelection)
+	if err != nil {
+		return err
+	}
 
 	err = os.WriteFile(sealedDeviceKeyFile+".tmp", sealedDeviceKey, 0o666)
 	if err != nil {
 		return fmt.Errorf("create sealed Device Key file: %w", err)
 	}
-	os.Rename(sealedDeviceKeyFile+".tmp", sealedDeviceKeyFile)
+	err = os.Rename(sealedDeviceKeyFile+".tmp", sealedDeviceKeyFile)
 	if err != nil {
 		return fmt.Errorf("rename sealed Device Key file: %w", err)
 	}

@@ -91,7 +91,7 @@ func startTask(name string, f func()) {
 		defer func() {
 			if err := recover(); err != nil {
 				log.Printf("%s task failed: %v", name, err)
-				log.Printf("stacktrace:\n" + string(debug.Stack()))
+				log.Print("stacktrace:\n" + string(debug.Stack()))
 			} else {
 				log.Printf("%s task finished.", name)
 			}

@@ -32,32 +32,30 @@ type globalState struct {
 	s *script.Script
 	// UID and GID that the etcd server is run as. We use 1 (coventionally,
 	// "daemon").
-	etcdUidGid int
+	etcdUIDGID int
 	// Current kernel release.
 	kernelRelease        string
 	diskDevice           string
 	sysActivePartition   string
 	sysInactivePartition string
 	dataPartition        string
-	tpmDevice            string
 	listenerProtocol     string
 	listenerPort         string
 	keyfenderIP          string
 	entropyPort          string
 }
 
-// This is the actual singleton instance of globalState used throughout. This
+// G is the actual singleton instance of globalState used throughout. This
 // way it is at least obvious from the code when it is referring to a variable
 // from globalState, as G.variable.
 var G = &globalState{
 	s:                    script.New(),
-	etcdUidGid:           1,
+	etcdUIDGID:           1,
 	kernelRelease:        getKernelRelease(),
 	diskDevice:           hw.DiskDev,
 	sysActivePartition:   hw.DiskPrefix + "1",
 	sysInactivePartition: hw.DiskPrefix + "2",
 	dataPartition:        hw.DiskPrefix + "3",
-	tpmDevice:            "/dev/tpm0",
 	listenerProtocol:     "tcp",
 	listenerPort:         ":1023",
 	keyfenderIP:          "169.254.169.1",
@@ -86,7 +84,6 @@ func main() {
 		G.sysActivePartition = safeGetenv("MOCK_SYS_ACTIVE_PARTITION", "/dev/null")
 		G.sysInactivePartition = safeGetenv("MOCK_SYS_INACTIVE_PARTITION", "/dev/null")
 		G.dataPartition = safeGetenv("MOCK_DATA_PARTITION", "/dev/null")
-		G.tpmDevice = safeGetenv("MOCK_TPM_DEVICE", "/dev/null")
 		G.listenerPort = safeGetenv("MOCK_LISTENER_PORT", ":12345")
 
 		mockActions()
