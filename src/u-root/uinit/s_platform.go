@@ -313,8 +313,6 @@ func sPlatformActions() {
 		" --quota-backend-bytes=5694816256"+ // should not be more than RAM
 		" --initial-cluster-state=new"+
 		" --v2-deprecation=gone"+
-		" --enable-v2=false"+
-		" --proxy=off"+
 		" --max-txn-ops=512"+
 		" --force-new-cluster=true"+
 		// " --log-level debug"+
