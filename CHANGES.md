@@ -1,3 +1,7 @@
+# 3.0 (2025-09-29)
+
+* This is a release candidate. DON'T USE.
+
 # 2.2 (2025-05-07)
 
 * Fix of invalid TPM DA protection in NetHSM 2
