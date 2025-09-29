@@ -160,7 +160,7 @@ endif
 .PHONY: prepare
 prepare: .stamp-prepare
 
-ETCD_VER := v3.5.15
+ETCD_VER := v3.6.5
 ETCD_DOWNLOAD_URL := https://storage.googleapis.com/etcd
 ETCD_DIR := $(TOP_DIR)/etcd-download
 
