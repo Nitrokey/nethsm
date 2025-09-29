@@ -375,6 +375,51 @@ paths:
       x-annotation-caller-namespace:
         - Root
         - Namespaced
+  /keys/{KeyPrefix}*:
+    get:
+      responses:
+        "200":
+          description: Successful request for the list of keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyList"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Get a list of the identifiers of all keys that have a KeyID that starts
+        with KeyPrefix.
+        If the caller is in a namespace, only keys in that namespace are returned.
+        Separate requests need to be made to request the individual key data.
+      parameters:
+        - name: filter
+          in: query
+          description: Only return keys that are can be used by the requester, according to restrictions.
+          schema:
+            type: string
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+        - Operator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
+      x-test-value-KeyPrefix: myK
+    parameters:
+      - name: KeyPrefix
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
   /keys/{KeyID}:
     get:
       responses:
@@ -455,12 +500,6 @@ paths:
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
         Retrieve a single public key.
-
-        As a special case, if KeyID ends with a `*` (e.g. `/keys/prefix*`), this
-        endpoints behaves like `/keys` and returns the subset of all accessible
-        keys that start with the given `prefix`. On large key stores, this is
-        more performant that calling `/keys` and filtering afterwards. Refer to
-        `/keys` for a specification of the reponses in this case.
       security:
         - basic: []
       x-annotation-role:

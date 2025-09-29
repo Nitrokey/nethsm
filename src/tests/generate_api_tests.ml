@@ -12,8 +12,8 @@ let port = "8443"
 let prefix = "api/v1"
 
 let cmd path meth =
-  Printf.sprintf "curl --insecure https://%s:%s/%s%s -X %s " host port prefix
-    path
+  Printf.sprintf {|curl --insecure 'https://%s:%s/%s%s' -X %s |} host port
+    prefix path
     (String.uppercase_ascii meth)
 
 let api_file = "../../docs/nethsm-api.yaml"
@@ -41,6 +41,7 @@ let skip_body_endpoints =
     "/keys";
     "/keys/generate";
     "/keys/{KeyID}";
+    "/keys/{KeyPrefix}*";
     "/metrics";
     "/random";
     "/system/info";
