@@ -91,7 +91,7 @@ EOF
 FROM musl AS mke2fs
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.47.1.tar.gz" -o /tmp/e2fsprogs.tar.gz
+  curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.47.3.tar.gz" -o /tmp/e2fsprogs.tar.gz
   mkdir -p /tmp/e2fsprogs/build
   tar -C /tmp/e2fsprogs --strip-components=1 -xzf /tmp/e2fsprogs.tar.gz
   cd /tmp/e2fsprogs/build
@@ -111,7 +111,7 @@ EOF
 FROM musl AS sfdisk
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/util-linux/util-linux/archive/v2.40.2.tar.gz" -o /tmp/util-linux.tar.gz
+  curl -sSL "https://github.com/util-linux/util-linux/archive/v2.41.2.tar.gz" -o /tmp/util-linux.tar.gz
   mkdir -p /tmp/util-linux
   tar -C /tmp/util-linux --strip-components=1 -xzf /tmp/util-linux.tar.gz
   cd /tmp/util-linux
