@@ -279,7 +279,7 @@ let system_update_ok =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     `String (sign_update update ^ update)
   in
   match admin_post_request ~body "/system/update" with
@@ -292,7 +292,7 @@ let system_update_namespaced_fails =
   "a request for /system/update with namespaced user returns 403" @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     `String (sign_update update ^ update)
   in
   match
@@ -308,7 +308,7 @@ let system_update_signature_mismatch =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update (update ^ "\000") in
     `String (signature ^ update)
   in
@@ -322,7 +322,7 @@ let system_update_too_much_data =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" ^ "\000" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
@@ -339,7 +339,7 @@ let system_update_too_few_data =
       let d = prefix_and_pad "binary data is here" in
       String.sub d 0 (pred (String.length d))
     in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
@@ -352,7 +352,7 @@ let system_update_invalid_data =
   let body =
     `String
       "\000\000\003signature too long\000\000\018A new system \
-       image\000\000\0032.0binary data is here"
+       image\000\000\0039.0binary data is here"
   in
   match admin_post_request ~body "/system/update" with
   | hsm_state, Some (`Bad_request, _, `String body, _) ->
@@ -365,7 +365,7 @@ let system_update_platform_bad =
   let expect = warning "during update, platform reported platform bad" in
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     `String (sign_update update ^ update)
   in
   let hsm_state =
@@ -431,7 +431,7 @@ let system_update_commit_ok =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   and hsm_state = operational_mock_with_mbox () in
@@ -465,7 +465,7 @@ let system_update_cancel_ok =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
@@ -481,7 +481,7 @@ let system_update_cancel_namespaced_fails =
   @? fun () ->
   let body =
     let data = prefix_and_pad "binary data is here" in
-    let update = "\000\000\018A new system image\000\000\0032.0" ^ data in
+    let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     let signature = sign_update update in
     `String (signature ^ update)
   in
