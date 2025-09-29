@@ -3246,6 +3246,15 @@ let operator_keys_key_csr_pem_invalid_id =
 
 let message = "Hi Alice! Please bring malacpörkölt for dinner!"
 
+let digest_sha256 =
+  "\xe8\x9b\x9d\x3d\x9a\xa7\xec\xeb\x68\x2f\x86\xa5\x64\x4d\x79\x47\x0d\x02\x14\x87\xcd\x0f\xe4\x4c\x98\x88\xf3\x76\x86\xcb\x64\xc3"
+
+let digest_info_sha1 =
+  "\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14"
+
+let digest_info_sha256 =
+  "\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20"
+
 let encrypted_message =
   {|
 WiugdWUSZAqia2lIJbPm1N3KHcnbZAyLklnNqKnlzDjvTR9UNgmlG2FC4jdnfvn9w9TUt5H9z7Z5
@@ -3317,7 +3326,7 @@ let operator_keys_key_decrypt_fails_not_found =
 
 let sign_request =
   Printf.sprintf {|{ mode: "PKCS1", message: "%s"}|}
-    (Base64.encode_string message)
+    (Base64.encode_string digest_sha256)
 
 let operator_keys_key_sign =
   "POST on /keys/keyID/sign succeeds" @? fun () ->
@@ -3338,7 +3347,11 @@ let operator_keys_key_sign =
           | Ok decoded -> (
               let key = Mirage_crypto_pk.Rsa.pub_of_priv test_key in
               match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key decoded with
-              | Some msg -> String.equal msg message
+              | Some msg ->
+                  Alcotest.(check string)
+                    "signature" msg
+                    (digest_info_sha256 ^ digest_sha256);
+                  true
               | None -> false))
       | _ -> false)
   | _ -> false
@@ -3442,7 +3455,11 @@ let operator_keys_key_sign_and_decrypt =
                           match
                             Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key decoded
                           with
-                          | Some msg -> String.equal msg message
+                          | Some msg ->
+                              Alcotest.(check string)
+                                "signature" msg
+                                (digest_info_sha256 ^ digest_sha256);
+                              true
                           | None -> false))
                   | _ -> false)
               | _ -> false))
@@ -4401,7 +4418,7 @@ let crypto_rsa_pkcs1_sign () =
     Keyfender.Json.(MS.singleton RSA_Signature_PKCS1)
     rsa2048_priv_pem;
   let signature_hc =
-    "iGIgswYW3f1hGYutuI6T/511p41aBF0gNV1N/MdqG1Wofaj8onUDJd/LD4h7s5s8wsXJ/EoH0zMck2XovWi3TLwCoghH3nL+Dv9b9fn6YMEnYOk4Uv0klFclwvLDmpiW+8An+7WPti2zlSkCkl2diwfA6N1hBRqKpnYYWCxMHxQOXCnXfDu1fxm6+MsUP8YZ5WUtVG6BV9lm+lzktHXBAkXmCYswtUbiol5NRbOH9P1PhG37UylT22ekszC8Ime5K2PSt5+WvlzM2Ry+peCMjSS7fMnsgasnkqLrTnZrZLMD7J6jG6I4Jxq+nPAgj9sXkJ+ozqllab+4mRIJEiaPOg=="
+    "DvrTVOact+PPhMHcdPNgCZJNQwOwfXN8Smm0SPKetN2qDNJ/Q+sWJZ2baulJWH8PbRdnx0AYaRiMa/+tc9CgSZ1gTUBgVRKVWwKbfQ3qeYfg2AylUXtGeu3Aw/QbgZMopyAXkIU3UHu+MJL0ce0aKkRLfuF2tyeAgG0XmkTRiEbmyvzamJ5fwyKnWIfYHiyn76IQ6pNHvfBAvkU7C3kHDLkFQjqG+tRSD6aHvE+bRKt2qXLx1bv4AXKZIE9y3v5x61fekFmTfyCo0IB23XMN0BCh2EPWi9gOrFePzy7NLM1LHWz4BS1HTarC+CMcj35SSK4FkLKnkCNKe+f1bAH7Ew=="
   in
   match
     Lwt_main.run
@@ -4410,13 +4427,16 @@ let crypto_rsa_pkcs1_sign () =
          (b64_and_hash `SHA1 sign_test_data))
   with
   | Ok signature -> (
-      assert (signature = signature_hc);
+      Alcotest.(check string) "signature" signature_hc signature;
       let b64_dec = Base64.decode_exn signature in
       match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key:rsa2048_pub b64_dec with
       | None -> false
       | Some raw ->
-          String.equal raw
-            Digestif.SHA1.(digest_string sign_test_data |> to_raw_string))
+          Alcotest.(check string)
+            "signature" raw
+            (digest_info_sha1
+            ^ Digestif.SHA1.(digest_string sign_test_data |> to_raw_string));
+          true)
   | _ -> false
 
 let crypto_rsa_pss_sign () =
