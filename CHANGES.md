@@ -1,6 +1,21 @@
-# 3.0 (2025-09-29)
+# 3.0 (2025-09-30)
 
-* This is a release candidate. DON'T USE.
+* Support for SECP256K1 curve and BIP-340 signatures
+* Support for Brainpool-P256/P384/P512 curves
+* Substantial crypto performance improvements
+* Improved performance of restore operation
+* Improved security of ECDSA with random k
+* Allow KeyIDs and UserIDs to include characters -_.
+* Allow setting of subjectAltNames in CSRs
+* Allow shutdown in Locked or Unprovisioned state
+* Allow restore without BackupPassphrase if possible
+* New API for moving keys
+* New API for listing a range of keys
+* Fix initial gratuitous ARP request
+* Fix deleting tags for keys in a namespace
+* Add DigestInfo in RSA PKCS1 signing
+* Remove support for NIST-P224 curve (upstream change)
+* Internal: Upgrade to MirageOS 4.9
 
 # 2.2 (2025-05-07)
 
