@@ -114,11 +114,9 @@ module KeyfenderUnikernel : BACKEND = struct
     Unix.close_process_full etcd_process |> ignore;
     Thread.join log_thread
 
-  let env = Astring.String.Map.singleton "ETCDCTL_API" "3"
-
   let start () =
     let open Bos.OS in
-    (Cmd.run ~env
+    (Cmd.run
     @@ Bos.Cmd.(
          v "../../../../etcd-download/etcdctl" % "del" % "" % "--from-key=true")
     )
