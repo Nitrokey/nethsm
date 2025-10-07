@@ -185,6 +185,11 @@ commit_container_test_image:
   script:
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
     - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+    - |-
+      for tag in $(git tag --points-at ${CI_COMMIT_SHA}); do
+        echo "Adding container image alias for tag: $tag"
+        skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:${IMAGE_TAG}-${tag}
+      done
 
 validate_api_spec_swagger:
   rules:
