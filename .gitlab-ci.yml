@@ -180,6 +180,7 @@ commit_container_test_image:
     entrypoint: [""]
   needs: []
   before_script:
+    - dnf install -y git-core
     - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
     - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
   script:
