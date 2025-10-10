@@ -131,6 +131,10 @@ paths:
           description: Provisioning was successful, NetHSM is *Operational* now.
         "400":
           description: Malformed request data (e.g. malformed time, weak passphrase).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "406":
           description: Content type in Accept header not supported.
         "412":
@@ -161,6 +165,10 @@ paths:
           description: Unlock was successful, NetHSM is *Operational* now.
         "400":
           description: Bad request (invalid passphrase).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Unlock failed (access denied).
         "406":
@@ -214,6 +222,10 @@ paths:
                 $ref: "#/components/schemas/RandomData"
         "400":
           description: Bad request (invalid length).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -296,6 +308,10 @@ paths:
             e.g. "https://nethsm.local/v1/keys/I8mhHYJ1T3uk2lXrwXehVaw9KZzg7K".
         "400":
           description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -348,6 +364,10 @@ paths:
                 $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -488,6 +508,10 @@ paths:
                         - berlin
         "400":
           description: Invalid character in the KeyID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -517,6 +541,10 @@ paths:
           description: Successful import of a private key.
         "400":
           description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -642,6 +670,10 @@ paths:
                 $ref: "#/components/schemas/PemPublicKey"
         "400":
           description: Invalid character in the KeyID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -681,6 +713,10 @@ paths:
                 $ref: "#/components/schemas/PemCSR"
         "400":
           description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -734,6 +770,10 @@ paths:
             * Mode `RAW` returns failure if input is bigger than key size.
             * Mode `PKCS1` returns failure if input is bigger than key size.
             * Mode `OAEP_*` returns failure is input is bigger than key size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -783,6 +823,10 @@ paths:
                 $ref: "#/components/schemas/EncryptData"
         "400":
           description: Bad Request, e.g. invalid mechanism.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -844,6 +888,10 @@ paths:
               or the private key is smaller than hash length.
             * Mode `ECDSA` returns failure if the input exceeds the group size in bits.
               The hash algorithm is not part of the encoding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -901,6 +949,10 @@ paths:
                 type: string
         "400":
           description: Invalid character in the KeyID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1002,6 +1054,10 @@ paths:
                 $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (invalid JSON or empty newId).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1048,6 +1104,10 @@ paths:
           description: Tag is already present for this key.
         "400":
           description: Bad request, tag format is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1144,6 +1204,10 @@ paths:
           description: |
             Bad request (specified properties are invalid, e.g. invalid namespace name
             or namespace already exists).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1172,6 +1236,10 @@ paths:
           description: Successful deletion of namespace.
         "400":
           description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1243,6 +1311,10 @@ paths:
                 $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1281,6 +1353,10 @@ paths:
 
         "400":
           description: Invalid character in the UserID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1312,6 +1388,10 @@ paths:
           description: Successful creation of user.
         "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1359,6 +1439,10 @@ paths:
                 $ref: "#/components/schemas/CreateResourceId"
         "400":
           description: Bad request (specified properties are invalid, e.g. weak passphrase).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1393,6 +1477,10 @@ paths:
           description: Successful deletion of user.
         "400":
           description: Bad request (cannot delete yourself)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1429,6 +1517,10 @@ paths:
           description: Successful change of passphrase.
         "400":
           description: Bad request - weak passphrase.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1476,6 +1568,10 @@ paths:
                 $ref: "#/components/schemas/TagList"
         "400":
           description: Invalid character in the UserID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1516,6 +1612,10 @@ paths:
           description: Tag is already present for this UserID.
         "400":
           description: Bad request, tag format is invalid or user is not an operator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1586,6 +1686,10 @@ paths:
           description: Successful change of passphrase.
         "400":
           description: Bad request - weak passphrase.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1646,6 +1750,10 @@ paths:
           description: Successful change of unattended boot mode.
         "400":
           description: Bad request - invalid status setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1729,6 +1837,10 @@ paths:
           description: Successfully set certificate.
         "400":
           description: Certificate malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1789,6 +1901,10 @@ paths:
           description: Successful creation of new public and private key pair for NetHSM's https API.
         "400":
           description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1844,6 +1960,10 @@ paths:
           description: Succesful update of network configuration.
         "400":
           description: Bad request - invalid input format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1902,6 +2022,10 @@ paths:
           description: Succesful update of logging configuration.
         "400":
           description: Bad request - invalid input format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1932,6 +2056,10 @@ paths:
           description: Successful change of passphrase.
         "400":
           description: Bad request - weak passphrase.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1994,6 +2122,10 @@ paths:
           description: Succesful update of system time.
         "400":
           description: Bad request - invalid input format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -2128,6 +2260,10 @@ paths:
                 $ref: "#/components/schemas/SystemUpdateData"
         "400":
           description: Update malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -2238,6 +2374,10 @@ paths:
           description: Successful restore from backup data.
         "400":
           description: Bad request - restore did not apply.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "406":
           description: Content type in Accept header not supported.
         "412":
@@ -3074,6 +3214,13 @@ components:
         35mqzHn+FjWq0eAtpzhO5Q==
         -----END CERTIFICATE-----
       type: string
+    ErrorResponse:
+      example:
+        message: that didn't work
+      type: object
+      properties:
+        message:
+          type: string
   responses: {}
   parameters: {}
   examples: {}
