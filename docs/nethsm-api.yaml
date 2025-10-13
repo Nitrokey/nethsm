@@ -866,8 +866,10 @@ paths:
         "200":
           description: |
             For response body with content type `application/json`:
-            * Mode `PKCS1` returns the PKCS1 signature of the padded hash value
-              prepended with the according DigestInfo header.
+            * Mode `PKCS1` returns the PKCS1 padded signature
+              NOTE: in order to create EMSA-PKCS1-v1_5 compliant signatures the
+              to be signed hash must be prepended with the according DigestInfo
+              header. See RFC 3447, section 9.2, note 1.
             * Mode `PSS_*` returns the EMSA-PSS encoded signature.
             * Mode `EdDSA` returns the RFC 8032 (5.1.6) encoding:
               r appened with s, in total 64 bytes (each 32 bytes).
@@ -882,9 +884,8 @@ paths:
         "400":
           description: |
             Bad Request, e.g. invalid signing mode.
-            * Mode `PKCS1` returns failure if the input has not a known hash
-              length or the private key is smaller than hash length.
-            * Mode `PSS_*` returns failure if the input has not the hash length,
+            * Mode `PKCS1` returns failure if input is bigger than key size
+            * Mode `PSS_*` returns failure if the input is not the hash length,
               or the private key is smaller than hash length.
             * Mode `ECDSA` returns failure if the input exceeds the group size in bits.
               The hash algorithm is not part of the encoding.
@@ -2914,7 +2915,7 @@ components:
     SignRequestData:
       example:
         mode: PKCS1
-        message: 6JudPZqn7OtoL4alZE15Rw0CFIfND+RMmIjzdobLZMM=
+        message: nhrfotu32409ru0rgert45z54z099u23r03498uhtr==
       type: object
       properties:
         mode:
@@ -2926,7 +2927,7 @@ components:
         - message
     SignData:
       example:
-        signature: AFJpIZPl7UW1AVqD0BVvWnbn3sFVLmO+wEfoK6eEfkNIrD9D3urCpk8gzkdj4qEmhfxFA2LQ8QoAUOGAouaJ4WSIs7hiksqHntxVkrOgIcmVOE/DZAb7rW3rSnYOd5l31VyE6es0pjZhlI39isMDJ7iXfZ/Eln4mrxdC4opBguiO4AzR2xbkAczrT3YV22AaDcbAaKSLHm0XUnnK8ooAlWy34bmEBo0hQflOLuTagnL7TYKqz9oi6wjTwoT3CO1b0vnWu3pftCLZWzwMoqf0ZVJq6e3usFBL0yqPS6sjin3Gh85/duEv+wJhmGZrkpMpGCuvrFgQfG9pY4TR7YEMYA==
+        signature: n4geMX1g8zcfipfcmn+XjM1ccWZULemAa0cuYoh1aXG9UhbE6f54NMp4NjboLf63SQyieJYjjV8q+/o1rFlkZCtKtHAheds+g90zdjOMmXFlXyBTKMhGOSHuleGz0c99x7Alg19KN9wB3Jj2niwweBOR/F4Qv0mdBUv+oO8uPl6vM1fS4tX/VJoCZkDnZzL8duKRNFT0SNQZ+ryLiqQMG53fEPhTplK/wK0Cco8JAYCMh9cxSzpBoCEO+9woxoBGehAjHuLxs6ed6q08W67leuibxZ8c6Q6upmwDlca/gSw0y4w1VIxxts2PORZdNsTWcr3lojcNgWXJcfAqF9/n4A==
       type: object
       properties:
         signature:

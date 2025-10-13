@@ -1965,6 +1965,14 @@ module Make (KV : Kv_ext.Ranged) = struct
             let open Rresult.R.Infix in
             Lwt.return
               ( (match (key_data.priv, sign_mode) with
+                | X509 (`RSA key), Json.PKCS1 -> (
+                    (* The PKCS#11 mechanism CKM_RSA_PKCS expects that the
+                       _application_ prepends the DigestInfo, and therfore we
+                       can't use the normal sign interface. *)
+                    try Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign)
+                    with Mirage_crypto_pk.Rsa.Insufficient_key ->
+                      Error (Bad_request, "Signing failure: RSA key too short.")
+                    )
                 | X509 (`P256K1 key), BIP340 -> (
                     try
                       let r, s =
@@ -1977,21 +1985,6 @@ module Make (KV : Kv_ext.Ranged) = struct
                 | Generic _, _ -> Error (Bad_request, "Generic keys can't sign.")
                 | X509 priv, _ ->
                     (match (priv, sign_mode) with
-                    | `RSA _, Json.PKCS1 -> (
-                        let len = String.length to_sign in
-                        let digest_sizes =
-                          [
-                            (Digestif.SHA1.digest_size, `SHA1);
-                            (Digestif.SHA224.digest_size, `SHA224);
-                            (Digestif.SHA256.digest_size, `SHA256);
-                            (Digestif.SHA384.digest_size, `SHA384);
-                            (Digestif.SHA512.digest_size, `SHA512);
-                            (Digestif.MD5.digest_size, `MD5);
-                          ]
-                        in
-                        match List.assoc_opt len digest_sizes with
-                        | Some hash -> Ok (`RSA_PKCS1, hash, `Digest to_sign)
-                        | None -> Error (Bad_request, "Invalid digest length."))
                     | `RSA _, Json.PSS_MD5 ->
                         Ok (`RSA_PSS, `MD5, `Digest to_sign)
                     | `RSA _, PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign)

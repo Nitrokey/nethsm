@@ -55,7 +55,7 @@ source "$(dirname $0)/common_functions.sh"
 POST_operator /v1/keys/rsa2048/sign <<EOM
 {
   mode: "PKCS1",
-  message: "6JudPZqn7OtoL4alZE15Rw0CFIfND+RMmIjzdobLZMM="
+  message: "SGkgQWxpY2UhIFBsZWFzZSBicmluZyBtYWxhY3DDtnJrw7ZsdCBmb3IgZGlubmVyIQo="
 }
 EOM
 EOF
@@ -71,7 +71,7 @@ source "$(dirname $0)/common_functions.sh"
 POST_operator /v1/keys/rsa4096/sign <<EOM
 {
   mode: "PKCS1",
-  message: "zML6QmSeVDB5otOgwEfORJsLTD0fp4Hz2/67LQG3brNrmNL/i71ZQTu439/OMOHxtcsGgH/xMyZs36w9eBT1FA=="
+  message: "SGkgQWxpY2UhIFBsZWFzZSBicmluZyBtYWxhY3DDtnJrw7ZsdCBmb3IgZGlubmVyIQo="
 }
 EOM
 EOF
