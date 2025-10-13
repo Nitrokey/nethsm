@@ -1,3 +1,8 @@
+# 3.1 (2025-10-13)
+
+* Revert back to old PKCS1 signing format
+* Reduce ARP cache timeout from 20 to 1 minute
+
 # 3.0 (2025-09-30)
 
 * Support for SECP256K1 curve and BIP-340 signatures
