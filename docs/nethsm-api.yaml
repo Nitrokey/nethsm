@@ -277,7 +277,7 @@ paths:
       parameters:
         - name: filter
           in: query
-          description: Only return keys that are can be used by the requester, according to restrictions.
+          description: Only return keys that can be used by the requester, according to restrictions, if this parameter is set to any value.
           schema:
             type: string
       security:
