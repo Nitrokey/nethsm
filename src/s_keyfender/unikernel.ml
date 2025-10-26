@@ -366,17 +366,20 @@ struct
       let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
-      let module S = Ext_reconfigurable_stack.Stack in
-      (* relay incoming etcd peer traffic to internal stack *)
-      Lwt.async (fun () ->
-          Etcd_relay_inbound.listen (S.tcp stack)
-            (Internal_stack.tcp internal_stack)
-            (Some (Ipaddr.V4 (Args.platform ()))));
-      (* relay internal etcd peer traffic to its original destination *)
-      Lwt.async (fun () ->
-          Etcd_relay_outbound.listen
-            (Internal_stack.tcp internal_stack)
-            (S.tcp stack) None);
+      (if Conf_args.no_platform then
+         Log.warn (fun f -> f "--no platform passed: disabling etcd clustering")
+       else
+         let module S = Ext_reconfigurable_stack.Stack in
+         (* relay incoming etcd peer traffic to internal stack *)
+         Lwt.async (fun () ->
+             Etcd_relay_inbound.listen (S.tcp stack)
+               (Internal_stack.tcp internal_stack)
+               (Some (Ipaddr.V4 (Args.platform ()))));
+         (* relay internal etcd peer traffic to its original destination *)
+         Lwt.async (fun () ->
+             Etcd_relay_outbound.listen
+               (Internal_stack.tcp internal_stack)
+               (S.tcp stack) None));
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
       let* log = Hsm.Config.log hsm_state in

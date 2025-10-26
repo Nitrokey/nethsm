@@ -21,12 +21,20 @@ let make_relay_stack ?group ~ipv4 ?gateway () =
   impl ~connect "Relay_stack.Make" ~runtime_args
     (network @-> ethernet @-> arpv4 @-> stackv4v6)
 
-let internal_stack =
+let default_internal : ipv4_config =
   let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
   let network = Ipaddr.V4.Prefix.make 24 ip in
-  let gateway = None in
+  { network; gateway = None }
+
+let internal_stack_relay =
+  let network = default_internal.network in
+  let gateway = default_internal.gateway in
   make_relay_stack ~group:"internal" ~ipv4:network ?gateway ()
   $ internal_net $ internal_eth $ internal_arp
+
+let internal_stack_single =
+  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal
+    (netif ~group:"internal" "internal")
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
 let htdocs = generic_kv_ro ~key:htdocs_key "htdocs"
@@ -76,6 +84,11 @@ let single_interface =
       [ "single-interface" ]
   in
   Key.(create "single-interface" Arg.(flag doc))
+
+let internal_stack =
+  if_impl
+    (Key.value single_interface)
+    internal_stack_single internal_stack_relay
 
 let external_reconfigurable_stack =
   if_impl
