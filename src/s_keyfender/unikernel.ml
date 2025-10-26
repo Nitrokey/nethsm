@@ -54,6 +54,9 @@ struct
   module Etcd_relay_inbound =
     Etcd_store.Peer_relay (Ext_stack.TCP) (Internal_stack.TCP)
 
+  module Etcd_relay_outbound =
+    Etcd_store.Peer_relay (Internal_stack.TCP) (Ext_stack.TCP)
+
   (* module Int_conduit = Conduit_mirage.TCP(Internal_stack) *)
   (* module Resolver = Resolver_mirage.Make(Rng)(Time)(Mclock)(Pclock)(Internal_stack) *)
   (* module Client = H2_mirage.Client(Int_conduit.Flow) *)
@@ -369,6 +372,11 @@ struct
           Etcd_relay_inbound.listen (S.tcp stack)
             (Internal_stack.tcp internal_stack)
             (Some (Ipaddr.V4 (Args.platform ()))));
+      (* relay internal etcd peer traffic to its original destination *)
+      Lwt.async (fun () ->
+          Etcd_relay_outbound.listen
+            (Internal_stack.tcp internal_stack)
+            (S.tcp stack) None);
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
       let* log = Hsm.Config.log hsm_state in
