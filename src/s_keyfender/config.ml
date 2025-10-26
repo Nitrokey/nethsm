@@ -4,14 +4,29 @@
 
 open Mirage
 
-let internal_stack =
-  let default_internal : ipv4_config =
-    let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
-    let network = Ipaddr.V4.Prefix.make 24 ip in
-    { network; gateway = None }
+let internal_net = netif ~group:"internal" "internal"
+let internal_eth = ethif internal_net
+let internal_arp = arp internal_eth
+
+let make_relay_stack ?group ~ipv4 ?gateway () =
+  let ip = Runtime_arg.V4.network ?group ipv4 in
+  let gateway = Runtime_arg.V4.gateway ?group gateway in
+  let runtime_args = Runtime_arg.[ v ip; v gateway ] in
+  let connect _ modname = function
+    | [ network; ethernet; arpv4; ip; gateway ] ->
+        code ~pos:__POS__ "%s.connect ~cidr:%s ?gateway:%s %s %s %s" modname ip
+          gateway network ethernet arpv4
+    | _ -> assert false
   in
-  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal
-    (netif ~group:"internal" "internal")
+  impl ~connect "Relay_stack.Make" ~runtime_args
+    (network @-> ethernet @-> arpv4 @-> stackv4v6)
+
+let internal_stack =
+  let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
+  let network = Ipaddr.V4.Prefix.make 24 ip in
+  let gateway = None in
+  make_relay_stack ~group:"internal" ~ipv4:network ?gateway ()
+  $ internal_net $ internal_eth $ internal_arp
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
 let htdocs = generic_kv_ro ~key:htdocs_key "htdocs"
