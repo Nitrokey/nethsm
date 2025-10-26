@@ -51,6 +51,9 @@ struct
   module Conduit_tls = Conduit_mirage.TLS (Conduit)
   module Srv = Cohttp_mirage.Server.Make (Conduit_tls)
 
+  module Etcd_relay_inbound =
+    Etcd_store.Peer_relay (Ext_stack.TCP) (Internal_stack.TCP)
+
   (* module Int_conduit = Conduit_mirage.TCP(Internal_stack) *)
   (* module Resolver = Resolver_mirage.Make(Rng)(Time)(Mclock)(Pclock)(Internal_stack) *)
   (* module Client = H2_mirage.Client(Int_conduit.Flow) *)
@@ -360,6 +363,12 @@ struct
       let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
+      let module S = Ext_reconfigurable_stack.Stack in
+      (* relay incoming etcd peer traffic to internal stack *)
+      Lwt.async (fun () ->
+          Etcd_relay_inbound.listen (S.tcp stack)
+            (Internal_stack.tcp internal_stack)
+            (Some (Ipaddr.V4 (Args.platform ()))));
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
       let* log = Hsm.Config.log hsm_state in

@@ -458,3 +458,54 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     | Error (`Etcd_error msg) -> raise (Etcd_error msg)
     | Error _ -> raise (Etcd_error "unknown error")
 end
+
+let etcd_peer_port = 2380
+
+module Peer_relay
+    (X : Tcpip.Tcp.S with type ipaddr = Ipaddr.t)
+    (Y : Tcpip.Tcp.S with type ipaddr = Ipaddr.t) =
+struct
+  let relay_bidir (y_tcp : Y.t) (xf : X.flow) target =
+    (* TODO error management *)
+    let src, _ = X.dst xf in
+    Logs.info (fun f ->
+        f "[etcd relay] new session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
+    Y.create_connection y_tcp (target, etcd_peer_port) >>= function
+    | Error _ -> failwith "cannot reach relay target"
+    | Ok yf ->
+        let close_all () = X.close xf >>= fun () -> Y.close yf in
+        let relay_unidir (type f1) (type f2)
+            (module A : Tcpip.Tcp.S with type flow = f1)
+            (module B : Tcpip.Tcp.S with type flow = f2) (af : f1) (bf : f2) =
+          let rec aux () =
+            A.read af >>= function
+            | Ok `Eof -> close_all ()
+            | Error _ -> close_all ()
+            | Ok (`Data b) -> (
+                B.write bf b >>= function
+                | Ok () ->
+                    Logs.info (fun f -> f "transmitted some data");
+                    aux ()
+                | Error _ -> close_all ())
+          in
+          aux ()
+        in
+        Lwt.pick
+          [
+            relay_unidir (module X) (module Y) xf yf;
+            relay_unidir (module Y) (module X) yf xf;
+          ]
+        >>= fun () ->
+        Logs.info (fun f ->
+            f "[etcd relay] end of session: %a -> %a" Ipaddr.pp src Ipaddr.pp
+              target);
+        Lwt.return_unit
+
+  let listen x y target =
+    X.listen x ~port:etcd_peer_port (fun flow ->
+        let target =
+          match target with Some target -> target | None -> X.src flow |> fst
+        in
+        relay_bidir y flow target);
+    Lwt.return_unit
+end
