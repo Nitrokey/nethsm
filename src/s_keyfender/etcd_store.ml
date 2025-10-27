@@ -245,6 +245,78 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
       ~decode
 
+  let member_list stack ~(request : MemberListRequest.t) :
+      MemberListResponse.t Lwt.t =
+    let request =
+      MemberListRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> MemberListResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberList" ~request
+      ~decode
+
+  let member_add stack ~(request : MemberAddRequest.t) :
+      MemberAddResponse.t Lwt.t =
+    let request =
+      MemberAddRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> MemberAddResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberAdd" ~request
+      ~decode
+
+  let member_remove stack ~(request : MemberRemoveRequest.t) :
+      MemberRemoveResponse.t Lwt.t =
+    let request =
+      MemberRemoveRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> MemberRemoveResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberRemove" ~request
+      ~decode
+
+  let member_update stack ~(request : MemberUpdateRequest.t) :
+      MemberUpdateResponse.t Lwt.t =
+    let request =
+      MemberUpdateRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> MemberUpdateResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate" ~request
+      ~decode
+
+  (* should be bi-directional, not unary
+  let watch_create stack ~(request : WatchCreateRequest.t) :
+      WatchResponse.t Lwt.t =
+    let request =
+      WatchCreateRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> WatchResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Watch" ~rpc:"Watch" ~request
+      ~decode
+      *)
+
   (* let compact ~ctx ~req =
      let uri = Request.build_uri "/v3/kv/compaction" in
      let body =
@@ -396,6 +468,35 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let digest t k =
     let open Lwt_result.Infix in
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
+
+  type cluster_member = { id : int; name : string; peer_urls : string list }
+
+  let cluster_member_of_member (t : Member.t) =
+    { id = t.iD; name = t.name; peer_urls = t.peerURLs }
+
+  let member_list t =
+    let request = MemberListRequest.make () in
+    etcd_try (fun () ->
+        Etcd.member_list t.stack ~request >|= fun resp ->
+        Ok (List.map cluster_member_of_member resp.MemberListResponse.members))
+
+  let member_remove ~id t =
+    let request = MemberRemoveRequest.make ~iD:id () in
+    etcd_try (fun () ->
+        Etcd.member_remove t.stack ~request >|= fun resp ->
+        Ok (List.map cluster_member_of_member resp.MemberRemoveResponse.members))
+
+  let member_update ~id ~peer_urls t =
+    let request = MemberUpdateRequest.make ~iD:id ~peerURLs:peer_urls () in
+    etcd_try (fun () ->
+        Etcd.member_update t.stack ~request >|= fun resp ->
+        Ok (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
+
+  let member_add ~peer_urls t =
+    let request = MemberAddRequest.make ~peerURLs:peer_urls () in
+    etcd_try (fun () ->
+        Etcd.member_add t.stack ~request >|= fun resp ->
+        Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
 
   let connect stack =
     let store = { stack; mode = `Normal } in

@@ -118,6 +118,33 @@ module Make_ranged (KV : RW) : Ranged with type t = KV.t = struct
     List.filter (fun (k, _) -> Range.within range k) items
 end
 
+module type Clustered = sig
+  include RW
+
+  type cluster_member = { id : int; name : string; peer_urls : string list }
+
+  val member_list : t -> (cluster_member list, error) result Lwt.t
+  val member_remove : id:int -> t -> (cluster_member list, error) result Lwt.t
+
+  val member_update :
+    id:int ->
+    peer_urls:string list ->
+    t ->
+    (cluster_member list, error) result Lwt.t
+
+  val member_add :
+    peer_urls:string list -> t -> (cluster_member list, error) result Lwt.t
+end
+
+module Fake_clustered = struct
+  type cluster_member = { id : int; name : string; peer_urls : string list }
+
+  let member_list _ = Lwt.return (Ok [])
+  let member_remove ~id:_ _ = Lwt.return (Ok [])
+  let member_update ~id:_ ~peer_urls:_ _ = Lwt.return (Ok [])
+  let member_add ~peer_urls:_ _ = Lwt.return (Ok [])
+end
+
 module type Typed_ranged = sig
   include Ranged
   include Typed with type t := t and type error := error
