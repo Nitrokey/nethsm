@@ -278,6 +278,8 @@ func sPlatformActions() {
 
 	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
 	G.s.Execf("/bbin/ip link set dev net0 up")
+	// route etcd peer connections through keyfender
+	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
 
 	dumpNetworkStatus()
 
@@ -312,9 +314,11 @@ func sPlatformActions() {
 		" --auto-compaction-retention=1h"+
 		" --quota-backend-bytes=5694816256"+ // should not be more than RAM
 		" --initial-cluster-state=new"+
+		" --listen-peer-urls=http://169.254.169.2:2380"+
+		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
+		// --initial-cluster <- just ourself, expanded at runtime
 		" --v2-deprecation=gone"+
 		" --max-txn-ops=512"+
-		" --force-new-cluster=true"+
 		// " --log-level debug"+
 		"")
 
