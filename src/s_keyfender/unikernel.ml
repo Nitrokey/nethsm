@@ -132,16 +132,16 @@ struct
                           Error (`Read (Fmt.to_to_string T.pp_error e))
                     in
                     (match additional_data with
-                    | None -> Lwt.return (Ok ())
-                    | Some f ->
-                        let write data =
-                          T.write flow (Cstruct.of_string data) >>= function
-                          | Error we ->
-                              T.close flow >|= fun () ->
-                              Error (Fmt.to_to_string T.pp_write_error we)
-                          | Ok () -> Lwt.return (Ok ())
-                        in
-                        f write)
+                      | None -> Lwt.return (Ok ())
+                      | Some f ->
+                          let write data =
+                            T.write flow (Cstruct.of_string data) >>= function
+                            | Error we ->
+                                T.close flow >|= fun () ->
+                                Error (Fmt.to_to_string T.pp_write_error we)
+                            | Ok () -> Lwt.return (Ok ())
+                          in
+                          f write)
                     >>= function
                     | Ok () -> read Cstruct.empty
                     | Error e -> Lwt.return (Error (`Additional e)))) );

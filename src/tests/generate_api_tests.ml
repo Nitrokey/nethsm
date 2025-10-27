@@ -178,12 +178,12 @@ let subst_prefix_len = String.length subst_prefix
 let req_substs req =
   Ezjsonm.get_dict req
   |> List.filter_map (fun (k, v) ->
-         if Astring.String.is_prefix ~affix:subst_prefix k then
-           let match' =
-             String.sub k subst_prefix_len (String.length k - subst_prefix_len)
-           in
-           match v with `String s -> Some (match', s) | _ -> None
-         else None)
+      if Astring.String.is_prefix ~affix:subst_prefix k then
+        let match' =
+          String.sub k subst_prefix_len (String.length k - subst_prefix_len)
+        in
+        match v with `String s -> Some (match', s) | _ -> None
+      else None)
 
 let make_post_data req =
   match Ezjsonm.get_dict @@ Ezjsonm.find req [ "requestBody"; "content" ] with

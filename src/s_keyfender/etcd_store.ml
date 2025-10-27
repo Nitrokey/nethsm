@@ -141,8 +141,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
 
   let get_connection ~stack =
     (match persistent_connection () with
-    | Some x -> Lwt.return x
-    | _ -> create_connection ~stack)
+      | Some x -> Lwt.return x
+      | _ -> create_connection ~stack)
     >|= fun (conn, conn_err) ->
     let conn_err' = Lwt.protected conn_err >>= etcd_err in
     (conn, conn_err')

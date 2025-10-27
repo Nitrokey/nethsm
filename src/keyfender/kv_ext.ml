@@ -91,8 +91,8 @@ module Range = struct
   let within t k =
     let n = Key.basename k in
     (match t.start with
-    | None -> true
-    | Some start -> String.compare start n <= 0)
+      | None -> true
+      | Some start -> String.compare start n <= 0)
     && match t.stop with None -> true | Some stop -> String.compare n stop < 0
 
   let first_key t = Option.map (fun start -> Key.(t.prefix / start)) t.start

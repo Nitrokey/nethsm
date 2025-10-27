@@ -819,8 +819,8 @@ module Make (KV : Kv_ext.Ranged) = struct
       (Domain_key_store.get kv slot ~encryption_key:device_key)
     >>= fun data ->
     (match pass_key with
-    | None -> Lwt.return_ok data
-    | Some k -> decrypt_with_pass_key data ~pass_key:k)
+      | None -> Lwt.return_ok data
+      | Some k -> decrypt_with_pass_key data ~pass_key:k)
     >|= fun domain_key ->
     let auth_store_key, key_store_key, namespace_store_key =
       make_store_keys domain_key
@@ -1555,9 +1555,9 @@ module Make (KV : Kv_ext.Ranged) = struct
     let generate_x509 typ ~length =
       let open Rresult in
       (match typ with
-      | `RSA when 1024 <= length && length <= 8192 -> Ok (Some length, `RSA)
-      | `RSA -> Error (Bad_request, "Length must be between 1024 and 8192.")
-      | rest -> Ok (None, rest))
+        | `RSA when 1024 <= length && length <= 8192 -> Ok (Some length, `RSA)
+        | `RSA -> Error (Bad_request, "Length must be between 1024 and 8192.")
+        | rest -> Ok (None, rest))
       >>| fun (bits, typ) -> X509.Private_key.generate ?bits typ
 
     let generate_generic ~length =
@@ -1843,50 +1843,53 @@ module Make (KV : Kv_ext.Ranged) = struct
                  key_data.mechanisms
              then (
                (match key_data.priv with
-               | X509 (`RSA key) -> (
-                   let dec_cs =
-                     match decrypt_mode with
-                     | Json.RAW -> (
-                         try
-                           Some
-                             (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_data)
-                         with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
-                     | PKCS1 ->
-                         Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key encrypted_data
-                     | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_data
-                     | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_data
-                     | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_data
-                     | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_data
-                     | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_data
-                     | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
-                     | AES_CBC -> None
-                   in
-                   match dec_cs with
-                   | None -> Error (Bad_request, "Decryption failure")
-                   | Some cs -> Ok cs)
-               | Generic key -> (
-                   match decrypt_mode with
-                   | Json.AES_CBC -> (
-                       match iv with
-                       | None ->
-                           Error (Bad_request, "AES-CBC decrypt requires IV")
-                       | Some iv -> (
+                 | X509 (`RSA key) -> (
+                     let dec_cs =
+                       match decrypt_mode with
+                       | Json.RAW -> (
                            try
-                             let iv = Base64.decode_exn iv in
-                             let key = Mirage_crypto.AES.CBC.of_secret key in
-                             Ok
-                               (Mirage_crypto.AES.CBC.decrypt ~key ~iv
-                                  encrypted_data)
-                           with Invalid_argument err ->
-                             Error (Bad_request, "Decryption failed: " ^ err)))
-                   | _ ->
-                       Error
-                         ( Bad_request,
-                           "decrypt mode not supported by Generic key" ))
-               | _ ->
-                   Error
-                     ( Bad_request,
-                       "Decryption only supported for RSA and Generic keys." ))
+                             Some
+                               (Mirage_crypto_pk.Rsa.decrypt ~key encrypted_data)
+                           with Mirage_crypto_pk.Rsa.Insufficient_key -> None)
+                       | PKCS1 ->
+                           Mirage_crypto_pk.Rsa.PKCS1.decrypt ~key
+                             encrypted_data
+                       | OAEP_MD5 -> Oaep_md5.decrypt ~key encrypted_data
+                       | OAEP_SHA1 -> Oaep_sha1.decrypt ~key encrypted_data
+                       | OAEP_SHA224 -> Oaep_sha224.decrypt ~key encrypted_data
+                       | OAEP_SHA256 -> Oaep_sha256.decrypt ~key encrypted_data
+                       | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_data
+                       | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
+                       | AES_CBC -> None
+                     in
+                     match dec_cs with
+                     | None -> Error (Bad_request, "Decryption failure")
+                     | Some cs -> Ok cs)
+                 | Generic key -> (
+                     match decrypt_mode with
+                     | Json.AES_CBC -> (
+                         match iv with
+                         | None ->
+                             Error (Bad_request, "AES-CBC decrypt requires IV")
+                         | Some iv -> (
+                             try
+                               let iv = Base64.decode_exn iv in
+                               let key = Mirage_crypto.AES.CBC.of_secret key in
+                               Ok
+                                 (Mirage_crypto.AES.CBC.decrypt ~key ~iv
+                                    encrypted_data)
+                             with Invalid_argument err ->
+                               Error (Bad_request, "Decryption failed: " ^ err))
+                         )
+                     | _ ->
+                         Error
+                           ( Bad_request,
+                             "decrypt mode not supported by Generic key" ))
+                 | _ ->
+                     Error
+                       ( Bad_request,
+                         "Decryption only supported for RSA and Generic keys."
+                       ))
                >>= fun data ->
                Metrics.key_op `Decrypt;
                Hashtbl.replace cached_operations (namespace, id)
@@ -1915,27 +1918,29 @@ module Make (KV : Kv_ext.Ranged) = struct
                  key_data.mechanisms
              then (
                (match key_data.priv with
-               | Generic key -> (
-                   match encrypt_mode with
-                   | Json.AES_CBC -> (
-                       try
-                         let iv =
-                           match iv with
-                           | None ->
-                               Mirage_crypto_rng.generate
-                                 Mirage_crypto.AES.CBC.block_size
-                           | Some iv -> Base64.decode_exn iv
-                         in
-                         let key = Mirage_crypto.AES.CBC.of_secret key in
-                         Ok
-                           ( Mirage_crypto.AES.CBC.encrypt ~key ~iv message_data
-                             |> Base64.encode_string,
-                             Some (Base64.encode_string iv) )
-                       with Invalid_argument err ->
-                         Error (Bad_request, "Encryption failed: " ^ err)))
-               | _ ->
-                   Error
-                     (Bad_request, "Encryption only supported for Generic keys."))
+                 | Generic key -> (
+                     match encrypt_mode with
+                     | Json.AES_CBC -> (
+                         try
+                           let iv =
+                             match iv with
+                             | None ->
+                                 Mirage_crypto_rng.generate
+                                   Mirage_crypto.AES.CBC.block_size
+                             | Some iv -> Base64.decode_exn iv
+                           in
+                           let key = Mirage_crypto.AES.CBC.of_secret key in
+                           Ok
+                             ( Mirage_crypto.AES.CBC.encrypt ~key ~iv
+                                 message_data
+                               |> Base64.encode_string,
+                               Some (Base64.encode_string iv) )
+                         with Invalid_argument err ->
+                           Error (Bad_request, "Encryption failed: " ^ err)))
+                 | _ ->
+                     Error
+                       ( Bad_request,
+                         "Encryption only supported for Generic keys." ))
                >>= fun (cs, iv) ->
                Metrics.key_op `Encrypt;
                Hashtbl.replace cached_operations (namespace, id)
@@ -1965,54 +1970,59 @@ module Make (KV : Kv_ext.Ranged) = struct
             let open Rresult.R.Infix in
             Lwt.return
               ( (match (key_data.priv, sign_mode) with
-                | X509 (`RSA key), Json.PKCS1 -> (
-                    (* The PKCS#11 mechanism CKM_RSA_PKCS expects that the
+                  | X509 (`RSA key), Json.PKCS1 -> (
+                      (* The PKCS#11 mechanism CKM_RSA_PKCS expects that the
                        _application_ prepends the DigestInfo, and therfore we
                        can't use the normal sign interface. *)
-                    try Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign)
-                    with Mirage_crypto_pk.Rsa.Insufficient_key ->
-                      Error (Bad_request, "Signing failure: RSA key too short.")
-                    )
-                | X509 (`P256K1 key), BIP340 -> (
-                    try
-                      let r, s =
-                        Mirage_crypto_ec.P256k1.Dsa_bip340.sign_bip340 ~key
-                          to_sign
-                      in
-                      Ok (r ^ s)
-                    with Invalid_argument x ->
-                      Error (Bad_request, "Signing failure: " ^ x))
-                | Generic _, _ -> Error (Bad_request, "Generic keys can't sign.")
-                | X509 priv, _ ->
-                    (match (priv, sign_mode) with
-                    | `RSA _, Json.PSS_MD5 ->
-                        Ok (`RSA_PSS, `MD5, `Digest to_sign)
-                    | `RSA _, PSS_SHA1 -> Ok (`RSA_PSS, `SHA1, `Digest to_sign)
-                    | `RSA _, PSS_SHA224 ->
-                        Ok (`RSA_PSS, `SHA224, `Digest to_sign)
-                    | `RSA _, PSS_SHA256 ->
-                        Ok (`RSA_PSS, `SHA256, `Digest to_sign)
-                    | `RSA _, PSS_SHA384 ->
-                        Ok (`RSA_PSS, `SHA384, `Digest to_sign)
-                    | `RSA _, PSS_SHA512 ->
-                        Ok (`RSA_PSS, `SHA512, `Digest to_sign)
-                    | `ED25519 _, EdDSA ->
-                        Ok (`ED25519, `SHA512, `Message to_sign)
-                    | `P256 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign)
-                    | `P384 _, ECDSA -> Ok (`ECDSA, `SHA384, `Digest to_sign)
-                    | `P521 _, ECDSA -> Ok (`ECDSA, `SHA512, `Digest to_sign)
-                    | `P256K1 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign)
-                    | `BrainpoolP256 _, ECDSA ->
-                        Ok (`ECDSA, `SHA256, `Digest to_sign)
-                    | `BrainpoolP384 _, ECDSA ->
-                        Ok (`ECDSA, `SHA384, `Digest to_sign)
-                    | `BrainpoolP512 _, ECDSA ->
-                        Ok (`ECDSA, `SHA512, `Digest to_sign)
-                    | _ -> Error (Bad_request, "invalid sign mode"))
-                    >>= fun (scheme, hash, data) ->
-                    Rresult.R.reword_error
-                      (function `Msg m -> (Bad_request, m))
-                      (X509.Private_key.sign ~rand_k:true hash ~scheme priv data))
+                      try
+                        Ok (Mirage_crypto_pk.Rsa.PKCS1.sig_encode ~key to_sign)
+                      with Mirage_crypto_pk.Rsa.Insufficient_key ->
+                        Error
+                          (Bad_request, "Signing failure: RSA key too short."))
+                  | X509 (`P256K1 key), BIP340 -> (
+                      try
+                        let r, s =
+                          Mirage_crypto_ec.P256k1.Dsa_bip340.sign_bip340 ~key
+                            to_sign
+                        in
+                        Ok (r ^ s)
+                      with Invalid_argument x ->
+                        Error (Bad_request, "Signing failure: " ^ x))
+                  | Generic _, _ ->
+                      Error (Bad_request, "Generic keys can't sign.")
+                  | X509 priv, _ ->
+                      (match (priv, sign_mode) with
+                        | `RSA _, Json.PSS_MD5 ->
+                            Ok (`RSA_PSS, `MD5, `Digest to_sign)
+                        | `RSA _, PSS_SHA1 ->
+                            Ok (`RSA_PSS, `SHA1, `Digest to_sign)
+                        | `RSA _, PSS_SHA224 ->
+                            Ok (`RSA_PSS, `SHA224, `Digest to_sign)
+                        | `RSA _, PSS_SHA256 ->
+                            Ok (`RSA_PSS, `SHA256, `Digest to_sign)
+                        | `RSA _, PSS_SHA384 ->
+                            Ok (`RSA_PSS, `SHA384, `Digest to_sign)
+                        | `RSA _, PSS_SHA512 ->
+                            Ok (`RSA_PSS, `SHA512, `Digest to_sign)
+                        | `ED25519 _, EdDSA ->
+                            Ok (`ED25519, `SHA512, `Message to_sign)
+                        | `P256 _, ECDSA -> Ok (`ECDSA, `SHA256, `Digest to_sign)
+                        | `P384 _, ECDSA -> Ok (`ECDSA, `SHA384, `Digest to_sign)
+                        | `P521 _, ECDSA -> Ok (`ECDSA, `SHA512, `Digest to_sign)
+                        | `P256K1 _, ECDSA ->
+                            Ok (`ECDSA, `SHA256, `Digest to_sign)
+                        | `BrainpoolP256 _, ECDSA ->
+                            Ok (`ECDSA, `SHA256, `Digest to_sign)
+                        | `BrainpoolP384 _, ECDSA ->
+                            Ok (`ECDSA, `SHA384, `Digest to_sign)
+                        | `BrainpoolP512 _, ECDSA ->
+                            Ok (`ECDSA, `SHA512, `Digest to_sign)
+                        | _ -> Error (Bad_request, "invalid sign mode"))
+                      >>= fun (scheme, hash, data) ->
+                      Rresult.R.reword_error
+                        (function `Msg m -> (Bad_request, m))
+                        (X509.Private_key.sign ~rand_k:true hash ~scheme priv
+                           data))
               >>| fun signature ->
                 Metrics.key_op `Sign;
                 Hashtbl.replace cached_operations (namespace, id)

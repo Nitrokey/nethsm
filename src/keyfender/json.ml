@@ -74,8 +74,8 @@ let decode_time s =
   >>= fun (time, off, _) ->
   (* according to spec, we accept only UTC timestamps! *)
   (match off with
-  | None | Some 0 -> Ok ()
-  | _ -> Error "Error while parsing timestamp. Offset must be 0.")
+    | None | Some 0 -> Ok ()
+    | _ -> Error "Error while parsing timestamp. Offset must be 0.")
   >>| fun () -> time
 
 type passphrase_req = { passphrase : string } [@@deriving yojson]
@@ -119,8 +119,8 @@ type restore_req = {
 let decode_restore_req json =
   decode restore_req_of_yojson json >>= fun b ->
   (match b.systemTime with
-  | None -> Ok None
-  | Some t -> decode_time t >>| fun t -> Some t)
+    | None -> Ok None
+    | Some t -> decode_time t >>| fun t -> Some t)
   >>| fun time -> (time, b.backupPassphrase)
 
 type ip = Ipaddr.V4.t
@@ -475,11 +475,11 @@ let valid_id id =
 let decode_generate_key_req s =
   decode generate_key_req_of_yojson s >>= fun r ->
   (match r.typ with
-  | RSA ->
-      guard
-        (1024 <= r.length && r.length <= 8192)
-        "RSA key length must be between 1024 and 8192."
-  | _ -> Ok ())
+    | RSA ->
+        guard
+          (1024 <= r.length && r.length <= 8192)
+          "RSA key length must be between 1024 and 8192."
+    | _ -> Ok ())
   >>= fun () ->
   guard
     (MS.for_all (type_matches_mechanism r.typ) r.mechanisms)

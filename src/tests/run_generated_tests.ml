@@ -221,13 +221,13 @@ let tests_endpoint (module B : BACKEND) () =
   let () =
     ls "."
     |> List.filter_map (fun s ->
-           if Astring.String.is_suffix ~affix:command_suffix s then
-             Some String.(sub s 0 (length s - command_suffix_len))
-           else None)
+        if Astring.String.is_suffix ~affix:command_suffix s then
+          Some String.(sub s 0 (length s - command_suffix_len))
+        else None)
     |> List.map test_error
     |> List.iter (function
-         | Ok () -> ()
-         | Error (`Msg msg) -> Alcotest.fail msg)
+      | Ok () -> ()
+      | Error (`Msg msg) -> Alcotest.fail msg)
   in
   (* 5: perform happy-path test *)
   let () =
@@ -255,11 +255,11 @@ let tests_endpoint (module B : BACKEND) () =
 let tests_of_dir (module B : BACKEND) dir prefix =
   ls dir
   |> List.map (fun endpoint ->
-         ( prefix ^ ":" ^ endpoint,
-           [
-             ( Alcotest.test_case "OK" `Quick @@ fun () ->
-               in_dir (dir ^ "/" ^ endpoint) (tests_endpoint (module B)) );
-           ] ))
+      ( prefix ^ ":" ^ endpoint,
+        [
+          ( Alcotest.test_case "OK" `Quick @@ fun () ->
+            in_dir (dir ^ "/" ^ endpoint) (tests_endpoint (module B)) );
+        ] ))
 
 let api_tests backend = tests_of_dir backend "generated" "API"
 let custom_tests backend = tests_of_dir backend "load" "LOAD"
