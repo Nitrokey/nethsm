@@ -366,8 +366,9 @@ struct
       let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
-      (if Conf_args.no_platform then
-         Log.warn (fun f -> f "--no platform passed: disabling etcd clustering")
+      (if Conf_args.no_platform then (
+         Log.warn (fun f -> f "--no platform passed: disabling etcd clustering");
+         Lwt.return_unit)
        else
          let module S = Ext_reconfigurable_stack.Stack in
          (* relay incoming etcd peer traffic to internal stack *)
@@ -379,7 +380,42 @@ struct
          Lwt.async (fun () ->
              Etcd_relay_outbound.listen
                (Internal_stack.tcp internal_stack)
-               (S.tcp stack) None));
+               (S.tcp stack) None);
+         KV_store.Cluster.member_list store >>= function
+         | Error (`Cluster_error s) ->
+             Logs.err (fun m ->
+                 m "could not check if our etcd peer url is up to date: %s" s);
+             Lwt.return_unit
+         | Ok member_list -> (
+             let own_id = KV_store.Cluster.my_id store in
+             match
+               List.find_opt
+                 (fun member -> member.KV_store.Cluster.id = own_id)
+                 member_list
+             with
+             | None ->
+                 Logs.err (fun m ->
+                     m "cannot find ourselves in the cluster member list!");
+                 Lwt.return_unit
+             | Some member -> (
+                 let wanted_peer_url =
+                   Fmt.str "http://%a:2380" Ipaddr.V4.pp
+                     (Ipaddr.V4.Prefix.address cidr)
+                 in
+                 match member.peer_urls with
+                 | [ peer_url ] when String.equal peer_url wanted_peer_url ->
+                     Logs.info (fun m ->
+                         m "etcd peer url is up to date: %s" wanted_peer_url);
+                     Lwt.return_unit
+                 | _ -> (
+                     KV_store.Cluster.member_update ~id:own_id
+                       ~peer_urls:[ wanted_peer_url ] store
+                     >|= function
+                     | Ok _ -> ()
+                     | Error (`Cluster_error s) ->
+                         Logs.err (fun m -> m "couldn't update peer url: %s" s))
+                 )))
+      >>= fun () ->
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
       let* log = Hsm.Config.log hsm_state in

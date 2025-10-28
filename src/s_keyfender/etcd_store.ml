@@ -301,6 +301,19 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate" ~request
       ~decode
 
+  let maintenance_status stack : StatusResponse.t Lwt.t =
+    let request =
+      StatusRequest.(make () |> to_proto) |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> StatusResponse.from_proto |> Result.map Option.some
+    in
+    do_grpc ~stack ~service:"etcdserverpb.Maintenance" ~rpc:"Status" ~request
+      ~decode
+
   (* should be bi-directional, not unary
   let watch_create stack ~(request : WatchCreateRequest.t) :
       WatchResponse.t Lwt.t =
@@ -372,7 +385,12 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       promises
   end
 
-  type t = { stack : Stack.t; mode : [ `Normal | `Batch of Txn_batcher.t ] }
+  type t = {
+    stack : Stack.t;
+    mode : [ `Normal | `Batch of Txn_batcher.t ];
+    member_id : int;
+  }
+
   type key = Key.t
 
   let etcd_try f =
@@ -480,6 +498,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       etcd_try f
       >|= Result.map_error (function `Etcd_error s -> `Cluster_error s)
 
+    let my_id t = t.member_id
+
     let member_list t =
       let request = MemberListRequest.make () in
       etcd_try (fun () ->
@@ -507,11 +527,26 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
   end
 
+  let status stack =
+    etcd_try (fun () ->
+        Etcd.maintenance_status stack >|= fun resp ->
+        let leader = resp.leader in
+        let db_size = resp.dbSize in
+        let errors = resp.errors in
+        match resp.header with
+        | None -> Error (`Etcd_error "response did not have a header")
+        | Some header ->
+            Log.info (fun f ->
+                f "status: (id=%x,@,leader=%x,@,db_size=%d@,errors=%a)"
+                  header.member_id leader db_size
+                  Fmt.(list string)
+                  errors);
+            Ok header.member_id)
+
   let connect stack =
-    let store = { stack; mode = `Normal } in
-    get store (Key.v ".doesnotexist") >|= function
-    | Ok _ | Error (`Not_found _) -> Ok store
+    status stack >|= function
     | Error e -> Error e
+    | Ok member_id -> Ok { stack; mode = `Normal; member_id }
 end
 
 module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
