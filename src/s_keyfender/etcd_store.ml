@@ -613,11 +613,15 @@ struct
   let relay_bidir (y_tcp : Y.t) (xf : X.flow) target =
     (* TODO error management *)
     let src, _ = X.dst xf in
-    Logs.info (fun f ->
-        f "[etcd relay] new session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
     Y.create_connection y_tcp (target, etcd_peer_port) >>= function
-    | Error _ -> failwith "cannot reach relay target"
+    | Error e ->
+        Log.err (fun f ->
+            f "relay: cannot reach target of (%a -> %a): %a" Ipaddr.pp src
+              Ipaddr.pp target Y.pp_error e);
+        Lwt.return_unit
     | Ok yf ->
+        Log.info (fun f ->
+            f "relay: new session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
         let close_all () = X.close xf >>= fun () -> Y.close yf in
         let relay_unidir (type f1) (type f2)
             (module A : Tcpip.Tcp.S with type flow = f1)
@@ -629,7 +633,7 @@ struct
             | Ok (`Data b) -> (
                 B.write bf b >>= function
                 | Ok () ->
-                    Logs.info (fun f -> f "transmitted some data");
+                    Log.info (fun f -> f "relay: transmitted some data");
                     aux ()
                 | Error _ -> close_all ())
           in
@@ -641,9 +645,8 @@ struct
             relay_unidir (module Y) (module X) yf xf;
           ]
         >>= fun () ->
-        Logs.info (fun f ->
-            f "[etcd relay] end of session: %a -> %a" Ipaddr.pp src Ipaddr.pp
-              target);
+        Log.info (fun f ->
+            f "relay: end of session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
         Lwt.return_unit
 
   let listen x y target =
