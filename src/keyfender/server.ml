@@ -91,6 +91,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ("/system/backup", fun () -> new System.backup hsm_state ip);
         ("/system/restore", fun () -> new System.restore hsm_state ip);
         ("/cluster/members", fun () -> new Cluster.handler_members hsm_state ip);
+        ("/cluster/members/:id", fun () -> new Cluster.handler hsm_state ip);
       ]
 end
 

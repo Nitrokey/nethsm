@@ -17,16 +17,23 @@ curl -s -k -X PUT -H "content-type: application/json" -d \
     '{"ipAddress":"0.0.0.0","port":0,"logLevel":"warning"}' \
     https://admin:Administrator@${NETHSM_IP}/api/v1/config/logging
 
+echo "clustering tests"
+
 curl -s -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
+
+echo "net conf"
 
 ip a
 
-curl -s -k -X POST -H "content-type: application/json" -d \
-    '{"peer_urls":["192.168.1.2"]}' \
+echo "adding member"
+
+curl -v --no-progress-meter -k -X POST -H "content-type: application/json" -d \
+    '{"peer_urls":["http://192.168.1.100:2380"]}' \
     https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
 
-etcd --version || true
-etcdctl --version || true
+echo "check new state"
+
+curl -s -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
 
 #flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 10 \
 #    p256 p384 p521 rsa1024 rsa2048 rsa3072 rsa4096 ed25519 p256k1 \

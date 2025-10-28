@@ -4122,25 +4122,53 @@ let keys_key_version_cert_delete_fails =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let returns_empty ~with_status = function
+  | _, Some (status, _, body, _) ->
+      Alcotest.(check http_status) "status" with_status status;
+      begin match body with
+      | `Empty -> ()
+      | _ -> Alcotest.fail "did not return empty body"
+      end
+  | _ -> Alcotest.fail "invalid response form"
+
+let returns_string ~with_status = function
+  | _, Some (status, _, body, _) ->
+      Alcotest.(check http_status) "status" with_status status;
+      begin match body with
+      | `String s -> s
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form"
+
 let cluster_member_ops_not_etcd =
-  Alcotest.test_case "GET /cluster/members is not implemented without etcd"
-    `Quick (fun () ->
-      match
-        request ~hsm_state:(operational_mock ()) ~headers:admin_headers
-          "/cluster/members"
-      with
-      | _, Some (status, _, `String body, _) ->
-          Alcotest.(check http_status) "status" `Internal_server_error status;
-          Alcotest.(check string)
-            "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
-      | _ -> Alcotest.fail "invalid response form")
+  Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
+    (fun () ->
+      let check body =
+        Alcotest.(check string)
+          "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
+      in
+      request ~hsm_state:(operational_mock ()) ~headers:admin_headers
+        "/cluster/members"
+      |> returns_string ~with_status:`Internal_server_error
+      |> check;
+      (* even when not implemented, we still check the JSON payload is
+         well-formed first *)
+      request ~meth:`POST ~hsm_state:(operational_mock ())
+        ~headers:admin_headers "/cluster/members"
+      |> returns_string ~with_status:`Bad_request
+      |> ignore;
+      let body = `String {|{"peer_urls":["192.168.1.100"]}|} in
+      request ~meth:`POST ~body ~hsm_state:(operational_mock ())
+        ~headers:admin_headers "/cluster/members"
+      |> returns_string ~with_status:`Internal_server_error
+      |> check)
 
 let cluster_member_ops_admin_only =
-  Alcotest.test_case "GET /cluster/members is admin-only" `Quick (fun () ->
-      match request ~hsm_state:(operational_mock ()) "/cluster/members" with
-      | _, Some (status, _, `Empty, _) ->
-          Alcotest.(check http_status) "status" `Unauthorized status
-      | _ -> Alcotest.fail "invalid response form")
+  Alcotest.test_case "/cluster/members ops are admin-only" `Quick (fun () ->
+      request ~hsm_state:(operational_mock ()) "/cluster/members"
+      |> returns_empty ~with_status:`Unauthorized;
+      request ~meth:`POST ~hsm_state:(operational_mock ()) "/cluster/members"
+      |> returns_empty ~with_status:`Unauthorized)
 
 let rate_limit_for_unlock =
   let path = "/unlock" in

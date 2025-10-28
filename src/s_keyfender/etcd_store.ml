@@ -537,7 +537,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | None -> Error (`Etcd_error "response did not have a header")
         | Some header ->
             Log.info (fun f ->
-                f "status: (id=%Lx,@,leader=%Lx,@,db_size=%Ld@,errors=%a)"
+                f "status: (id=%Lx,@,leader=%Lx,@,db_size=%Ld,@,errors=[%a])"
                   header.member_id leader db_size
                   Fmt.(list string)
                   errors);

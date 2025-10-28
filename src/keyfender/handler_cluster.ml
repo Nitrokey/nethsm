@@ -61,6 +61,8 @@ struct
         Json.decode Json.member_req_of_yojson content
         |> Endpoint.err_to_bad_request ok rd
 
+      method! post_is_create rd = Wm.continue true rd
+
       method content_types_provided rd =
         Wm.continue [ ("application/json", self#list_members) ] rd
 
