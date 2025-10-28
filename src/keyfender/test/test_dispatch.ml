@@ -18,6 +18,8 @@ let ( @? ) name fn =
   Alcotest.test_case name `Quick (fun () ->
       Alcotest.(check bool) "OK" true (fn ()))
 
+let http_status = Alcotest.testable Http.Status.pp ( = )
+
 let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
@@ -4120,6 +4122,26 @@ let keys_key_version_cert_delete_fails =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let cluster_member_ops_not_etcd =
+  Alcotest.test_case "GET /cluster/members is not implemented without etcd"
+    `Quick (fun () ->
+      match
+        request ~hsm_state:(operational_mock ()) ~headers:admin_headers
+          "/cluster/members"
+      with
+      | _, Some (status, _, `String body, _) ->
+          Alcotest.(check http_status) "status" `Internal_server_error status;
+          Alcotest.(check string)
+            "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
+      | _ -> Alcotest.fail "invalid response form")
+
+let cluster_member_ops_admin_only =
+  Alcotest.test_case "GET /cluster/members is admin-only" `Quick (fun () ->
+      match request ~hsm_state:(operational_mock ()) "/cluster/members" with
+      | _, Some (status, _, `Empty, _) ->
+          Alcotest.(check http_status) "status" `Unauthorized status
+      | _ -> Alcotest.fail "invalid response form")
+
 let rate_limit_for_unlock =
   let path = "/unlock" in
   "rate limit for unlock" @? fun () ->
@@ -4951,6 +4973,8 @@ let () =
           keys_key_version_cert_put_fails;
           keys_key_version_cert_delete_fails;
         ] );
+      ( "/cluster/members",
+        [ cluster_member_ops_not_etcd; cluster_member_ops_admin_only ] );
       ( "rate limit",
         [
           rate_limit_for_get;

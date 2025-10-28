@@ -310,6 +310,19 @@ module type S = sig
     val list : t -> (string list, error) result Lwt.t
     val remove : t -> id -> (unit, error) result Lwt.t
   end
+
+  module Cluster : sig
+    type member = { id : int; name : string; peer_urls : string list }
+
+    val member_list : t -> (member list, error) result Lwt.t
+    val member_remove : id:int -> t -> (member list, error) result Lwt.t
+
+    val member_update :
+      id:int -> peer_urls:string list -> t -> (member list, error) result Lwt.t
+
+    val member_add :
+      peer_urls:string list -> t -> (member list, error) result Lwt.t
+  end
 end
 
 let to_hex str =
@@ -327,7 +340,7 @@ module Log = (val Logs.src_log hsm_src : Logs.LOG)
 let build_tag = String.trim [%blob "buildTag"]
 let software_version = String.trim [%blob "softwareVersion"]
 
-module Make (KV : Kv_ext.Ranged) = struct
+module Make (KV : Kv_ext.Platform) = struct
   module Metrics = struct
     let db = Hashtbl.create 13
     let retrieve () = Hashtbl.fold (fun k v acc -> (k, v) :: acc) db []
@@ -2049,6 +2062,23 @@ module Make (KV : Kv_ext.Ranged) = struct
       Key_store.digest store (make_store_key ~namespace id) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
+  end
+
+  module Cluster = struct
+    include KV.Cluster
+    open Lwt.Infix
+
+    let to_hsm_error =
+      Result.map_error (function `Cluster_error s ->
+          (Internal_server_error, "cluster error: " ^ s))
+
+    let member_list t = member_list t.kv >|= to_hsm_error
+    let member_remove ~id t = member_remove ~id t.kv >|= to_hsm_error
+
+    let member_update ~id ~peer_urls t =
+      member_update ~id ~peer_urls t.kv >|= to_hsm_error
+
+    let member_add ~peer_urls t = member_add ~peer_urls t.kv >|= to_hsm_error
   end
 
   let provision t ~unlock ~admin time =

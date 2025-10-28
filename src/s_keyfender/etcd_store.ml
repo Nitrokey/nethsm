@@ -469,34 +469,43 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     let open Lwt_result.Infix in
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
-  type cluster_member = { id : int; name : string; peer_urls : string list }
+  module Cluster = struct
+    type member = { id : int; name : string; peer_urls : string list }
+    type cluster_error = [ `Cluster_error of string ]
 
-  let cluster_member_of_member (t : Member.t) =
-    { id = t.iD; name = t.name; peer_urls = t.peerURLs }
+    let cluster_member_of_member (t : Member.t) =
+      { id = t.iD; name = t.name; peer_urls = t.peerURLs }
 
-  let member_list t =
-    let request = MemberListRequest.make () in
-    etcd_try (fun () ->
-        Etcd.member_list t.stack ~request >|= fun resp ->
-        Ok (List.map cluster_member_of_member resp.MemberListResponse.members))
+    let etcd_try f =
+      etcd_try f
+      >|= Result.map_error (function `Etcd_error s -> `Cluster_error s)
 
-  let member_remove ~id t =
-    let request = MemberRemoveRequest.make ~iD:id () in
-    etcd_try (fun () ->
-        Etcd.member_remove t.stack ~request >|= fun resp ->
-        Ok (List.map cluster_member_of_member resp.MemberRemoveResponse.members))
+    let member_list t =
+      let request = MemberListRequest.make () in
+      etcd_try (fun () ->
+          Etcd.member_list t.stack ~request >|= fun resp ->
+          Ok (List.map cluster_member_of_member resp.MemberListResponse.members))
 
-  let member_update ~id ~peer_urls t =
-    let request = MemberUpdateRequest.make ~iD:id ~peerURLs:peer_urls () in
-    etcd_try (fun () ->
-        Etcd.member_update t.stack ~request >|= fun resp ->
-        Ok (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
+    let member_remove ~id t =
+      let request = MemberRemoveRequest.make ~iD:id () in
+      etcd_try (fun () ->
+          Etcd.member_remove t.stack ~request >|= fun resp ->
+          Ok
+            (List.map cluster_member_of_member resp.MemberRemoveResponse.members))
 
-  let member_add ~peer_urls t =
-    let request = MemberAddRequest.make ~peerURLs:peer_urls () in
-    etcd_try (fun () ->
-        Etcd.member_add t.stack ~request >|= fun resp ->
-        Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
+    let member_update ~id ~peer_urls t =
+      let request = MemberUpdateRequest.make ~iD:id ~peerURLs:peer_urls () in
+      etcd_try (fun () ->
+          Etcd.member_update t.stack ~request >|= fun resp ->
+          Ok
+            (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
+
+    let member_add ~peer_urls t =
+      let request = MemberAddRequest.make ~peerURLs:peer_urls () in
+      etcd_try (fun () ->
+          Etcd.member_add t.stack ~request >|= fun resp ->
+          Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
+  end
 
   let connect stack =
     let store = { stack; mode = `Normal } in

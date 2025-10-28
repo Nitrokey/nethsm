@@ -316,9 +316,22 @@ module type S = sig
     val list : t -> (string list, error) result Lwt.t
     val remove : t -> id -> (unit, error) result Lwt.t
   end
+
+  module Cluster : sig
+    type member = { id : int; name : string; peer_urls : string list }
+
+    val member_list : t -> (member list, error) result Lwt.t
+    val member_remove : id:int -> t -> (member list, error) result Lwt.t
+
+    val member_update :
+      id:int -> peer_urls:string list -> t -> (member list, error) result Lwt.t
+
+    val member_add :
+      peer_urls:string list -> t -> (member list, error) result Lwt.t
+  end
 end
 
-module Make (KV : Kv_ext.Ranged) : sig
+module Make (KV : Kv_ext.Platform) : sig
   include S
 
   val boot :

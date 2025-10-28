@@ -38,7 +38,7 @@ module Kv_mem = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Mock_platform (Kv_mem))
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let software_update_key =

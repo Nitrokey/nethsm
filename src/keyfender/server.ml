@@ -29,6 +29,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
   module Keys = Handler_keys.Make (Wm) (Hsm)
   module Namespace = Handler_namespaces.Make (Wm) (Hsm)
   module System = Handler_system.Make (Wm) (Hsm)
+  module Cluster = Handler_cluster.Make (Wm) (Hsm)
 
   let routes hsm_state ip =
     List.map
@@ -89,6 +90,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
           fun () -> new System.cancel_update hsm_state ip );
         ("/system/backup", fun () -> new System.backup hsm_state ip);
         ("/system/restore", fun () -> new System.restore hsm_state ip);
+        ("/cluster/members", fun () -> new Cluster.handler_members hsm_state ip);
       ]
 end
 

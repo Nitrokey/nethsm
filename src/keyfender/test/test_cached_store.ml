@@ -49,7 +49,7 @@ module KV = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Underlying_store = Stats_store (Keyfender.Kv_ext.Make_ranged (KV))
+module Underlying_store = Stats_store (Keyfender.Kv_ext.Mock_platform (KV))
 module Cached_store = Keyfender.Cached_store.Make (Underlying_store)
 open Lwt.Syntax
 
