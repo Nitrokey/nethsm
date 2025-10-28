@@ -19,7 +19,16 @@ curl -s -k -X PUT -H "content-type: application/json" -d \
 
 curl -s -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
 
-flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 10 \
-    p256 p384 p521 rsa1024 rsa2048 rsa3072 rsa4096 ed25519 p256k1 \
-    p256k1-bip340 brainpoolp256 brainpoolp384 brainpoolp512 aes-cbc rnd-1024 \
-    p256-gen rsa2048-gen rsa3072-gen rsa4096-gen
+ip a
+
+curl -s -k -X POST -H "content-type: application/json" -d \
+    '{"peer_urls":["192.168.1.2"]}' \
+    https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
+
+etcd --version || true
+etcdctl --version || true
+
+#flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 10 \
+#    p256 p384 p521 rsa1024 rsa2048 rsa3072 rsa4096 ed25519 p256k1 \
+#    p256k1-bip340 brainpoolp256 brainpoolp384 brainpoolp512 aes-cbc rnd-1024 \
+#    p256-gen rsa2048-gen rsa3072-gen rsa4096-gen

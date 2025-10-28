@@ -13,7 +13,15 @@ struct
 
   let encode_id (t : Int64.t) = Fmt.str "%Lx" t
 
-  let json_of_member (m : Hsm.Cluster.member) =
+  let decode_id ok rd =
+    let decode t =
+      try Scanf.sscanf t "%Lx" (fun x -> ok x)
+      with e ->
+        Endpoint.respond_error (Hsm.Bad_request, Printexc.to_string e) rd
+    in
+    Endpoint.lookup_path_info decode "id" rd
+
+  let encode_member (m : Hsm.Cluster.member) =
     `Assoc
       [
         ("id", `String (encode_id m.id));
@@ -21,21 +29,45 @@ struct
         ("peer_urls", `List (List.map (fun x -> `String x) m.peer_urls));
       ]
 
-  class handler_members hsm_state ip =
-    object
-      inherit common hsm_state ip
-      inherit Endpoint.get_json
+  let encode_member_list t =
+    let items = List.map encode_member t in
+    `List items
 
-      method private to_json rd =
+  class handler_members hsm_state ip =
+    object (self)
+      inherit common hsm_state ip
+      method! allowed_methods rd = Wm.continue [ `GET; `POST ] rd
+
+      method private list_members rd =
         Hsm.Cluster.member_list hsm_state >>= function
         | Ok xs ->
-            let items = List.map json_of_member xs in
-            let body = Yojson.Safe.to_string (`List items) in
+            let body = Yojson.Safe.to_string (encode_member_list xs) in
             Wm.continue (`String body) rd
         | Error e -> Endpoint.respond_error e rd
+
+      method private add_member rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        let ok (member_req : Json.member_req) =
+          let peer_urls = member_req.peer_urls in
+          Hsm.Cluster.member_add ~peer_urls hsm_state >>= function
+          | Error e -> Endpoint.respond_error e rd
+          | Ok new_members ->
+              let body =
+                Yojson.Basic.to_string (encode_member_list new_members)
+              in
+              Wm.continue true { rd with resp_body = `String body }
+        in
+        Json.decode Json.member_req_of_yojson content
+        |> Endpoint.err_to_bad_request ok rd
+
+      method content_types_provided rd =
+        Wm.continue [ ("application/json", self#list_members) ] rd
+
+      method content_types_accepted rd =
+        Wm.continue [ ("application/json", self#add_member) ] rd
     end
 
-  (*
   class handler hsm_state ip =
     object (self)
       inherit common hsm_state ip
@@ -43,45 +75,47 @@ struct
 
       method! resource_exists rd =
         let ok id =
-          Hsm.Namespace.exists hsm_state (Some id) >>= function
+          Hsm.Cluster.member_exists ~id hsm_state >>= function
           | Ok does_exist -> Wm.continue does_exist rd
           | Error e -> Endpoint.respond_error e rd
         in
-        Endpoint.lookup_path_info ok "id" rd
+        decode_id ok rd
 
       method! delete_resource rd =
         let ok id =
-          Hsm.Namespace.remove hsm_state (Some id) >>= function
+          Hsm.Cluster.member_remove ~id hsm_state >>= function
           | Error e -> Endpoint.respond_error e rd
-          | Ok () -> (
-              Hsm.Key.remove_all_in_namespace hsm_state ~namespace:id
-              >>= function
-              | Ok () -> Wm.continue true rd
-              | Error e -> Endpoint.respond_error e rd)
+          | Ok new_members ->
+              let body =
+                Yojson.Basic.to_string (encode_member_list new_members)
+              in
+              Wm.continue true { rd with resp_body = `String body }
         in
-        Endpoint.lookup_path_info ok "id" rd
+        decode_id ok rd
 
       method content_types_provided rd =
         Wm.continue [ ("application/json", Wm.continue `Empty) ] rd
 
       method content_types_accepted rd =
-        Wm.continue
-          [
-            ("application/json", self#put_resource);
-            ("application/octet-stream", self#put_resource);
-          ]
-          rd
+        Wm.continue [ ("application/json", self#put_resource) ] rd
 
       method private put_resource rd =
         let ok id =
-          match Json.valid_namespace (Some id) with
-          | Error msg -> Endpoint.respond_error (Bad_request, msg) rd
-          | Ok () -> (
-              Hsm.Namespace.create hsm_state (Some id) >>= function
-              | Error e -> Endpoint.respond_error e rd
-              | Ok () -> Wm.continue true rd)
+          let body = rd.Webmachine.Rd.req_body in
+          Cohttp_lwt.Body.to_string body >>= fun content ->
+          let ok (member_req : Json.member_req) =
+            let peer_urls = member_req.peer_urls in
+            Hsm.Cluster.member_update ~id ~peer_urls hsm_state >>= function
+            | Error e -> Endpoint.respond_error e rd
+            | Ok new_members ->
+                let body =
+                  Yojson.Basic.to_string (encode_member_list new_members)
+                in
+                Wm.continue true { rd with resp_body = `String body }
+          in
+          Json.decode Json.member_req_of_yojson content
+          |> Endpoint.err_to_bad_request ok rd
         in
-        Endpoint.lookup_path_info ok "id" rd
+        decode_id ok rd
     end
-*)
 end

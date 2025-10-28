@@ -316,6 +316,7 @@ module type S = sig
 
     val member_list : t -> (member list, error) result Lwt.t
     val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
+    val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
 
     val member_update :
       id:int64 ->
@@ -2076,6 +2077,12 @@ module Make (KV : Kv_ext.Platform) = struct
           (Internal_server_error, "cluster error: " ^ s))
 
     let member_list t = member_list t.kv >|= to_hsm_error
+
+    let member_exists ~id t =
+      let open Lwt_result.Infix in
+      member_list t >|= fun member_list ->
+      List.exists (fun member -> member.KV.Cluster.id = id) member_list
+
     let member_remove ~id t = member_remove ~id t.kv >|= to_hsm_error
 
     let member_update ~id ~peer_urls t =

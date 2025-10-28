@@ -322,6 +322,7 @@ module type S = sig
 
     val member_list : t -> (member list, error) result Lwt.t
     val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
+    val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
 
     val member_update :
       id:int64 ->
