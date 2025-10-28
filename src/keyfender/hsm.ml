@@ -312,13 +312,16 @@ module type S = sig
   end
 
   module Cluster : sig
-    type member = { id : int; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; peer_urls : string list }
 
     val member_list : t -> (member list, error) result Lwt.t
-    val member_remove : id:int -> t -> (member list, error) result Lwt.t
+    val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
 
     val member_update :
-      id:int -> peer_urls:string list -> t -> (member list, error) result Lwt.t
+      id:int64 ->
+      peer_urls:string list ->
+      t ->
+      (member list, error) result Lwt.t
 
     val member_add :
       peer_urls:string list -> t -> (member list, error) result Lwt.t

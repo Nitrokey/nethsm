@@ -11,10 +11,12 @@ struct
       inherit! Endpoint.r_role hsm_state `Administrator ip
     end
 
+  let encode_id (t : Int64.t) = Fmt.str "%Lx" t
+
   let json_of_member (m : Hsm.Cluster.member) =
     `Assoc
       [
-        ("id", `Int m.id);
+        ("id", `String (encode_id m.id));
         ("name", `String m.name);
         ("peer_urls", `List (List.map (fun x -> `String x) m.peer_urls));
       ]

@@ -101,15 +101,15 @@ end
 
 module type Clustered = sig
   type t
-  type member = { id : int; name : string; peer_urls : string list }
+  type member = { id : int64; name : string; peer_urls : string list }
   type cluster_error = [ `Cluster_error of string ]
 
-  val my_id : t -> int
+  val my_id : t -> int64
   val member_list : t -> (member list, cluster_error) result Lwt.t
-  val member_remove : id:int -> t -> (member list, cluster_error) result Lwt.t
+  val member_remove : id:int64 -> t -> (member list, cluster_error) result Lwt.t
 
   val member_update :
-    id:int ->
+    id:int64 ->
     peer_urls:string list ->
     t ->
     (member list, cluster_error) result Lwt.t
@@ -142,11 +142,11 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
     List.filter (fun (k, _) -> Range.within range k) items
 
   module Cluster = struct
-    type member = { id : int; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; peer_urls : string list }
     type cluster_error = [ `Cluster_error of string ]
 
     let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
-    let my_id _ = 0
+    let my_id _ = 0xdeadbeefL
     let member_list _ = not_etcd
     let member_remove ~id:_ _ = not_etcd
     let member_update ~id:_ ~peer_urls:_ _ = not_etcd

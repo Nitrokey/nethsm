@@ -11,7 +11,7 @@
     debug=false
     annot='[@@deriving show { with_path = false}]'
     opens=[]
-    int64_as_int=true
+    int64_as_int=false
     int32_as_int=true
     fixed_as_int=false
     singleton_record=false
@@ -29,17 +29,17 @@ module rec Mvccpb : sig
   module rec KeyValue : sig
     type t = {
     key: bytes;(** key is the key in bytes. An empty key is not allowed. *)
-    create_revision: int;(** create_revision is the revision of last creation on this key. *)
-    mod_revision: int;(** mod_revision is the revision of last modification on this key. *)
-    version: int;(** version is the version of the key. A deletion resets
+    create_revision: int64;(** create_revision is the revision of last creation on this key. *)
+    mod_revision: int64;(** mod_revision is the revision of last modification on this key. *)
+    version: int64;(** version is the version of the key. A deletion resets
     the version to zero and any modification of the key
     increases its version. *)
     value: bytes;(** value is the value held by the key, in bytes. *)
-    lease: int;(** lease is the ID of the lease that attached to key.
+    lease: int64;(** lease is the ID of the lease that attached to key.
     When the attached lease expires, the key will be deleted.
     If lease is 0, then no lease is attached to the key. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
+    val make: ?key:bytes -> ?create_revision:int64 -> ?mod_revision:int64 -> ?version:int64 -> ?value:bytes -> ?lease:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -58,7 +58,7 @@ module rec Mvccpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
+    type make_t = ?key:bytes -> ?create_revision:int64 -> ?mod_revision:int64 -> ?version:int64 -> ?value:bytes -> ?lease:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -123,17 +123,17 @@ end = struct
   module rec KeyValue : sig
     type t = {
     key: bytes;(** key is the key in bytes. An empty key is not allowed. *)
-    create_revision: int;(** create_revision is the revision of last creation on this key. *)
-    mod_revision: int;(** mod_revision is the revision of last modification on this key. *)
-    version: int;(** version is the version of the key. A deletion resets
+    create_revision: int64;(** create_revision is the revision of last creation on this key. *)
+    mod_revision: int64;(** mod_revision is the revision of last modification on this key. *)
+    version: int64;(** version is the version of the key. A deletion resets
     the version to zero and any modification of the key
     increases its version. *)
     value: bytes;(** value is the value held by the key, in bytes. *)
-    lease: int;(** lease is the ID of the lease that attached to key.
+    lease: int64;(** lease is the ID of the lease that attached to key.
     When the attached lease expires, the key will be deleted.
     If lease is 0, then no lease is attached to the key. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
+    val make: ?key:bytes -> ?create_revision:int64 -> ?mod_revision:int64 -> ?version:int64 -> ?value:bytes -> ?lease:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -152,7 +152,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
+    type make_t = ?key:bytes -> ?create_revision:int64 -> ?mod_revision:int64 -> ?version:int64 -> ?value:bytes -> ?lease:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -163,25 +163,25 @@ end = struct
     let name () = ".mvccpb.KeyValue"
     type t = {
     key: bytes;(** key is the key in bytes. An empty key is not allowed. *)
-    create_revision: int;(** create_revision is the revision of last creation on this key. *)
-    mod_revision: int;(** mod_revision is the revision of last modification on this key. *)
-    version: int;(** version is the version of the key. A deletion resets
+    create_revision: int64;(** create_revision is the revision of last creation on this key. *)
+    mod_revision: int64;(** mod_revision is the revision of last modification on this key. *)
+    version: int64;(** version is the version of the key. A deletion resets
     the version to zero and any modification of the key
     increases its version. *)
     value: bytes;(** value is the value held by the key, in bytes. *)
-    lease: int;(** lease is the ID of the lease that attached to key.
+    lease: int64;(** lease is the ID of the lease that attached to key.
     When the attached lease expires, the key will be deleted.
     If lease is 0, then no lease is attached to the key. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?key:bytes -> ?create_revision:int -> ?mod_revision:int -> ?version:int -> ?value:bytes -> ?lease:int -> unit -> t
-    let make ?(key = (Bytes.of_string {||})) ?(create_revision = 0) ?(mod_revision = 0) ?(version = 0) ?(value = (Bytes.of_string {||})) ?(lease = 0) () = { key; create_revision; mod_revision; version; value; lease }
+    type make_t = ?key:bytes -> ?create_revision:int64 -> ?mod_revision:int64 -> ?version:int64 -> ?value:bytes -> ?lease:int64 -> unit -> t
+    let make ?(key = (Bytes.of_string {||})) ?(create_revision = 0L) ?(mod_revision = 0L) ?(version = 0L) ?(value = (Bytes.of_string {||})) ?(lease = 0L) () = { key; create_revision; mod_revision; version; value; lease }
     let merge =
     let merge_key = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "create_revision", "createRevision"), int64_int, (0)) ) in
-    let merge_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "mod_revision", "modRevision"), int64_int, (0)) ) in
-    let merge_version = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "version", "version"), int64_int, (0)) ) in
+    let merge_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "create_revision", "createRevision"), int64, (0L)) ) in
+    let merge_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "mod_revision", "modRevision"), int64, (0L)) ) in
+    let merge_version = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "version", "version"), int64, (0L)) ) in
     let merge_value = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "value", "value"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_lease = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "lease", "lease"), int64_int, (0)) ) in
+    let merge_lease = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "lease", "lease"), int64, (0L)) ) in
     fun t1 t2 -> {
     key = (merge_key t1.key t2.key);
     create_revision = (merge_create_revision t1.create_revision t2.create_revision);
@@ -190,7 +190,7 @@ end = struct
     value = (merge_value t1.value t2.value);
     lease = (merge_lease t1.lease t2.lease);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "create_revision", "createRevision"), int64_int, (0)) ^:: basic ((3, "mod_revision", "modRevision"), int64_int, (0)) ^:: basic ((4, "version", "version"), int64_int, (0)) ^:: basic ((5, "value", "value"), bytes, ((Bytes.of_string {||}))) ^:: basic ((6, "lease", "lease"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "create_revision", "createRevision"), int64, (0L)) ^:: basic ((3, "mod_revision", "modRevision"), int64, (0L)) ^:: basic ((4, "version", "version"), int64, (0L)) ^:: basic ((5, "value", "value"), bytes, ((Bytes.of_string {||}))) ^:: basic ((6, "lease", "lease"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { key; create_revision; mod_revision; version; value; lease } -> serialize writer key create_revision mod_revision version value lease

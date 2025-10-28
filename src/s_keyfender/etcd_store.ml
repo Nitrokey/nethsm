@@ -388,7 +388,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   type t = {
     stack : Stack.t;
     mode : [ `Normal | `Batch of Txn_batcher.t ];
-    member_id : int;
+    member_id : int64;
   }
 
   type key = Key.t
@@ -420,8 +420,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         match resp.RangeResponse.kvs with
-        | { KeyValue.mod_revision = i; _ } :: _ ->
-            Ok (Ptime.v (0, Int64.of_int i))
+        | { KeyValue.mod_revision = i; _ } :: _ -> Ok (Ptime.v (0, i))
         | _ -> Error (`Not_found k))
 
   (** WARNING: only works on Values, will return None for dictionaries *)
@@ -430,7 +429,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     let request = RangeRequest.make ~key ~count_only:true () in
     etcd_try (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
-        if resp.RangeResponse.count > 0 then Ok (Some `Value) else Ok None)
+        if Int64.compare resp.RangeResponse.count 0L > 0 then Ok (Some `Value)
+        else Ok None)
 
   let get t k =
     let key = bytes_of_key k in
@@ -488,7 +488,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
   module Cluster = struct
-    type member = { id : int; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; peer_urls : string list }
     type cluster_error = [ `Cluster_error of string ]
 
     let cluster_member_of_member (t : Member.t) =
@@ -537,7 +537,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | None -> Error (`Etcd_error "response did not have a header")
         | Some header ->
             Log.info (fun f ->
-                f "status: (id=%x,@,leader=%x,@,db_size=%d@,errors=%a)"
+                f "status: (id=%Lx,@,leader=%Lx,@,db_size=%Ld@,errors=%a)"
                   header.member_id leader db_size
                   Fmt.(list string)
                   errors);
