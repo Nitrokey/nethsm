@@ -60,10 +60,15 @@ module Conf = struct
   module type S = sig
     val no_platform : bool
     val no_scrypt : bool
+    val single_interface : bool
   end
 
-  module Make (No_platform : Bool) (No_scrypt : Bool) : S = struct
+  module Make
+      (No_platform : Bool)
+      (No_scrypt : Bool)
+      (Single_interface : Bool) : S = struct
     let no_platform = No_platform.v
     let no_scrypt = No_scrypt.v
+    let single_interface = Single_interface.v
   end
 end

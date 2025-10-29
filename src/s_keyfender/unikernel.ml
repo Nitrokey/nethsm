@@ -368,15 +368,19 @@ struct
       let http = Srv.listen stack in
       (let module S = Ext_reconfigurable_stack.Stack in
       (* relay incoming etcd peer traffic to internal stack *)
-      Lwt.async (fun () ->
-          Etcd_relay_inbound.listen (S.tcp stack)
-            (Internal_stack.tcp internal_stack)
-            (Some (Ipaddr.V4 (Args.platform ()))));
+      (* but only if there are actually two different stacks *)
+      if not Conf_args.single_interface then
+        Lwt.async (fun () ->
+            Etcd_relay_inbound.listen (S.tcp stack)
+              (Internal_stack.tcp internal_stack)
+              (Some (Ipaddr.V4 (Args.platform ()))));
       (* relay internal etcd peer traffic to its original destination *)
-      Lwt.async (fun () ->
-          Etcd_relay_outbound.listen
-            (Internal_stack.tcp internal_stack)
-            (S.tcp stack) None);
+      (* but only if etcd cannot route the outside by itself *)
+      if not Conf_args.no_platform then
+        Lwt.async (fun () ->
+            Etcd_relay_outbound.listen
+              (Internal_stack.tcp internal_stack)
+              (S.tcp stack) None);
       (* if needed, update how S-Platform's etcd advertise its IP *)
       KV_store.Cluster.member_list store >>= function
       | Error (`Cluster_error s) ->

@@ -164,8 +164,10 @@ let build_conf =
     in
     code ~pos:__POS__ "Lwt.return Args.Conf.{ memtrace_port=%s }" s
   in
-  impl ~keys ~connect ~dune "Args.Conf.Make" (typ () @-> typ () @-> build_args)
+  impl ~keys ~connect ~dune "Args.Conf.Make"
+    (typ () @-> typ () @-> typ () @-> build_args)
   $ bool_arg no_platform_key $ bool_arg no_scrypt_key
+  $ bool_arg single_interface
 
 let main =
   let packages =
