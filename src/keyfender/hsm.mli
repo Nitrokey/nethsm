@@ -28,7 +28,7 @@ module type S = sig
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
@@ -45,9 +45,7 @@ module type S = sig
   val state : t -> Json.state
   val lock : t -> unit
   val own_cert : t -> Tls.Config.own_cert
-
-  val network_configuration :
-    t -> (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+  val network_configuration : t -> Json.network Lwt.t
 
   val provision :
     t -> unlock:string -> admin:string -> Ptime.t -> (unit, error) result Lwt.t

@@ -11,7 +11,7 @@ open Lwt.Syntax
 module type S = sig
   type t
 
-  val setup : t -> ?gateway:Ipaddr.V4.t -> Ipaddr.V4.Prefix.t -> unit Lwt.t
+  val setup : t -> Keyfender.Json.network -> unit Lwt.t
   val disconnect : t -> unit Lwt.t
 
   module Stack : Tcpip.Stack.V4V6
@@ -43,15 +43,28 @@ end = struct
 
   let connect net eth arp = Lwt.return ({ net; eth; arp }, ref Unconfigured)
 
-  let setup ({ net; eth; arp }, state) ?gateway cidr =
+  let setup ({ net; eth; arp }, state) { Keyfender.Json.ipv4; ipv6 } =
     match !state with
     | Ready _ ->
         Fmt.invalid_arg "Stack is already configured. Call disconnect first."
     | Unconfigured ->
-        let* ipv4 = Ipv4.connect ~cidr ?gateway eth arp in
+        let* ipv4 =
+          Ipv4.connect ~cidr:ipv4.cidr ?gateway:ipv4.gateway eth arp
+        in
         let* icmp = Icmp.connect ipv4 in
-        let* ipv6 = Ipv6.connect ~no_init:true ~handle_ra:false net eth in
-        let* ip = Ip.connect ~ipv4_only:true ~ipv6_only:false ipv4 ipv6 in
+        let* ipv4_only, ipv6 =
+          match ipv6 with
+          | None ->
+              let* v6 = Ipv6.connect ~no_init:true ~handle_ra:false net eth in
+              Lwt.return (true, v6)
+          | Some { cidr; gateway } ->
+              let* v6 =
+                Ipv6.connect ~no_init:false ~handle_ra:true ~cidr ?gateway net
+                  eth
+              in
+              Lwt.return (false, v6)
+        in
+        let* ip = Ip.connect ~ipv4_only ~ipv6_only:false ipv4 ipv6 in
         let* udp = Udp.connect ip in
         let* tcp = Tcp.connect ip in
         let+ stack = Stack.connect net eth arp ip icmp udp tcp in
@@ -84,7 +97,7 @@ end = struct
     Logs.warn (fun f -> f "This stack is not configurable.");
     Lwt.return_unit
 
-  let setup _ ?gateway:_ _ =
+  let setup _ _ =
     Logs.warn (fun f -> f "This stack is not configurable.");
     Lwt.return_unit
 

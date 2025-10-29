@@ -14,10 +14,10 @@ module Make (KV : Kv_ext.RW) = struct
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
-    | Ip_config : (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) k
+    | Ip_config : Json.network k
     | Backup_salt : string k
     | Backup_key : string k
-    | Log_config : (Ipaddr.V4.t * int * Logs.level) k
+    | Log_config : Json.log k
     | Time_offset : Ptime.span k
     | Unattended_boot : bool k
 
@@ -92,25 +92,12 @@ module Make (KV : Kv_ext.RW) = struct
         (* TODO encode_der (x509 0.8.1) *)
         X509.Private_key.encode_pem key
     | Version, v -> Version.to_string v
-    | Ip_config, (ip, prefix, route) ->
-        let route' = match route with None -> Ipaddr.V4.any | Some x -> x in
-        String.concat ""
-          [
-            Ipaddr.V4.to_octets route';
-            Ipaddr.V4.to_octets ip;
-            Ipaddr.V4.to_octets (Ipaddr.V4.Prefix.netmask prefix);
-          ]
+    | Ip_config, (network : Json.network) ->
+        Json.network_to_yojson network |> Yojson.Safe.to_string
     | Backup_salt, s -> s
     | Backup_key, s -> s
-    | Log_config, (ip, port, level) ->
-        let port_cs = Bytes.create 2 in
-        Bytes.set_uint16_be port_cs 0 port;
-        String.concat ""
-          [
-            Ipaddr.V4.to_octets ip;
-            Bytes.unsafe_to_string port_cs;
-            Logs.level_to_string (Some level);
-          ]
+    | Log_config, (log : Json.log) ->
+        Json.log_to_yojson log |> Yojson.Safe.to_string
     | Time_offset, span -> (
         match Ptime.Span.to_int_s span with
         | Some s -> string_of_int s
@@ -147,35 +134,13 @@ module Make (KV : Kv_ext.RW) = struct
     | Private_key -> X509.Private_key.decode_pem data
     | Version -> Version.of_string data
     | Ip_config ->
-        guard
-          (String.length data = 12)
-          "expected exactly 12 bytes for IP configuration"
-        >>= fun () ->
-        let route_str, ip_str, netmask_str =
-          (String.sub data 0 4, String.sub data 4 4, String.sub data 8 4)
-        in
-        Ipaddr.V4.of_octets route_str >>= fun route ->
-        Ipaddr.V4.of_octets ip_str >>= fun address ->
-        Ipaddr.V4.of_octets netmask_str >>= fun netmask ->
-        Ipaddr.V4.Prefix.of_netmask ~netmask ~address >>= fun prefix ->
-        (if Ipaddr.V4.compare route Ipaddr.V4.any = 0 then Ok None
-         else if Ipaddr.V4.Prefix.mem route prefix then Ok (Some route)
-         else Error (`Msg "route not on local network"))
-        >>| fun route' -> (address, prefix, route')
+        Json.decode Json.network_of_yojson data
+        |> Result.map_error (fun s -> `Msg s)
     | Backup_salt -> Ok data
     | Backup_key -> Ok data
-    | Log_config -> (
-        let ip, port, level =
-          ( String.sub data 0 4,
-            String.sub data 4 2,
-            String.sub data 6 (String.length data - 6) )
-        in
-        Ipaddr.V4.of_octets ip >>= fun ip ->
-        let port = String.get_uint16_be port 0 in
-        match Logs.level_of_string level with
-        | Error (`Msg msg) -> Error (`Msg msg)
-        | Ok None -> Error (`Msg "invalid log level")
-        | Ok (Some level) -> Ok (ip, port, level))
+    | Log_config ->
+        Json.decode Json.log_of_yojson data
+        |> Result.map_error (fun s -> `Msg s)
     | Time_offset -> (
         try Ok (Ptime.Span.of_int_s (int_of_string data))
         with Failure _ -> Error (`Msg "invalid time offset"))

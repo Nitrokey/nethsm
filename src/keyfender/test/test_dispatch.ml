@@ -24,6 +24,30 @@ let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
 
+let returns_empty' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      Alcotest.(check http_status) "status" with_status status;
+      begin match body with
+      | `Empty -> new_state
+      | _ -> Alcotest.fail "did not return empty body"
+      end
+  | _ -> Alcotest.fail "invalid response form"
+
+let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
+
+let returns_string' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      Alcotest.(check http_status) "status" with_status status;
+      begin match body with
+      | `String s -> (new_state, s)
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form"
+
+let returns_string ~with_status r =
+  let _, body = returns_string' ~with_status r in
+  body
+
 let empty =
   "a request for / will produce no result" @? fun () ->
   match request "/" with _, None -> true | _ -> false
@@ -1480,55 +1504,63 @@ let post_config_tls_generate_bad_length =
   with Failure _ -> false
 
 let config_network_ok =
-  "GET on /config/network succeeds" @? fun () ->
-  let expect =
-    warning
-      "error Cannot find the key /config/ip-config while retrieving IP, using \
-       default"
-  in
-  let headers = admin_headers in
-  match
-    request ~expect ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/network"
-  with
-  | _, Some (`OK, _, `String body, _) ->
-      String.equal body
-        {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  | _ -> false
+  Alcotest.test_case "GET on /config/network succeeds" `Quick (fun () ->
+      let expect =
+        warning
+          "error Cannot find the key /config/ip-config while retrieving IP, \
+           using default"
+      in
+      let body =
+        request ~expect ~hsm_state:(operational_mock ()) ~meth:`GET
+          ~headers:admin_headers "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string)
+        "body"
+        "{\"ipv4\":{\"cidr\":\"192.168.1.1/24\",\"gateway\":null},\"ipv6\":null}"
+        body)
 
 let config_network_set_ok =
-  "PUT on /config/network succeeds" @? fun () ->
-  let new_network =
-    {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  in
-  match admin_put_request ~body:(`String new_network) "/config/network" with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      match
+  Alcotest.test_case "PUT on /config/network succeeds" `Quick (fun () ->
+      let new_network =
+        {|{"ipv4":{"cidr":"6.6.6.6/24","gateway":null},"ipv6":null}|}
+      in
+      let hsm_state =
+        admin_put_request ~body:(`String new_network) "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
         request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
-      with
-      | _, Some (`OK, _, `String body, _) -> String.equal body new_network
-      | _ -> false)
-  | _ -> false
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" new_network body)
 
 let config_network_set_fail =
-  "PUT with invalid IP address on /config/network fails" @? fun () ->
-  let new_network =
-    {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  in
-  match admin_put_request ~body:(`String new_network) "/config/network" with
-  | _, Some (`Bad_request, _, _, _) -> true
-  | _ -> false
+  Alcotest.test_case "PUT with invalid IP address on /config/network fails"
+    `Quick (fun () ->
+      let new_network =
+        {|{"ipv4":{"cidr":"6.6.6.666/24","gateway":null},"ipv6":null}|}
+      in
+      let body =
+        admin_put_request ~body:(`String new_network) "/config/network"
+        |> returns_string ~with_status:`Bad_request
+      in
+      Alcotest.(check string)
+        "error message"
+        "{\"message\":\"Invalid data for JSON schema: Ipaddr: fourth octet out \
+         of bounds.\"}"
+        body)
 
 let config_logging_ok =
-  "GET on /config/logging succeeds" @? fun () ->
-  let headers = admin_headers in
-  match
-    request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/logging"
-  with
-  | _, Some (`OK, _, `String body, _) ->
-      String.equal body {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
-  | _ -> false
+  Alcotest.test_case "GET on /config/logging succeeds" `Quick (fun () ->
+      let body =
+        request ~hsm_state:(operational_mock ()) ~meth:`GET
+          ~headers:admin_headers "/config/logging"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string)
+        "default config"
+        "{\"ipAddress\":null,\"port\":514,\"logLevel\":\"info\"}" body)
 
 let config_logging_set_ok =
   "PUT on /config/logging succeeds" @? fun () ->
@@ -4122,24 +4154,6 @@ let keys_key_version_cert_delete_fails =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let returns_empty ~with_status = function
-  | _, Some (status, _, body, _) ->
-      Alcotest.(check http_status) "status" with_status status;
-      begin match body with
-      | `Empty -> ()
-      | _ -> Alcotest.fail "did not return empty body"
-      end
-  | _ -> Alcotest.fail "invalid response form"
-
-let returns_string ~with_status = function
-  | _, Some (status, _, body, _) ->
-      Alcotest.(check http_status) "status" with_status status;
-      begin match body with
-      | `String s -> s
-      | _ -> Alcotest.fail "did not return string"
-      end
-  | _ -> Alcotest.fail "invalid response form"
-
 let cluster_member_ops_not_etcd =
   Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
     (fun () ->
@@ -4192,6 +4206,8 @@ let rate_limit_for_unlock2 =
   | _, Some (`Too_many_requests, _, _, _) -> true
   | _ -> false
 
+let localhost_v4 = Ipaddr.(V4 V4.localhost)
+
 let rate_limit_for_get =
   let path = "/system/info" in
   "rate limit for get" @? fun () ->
@@ -4205,9 +4221,7 @@ let rate_limit_for_get =
   ignore (request ~expect ~hsm_state ~headers path);
   match request ~hsm_state ~headers path with
   | _, Some (`Too_many_requests, _, _, _) -> (
-      match
-        request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-      with
+      match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
       | _, Some (`OK, _, _, _) -> true
       | _ -> false)
   | _ -> false
@@ -4219,14 +4233,12 @@ let reset_rate_limit_after_successful_login =
   let headers = auth_header "admin" "no valid password" in
   (* one request left before the rate limit returns Too_many_requests *)
   (* reset the rate limit by a successful request *)
-  match
-    request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-  with
+  match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
   | _, Some (`OK, _, _, _) -> (
       (* test rate_limit requests again *)
-      match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+      match request ~hsm_state ~headers ~ip:localhost_v4 path with
       | _, Some (`Unauthorized, _, _, _) -> (
-          match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+          match request ~hsm_state ~headers ~ip:localhost_v4 path with
           | _, Some (`Too_many_requests, _, _, _) -> true
           | _ -> false)
       | _ -> false)
@@ -4238,13 +4250,9 @@ let reset_rate_limit_after_successful_login_2 =
    are fine)"
   @? fun () ->
   let hsm_state = operational_mock () in
-  match
-    request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-  with
+  match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
   | _, Some (`OK, _, _, _) -> (
-      match
-        request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-      with
+      match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
       | _, Some (`OK, _, _, _) -> true
       | _ -> false)
   | _ -> false

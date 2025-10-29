@@ -28,7 +28,7 @@ module type S = sig
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
@@ -45,9 +45,7 @@ module type S = sig
   val state : t -> Json.state
   val lock : t -> unit
   val own_cert : t -> Tls.Config.own_cert
-
-  val network_configuration :
-    t -> (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+  val network_configuration : t -> Json.network Lwt.t
 
   val provision :
     t -> unlock:string -> admin:string -> Ptime.t -> (unit, error) result Lwt.t
@@ -572,7 +570,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
@@ -582,11 +580,13 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
-    | Network (prefix, gw) ->
+    | Network { ipv4; _ } ->
         let gw =
-          match gw with None -> "no" | Some ip -> Ipaddr.V4.to_string ip
+          match ipv4.gateway with
+          | None -> "no"
+          | Some ip -> Ipaddr.V4.to_string ip
         in
-        "NETWORK " ^ Ipaddr.V4.Prefix.to_string prefix ^ ", gateway: " ^ gw
+        "NETWORK " ^ Ipaddr.V4.Prefix.to_string ipv4.cidr ^ ", gateway: " ^ gw
     | Tls _ -> "TLS_CERTIFICATE"
     | Shutdown -> "SHUTDOWN"
     | Reboot -> "REBOOT"
@@ -997,8 +997,14 @@ module Make (KV : Kv_ext.Platform) = struct
   let own_cert t = `Single (t.cert :: t.chain, t.key)
 
   let default_network_configuration =
-    let ip = Ipaddr.V4.of_string_exn "192.168.1.1" in
-    (ip, Ipaddr.V4.Prefix.make 24 ip, None)
+    {
+      Json.ipv4 =
+        {
+          cidr = Ipaddr.V4.Prefix.of_string_exn "192.168.1.1/24";
+          gateway = None;
+        };
+      ipv6 = None;
+    }
 
   let network_configuration t =
     let open Lwt.Infix in
@@ -2346,34 +2352,16 @@ module Make (KV : Kv_ext.Platform) = struct
       (* notify server *)
       Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
 
-    let network t =
-      let open Lwt.Infix in
-      network_configuration t >|= fun (ipAddress, prefix, route) ->
-      let netmask = Ipaddr.V4.Prefix.netmask prefix
-      and gateway = match route with None -> Ipaddr.V4.any | Some ip -> ip in
-      { Json.ipAddress; netmask; gateway }
+    let network = network_configuration
 
-    let set_network t network =
+    let set_network t (network : Json.network) =
       let open Lwt_result.Infix in
-      Lwt.return
-        (let netmask = network.Json.netmask and address = network.ipAddress in
-         Rresult.R.reword_error
-           (function
-             | `Msg err ->
-                 (Bad_request, "error parsing network configuration: " ^ err))
-           (Ipaddr.V4.Prefix.of_netmask ~netmask ~address))
-      >>= fun prefix ->
-      let route =
-        if Ipaddr.V4.compare network.gateway Ipaddr.V4.any = 0 then None
-        else Some network.gateway
-      in
       with_write_lock (fun () ->
           internal_server_error Write "Write network configuration"
             KV.pp_write_error
-            Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route)))
+            Config_store.(set t.kv Ip_config network))
       >>= fun r ->
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Network (prefix, route)))
-      >|= fun () -> r
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >|= fun () -> r
 
     let network_digest t =
       let open Lwt.Infix in
@@ -2381,14 +2369,13 @@ module Make (KV : Kv_ext.Platform) = struct
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let default_log =
-      { Json.ipAddress = Ipaddr.V4.any; port = 514; logLevel = Info }
+    let default_log = { Json.ipAddress = None; port = 514; logLevel = Info }
 
     let log t =
       let open Lwt.Infix in
       Config_store.get_opt t.kv Log_config >|= function
       | Ok None -> default_log
-      | Ok (Some (ipAddress, port, logLevel)) -> { ipAddress; port; logLevel }
+      | Ok (Some log) -> log
       | Error e ->
           Log.warn (fun m ->
               m "error %a while getting log configuration" Config_store.pp_error
@@ -2399,8 +2386,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let open Lwt_result.Infix in
       with_write_lock (fun () ->
           internal_server_error Write "Write log config" KV.pp_write_error
-            (Config_store.set t.kv Log_config
-               (log.Json.ipAddress, log.port, log.logLevel)))
+            (Config_store.set t.kv Log_config log))
       >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () -> r
 

@@ -123,18 +123,54 @@ let decode_restore_req json =
     | Some t -> decode_time t >>| fun t -> Some t)
   >>| fun time -> (time, b.backupPassphrase)
 
-type ip = Ipaddr.V4.t
+type ipv4 = Ipaddr.V4.t
 
-let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
+let ipv4_to_yojson ip = `String (Ipaddr.V4.to_string ip)
 
-let ip_of_yojson = function
+let ipv4_of_yojson = function
   | `String ip_str ->
       Rresult.R.reword_error
         (function `Msg msg -> msg)
         (Ipaddr.V4.of_string ip_str)
   | _ -> Error "expected string for IP"
 
-type network = { ipAddress : ip; netmask : ip; gateway : ip }
+type cidr_v4 = Ipaddr.V4.Prefix.t
+
+let cidr_v4_to_yojson ip = `String (Ipaddr.V4.Prefix.to_string ip)
+
+let cidr_v4_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V4.Prefix.of_string ip_str)
+  | _ -> Error "expected string for CIDR"
+
+type network_v4 = { cidr : cidr_v4; gateway : ipv4 option } [@@deriving yojson]
+type ipv6 = Ipaddr.V6.t
+
+let ipv6_to_yojson ip = `String (Ipaddr.V6.to_string ip)
+
+let ipv6_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V6.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+type cidr_v6 = Ipaddr.V6.Prefix.t
+
+let cidr_v6_to_yojson ip = `String (Ipaddr.V6.Prefix.to_string ip)
+
+let cidr_v6_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V6.Prefix.of_string ip_str)
+  | _ -> Error "expected string for CIDR"
+
+type network_v6 = { cidr : cidr_v6; gateway : ipv6 option } [@@deriving yojson]
+
+type network = { ipv4 : network_v4; ipv6 : network_v6 option }
 [@@deriving yojson]
 
 let decode_network json = decode network_of_yojson json
@@ -171,7 +207,18 @@ let log_level_of_yojson = function
   | `String l -> log_level_of_string l
   | _ -> Error "expected string as log level"
 
-type log = { ipAddress : ip; port : int; logLevel : log_level }
+type ip = Ipaddr.t
+
+let ip_to_yojson ip = `String (Ipaddr.to_string ip)
+
+let ip_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+type log = { ipAddress : ip option; port : int; logLevel : log_level }
 [@@deriving yojson]
 
 type random_req = { length : int } [@@deriving yojson]

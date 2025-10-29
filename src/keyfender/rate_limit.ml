@@ -2,7 +2,7 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-let requests : (Ipaddr.V4.t * string, Ptime.t list) Hashtbl.t = Hashtbl.create 7
+let requests : (Ipaddr.t * string, Ptime.t list) Hashtbl.t = Hashtbl.create 7
 
 let one_second_ago now =
   let one_second = Ptime.Span.of_int_s 1 in

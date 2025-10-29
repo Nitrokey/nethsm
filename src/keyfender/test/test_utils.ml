@@ -59,7 +59,7 @@ let platform =
 
 let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     ?(headers = Header.init ()) ?(content_type = "application/json") ?query
-    ?(ip = Ipaddr.V4.any) endpoint =
+    ?(ip = Ipaddr.(V4 V4.any)) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' =
     match hsm_state with

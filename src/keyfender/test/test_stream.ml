@@ -21,7 +21,7 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET)
   let path = "/api/v1" ^ path in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
+  Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.(V4 V4.any)) ~body ~request
 
 let update_key =
   match X509.Public_key.decode_pem [%blob "public.pem"] with

@@ -330,16 +330,16 @@ struct
     in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
-      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0 then
-        let reporter =
-          let port = log.Keyfender.Json.port in
-          Syslog.create stack ~hostname:"keyfender"
-            (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
-        in
-        Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)
-      else
-        let logs = Log_reporter.create () in
-        Logs.set_reporter (Keyfender.Logs_sequence_number.reporter logs)
+      match log.Keyfender.Json.ipAddress with
+      | Some ip ->
+          let reporter =
+            let port = log.Keyfender.Json.port in
+            Syslog.create stack ~hostname:"keyfender" ip ~port ()
+          in
+          Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)
+      | None ->
+          let logs = Log_reporter.create () in
+          Logs.set_reporter (Keyfender.Logs_sequence_number.reporter logs)
     and setup_http_listener http =
       let http_port = Args.http_port () in
       let tcp = `TCP http_port in
@@ -362,8 +362,8 @@ struct
           Logs.err (fun m ->
               m "error %a communicating with platform" pp_platform_err e)
     in
-    let reconfigure_network cidr gateway =
-      let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
+    let reconfigure_network (network : Keyfender.Json.network) =
+      let* () = Ext_reconfigurable_stack.setup ext_stack network in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
       (let module S = Ext_reconfigurable_stack.Stack in
@@ -377,6 +377,7 @@ struct
           Etcd_relay_outbound.listen
             (Internal_stack.tcp internal_stack)
             (S.tcp stack) None);
+      (* if needed, update how S-Platform's etcd advertise its IP *)
       KV_store.Cluster.member_list store >>= function
       | Error (`Cluster_error s) ->
           Logs.err (fun m ->
@@ -394,22 +395,30 @@ struct
                   m "cannot find ourselves in the cluster member list!");
               Lwt.return_unit
           | Some member -> (
-              let wanted_peer_url =
+              let wanted_peer_url_4 =
                 Fmt.str "http://%a:2380" Ipaddr.V4.pp
-                  (Ipaddr.V4.Prefix.address cidr)
+                  (Ipaddr.V4.Prefix.address network.ipv4.cidr)
               in
-              match member.peer_urls with
-              | [ peer_url ] when String.equal peer_url wanted_peer_url ->
-                  Logs.info (fun m ->
-                      m "etcd peer url is up to date: %s" wanted_peer_url);
-                  Lwt.return_unit
-              | _ -> (
-                  KV_store.Cluster.member_update ~id:own_id
-                    ~peer_urls:[ wanted_peer_url ] store
-                  >|= function
-                  | Ok _ -> ()
-                  | Error (`Cluster_error s) ->
-                      Logs.err (fun m -> m "couldn't update peer url: %s" s)))))
+              let wanted_peer_url_6 cidr =
+                Fmt.str "http://[%a]:2380" Ipaddr.V6.pp
+                  (Ipaddr.V6.Prefix.address cidr)
+              in
+              let wanted_peer_urls =
+                match network.ipv6 with
+                | None -> [ wanted_peer_url_4 ]
+                | Some { cidr; _ } ->
+                    [ wanted_peer_url_4; wanted_peer_url_6 cidr ]
+              in
+              if List.equal String.equal member.peer_urls wanted_peer_urls then (
+                Logs.info (fun m -> m "etcd peer url is up to date");
+                Lwt.return_unit)
+              else
+                KV_store.Cluster.member_update ~id:own_id
+                  ~peer_urls:wanted_peer_urls store
+                >|= function
+                | Ok _ -> Logs.info (fun m -> m "etcd peer urls updated!")
+                | Error (`Cluster_error s) ->
+                    Logs.err (fun m -> m "couldn't update peer url: %s" s))))
       >>= fun () ->
       Lwt.async (fun () -> setup_http_listener http);
       Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
@@ -428,9 +437,9 @@ struct
       | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
           (handle_cb [@tailcall]) http
-      | Hsm.Network (cidr, gateway) ->
+      | Hsm.Network network ->
           let* () = Ext_reconfigurable_stack.disconnect ext_stack in
-          let* http = reconfigure_network cidr gateway in
+          let* http = reconfigure_network network in
           (handle_cb [@tailcall]) http
       | Hsm.Update (blocks, stream) as cmd ->
           let additional_data write =
@@ -462,8 +471,7 @@ struct
           in
           (handle_cb [@tailcall]) http
     in
-    let* ip, net, gateway = Hsm.network_configuration hsm_state in
-    let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
+    let* network = Hsm.network_configuration hsm_state in
     let* () =
       if not Conf_args.no_platform then (
         (* wait for S-Net to startup *)
@@ -473,7 +481,7 @@ struct
         Mirage_sleep.ns (Duration.of_sec delay))
       else Lwt.return_unit
     in
-    let* http = reconfigure_network cidr gateway in
+    let* http = reconfigure_network network in
     (match conf_args.memtrace_port with
     | None -> ()
     | Some port ->
