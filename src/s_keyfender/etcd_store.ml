@@ -153,42 +153,67 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       id := !id + 2;
       !id
 
-  let do_grpc ~stack ~service ~rpc ~request ~decode =
-    get_connection ~stack >>= fun (conn, conn_err) ->
-    let req_id = next_req_id () in
-    Log.debug (fun m ->
-        let req_esc = String.escaped request in
-        m "gRPC call [%d] service:(%s) rpc:(%s) req:(%s)" req_id service rpc
-          req_esc);
+  let make_unary_handler ~request ~decode =
+   fun write_body read_body ->
+    let read_body_with_timeout =
+      Lwt.pick [ read_body; timeout 10 "gRPC request timeout" >>= etcd_err ]
+    in
     let f s =
       Lwt.pick
         [ s >|= decode; timeout 120 "gRPC response timeout" >>= etcd_err ]
     in
-    let handler write_body read_body =
-      let read_body_with_timeout =
-        Lwt.pick [ read_body; timeout 10 "gRPC request timeout" >>= etcd_err ]
+    Grpc_lwt.Client.Rpc.unary ~f request write_body read_body_with_timeout
+
+  let make_bidir_handler ~requests ~callback =
+    let f writer reader =
+      let rec send_queued_request () =
+        Lwt_stream.get requests >>= function
+        | None ->
+            writer None;
+            Lwt.return_unit
+        | Some request ->
+            writer (Some request);
+            send_queued_request ()
       in
-      Grpc_lwt.Client.Rpc.unary ~f request write_body read_body_with_timeout
+      let rec read_incoming_responses () =
+        Lwt_stream.get reader >>= function
+        | None -> Lwt.return_unit
+        | Some response ->
+            Lwt.async (fun () -> callback response);
+            read_incoming_responses ()
+      in
+      Lwt.join [ send_queued_request (); read_incoming_responses () ]
     in
+    Grpc_lwt.Client.Rpc.bidirectional_streaming ~f
+
+  let do_grpc ~stack ~service ~rpc ~handler ~repr =
+    get_connection ~stack >>= fun (conn, conn_err) ->
+    let req_id = next_req_id () in
+    Log.debug (fun m ->
+        m "gRPC call [%d] service:(%s) rpc:(%s) req:(%s)" req_id service rpc
+          repr);
     let stream_err, stream_err_resolver = Lwt.task () in
     let error_handler e =
       let msg = error_to_string e in
       Log.err (fun m ->
           m "gRPC call [%d] received HTTP/2 stream-level error: %s" req_id msg);
       Log.debug (fun m ->
-          let req_esc = String.escaped request in
           m "gRPC call [%d] service:(%s) rpc:(%s) req:(%s)" req_id service rpc
-            req_esc);
+            repr);
       Lwt.wakeup_later_exn stream_err_resolver (Etcd_error msg)
     in
     let do_request = H2C.request conn ~error_handler in
+
     let grpc_resp =
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
     in
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
     | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
-    | Ok (Error e, _) -> etcd_err (Etcd_client.Result.show_error e)
-    | Ok (Ok None, status) ->
+    | Ok r -> r
+
+  let handle_decode_response = function
+    | Error e, _ -> etcd_err (Etcd_client.Result.show_error e)
+    | Ok None, status ->
         let open Grpc.Status in
         let err =
           Fmt.str "no response! status = (code: %a, msg: %a)" pp_code
@@ -197,7 +222,22 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             (message status)
         in
         etcd_err err
-    | Ok (Ok (Some r), _) -> r
+    | Ok (Some r), _ -> r
+
+  let do_grpc_unary ~stack ~service ~rpc ~request ~decode =
+    let handler = make_unary_handler ~request ~decode in
+    let repr = String.escaped request in
+    do_grpc ~stack ~service ~rpc ~handler ~repr >|= handle_decode_response
+
+  let do_grpc_bidir ~stack ~service ~rpc ~callback =
+    let requests, push_request = Lwt_stream.create () in
+    let handler = make_bidir_handler ~requests ~callback in
+    let repr = "bi-directional stream" in
+    Lwt.async (fun () ->
+        do_grpc ~stack ~service ~rpc ~handler ~repr >|= fun (_, status) ->
+        Log.info (fun f ->
+            f "bi-directional stream closed: %a" Grpc.Status.pp status));
+    push_request
 
   let txn stack ~(request : TxnRequest.t) : TxnResponse.t Lwt.t =
     let request = TxnRequest.to_proto request |> Etcd_client.Writer.contents in
@@ -207,7 +247,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> TxnResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Txn" ~request ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Txn" ~request ~decode
 
   let put stack ~(request : PutRequest.t) : PutResponse.t Lwt.t =
     let request = PutRequest.to_proto request |> Etcd_client.Writer.contents in
@@ -217,7 +257,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> PutResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
 
   let range stack ~(request : RangeRequest.t) : RangeResponse.t Lwt.t =
     let request =
@@ -229,7 +269,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> RangeResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request
+      ~decode
 
   let delete_range stack ~(request : DeleteRangeRequest.t) :
       DeleteRangeResponse.t Lwt.t =
@@ -242,7 +283,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> DeleteRangeResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
+    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
       ~decode
 
   let member_list stack ~(request : MemberListRequest.t) :
@@ -256,8 +297,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberListResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberList" ~request
-      ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberList"
+      ~request ~decode
 
   let member_add stack ~(request : MemberAddRequest.t) :
       MemberAddResponse.t Lwt.t =
@@ -270,8 +311,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberAddResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberAdd" ~request
-      ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberAdd"
+      ~request ~decode
 
   let member_remove stack ~(request : MemberRemoveRequest.t) :
       MemberRemoveResponse.t Lwt.t =
@@ -284,8 +325,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberRemoveResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberRemove" ~request
-      ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberRemove"
+      ~request ~decode
 
   let member_update stack ~(request : MemberUpdateRequest.t) :
       MemberUpdateResponse.t Lwt.t =
@@ -298,8 +339,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberUpdateResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate" ~request
-      ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate"
+      ~request ~decode
 
   let maintenance_status stack : StatusResponse.t Lwt.t =
     let request =
@@ -311,24 +352,75 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> StatusResponse.from_proto |> Result.map Option.some
     in
-    do_grpc ~stack ~service:"etcdserverpb.Maintenance" ~rpc:"Status" ~request
-      ~decode
+    do_grpc_unary ~stack ~service:"etcdserverpb.Maintenance" ~rpc:"Status"
+      ~request ~decode
 
-  (* should be bi-directional, not unary
-  let watch_create stack ~(request : WatchCreateRequest.t) :
-      WatchResponse.t Lwt.t =
-    let request =
-      WatchCreateRequest.to_proto request |> Etcd_client.Writer.contents
-    in
-    let decode = function
-      | None -> Ok None
-      | Some s ->
-          Etcd_client.Reader.create s
-          |> WatchResponse.from_proto |> Result.map Option.some
-    in
-    do_grpc ~stack ~service:"etcdserverpb.Watch" ~rpc:"Watch" ~request
-      ~decode
-      *)
+  module Watch = struct
+    type callback = Event.t -> unit Lwt.t
+
+    type t = {
+      write_request : string option -> unit;
+      callbacks : (int64, callback) Hashtbl.t;
+      waiting_watch_id : callback Queue.t;
+    }
+
+    let demux (callbacks, waiting_watch_id) (resp : WatchResponse.t) =
+      let id = resp.watch_id in
+      match Hashtbl.find_opt callbacks id with
+      | Some _ when resp.canceled ->
+          Log.info (fun f -> f "watch %Ld cancelled" id);
+          Hashtbl.remove callbacks id;
+          Lwt.return_unit
+      | Some callback ->
+          if resp.created then
+            Log.warn (fun f -> f "watch %Ld created but already exists!" id);
+          List.map callback resp.events |> Lwt.join
+      | None when resp.created -> (
+          match Queue.take_opt waiting_watch_id with
+          | None ->
+              Log.err (fun f ->
+                  f "watch %Ld created but we have no callback for it!" id);
+              Lwt.return_unit
+          | Some callback ->
+              Log.info (fun f -> f "watch %Ld created" id);
+              Hashtbl.add callbacks id callback;
+              List.map callback resp.events |> Lwt.join)
+      | None when resp.canceled ->
+          Log.warn (fun f -> f "watch %Ld cancelled before created" id);
+          Lwt.return_unit
+      | None ->
+          Log.err (fun f ->
+              f "received watch %Ld event but we have no callback!" id);
+          Lwt.return_unit
+
+    let init stack =
+      let callbacks = Hashtbl.create 10 in
+      let waiting_watch_id = Queue.create () in
+      let callback str =
+        Etcd_client.Reader.create str
+        |> WatchResponse.from_proto |> Result.map Option.some
+        |> function
+        | Error e -> etcd_err (Etcd_client.Result.show_error e)
+        | Ok None -> etcd_err "no response!"
+        | Ok (Some r) -> demux (callbacks, waiting_watch_id) r
+      in
+      let write_request =
+        do_grpc_bidir ~stack ~service:"etcdserverpb.Watch" ~rpc:"Watch"
+          ~callback
+      in
+      Log.info (fun f -> f "watch stream started");
+      { write_request; callbacks; waiting_watch_id }
+
+    let create t ~(request : WatchCreateRequest.t) ~(callback : callback) =
+      let request =
+        WatchRequest.make ~request_union:(`Create_request request) ()
+      in
+      let request =
+        WatchRequest.to_proto request |> Etcd_client.Writer.contents
+      in
+      Queue.add callback t.waiting_watch_id;
+      t.write_request (Some request)
+  end
 
   (* let compact ~ctx ~req =
      let uri = Request.build_uri "/v3/kv/compaction" in
@@ -389,6 +481,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     stack : Stack.t;
     mode : [ `Normal | `Batch of Txn_batcher.t ];
     member_id : int64;
+    watcher : Etcd.Watch.t;
   }
 
   type key = Key.t
@@ -440,6 +533,17 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         match resp.RangeResponse.kvs with
         | { KeyValue.value = s; _ } :: _ -> Ok (Bytes.to_string s)
         | _ -> Error (`Not_found k))
+
+  let watch t =
+    let request =
+      WatchCreateRequest.make ~key:(String.to_bytes "/")
+        ~range_end:(String.to_bytes "}") ~progress_notify:true ()
+    in
+    let callback (event : Event.t) =
+      Log.debug (fun f -> f "got watch event");
+      Lwt.return_unit
+    in
+    Etcd.Watch.create t.watcher ~request ~callback
 
   (* remove *consecutive* duplicates in a list*)
   let rec dedup = function
@@ -546,7 +650,11 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let connect stack =
     status stack >|= function
     | Error e -> Error e
-    | Ok member_id -> Ok { stack; mode = `Normal; member_id }
+    | Ok member_id ->
+        let watcher = Etcd.Watch.init stack in
+        let t = { stack; mode = `Normal; member_id; watcher } in
+        watch t;
+        Ok t
 end
 
 module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
@@ -633,7 +741,7 @@ struct
             | Ok (`Data b) -> (
                 B.write bf b >>= function
                 | Ok () ->
-                    Log.info (fun f -> f "relay: transmitted some data");
+                    Log.debug (fun f -> f "relay: transmitted some data");
                     aux ()
                 | Error _ -> close_all ())
           in

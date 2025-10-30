@@ -360,7 +360,7 @@ $(RUN_DIR)/etcd.pid:
 	    --listen-peer-urls 'http://169.254.169.2:2380' \
 		--advertise-client-urls 'http://169.254.169.2:2379' \
 		--data-dir $(RUN_DIR)/etcd \
-		--log-level debug \
+		--log-level info \
 		--max-txn-ops 512 \
         --log-outputs $(RUN_DIR)/etcd.log \
 	    & echo $$! > $@
