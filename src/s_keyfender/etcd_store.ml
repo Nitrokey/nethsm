@@ -534,25 +534,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | { KeyValue.value = s; _ } :: _ -> Ok (Bytes.to_string s)
         | _ -> Error (`Not_found k))
 
-  let watch t =
-    let request =
-      WatchCreateRequest.make ~key:(String.to_bytes "/")
-        ~range_end:(String.to_bytes "}") ~progress_notify:true ()
-    in
-    let callback (event : Event.t) =
-      Log.debug (fun f -> f "got watch event");
-      Lwt.return_unit
-    in
-    Etcd.Watch.create t.watcher ~request ~callback
-
-  (* remove *consecutive* duplicates in a list*)
-  let rec dedup = function
-    | [] -> []
-    | [ x ] -> [ x ]
-    | a :: b :: tl when a = b -> dedup (b :: tl)
-    | a :: b :: tl -> a :: dedup (b :: tl)
-
-  let list_range t range =
+  let etcd_range_of_range range =
     let open Keyfender.Kv_ext in
     let dir k =
       Bytes.of_string (match Key.to_string k with "/" -> "/" | s -> s ^ "/")
@@ -567,6 +549,35 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       | None -> Range.range_end_of_prefix (Range.prefix range |> dir)
       | Some range_end -> Key.to_string range_end |> Bytes.of_string
     in
+    (key, range_end)
+
+  let create_watch t (range : Keyfender.Kv_ext.Range.t) callback =
+    let key, range_end = etcd_range_of_range range in
+    let request =
+      WatchCreateRequest.make ~key ~range_end ~progress_notify:true ()
+    in
+    let callback (event : Event.t) =
+      match event.kv with
+      | None ->
+          Log.warn (fun f -> f "received watch event with no KV field");
+          Lwt.return_unit
+      | Some kv ->
+          let key = Mirage_kv.Key.v (String.of_bytes kv.key) in
+          let kind = match event.type' with DELETE -> `Delete | PUT -> `Put in
+          let event' = Keyfender.Kv_ext.{ kind; key } in
+          callback event'
+    in
+    Etcd.Watch.create t.watcher ~request ~callback
+
+  (* remove *consecutive* duplicates in a list*)
+  let rec dedup = function
+    | [] -> []
+    | [ x ] -> [ x ]
+    | a :: b :: tl when a = b -> dedup (b :: tl)
+    | a :: b :: tl -> a :: dedup (b :: tl)
+
+  let list_range t range =
+    let key, range_end = etcd_range_of_range range in
     let request =
       RangeRequest.(
         make ~key ~range_end ~keys_only:true ~sort_order:SortOrder.DESCEND ())
@@ -653,7 +664,6 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     | Ok member_id ->
         let watcher = Etcd.Watch.init stack in
         let t = { stack; mode = `Normal; member_id; watcher } in
-        watch t;
         Ok t
 end
 

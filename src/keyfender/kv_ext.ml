@@ -118,12 +118,16 @@ module type Clustered = sig
     peer_urls:string list -> t -> (member list, cluster_error) result Lwt.t
 end
 
+type event = { kind : [ `Put | `Delete ]; key : Mirage_kv.key }
+
 module type Ranged = sig
   include RW
 
   val list_range :
     t -> Range.t -> ((key * [ `Value | `Dictionary ]) list, error) result Lwt.t
   (** Return all keys in range that correspond to an entry in kv *)
+
+  val create_watch : t -> Range.t -> (event -> unit Lwt.t) -> unit
 end
 
 module type Platform = sig
@@ -140,6 +144,8 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
     let open Lwt_result.Infix in
     KV.list t (Range.prefix range) >|= fun items ->
     List.filter (fun (k, _) -> Range.within range k) items
+
+  let create_watch _ _ _ = ()
 
   module Cluster = struct
     type member = { id : int64; name : string; peer_urls : string list }

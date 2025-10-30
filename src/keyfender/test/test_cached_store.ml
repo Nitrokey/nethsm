@@ -40,6 +40,7 @@ module Stats_store (Store : Keyfender.Kv_ext.Ranged) = struct
     stats.writes <- batch_stats.writes + stats.writes;
     v
 
+  let create_watch t = create_watch t.t
   let connect t = { t; stats = { reads = 0; writes = 0 } }
 end
 

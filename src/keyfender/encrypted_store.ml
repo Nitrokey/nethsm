@@ -8,6 +8,8 @@ module Make (KV : Kv_ext.Ranged) = struct
   type t = { kv : KV.t; prefix : Mirage_kv.Key.t; key : Crypto.GCM.key }
   type slot = Authentication | Key | Namespace
 
+  let create_watch t = KV.create_watch t.kv
+
   let slot_to_string = function
     | Authentication -> "authentication"
     | Key -> "key"
