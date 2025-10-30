@@ -323,6 +323,7 @@ module Make (KV : Kv_ext.Ranged) : sig
 
   val boot :
     ?cache_settings:Cached_store.settings ->
+    ?default_net:string ->
     platform:Json.platform_data ->
     Mirage_crypto_pk.Rsa.pub ->
     KV.t ->

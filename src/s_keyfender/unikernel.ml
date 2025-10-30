@@ -319,8 +319,9 @@ struct
           | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)
           )
     in
+    let default_net = Args.default_net () in
     let* hsm_state, mvar, res_mvar =
-      Hsm.boot ~cache_settings ~platform update_key store
+      Hsm.boot ~cache_settings ?default_net ~platform update_key store
     in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);

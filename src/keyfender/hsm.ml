@@ -731,6 +731,7 @@ module Make (KV : Kv_ext.Ranged) = struct
     res_mbox : (unit, string) result Lwt_mvar.t;
     device_key : string;
     cache_settings : Cached_store.settings;
+    default_net : string;
   }
 
   let state t = to_external_state t.state
@@ -979,9 +980,21 @@ module Make (KV : Kv_ext.Ranged) = struct
   let info t = t.info
   let own_cert t = `Single (t.cert :: t.chain, t.key)
 
-  let default_network_configuration =
-    let ip = Ipaddr.V4.of_string_exn "192.168.1.1" in
-    (ip, Ipaddr.V4.Prefix.make 24 ip, None)
+  let default_network_configuration net =
+    let net, gw =
+      match String.split_on_char ',' net with
+      | [ net ] -> (net, None)
+      | [ net; gw ] -> (net, Some (Ipaddr.V4.of_string_exn gw))
+      | _ -> failwith "Invalid default net config format"
+    in
+    let ip, mask =
+      match String.split_on_char '/' net with
+      | [ ip ] -> (ip, 24)
+      | [ ip; mask ] -> (ip, int_of_string mask)
+      | _ -> failwith "Invalid CIDR format"
+    in
+    let ip = Ipaddr.V4.of_string_exn ip in
+    (ip, Ipaddr.V4.Prefix.make mask ip, gw)
 
   let network_configuration t =
     let open Lwt.Infix in
@@ -991,7 +1004,7 @@ module Make (KV : Kv_ext.Ranged) = struct
         Log.warn (fun m ->
             m "error %a while retrieving IP, using default"
               Config_store.pp_error e);
-        default_network_configuration
+        default_network_configuration t.default_net
 
   let random n = Base64.encode_string @@ Mirage_crypto_rng.generate n
 
@@ -3006,8 +3019,8 @@ module Make (KV : Kv_ext.Ranged) = struct
       evict_delay_s = 1.;
     }
 
-  let boot ?(cache_settings = default_cache_settings) ~platform
-      software_update_key kv =
+  let boot ?(cache_settings = default_cache_settings)
+      ?(default_net = "192.168.1.1") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -3056,6 +3069,7 @@ module Make (KV : Kv_ext.Ranged) = struct
              res_mbox;
              device_key;
              cache_settings;
+             default_net;
            }
          in
          Lwt.return (Ok t)
@@ -3077,6 +3091,7 @@ module Make (KV : Kv_ext.Ranged) = struct
              res_mbox;
              device_key;
              cache_settings;
+             default_net;
            }
          in
 
