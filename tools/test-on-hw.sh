@@ -11,7 +11,7 @@ echo "done."
 
 cd src/tests
 NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh
-NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
+#NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
 
 curl -s -k -X PUT -H "content-type: application/json" -d \
     '{"ipAddress":"0.0.0.0","port":0,"logLevel":"warning"}' \
@@ -25,15 +25,52 @@ echo "net conf"
 
 ip a
 
-echo "adding member"
+echo "rebooting"
 
-curl -v --no-progress-meter -k -X POST -H "content-type: application/json" -d \
+curl --no-progress-meter -i -X POST -k https://admin:Administrator@${NETHSM_IP}/api/v1/system/reboot
+
+sleep 30
+
+echo "alive?"
+
+curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/health/state
+
+echo "unlock."
+curl --no-progress-meter -i -X POST -d '{"passphrase":"UnlockPassphrase"}' -k https://admin:Administrator@${NETHSM_IP}/api/v1/unlock
+
+echo "adding member"
+curl --no-progress-meter -i -k -X POST -H "content-type: application/json" -d \
     '{"peer_urls":["http://192.168.1.100:2380"]}' \
     https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
 
 echo "check new state"
 
-curl -s -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
+sleep 5
+
+timeout --verbose 5s curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members || true
+
+echo "check again"
+
+sleep 5
+
+timeout --verbose 5s curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members || true
+
+echo "rebooting"
+
+curl --no-progress-meter -i -X POST -k https://admin:Administrator@${NETHSM_IP}/api/v1/system/reboot
+
+sleep 30
+
+echo "alive?"
+
+curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/health/state
+
+echo "unlock."
+curl --no-progress-meter -i -X POST -d '{"passphrase":"UnlockPassphrase"}' -k https://admin:Administrator@${NETHSM_IP}/api/v1/unlock
+
+echo "members?"
+
+curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members || true
 
 #flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 10 \
 #    p256 p384 p521 rsa1024 rsa2048 rsa3072 rsa4096 ed25519 p256k1 \

@@ -250,6 +250,85 @@ func platformListener(result chan string) {
 	}
 }
 
+type EtcdMode = int
+
+const (
+	/* if /etcd/data empty (on first boot)
+	   create new 1-node cluster ready to accept new members
+		 - cannot fail
+
+	 if /etcd/data exists (after first boot)
+	   use existing cluster and try to connect to existing members if
+	   any were added in the past
+		 - cannot fail if new members were never added
+	   - !! will fail if cluster quorum is not met anymore i.e. if the
+	     majority of other members is unreachable (either they are down or we
+	     are isolated ourselves)
+	*/
+	EtcdNormal EtcdMode = iota
+
+	/* !! will delete /etcd/data !!
+	   create a new node as member of an existing cluster,
+	   assuming the cluster has already added our peer-urls
+
+	   !! will fail for any of the following is true
+	   - the wrong configuration is passed
+	   - the configured peers are not reachable
+	   - the cluster has not previously added this member
+	*/
+	EtcdClusterJoin
+
+	/* if /etcd/data empty or the cluster is 1-node
+	     same behavior as EtcdNormal
+
+	   if /etcd/data exists and there are other members
+	     will forcibly forget about other members of the cluster and force startup
+		 as a 1-node cluster
+		 !! potential data loss if we are not in sync with the leader
+		 !! unsafe if other members are actually not down and contact us after recovery
+	*/
+	EtcdDisasterRecovery
+)
+
+var etcdModeName = map[EtcdMode]string{
+	EtcdNormal:           "normal",
+	EtcdClusterJoin:      "cluster join",
+	EtcdDisasterRecovery: "disaster recovery",
+}
+
+func startEtcd(mode EtcdMode) {
+	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
+
+	cmd :=
+		"/bin/etcd" +
+			" --listen-client-urls=http://169.254.169.2:2379" +
+			" --advertise-client-urls=" +
+			" --data-dir=/data/etcd" +
+			" --snapshot-count=5000" +
+			" --auto-compaction-retention=1h" +
+			" --quota-backend-bytes=5694816256" + // should not be more than RAM
+			" --listen-peer-urls=http://169.254.169.2:2380" +
+			// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
+			// --initial-cluster <- just ourself, expanded at runtime
+			" --v2-deprecation=gone" +
+			" --max-txn-ops=512" +
+			// " --log-level debug"+
+			""
+
+	initialState := " --initial-cluster-state=new"
+	if mode == EtcdClusterJoin {
+		initialState = " --initial-cluster-state=existing"
+	}
+
+	cmd += initialState
+
+	if mode == EtcdDisasterRecovery {
+		cmd += "--force-new-cluster"
+	}
+
+	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)
+}
+
 // sPlatformActions are executed for S-Platform.
 func sPlatformActions() {
 	// Load TPM kernel modules first, as platformListener needs TPM for
@@ -305,22 +384,7 @@ func sPlatformActions() {
 		}
 	}
 
-	G.s.Logf("Starting etcd server")
-	G.s.BackgroundExecAsf(G.etcdUIDGID, "/bin/etcd"+
-		" --listen-client-urls=http://169.254.169.2:2379"+
-		" --advertise-client-urls="+
-		" --data-dir=/data/etcd"+
-		" --snapshot-count=5000"+
-		" --auto-compaction-retention=1h"+
-		" --quota-backend-bytes=5694816256"+ // should not be more than RAM
-		" --initial-cluster-state=new"+
-		" --listen-peer-urls=http://169.254.169.2:2380"+
-		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
-		// --initial-cluster <- just ourself, expanded at runtime
-		" --v2-deprecation=gone"+
-		" --max-txn-ops=512"+
-		// " --log-level debug"+
-		"")
+	startEtcd(EtcdNormal)
 
 	if err := G.s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)

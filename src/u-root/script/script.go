@@ -20,6 +20,7 @@ package script
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -83,19 +84,22 @@ func (s *Script) Execf(format string, a ...interface{}) {
 // made for retrieving it's exit status, however the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
 // and GID equal to uidgid.
-func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
+// This function returns a "cancel" function which, when called, kills the
+// running command if running.
+func (s *Script) CancelableBackgroundExecAsf(uidgid int, format string, a ...interface{}) context.CancelFunc {
 	if s.err != nil {
-		return
+		return nil
 	}
 
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
 	if len(cmdSplit) == 0 {
 		s.err = fmt.Errorf("Empty command string")
-		return
+		return nil
 	}
 
-	cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
+	context, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(context, cmdSplit[0], cmdSplit[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -115,6 +119,11 @@ func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) 
 			log.Printf("Background process '%s' exited", cmdSplit[0])
 		}
 	}(cmd)
+	return cancel
+}
+
+func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
+	_ = s.CancelableBackgroundExecAsf(-1, format, a...)
 }
 
 func (s *Script) BackgroundExecf(format string, a ...interface{}) {
