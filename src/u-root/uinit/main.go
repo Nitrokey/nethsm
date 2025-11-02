@@ -44,6 +44,7 @@ type globalState struct {
 	listenerPort         string
 	keyfenderIP          string
 	entropyPort          string
+	deviceID			 string
 	killEtcd			 context.CancelFunc
 }
 
@@ -62,6 +63,7 @@ var G = &globalState{
 	listenerPort:         ":1023",
 	keyfenderIP:          "169.254.169.1",
 	entropyPort:          "4444",
+	deviceID:			  "",
 	killEtcd:			  nil,
 }
 

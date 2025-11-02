@@ -187,6 +187,23 @@ func platformListener(result chan string) {
 			return okResponse(""), nil, false
 		}
 
+		// JOIN-CLUSTER
+		doJoinCluster := func() ([]byte, error, bool) {
+			param, err := r.ReadString('\n')
+			if err != nil {
+				return nil, err, false
+			}
+			initialCluster := strings.TrimSuffix(param, "\n")
+			args := JoinArgs{initialCluster}
+			log.Printf("[%s] Requested JOIN-CLUSTER (%s).", remoteAddr, initialCluster)
+			conn.SetDeadline(time.Now().Add(time.Second * 15))
+			// kill previously running etcd and wait 5 seconds
+			G.killEtcd()
+			time.Sleep(5 * time.Second)
+			err = startEtcd(EtcdClusterJoin, args)
+			return okResponse(""), err, false
+		}
+
 		// COMMIT-UPDATE
 		doCommitUpdate := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested COMMIT-UPDATE.", remoteAddr)
@@ -213,6 +230,8 @@ func platformListener(result chan string) {
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
 			response, cmdErr, terminalCommand = doCommitUpdate()
+		case "JOIN-CLUSTER":
+			response, cmdErr, terminalCommand = doJoinCluster()
 		case "SHUTDOWN":
 			log.Printf("[%s] Requested SHUTDOWN.", remoteAddr)
 			response = okResponse("")
@@ -296,12 +315,17 @@ var etcdModeName = map[EtcdMode]string{
 	EtcdDisasterRecovery: "disaster recovery",
 }
 
-func startEtcd(mode EtcdMode) {
+type JoinArgs struct {
+	initialCluster string // of the form "name1=url1:2380,name2=url2:2380,..."
+}
+
+func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
 	cmd :=
 		"/bin/etcd" +
 			" --listen-client-urls=http://169.254.169.2:2379" +
+			" --name=" + G.deviceID +
 			" --advertise-client-urls=" +
 			" --data-dir=/data/etcd" +
 			" --snapshot-count=5000" +
@@ -318,15 +342,34 @@ func startEtcd(mode EtcdMode) {
 	initialState := " --initial-cluster-state=new"
 	if mode == EtcdClusterJoin {
 		initialState = " --initial-cluster-state=existing"
+		if len(joinArgs) == 0 {
+			log.Printf("Missing initial cluster state when starting etcd in join mode! Falling back to normal")
+			mode = EtcdNormal
+		} else {
+			cmd += " --initial-cluster='" + joinArgs[0].initialCluster + "'"
+		}
 	}
 
 	cmd += initialState
 
 	if mode == EtcdDisasterRecovery {
-		cmd += "--force-new-cluster"
+		cmd += " --force-new-cluster"
+	}
+
+	if mode == EtcdClusterJoin {
+		// !! remove all previous etcd data before joining a new cluster
+		G.s.Logf("Erasing previous etcd data!")
+		err := os.RemoveAll("/data/etcd")
+		if err != nil {
+			return err
+		}
 	}
 
 	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)
+
+	// TODO probe etcd for liveness, report any error, maybe fallback to normal mode
+
+	return G.s.Err()
 }
 
 // sPlatformActions are executed for S-Platform.
@@ -341,9 +384,6 @@ func sPlatformActions() {
 		log.Printf("Script failed: %v", err)
 		return
 	}
-
-	c := make(chan string)
-	startTask("Platform Listener", func() { platformListener(c) })
 
 	mountMuenFs()
 	G.s.Logf("Channels:")
@@ -362,7 +402,22 @@ func sPlatformActions() {
 
 	dumpNetworkStatus()
 
+	c := make(chan string)
 	startTask("TRNG", trngTask)
+	startTask("Platform Listener", func() { platformListener(c) })
+	time.Sleep(20 * time.Second)
+
+	G.s.Logf("Ensuring platform data is accessible")
+	// Make sure the device key is generated, and get the device ID for etcd
+	{ // do not leak platform data other than deviceId outside of this block
+		data, err := tpmGetPlatformData()
+		if err != nil {
+			log.Printf("Couldn't get platform data: %v", err)
+			return
+		}
+		G.deviceID = data.DeviceID
+	}
+	G.s.Logf("OK! Device ID: %s", G.deviceID)
 
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
@@ -384,13 +439,10 @@ func sPlatformActions() {
 		}
 	}
 
-	startEtcd(EtcdNormal)
-
-	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
+	if err := startEtcd(EtcdNormal); err != nil {
+		log.Printf("Couldn't start etcd: %v", err)
 		return
 	}
-
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
 

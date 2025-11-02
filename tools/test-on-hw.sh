@@ -25,6 +25,9 @@ echo "net conf"
 
 ip a
 
+exit 0
+############################################
+
 echo "rebooting"
 
 curl --no-progress-meter -i -X POST -k https://admin:Administrator@${NETHSM_IP}/api/v1/system/reboot
