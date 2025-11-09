@@ -85,6 +85,19 @@ func dumpNetworkStatus() {
 	G.s.Execf("/bbin/ip route")
 }
 
+func setProcFs(path string, b bool) {
+	var v string
+	if b {
+		v = "1"
+	} else {
+		v = "0"
+	}
+	err := os.WriteFile(path, []byte(v), 0o644)
+	if err != nil {
+		log.Printf("Failed to set %s to %s: %v", path, v, err)
+	}
+}
+
 func startTask(name string, f func()) {
 	go func() {
 		log.Printf("%s task started.", name)
