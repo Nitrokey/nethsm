@@ -34,7 +34,6 @@ func sNetExternalActions() {
 	G.s.Execf("/bbin/ip link add br0 type bridge")
 	G.s.Execf("/bbin/ip link set %s master br0", extIface)
 	G.s.Execf("/bbin/ip link set %s master br0", intIface)
-	G.s.Execf("/bbin/ip link set %s master br0", intIface)
 	setProcFs("/sys/class/net/br0/brif/"+extIface+"/learning", false)
 	setProcFs("/sys/class/net/br0/brif/"+intIface+"/learning", false)
 	G.s.Execf("/bbin/ip link set dev %s up", extIface)
