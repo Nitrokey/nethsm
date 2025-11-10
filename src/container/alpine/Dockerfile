@@ -59,9 +59,17 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   cp dist/keyfender dist/keyfender.unix
 EOF
 
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+  export OPAMJOBS=$(nproc)
+  cd src/s_keyfender
+  opam exec -- mirage configure --no-depext -t unix --internal-net=direct --no-platform
+  opam exec -- make -j$(nproc)
+  cp dist/keyfender dist/keyfender.tap
+EOF
+
 RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
 
-FROM ${distro_version} as nethsm_production
+FROM ${distro_version} AS nethsm_production
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache iptables curl gmp
@@ -77,13 +85,17 @@ COPY --from=builder \
   /home/opam/nethsm/src/container/alpine/tlsproxy \
   /
 
-ENTRYPOINT /start.sh
+ENTRYPOINT [ "/start.sh" ]
 
-FROM ${distro_version} as nethsm_test
+FROM ${distro_version} AS nethsm_test
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache gmp
   apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp <<EOF
+  apk add --no-cache curl tcpdump iproute2 nmap-nping arping
 EOF
 
 VOLUME /data
@@ -94,5 +106,8 @@ COPY src/container/alpine/start-test.sh /start.sh
 COPY --from=builder \
   /home/opam/nethsm/src/s_keyfender/dist/keyfender.unix \
   /
+COPY --from=builder \
+  /home/opam/nethsm/src/s_keyfender/dist/keyfender.tap \
+  /
 
-ENTRYPOINT /start.sh
+ENTRYPOINT [ "/start.sh" ]
