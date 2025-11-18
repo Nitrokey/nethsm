@@ -59,6 +59,12 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   cp dist/keyfender dist/keyfender.unix
 EOF
 
+# COPY vendor/mirage-tcpip /mirage-tcpip
+
+# RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+#   OPAMJOBS=$(nproc) opam pin -y add tcpip.9.0.1 /mirage-tcpip/.
+# EOF
+
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
@@ -95,7 +101,7 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add --no-cache curl tcpdump iproute2 nmap-nping arping
+  apk add --no-cache curl tcpdump iproute2 nmap-nping arping screen
 EOF
 
 VOLUME /data
@@ -109,5 +115,6 @@ COPY --from=builder \
 COPY --from=builder \
   /home/opam/nethsm/src/s_keyfender/dist/keyfender.tap \
   /
+COPY src/container/alpine/start-debug.sh /
 
 ENTRYPOINT [ "/start.sh" ]
