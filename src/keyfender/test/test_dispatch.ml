@@ -1517,13 +1517,42 @@ let config_network_ok =
       in
       Alcotest.(check string)
         "body"
-        "{\"ipv4\":{\"cidr\":\"192.168.1.1/24\",\"gateway\":null},\"ipv6\":null}"
+        "{\"ipAddress\":\"192.168.1.1\",\"netmask\":\"255.255.255.0\",\"gateway\":\"0.0.0.0\"}"
         body)
 
 let config_network_set_ok =
   Alcotest.test_case "PUT on /config/network succeeds" `Quick (fun () ->
       let new_network =
-        {|{"ipv4":{"cidr":"6.6.6.6/24","gateway":null},"ipv6":null}|}
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":null}|}
+      in
+      let old_network =
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
+      in
+      let hsm_state =
+        admin_put_request ~body:(`String new_network) "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
+        request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" old_network body;
+      (* still accept old config format *)
+      let hsm_state =
+        admin_put_request ~body:(`String old_network) "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
+        request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" old_network body)
+
+let config_network_set_ipv6_ok =
+  Alcotest.test_case "PUT on /config/network succeeds with ipv6" `Quick
+    (fun () ->
+      let new_network =
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":{"cidr":"::1/8","gateway":"::1"}}|}
       in
       let hsm_state =
         admin_put_request ~body:(`String new_network) "/config/network"
@@ -1539,7 +1568,7 @@ let config_network_set_fail =
   Alcotest.test_case "PUT with invalid IP address on /config/network fails"
     `Quick (fun () ->
       let new_network =
-        {|{"ipv4":{"cidr":"6.6.6.666/24","gateway":null},"ipv6":null}|}
+        {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
       in
       let body =
         admin_put_request ~body:(`String new_network) "/config/network"
@@ -4775,7 +4804,12 @@ let () =
           post_config_tls_generate_bad_length;
         ] );
       ( "/config/network",
-        [ config_network_ok; config_network_set_ok; config_network_set_fail ] );
+        [
+          config_network_ok;
+          config_network_set_ok;
+          config_network_set_ipv6_ok;
+          config_network_set_fail;
+        ] );
       ( "/config/logging",
         [ config_logging_ok; config_logging_set_ok; config_logging_set_fail ] );
       ( "/config/time",

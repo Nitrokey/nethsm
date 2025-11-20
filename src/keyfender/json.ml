@@ -170,10 +170,41 @@ let cidr_v6_of_yojson = function
 
 type network_v6 = { cidr : cidr_v6; gateway : ipv6 option } [@@deriving yojson]
 
-type network = { ipv4 : network_v4; ipv6 : network_v6 option }
+type network_api = {
+  ipAddress : ipv4;
+  netmask : ipv4;
+  gateway : ipv4;
+  ipv6 : network_v6 option; [@default None]
+}
 [@@deriving yojson]
+(** used for the REST API, for backwards compatibility *)
 
-let decode_network json = decode network_of_yojson json
+type network = { ipv4 : network_v4; ipv6 : network_v6 option [@default None] }
+[@@deriving yojson]
+(** use internally and in storage *)
+
+let decode_network json =
+  (* parse API format and immediately transform into internal format *)
+  match decode network_api_of_yojson json with
+  | Ok (x : network_api) ->
+      let gateway =
+        if Ipaddr.V4.(compare any x.gateway) = 0 then None else Some x.gateway
+      in
+      Ipaddr.V4.Prefix.of_netmask ~netmask:x.netmask ~address:x.ipAddress
+      |> Result.map_error (fun (`Msg x) -> x)
+      >>= fun cidr ->
+      let ipv4 : network_v4 = { gateway; cidr } in
+      Ok { ipv4; ipv6 = x.ipv6 }
+  | Error e -> Error e
+
+let encode_network (net : network) =
+  (* encode as network_api *)
+  let gateway =
+    match net.ipv4.gateway with Some g -> g | None -> Ipaddr.V4.any
+  in
+  let ipAddress = Ipaddr.V4.Prefix.address net.ipv4.cidr in
+  let netmask = Ipaddr.V4.Prefix.netmask net.ipv4.cidr in
+  network_api_to_yojson { ipAddress; netmask; gateway; ipv6 = net.ipv6 }
 
 let is_unattended_boot_to_yojson r =
   `Assoc [ ("status", `String (if r then "on" else "off")) ]

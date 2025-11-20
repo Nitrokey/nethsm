@@ -186,7 +186,7 @@ struct
 
       method private get rd =
         Hsm.Config.network hsm_state >>= fun network ->
-        let json = Json.network_to_yojson network in
+        let json = Json.encode_network network in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
 
       method private set rd =
