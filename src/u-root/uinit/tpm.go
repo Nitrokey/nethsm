@@ -225,6 +225,7 @@ func tpmGetPlatformData() (platformData, error) {
 		log.Printf("Platform Data: %v\n", string(platformDataJSON))
 
 		data.DeviceKey = deviceKey
+		setLocalConfigKey(deviceKey)
 
 		return nil
 	})

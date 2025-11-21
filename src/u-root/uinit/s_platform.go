@@ -203,12 +203,33 @@ func platformListener(result chan string) {
 			}
 		}
 
+		// SET-LOCAL-CONFIG
+		doSetLocalConfig := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested SET-LOCAL-CONFIG.", remoteAddr)
+			configJSON, err := io.ReadAll(r)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			var config localConf
+			err = json.Unmarshal(configJSON, &config)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			err = setLocalConfig(&config)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			return okResponse(""), nil, false
+		}
+
 		var response []byte = nil
 		var cmdErr error = nil
 		terminalCommand := false
 		switch command {
 		case "PLATFORM-DATA":
 			response, cmdErr, terminalCommand = doPlatformData()
+		case "SET-LOCAL-CONFIG":
+			response, cmdErr, terminalCommand = doSetLocalConfig()
 		case "UPDATE":
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
