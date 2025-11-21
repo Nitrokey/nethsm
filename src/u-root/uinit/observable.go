@@ -3,7 +3,7 @@ package main
 import "sync/atomic"
 
 type Observable[T comparable] struct {
-	atomic.Pointer[observableData[T]]
+	p atomic.Pointer[observableData[T]]
 }
 
 type observableData[T comparable] struct {
@@ -12,40 +12,45 @@ type observableData[T comparable] struct {
 }
 
 func (v *Observable[T]) getData() *observableData[T] {
-	snap := v.Load()
+	snap := v.p.Load()
 	if snap == nil {
 		// Lazy initialization on first use
 		firstSnapshot := &observableData[T]{
 			value:  nil,
 			notify: make(chan struct{}),
 		}
-		if v.CompareAndSwap(nil, firstSnapshot) {
+		if v.p.CompareAndSwap(nil, firstSnapshot) {
 			return firstSnapshot
 		}
 		// Another goroutine won the race, load again
-		return v.Load()
+		return v.p.Load()
 	}
 	return snap
 }
 
 func (v *Observable[T]) Get() (*T, <-chan struct{}) {
-	data := v.getData()
-	return data.value, data.notify
+	data := *v.getData()
+	value := data.value
+	if data.value != nil {
+		cpy := *value
+		value = &cpy
+	}
+	return value, data.notify
 }
 
-func (v *Observable[T]) Set(new *T) {
+func (v *Observable[T]) Set(new *T) <-chan struct{} {
 	for {
 		oldData := v.getData()
 
 		// Determine if value actually changed
 		if new == nil {
 			if oldData.value == nil {
-				return
+				return oldData.notify
 			}
 		} else {
 			cpy := *new
 			if oldData.value != nil && *oldData.value == cpy {
-				return
+				return oldData.notify
 			}
 			new = &cpy
 		}
@@ -56,9 +61,9 @@ func (v *Observable[T]) Set(new *T) {
 		}
 
 		// Only close if we successfully swapped
-		if v.CompareAndSwap(oldData, newData) {
+		if v.p.CompareAndSwap(oldData, newData) {
 			close(oldData.notify)
-			return
+			return newData.notify
 		}
 		// CAS failed, retry
 	}

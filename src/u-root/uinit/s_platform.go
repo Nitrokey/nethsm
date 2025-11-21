@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -271,6 +272,67 @@ func platformListener(result chan string) {
 	}
 }
 
+func etcdTask() {
+	for {
+		log.Printf("Starting etcd server")
+		cmdArgs := []string{
+			"--listen-client-urls=http://169.254.169.2:2379",
+			"--advertise-client-urls=",
+			"--data-dir=/data/etcd",
+			"--snapshot-count=5000",
+			"--auto-compaction-retention=1h",
+			"--quota-backend-bytes=5694816256", // should not be more than RAM
+			"--initial-cluster-state=new",
+			"--v2-deprecation=gone",
+			"--max-txn-ops=512",
+			"--force-new-cluster=true",
+			// " --log-level debug",
+		}
+
+		conf, ntfy := localConfig.Get()
+		if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
+			fn := "/tmp/ectd_tls_cert.pem"
+			os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
+			cmdArgs = append(cmdArgs, "--peer-cert-file="+fn)
+			fn = "/tmp/ectd_tls_key.pem"
+			os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
+			cmdArgs = append(cmdArgs, "--peer-key-file="+fn)
+			fn = "/tmp/ectd_tls_trusted_ca.pem"
+			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
+			cmdArgs = append(cmdArgs, "--peer-trusted-ca-file="+fn)
+			cmdArgs = append(cmdArgs, "--peer-client-cert-auth=true")
+		}
+
+		cmd := exec.Command("/bin/etcd", cmdArgs...)
+		cmd.Stdin = os.Stdin
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(G.etcdUIDGID), Gid: uint32(G.etcdUIDGID)}
+		if err := cmd.Start(); err != nil {
+			log.Fatalf("starting etcd failed: %v", err)
+		}
+		waitCh := make(chan struct{})
+		go func() {
+			err := cmd.Wait()
+			if err != nil {
+				log.Printf("etcd exited with status: %v", err)
+			} else {
+				log.Printf("etcd exited")
+			}
+			close(waitCh)
+		}()
+		select {
+		case <-ntfy:
+			log.Printf("localConfig changed, restarting etcd")
+			cmd.Process.Signal(syscall.Signal(15))
+			<-waitCh
+		case <-waitCh:
+			return
+		}
+	}
+}
+
 // sPlatformActions are executed for S-Platform.
 func sPlatformActions() {
 	// Load TPM kernel modules first, as platformListener needs TPM for
@@ -324,25 +386,11 @@ func sPlatformActions() {
 		}
 	}
 
-	G.s.Logf("Starting etcd server")
-	G.s.BackgroundExecAsf(G.etcdUIDGID, "/bin/etcd"+
-		" --listen-client-urls=http://169.254.169.2:2379"+
-		" --advertise-client-urls="+
-		" --data-dir=/data/etcd"+
-		" --snapshot-count=5000"+
-		" --auto-compaction-retention=1h"+
-		" --quota-backend-bytes=5694816256"+ // should not be more than RAM
-		" --initial-cluster-state=new"+
-		" --v2-deprecation=gone"+
-		" --max-txn-ops=512"+
-		" --force-new-cluster=true"+
-		// " --log-level debug"+
-		"")
-
-	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
+	if err := loadLocalConfigFromCache(); err != nil {
+		log.Printf("Loading local config cache failed: %v", err)
 	}
+
+	startTask("etcd", etcdTask)
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
