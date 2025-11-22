@@ -109,8 +109,9 @@ func platformListener(result chan string) {
 		// PLATFORM-DATA
 		doPlatformData := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested PLATFORM-DATA.", remoteAddr)
-			data, err := tpmGetPlatformData()
-			if err != nil {
+			data, ok := <-platformDataCh
+			if !ok {
+				err := fmt.Errorf("platform data has been read already")
 				return errorResponse(err), err, false
 			}
 			json, err := json.Marshal(data)
@@ -386,6 +387,9 @@ func sPlatformActions() {
 		}
 	}
 
+	if err := tpmCreatePlatformData(); err != nil {
+		log.Printf("Creating platform data failed: %v", err)
+	}
 	if err := loadLocalConfigFromCache(); err != nil {
 		log.Printf("Loading local config cache failed: %v", err)
 	}

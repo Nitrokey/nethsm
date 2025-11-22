@@ -119,16 +119,25 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	return deviceID, akPub, nil
 }
 
-// tpmGetPlatformData returns TPM derived data of the NetHSM.
+var platformDataCh = make(chan platformData, 1)
+
+// tpmCreatePlatformData returns TPM derived data of the NetHSM.
 //
 // The Device Key is sealed against PCR-0 and PCR-2 with an SRK on the TPM and
 // stored on the harddisk. If the Device Key does not exist, a new one is
 // created.
-func tpmGetPlatformData() (platformData, error) {
-	var data platformData
+func tpmCreatePlatformData() error {
+	log.Printf("Initializing platform data")
 	var pcrIdxs tpm2.PCRSelect = hw.MeasuredPCRs()
 
+	// this must be called before withTPMContext(), because seeding also uses a
+	// TPMContext
+	if !randIsFullySeeded() {
+		return fmt.Errorf("waiting for TRNG seeding timed out")
+	}
+
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		var data platformData
 		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
 		if err != nil {
 			log.Printf("DictionaryAttackLockReset: %v\n", err)
@@ -164,9 +173,6 @@ func tpmGetPlatformData() (platformData, error) {
 			return fmt.Errorf("unsealing Device Key failed: %w", err)
 		}
 		if len(deviceKey) == 0 {
-			if !randIsFullySeeded() {
-				return fmt.Errorf("waiting for TRNG seeding timed out")
-			}
 			deviceKey = make([]byte, 32)
 			_, err = crand.Read(deviceKey)
 			if err != nil {
@@ -226,10 +232,12 @@ func tpmGetPlatformData() (platformData, error) {
 
 		data.DeviceKey = deviceKey
 		setLocalConfigKey(deviceKey)
+		platformDataCh <- data
+		close(platformDataCh)
 
 		return nil
 	})
-	return data, err
+	return err
 }
 
 // sealDeviceKey seals the supplied secret to a sealed object in the storage hierarchy

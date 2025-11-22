@@ -23,18 +23,21 @@ const (
 )
 
 var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
-	var key []byte
+	var key string
 	get := func() []byte {
-		if key == nil {
+		if key == "" {
 			log.Fatal("localConfigKey is unset")
 		}
-		return key
+		return []byte(key)
 	}
 	// Derive the encryption key: SHA256(device-key + "local-config")
 	set := func(deviceKey []byte) {
+		if key != "" {
+			log.Fatal("tried to set local config key twice")
+		}
 		keyMaterial := append(deviceKey, []byte("local-config")...)
 		hash := sha256.Sum256(keyMaterial)
-		key = hash[:] // 32 bytes for AES-256
+		key = string(hash[:]) // 32 bytes for AES-256
 	}
 	return get, set
 }()
@@ -48,14 +51,15 @@ type localConf struct {
 var localConfig Observable[localConf]
 
 func loadLocalConfigFromCache() error {
-	last, _ := localConfig.Get()
-	if last != nil {
-		return nil
+	log.Printf("Loading local config from cache file")
+	if c, _ := localConfig.Get(); c != nil {
+		return fmt.Errorf("local config already set")
 	}
 
 	fileData, err := os.ReadFile(localConfigFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("No local config cache file found")
 			return nil
 		}
 		return fmt.Errorf("cannot read %s: %w", localConfigFile, err)
