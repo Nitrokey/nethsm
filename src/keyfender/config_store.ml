@@ -7,7 +7,7 @@ open Lwt.Infix
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
 module Make (KV : Kv_ext.RW) = struct
-  let config_prefix = "config"
+  let config_prefix device_id = device_id ^ "/config"
 
   type _ k =
     | Unlock_salt : string k
@@ -150,29 +150,33 @@ module Make (KV : Kv_ext.RW) = struct
         | "1" -> Ok true
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
 
-  let key_path key = Mirage_kv.Key.(add (v config_prefix) (name key))
+  let key_path device_id key =
+    Mirage_kv.Key.(add (v (config_prefix device_id)) (name key))
 
   let pp_error ppf = function
     | `Kv e -> KV.pp_error ppf e
     | `Msg msg -> Fmt.string ppf msg
 
-  let get kv key =
-    KV.get kv (key_path key) >|= function
+  type t = { kv : KV.t; device_id : string }
+
+  let get t key =
+    KV.get t.kv (key_path t.device_id key) >|= function
     | Ok data -> of_string key data
     | Error e -> Error (`Kv e)
 
-  let get_opt kv key =
-    get kv key >|= function
+  let get_opt t key =
+    get t key >|= function
     | Error (`Kv (`Not_found _)) -> Ok None
     | Ok data -> Ok (Some data)
     | Error e -> Error e
 
-  let batch = KV.batch
+  let batch t f = KV.batch t.kv (fun b -> f { t with kv = b })
 
-  let set kv key value =
+  let set t key value =
     let data = to_string key value in
-    KV.set kv (key_path key) data
+    KV.set t.kv (key_path t.device_id key) data
 
-  let remove kv key = KV.remove kv (key_path key)
-  let digest kv key = KV.digest kv (key_path key)
+  let remove t key = KV.remove t.kv (key_path t.device_id key)
+  let digest t key = KV.digest t.kv (key_path t.device_id key)
+  let connect kv device_id = { kv; device_id }
 end
