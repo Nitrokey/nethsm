@@ -42,6 +42,15 @@ let device_key =
   in
   Mirage_runtime.register_arg Arg.(value & opt (some string) None doc)
 
+let default_net =
+  let doc =
+    Arg.info ~docs ~docv:"DEFAULT-NET"
+      ~doc:
+        "Set the default network configuration. (Format: <ip>[/<mask>[;<gw>]])"
+      [ "default-net" ]
+  in
+  Mirage_runtime.register_arg Arg.(value & opt (some string) None doc)
+
 module Conf = struct
   module type Bool = sig
     val v : bool

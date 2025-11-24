@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -108,8 +109,9 @@ func platformListener(result chan string) {
 		// PLATFORM-DATA
 		doPlatformData := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested PLATFORM-DATA.", remoteAddr)
-			data, err := tpmGetPlatformData()
-			if err != nil {
+			data, ok := <-platformDataCh
+			if !ok {
+				err := fmt.Errorf("platform data has been read already")
 				return errorResponse(err), err, false
 			}
 			json, err := json.Marshal(data)
@@ -220,12 +222,33 @@ func platformListener(result chan string) {
 			}
 		}
 
+		// SET-LOCAL-CONFIG
+		doSetLocalConfig := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested SET-LOCAL-CONFIG.", remoteAddr)
+			configJSON, err := io.ReadAll(r)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			var config localConf
+			err = json.Unmarshal(configJSON, &config)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			err = setLocalConfig(&config)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			return okResponse(""), nil, false
+		}
+
 		var response []byte = nil
 		var cmdErr error = nil
 		terminalCommand := false
 		switch command {
 		case "PLATFORM-DATA":
 			response, cmdErr, terminalCommand = doPlatformData()
+		case "SET-LOCAL-CONFIG":
+			response, cmdErr, terminalCommand = doSetLocalConfig()
 		case "UPDATE":
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
@@ -269,6 +292,7 @@ func platformListener(result chan string) {
 	}
 }
 
+<<<<<<< HEAD
 type EtcdMode = int
 
 const (
@@ -365,6 +389,21 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		}
 	}
 
+	conf, _ := localConfig.Get()
+	if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
+		fn := "/tmp/ectd_tls_cert.pem"
+		os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
+		cmd += " --peer-cert-file="+fn
+		fn = "/tmp/ectd_tls_key.pem"
+		os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
+		cmd += " --peer-key-file="+fn
+		fn = "/tmp/ectd_tls_trusted_ca.pem"
+		os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
+		cmdArgs = append(cmdArgs, "--peer-trusted-ca-file="+fn)
+		cmd += " --peer-trusted-ca-file="+fn
+		cmd += " --peer-client-cert-auth=true"
+	}
+
 	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)
 
 	// TODO probe etcd for liveness, report any error, maybe fallback to normal mode
@@ -439,10 +478,18 @@ func sPlatformActions() {
 		}
 	}
 
+	if err := tpmCreatePlatformData(); err != nil {
+		log.Printf("Creating platform data failed: %v", err)
+	}
+	if err := loadLocalConfigFromCache(); err != nil {
+		log.Printf("Loading local config cache failed: %v", err)
+	}
+
 	if err := startEtcd(EtcdNormal); err != nil {
 		log.Printf("Couldn't start etcd: %v", err)
 		return
 	}
+
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
 

@@ -748,6 +748,7 @@ module Make (KV : Kv_ext.Platform) = struct
     res_mbox : (unit, string) result Lwt_mvar.t;
     device_key : string;
     cache_settings : Cached_store.settings;
+    default_net : string;
   }
 
   let state t = to_external_state t.state
@@ -3032,8 +3033,8 @@ module Make (KV : Kv_ext.Platform) = struct
       evict_delay_s = 1.;
     }
 
-  let boot ?(cache_settings = default_cache_settings) ~platform
-      software_update_key kv =
+  let boot ?(cache_settings = default_cache_settings)
+      ?(default_net = "192.168.1.1") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -3082,6 +3083,7 @@ module Make (KV : Kv_ext.Platform) = struct
              res_mbox;
              device_key;
              cache_settings;
+             default_net;
            }
          in
          Lwt.return (Ok t)
@@ -3103,6 +3105,7 @@ module Make (KV : Kv_ext.Platform) = struct
              res_mbox;
              device_key;
              cache_settings;
+             default_net;
            }
          in
 
