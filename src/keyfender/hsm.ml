@@ -872,11 +872,12 @@ module Make (KV : Kv_ext.Platform) = struct
           Encrypted_store.pp_connect_error (Lwt_result.fail e)
 
   (* credential is device key with or without pass_key, depending on boot mode *)
-  let unlock ?pass_key kv ~cache_settings ~device_key =
+  let unlock ?pass_key domain_store ~cache_settings ~device_key =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    load_keys kv device_key pass_key
+    load_keys domain_store device_key pass_key
     >>= fun (domain_key, as_key, ks_key, ns_key) ->
+    let kv = domain_store.kv in
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >>= fun key_store ->
     unlock_store kv Namespace ns_key >|= fun namespace_store ->
@@ -897,7 +898,8 @@ module Make (KV : Kv_ext.Platform) = struct
     >>= fun salt ->
     let pass_key = Crypto.key_of_passphrase ~salt passphrase in
     let device_key = t.device_key in
-    unlock t.kv ~cache_settings:t.cache_settings ~device_key ~pass_key
+    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+    unlock domain_store ~cache_settings:t.cache_settings ~device_key ~pass_key
     >|= fun state' -> t.state <- state'
 
   let check_unlock_passphrase t passphrase =
@@ -909,7 +911,8 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     let pass_key = Crypto.key_of_passphrase ~salt passphrase in
     let device_key = t.device_key in
-    let* keys = load_keys t.kv device_key (Some pass_key) in
+    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+    let* keys = load_keys domain_store device_key (Some pass_key) in
     match (keys, t.state) with
     | Ok (dk, _, _, _), Operational { domain_key = dk'; _ }
       when String.equal dk dk' ->
@@ -988,7 +991,10 @@ module Make (KV : Kv_ext.Platform) = struct
     >>= function
     | Some true -> (
         let open Lwt.Infix in
-        unlock_with_device_key ~cache_settings config_store.kv ~device_key
+        let domain_store =
+          Domain_key_store.connect config_store.kv config_store.device_id
+        in
+        unlock_with_device_key ~cache_settings domain_store ~device_key
         >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
@@ -2185,9 +2191,10 @@ module Make (KV : Kv_ext.Platform) = struct
               encrypt_with_pass_key domain_key ~pass_key:unlock_key
             in
             let encryption_key = t.device_key in
+            let domain_store = Domain_key_store.connect b.kv b.device_id in
             internal_server_error Write "Write passphrase domain key"
               KV.pp_write_error
-              (Domain_key_store.set b.kv Attended ~encryption_key enc_dk)
+              (Domain_key_store.set domain_store Attended ~encryption_key enc_dk)
             >>= fun () ->
             internal_server_error Write "Write unlock-salt" KV.pp_write_error
               (Config_store.set b Unlock_salt unlock_salt)
@@ -2213,9 +2220,13 @@ module Make (KV : Kv_ext.Platform) = struct
                     encrypt_with_pass_key keys.domain_key ~pass_key
                   in
                   let encryption_key = t.device_key in
+                  let domain_store =
+                    Domain_key_store.connect b.kv b.device_id
+                  in
                   internal_server_error Write "Write passphrase domain key"
                     KV.pp_write_error
-                    (Domain_key_store.set b.kv Attended enc_dk ~encryption_key)))
+                    (Domain_key_store.set domain_store Attended enc_dk
+                       ~encryption_key)))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
@@ -2237,16 +2248,19 @@ module Make (KV : Kv_ext.Platform) = struct
                 KV.pp_write_error
                 (Config_store.set t.config_store Unattended_boot status)
               >>= fun () ->
+              let domain_store =
+                Domain_key_store.connect t.kv t.system_info.deviceId
+              in
               if status then
                 let encryption_key = t.device_key in
                 internal_server_error Write "Write unattended Domain Key"
                   KV.pp_write_error
-                  (Domain_key_store.set t.kv Unattended ~encryption_key
+                  (Domain_key_store.set domain_store Unattended ~encryption_key
                      keys.domain_key)
               else
                 internal_server_error Write "Remove unattended Domain Key"
                   KV.pp_write_error
-                  (Domain_key_store.remove t.kv Unattended))
+                  (Domain_key_store.remove domain_store Unattended))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
@@ -2722,7 +2736,11 @@ module Make (KV : Kv_ext.Platform) = struct
               in
               push (Some (prefix_len encrypted_version));
               let encryption_key = t.device_key in
-              Domain_key_store.get t.kv Attended ~encryption_key >>= function
+              let domain_store =
+                Domain_key_store.connect t.kv t.system_info.deviceId
+              in
+              Domain_key_store.get domain_store Attended ~encryption_key
+              >>= function
               | Error e ->
                   Log.err (fun m ->
                       m "error %a while reading attended domain key"
@@ -2957,6 +2975,9 @@ module Make (KV : Kv_ext.Platform) = struct
                 *)
             let encryption_key = t.device_key in
             let open Lwt.Infix in
+            let domain_store =
+              Domain_key_store.connect t.kv t.system_info.deviceId
+            in
             let** dk_still_valid =
               (* there are 2 cases, where the stored domain key is valid:
                  1. the Domain Key Store has been restored during a full restore
@@ -2964,7 +2985,8 @@ module Make (KV : Kv_ext.Platform) = struct
                  2. after operational restore from a backup with same Domain
                     Key and Unlock Passphrase as the current one
               *)
-              Domain_key_store.get t.kv Attended ~encryption_key >>= function
+              Domain_key_store.get domain_store Attended ~encryption_key
+              >>= function
               | Ok old_locked_domain_key
                 when String.equal locked_domain_key old_locked_domain_key ->
                   Lwt_result.return true
@@ -2980,7 +3002,7 @@ module Make (KV : Kv_ext.Platform) = struct
               let** () =
                 internal_server_error Write "Write locked domain key"
                   KV.pp_write_error
-                  (Domain_key_store.set t.kv Attended ~encryption_key
+                  (Domain_key_store.set domain_store Attended ~encryption_key
                      locked_domain_key)
               in
               Lwt_result.return true)

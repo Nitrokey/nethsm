@@ -2997,10 +2997,9 @@ components:
         - status
     NetworkConfig:
       example:
-        ipv4:
-          cidr: 192.168.1.1/24
-          gateway: null
-        ipv6: null
+        ipAddress: 192.168.1.1
+        netmask: 255.255.255.0
+        gateway: 0.0.0.0
       type: object
       properties:
         ipAddress:
