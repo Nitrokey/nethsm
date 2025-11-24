@@ -33,6 +33,5 @@ module Make (KV : Kv_ext.RW) = struct
     KV.set t.kv (key_path t.device_id slot) enc_data
 
   let remove t slot = KV.remove t.kv (key_path t.device_id slot)
-
-  let connect kv device_id = {kv; device_id}
+  let connect kv device_id = { kv; device_id }
 end

@@ -2,8 +2,7 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-type t = V0 | V1
-(** V1: move to device-specific config/domain key slots *)
+type t = V0 | V1  (** V1: move to device-specific config/domain key slots *)
 
 val compare : t -> t -> [ `Smaller | `Equal | `Greater ]
 val to_string : t -> string

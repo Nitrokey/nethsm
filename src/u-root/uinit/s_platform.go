@@ -11,7 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
+	//"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -292,7 +292,6 @@ func platformListener(result chan string) {
 	}
 }
 
-<<<<<<< HEAD
 type EtcdMode = int
 
 const (
@@ -399,7 +398,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		cmd += " --peer-key-file="+fn
 		fn = "/tmp/ectd_tls_trusted_ca.pem"
 		os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
-		cmdArgs = append(cmdArgs, "--peer-trusted-ca-file="+fn)
 		cmd += " --peer-trusted-ca-file="+fn
 		cmd += " --peer-client-cert-auth=true"
 	}
@@ -448,14 +446,14 @@ func sPlatformActions() {
 
 	G.s.Logf("Ensuring platform data is accessible")
 	// Make sure the device key is generated, and get the device ID for etcd
-	{ // do not leak platform data other than deviceId outside of this block
-		data, err := tpmGetPlatformData()
-		if err != nil {
-			log.Printf("Couldn't get platform data: %v", err)
-			return
-		}
-		G.deviceID = data.DeviceID
-	}
+	//{ // do not leak platform data other than deviceId outside of this block
+		//data, err := tpmGetPlatformData()
+		//if err != nil {
+		//	log.Printf("Couldn't get platform data: %v", err)
+		//	return
+	//	}
+		//G.deviceID = data.DeviceID
+	//}
 	G.s.Logf("OK! Device ID: %s", G.deviceID)
 
 	G.s.Logf("Mounting /data")

@@ -169,6 +169,20 @@ let cidr_v6_of_yojson = function
   | _ -> Error "expected string for CIDR"
 
 type network_v6 = { cidr : cidr_v6; gateway : ipv6 option } [@@deriving yojson]
+type ip = Ipaddr.t
+
+let ip_to_yojson ip = `String (Ipaddr.to_string ip)
+
+let ip_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+let some_or_any = function
+  | Some x -> ip_to_yojson x
+  | None -> Ipaddr.V4.any |> ipv4_to_yojson
 
 type network_api = {
   ipAddress : ipv4;
@@ -238,18 +252,11 @@ let log_level_of_yojson = function
   | `String l -> log_level_of_string l
   | _ -> Error "expected string as log level"
 
-type ip = Ipaddr.t
-
-let ip_to_yojson ip = `String (Ipaddr.to_string ip)
-
-let ip_of_yojson = function
-  | `String ip_str ->
-      Rresult.R.reword_error
-        (function `Msg msg -> msg)
-        (Ipaddr.of_string ip_str)
-  | _ -> Error "expected string for IP"
-
-type log = { ipAddress : ip option; port : int; logLevel : log_level }
+type log = {
+  ipAddress : ip option; [@to_yojson some_or_any]
+  port : int;
+  logLevel : log_level;
+}
 [@@deriving yojson]
 
 type random_req = { length : int } [@@deriving yojson]
