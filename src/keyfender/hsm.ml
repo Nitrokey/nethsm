@@ -3153,10 +3153,9 @@ module Make (KV : Kv_ext.Platform) = struct
          | `Greater ->
              (* here's the place to embed migration code, at least for the
                 configuration store *)
-             let msg =
-               "store has smaller version than software, data will be migrated!"
-             in
-             Lwt.return (Error (`Msg msg))))
+             lwt_error_to_msg ~pp_error:Config_store.pp_error
+               (Config_store.migrate_v0_v1 config_store)
+             >>= fun _ -> boot ()))
     >|= function
     | Ok t ->
         let dump_key_ops () =

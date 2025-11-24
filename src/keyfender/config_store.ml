@@ -150,11 +150,20 @@ module Make (KV : Kv_ext.RW) = struct
         | "1" -> Ok true
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
 
+  let is_global_config : type a. a k -> bool = function
+    | Version (* the store version is for the whole cluster *) -> true
+    | Time_offset (* offset might be different for different hardware *)
+    | Unlock_salt | Certificate | Private_key | Ip_config | Backup_salt
+    | Backup_key | Log_config | Unattended_boot ->
+        false
+
   let key_path device_id key =
+    let device_id = if is_global_config key then "" else device_id in
     Mirage_kv.Key.(add (v (config_prefix device_id)) (name key))
 
   let pp_error ppf = function
     | `Kv e -> KV.pp_error ppf e
+    | `Kv_write e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
 
   type t = { kv : KV.t; device_id : string }
@@ -179,4 +188,81 @@ module Make (KV : Kv_ext.RW) = struct
   let remove t key = KV.remove t.kv (key_path t.device_id key)
   let digest t key = KV.digest t.kv (key_path t.device_id key)
   let connect kv device_id = { kv; device_id }
+
+  let migrate_v0_v1 t =
+    let old = { t with device_id = "" } in
+    let just_move (type a) (k : a k) =
+      if is_global_config k then Lwt.return (Ok ())
+      else
+        get_opt old k >>= function
+        | Error e -> Lwt.return (Error e)
+        | Ok None -> Lwt.return (Ok ())
+        | Ok (Some data) ->
+            set t k data >|= fun r -> Result.map_error (fun e -> `Kv_write e) r
+    in
+    let migrate_log_config () =
+      KV.get t.kv (key_path "" Log_config) >>= function
+      | Error (`Not_found _) -> Lwt.return (Ok ())
+      | Error e -> Lwt.return (Error (`Kv e))
+      | Ok data -> (
+          let ip, port, level =
+            ( String.sub data 0 4,
+              String.sub data 4 2,
+              String.sub data 6 (String.length data - 6) )
+          in
+          match Ipaddr.V4.of_octets ip with
+          | Error e -> Lwt.return (Error e)
+          | Ok ip -> (
+              let port = String.get_uint16_be port 0 in
+              match Logs.level_of_string level with
+              | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+              | Ok None -> Lwt.return (Error (`Msg "invalid log level"))
+              | Ok (Some level) ->
+                  let new_config =
+                    {
+                      Json.ipAddress = Some (Ipaddr.V4 ip);
+                      logLevel = level;
+                      port;
+                    }
+                  in
+                  set t Log_config new_config
+                  |> Lwt_result.map_error (fun e -> `Kv_write e)))
+    in
+    let migrate_ip_config () =
+      KV.get t.kv (key_path "" Ip_config) >>= function
+      | Error (`Not_found _) -> Lwt.return (Ok ())
+      | Error e -> Lwt.return (Error (`Kv e))
+      | Ok data -> (
+          let route_str, ip_str, netmask_str =
+            (String.sub data 0 4, String.sub data 4 4, String.sub data 8 4)
+          in
+          try
+            let route = Ipaddr.V4.of_octets_exn route_str in
+            let address = Ipaddr.V4.of_octets_exn ip_str in
+            let netmask = Ipaddr.V4.of_octets_exn netmask_str in
+            let prefix = Ipaddr.V4.Prefix.of_netmask_exn ~netmask ~address in
+            let new_config =
+              {
+                Json.ipv4 = { cidr = prefix; gateway = Some route };
+                ipv6 = None;
+              }
+            in
+            set t Ip_config new_config
+            |> Lwt_result.map_error (fun e -> `Kv_write e)
+          with Ipaddr.Parse_error (msg, _) -> Lwt.return (Error (`Msg msg)))
+    in
+
+    let open Lwt_result.Infix in
+    just_move Ip_config >>= fun () ->
+    just_move Log_config >>= fun () ->
+    just_move Time_offset >>= fun () ->
+    just_move Unlock_salt >>= fun () ->
+    just_move Certificate >>= fun () ->
+    just_move Private_key >>= fun () ->
+    just_move Backup_salt >>= fun () ->
+    just_move Backup_key >>= fun () ->
+    just_move Unattended_boot >>= fun () ->
+    migrate_log_config () >>= fun () ->
+    migrate_ip_config () >>= fun () ->
+    set t Version Version.V1 |> Lwt_result.map_error (fun e -> `Kv_write e)
 end

@@ -1672,19 +1672,15 @@ let invalid_config_version =
     (Invalid_argument "broken NetHSM") (fun () ->
       Lwt_main.run
         ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data
-            (Mirage_kv.Key.v (platform.deviceId ^ "/config/version"))
-            "abcdef"
+          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef"
           >>= fun _ -> Hsm.boot ~platform software_update_key data )
       |> ignore);
   Alcotest.check_raises "no version breaks HSM"
     (Invalid_argument "broken NetHSM") (fun () ->
       Lwt_main.run
         ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data
-            (Mirage_kv.Key.v (platform.deviceId ^ "/config/version"))
-            ""
-          >>= fun _ -> Hsm.boot ~platform software_update_key data )
+          Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
+          Hsm.boot ~platform software_update_key data )
       |> ignore)
 
 let config_version_but_no_salt =
@@ -1692,10 +1688,8 @@ let config_version_but_no_salt =
   Alcotest.check_raises "breaks HSM" (Invalid_argument "fatal!") (fun () ->
       Lwt_main.run
         ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data
-            (Mirage_kv.Key.v (platform.deviceId ^ "/config/version"))
-            "0"
-          >>= fun _ -> Hsm.boot ~platform software_update_key data )
+          Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
+          Hsm.boot ~platform software_update_key data )
       |> ignore)
 
 let namespaces_get =
