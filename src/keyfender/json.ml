@@ -670,4 +670,13 @@ type platform_data = {
 }
 [@@deriving yojson]
 
+(* must be in sync with localConf in src/u-root/uinit/local_conf.go *)
+type local_conf = {
+  tls_cert : string;
+  tls_key : string;
+  tls_cluster_ca : string;
+  device_id : string;
+}
+[@@deriving yojson]
+
 let parse_platform_data s = decode platform_data_of_yojson s

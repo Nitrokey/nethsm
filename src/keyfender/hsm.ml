@@ -36,6 +36,7 @@ module type S = sig
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   val cb_to_string : cb -> string
 
@@ -582,6 +583,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
@@ -598,7 +600,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Factory_reset -> "FACTORY-RESET"
     | Update _ -> "UPDATE"
     | Commit_update -> "COMMIT-UPDATE"
-    | Join_cluster s -> "JOIN-CLUSTER " ^ s
+    | Join_cluster _ -> "JOIN-CLUSTER"
+    | Set_local_config _ -> "SET-LOCAL-CONFIG"
 
   let version_of_string s =
     match Astring.String.cut ~sep:"." s with
@@ -2290,6 +2293,46 @@ module Make (KV : Kv_ext.Platform) = struct
       let chain = t.cert :: t.chain in
       Lwt.return (X509.Certificate.encode_pem_multiple chain)
 
+    let tls_cluster_ca t =
+      let open Lwt.Infix in
+      Config_store.get t.config_store Cluster_CA >|= function
+      | Error _ -> None
+      | Ok x ->
+          let cert = X509.Certificate.encode_pem x in
+          Some cert
+
+    let set_local_config t =
+      let open Lwt.Infix in
+      tls_cluster_ca t >>= function
+      | None ->
+          (* do not set the local conf if no cluster CA set *)
+          Lwt.return (Ok ())
+      | Some tls_cluster_ca -> (
+          let device_id = t.system_info.deviceId in
+          tls_cert_pem t >>= fun tls_cert ->
+          let tls_key = t.key |> X509.Private_key.encode_pem in
+          let local_config =
+            { Json.device_id; tls_cert; tls_cluster_ca; tls_key }
+          in
+          Lwt_mvar.put t.mbox (Set_local_config local_config) >>= fun () ->
+          Lwt_mvar.take t.res_mbox >>= function
+          | Ok () -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+          | Error msg ->
+              Log.warn (fun m -> m "setting local config failed: %s" msg);
+              Lwt.return
+                (Error (Bad_request, "setting local config failed: " ^ msg)))
+
+    let set_tls_cluster_ca t cert_data =
+      match X509.Certificate.decode_pem cert_data with
+      | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
+      | Ok cert ->
+          (* TODO check cert is signed by this *)
+          let open Lwt_result.Infix in
+          with_write_lock (fun () ->
+              internal_server_error Write "Write cluster CA" KV.pp_write_error
+                (Config_store.set t.config_store Cluster_CA cert))
+          >>= fun () -> set_local_config t
+
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
          - there's one server certificate at either end (matching our private key)
@@ -2333,28 +2376,13 @@ module Make (KV : Kv_ext.Platform) = struct
                 t.cert <- cert;
                 t.chain <- chain;
                 Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
-                >|= fun () -> r)
+                >>= fun () ->
+                set_local_config t >|= fun () -> r)
           else
             Lwt.return
             @@ Error
                  ( Bad_request,
                    "public key in certificate does not match private key." )
-
-    let set_tls_cluster_ca t cert_data =
-      match X509.Certificate.decode_pem cert_data with
-      | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok cert ->
-          with_write_lock (fun () ->
-              internal_server_error Write "Write cluster CA" KV.pp_write_error
-                (Config_store.set t.config_store Cluster_CA cert))
-
-    let tls_cluster_ca t =
-      let open Lwt.Infix in
-      Config_store.get t.config_store Cluster_CA >|= function
-      | Error _ -> None
-      | Ok x ->
-          let cert = X509.Certificate.encode_pem x in
-          Some cert
 
     let tls_cert_digest t =
       let open Lwt.Infix in
@@ -2390,7 +2418,8 @@ module Make (KV : Kv_ext.Platform) = struct
       t.cert <- cert;
       t.chain <- [];
       (* notify server *)
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
+      set_local_config t
 
     let network = network_configuration
 
@@ -2509,7 +2538,12 @@ module Make (KV : Kv_ext.Platform) = struct
       let initial_cluster =
         Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) join_req
       in
-      Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >|= fun () -> Ok ()
+      Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
+      Lwt_mvar.take t.res_mbox >>= function
+      | Ok () -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+      | Error msg ->
+          Log.warn (fun m -> m "joining cluster failed: %s" msg);
+          Lwt.return (Error (Bad_request, "joining cluster failed: " ^ msg))
 
     type stream_buffer = {
       stream : string Lwt_stream.t;

@@ -45,7 +45,7 @@ var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 type localConf struct {
 	TLSCert      string `json:"tls_cert"`
 	TLSKey       string `json:"tls_key"`
-	TLSTrustedCA string `json:"tls_trusted_ca"`
+	TLSTrustedCA string `json:"tls_cluster_ca"`
 	DeviceID	 string `json:"device_id"`
 }
 

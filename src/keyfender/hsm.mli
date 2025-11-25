@@ -36,6 +36,7 @@ module type S = sig
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   val cb_to_string : cb -> string
 

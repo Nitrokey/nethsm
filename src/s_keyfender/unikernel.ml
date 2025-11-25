@@ -440,10 +440,35 @@ struct
           let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           write_to_platform cmd
       | Hsm.Join_cluster initial_cluster as cmd ->
-          write_to_platform cmd >>= fun () ->
+          let write () =
+            let additional_data write = write initial_cluster in
+            write_platform ~additional_data internal_stack
+              (Hsm.cb_to_string cmd)
+            >|= function
+            | Ok _ -> ()
+            | Error e ->
+                Logs.err (fun m ->
+                    m "error %a communicating with platform" pp_platform_err e)
+          in
+          write () >>= fun () ->
           (* TODO wait and create local stores (including copy of old config
                store *)
           (handle_cb [@tailcall]) http
+      | Hsm.Set_local_config conf as cmd ->
+          let write () =
+            let additional_data write =
+              Keyfender.Json.local_conf_to_yojson conf
+              |> Yojson.Safe.to_string |> write
+            in
+            write_platform ~additional_data internal_stack
+              (Hsm.cb_to_string cmd)
+            >|= function
+            | Ok _ -> ()
+            | Error e ->
+                Logs.err (fun m ->
+                    m "error %a communicating with platform" pp_platform_err e)
+          in
+          write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
           (handle_cb [@tailcall]) http
