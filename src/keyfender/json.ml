@@ -220,6 +220,11 @@ let encode_network (net : network) =
   let netmask = Ipaddr.V4.Prefix.netmask net.ipv4.cidr in
   network_api_to_yojson { ipAddress; netmask; gateway; ipv6 = net.ipv6 }
 
+type join_req_member = { name : string; peer_urls : string list }
+[@@deriving yojson]
+
+type join_req = join_req_member list [@@deriving yojson]
+
 let is_unattended_boot_to_yojson r =
   `Assoc [ ("status", `String (if r then "on" else "off")) ]
 

@@ -35,6 +35,7 @@ module type S = sig
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
 
   val cb_to_string : cb -> string
 
@@ -113,6 +114,7 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
+    val join_cluster : t -> Json.join_req -> (unit, error) result Lwt.t
 
     val restore :
       t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
@@ -577,6 +579,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
@@ -593,6 +596,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Factory_reset -> "FACTORY-RESET"
     | Update _ -> "UPDATE"
     | Commit_update -> "COMMIT-UPDATE"
+    | Join_cluster s -> "JOIN-CLUSTER " ^ s
 
   let version_of_string s =
     match Astring.String.cut ~sep:"." s with
@@ -2475,6 +2479,18 @@ module Make (KV : Kv_ext.Platform) = struct
       Key.dump_keys t >>= fun () -> Lwt_mvar.put t.mbox Shutdown
 
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
+
+    let join_cluster t join_req =
+      (* TODO sanity check join_req *)
+      let open Lwt.Infix in
+      (* TODO figure out the syntax etcd expects for multiple URIs per peer *)
+      let print_peer fmt (p : Json.join_req_member) =
+        Fmt.pf fmt "%s=%s" p.name (List.hd p.peer_urls)
+      in
+      let initial_cluster =
+        Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) join_req
+      in
+      Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >|= fun () -> Ok ()
 
     type stream_buffer = {
       stream : string Lwt_stream.t;

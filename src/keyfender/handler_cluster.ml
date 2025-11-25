@@ -11,27 +11,32 @@ struct
       inherit! Endpoint.r_role hsm_state `Administrator ip
     end
 
-  let encode_id (t : Int64.t) = Fmt.str "%Lx" t
+  let encode_id (t : Int64.t) = `String (Fmt.str "%Lx" t)
+
+  let decode_id' t =
+    try Scanf.sscanf t "%Lx" (fun x -> Ok x)
+    with e -> Error (Printexc.to_string e)
 
   let decode_id ok rd =
     let decode t =
-      try Scanf.sscanf t "%Lx" (fun x -> ok x)
-      with e ->
-        Endpoint.respond_error (Hsm.Bad_request, Printexc.to_string e) rd
+      match decode_id' t with
+      | Ok id -> ok id
+      | Error e -> Endpoint.respond_error (Hsm.Bad_request, e) rd
     in
     Endpoint.lookup_path_info decode "id" rd
 
-  let encode_member (m : Hsm.Cluster.member) =
-    `Assoc
-      [
-        ("id", `String (encode_id m.id));
-        ("name", `String m.name);
-        ("peer_urls", `List (List.map (fun x -> `String x) m.peer_urls));
-      ]
+  let decode_id_yojson t =
+    let id = Yojson.Safe.to_string t in
+    decode_id' id
 
-  let encode_member_list t =
-    let items = List.map encode_member t in
-    `List items
+  type member = Hsm.Cluster.member = {
+    id : int64; [@to_yojson encode_id] [@of_yojson decode_id_yojson]
+    name : string;
+    peer_urls : string list;
+  }
+  [@@deriving yojson]
+
+  let encode_member_list = [%to_yojson: member list]
 
   class handler_members hsm_state ip =
     object (self)
@@ -54,7 +59,7 @@ struct
           | Error e -> Endpoint.respond_error e rd
           | Ok new_members ->
               let body =
-                Yojson.Basic.to_string (encode_member_list new_members)
+                Yojson.Safe.to_string (encode_member_list new_members)
               in
               Wm.continue true { rd with resp_body = `String body }
         in
@@ -70,7 +75,24 @@ struct
         Wm.continue [ ("application/json", self#add_member) ] rd
     end
 
-  class handler hsm_state ip =
+  class handler_join hsm_state ip =
+    object
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.r_role hsm_state `Administrator ip
+      inherit! Endpoint.post_json
+      inherit! Endpoint.no_cache
+
+      method private of_json json rd =
+        let ok join_req =
+          Hsm.System.join_cluster hsm_state join_req >>= function
+          | Ok () -> Wm.continue true rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Json.join_req_of_yojson json |> Endpoint.err_to_bad_request ok rd
+    end
+
+  class handler_member hsm_state ip =
     object (self)
       inherit common hsm_state ip
       method! allowed_methods rd = Wm.continue [ `PUT; `DELETE ] rd
@@ -89,7 +111,7 @@ struct
           | Error e -> Endpoint.respond_error e rd
           | Ok new_members ->
               let body =
-                Yojson.Basic.to_string (encode_member_list new_members)
+                Yojson.Safe.to_string (encode_member_list new_members)
               in
               Wm.continue true { rd with resp_body = `String body }
         in
@@ -111,7 +133,7 @@ struct
             | Error e -> Endpoint.respond_error e rd
             | Ok new_members ->
                 let body =
-                  Yojson.Basic.to_string (encode_member_list new_members)
+                  Yojson.Safe.to_string (encode_member_list new_members)
                 in
                 Wm.continue true { rd with resp_body = `String body }
           in

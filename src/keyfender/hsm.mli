@@ -35,6 +35,7 @@ module type S = sig
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
 
   val cb_to_string : cb -> string
 
@@ -113,6 +114,7 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
+    val join_cluster : t -> Json.join_req -> (unit, error) result Lwt.t
 
     val restore :
       t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
