@@ -238,7 +238,10 @@ func platformListener(result chan string) {
 			if err != nil {
 				return errorResponse(err), err, false
 			}
-			return okResponse(""), nil, false
+			G.killEtcd()
+			time.Sleep(1 * time.Second)
+			err = startEtcd(EtcdNormal)
+			return okResponse(""), err, false
 		}
 
 		var response []byte = nil
@@ -348,7 +351,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	cmd :=
 		"/bin/etcd" +
 			" --listen-client-urls=http://169.254.169.2:2379" +
-			" --name=" + G.deviceID +
 			" --advertise-client-urls=" +
 			" --data-dir=/data/etcd" +
 			" --snapshot-count=5000" +
@@ -392,14 +394,15 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
 		fn := "/tmp/ectd_tls_cert.pem"
 		os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
-		cmd += " --peer-cert-file="+fn
+		cmd += " --peer-cert-file=" + fn
 		fn = "/tmp/ectd_tls_key.pem"
 		os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
-		cmd += " --peer-key-file="+fn
+		cmd += " --peer-key-file=" + fn
 		fn = "/tmp/ectd_tls_trusted_ca.pem"
 		os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
-		cmd += " --peer-trusted-ca-file="+fn
+		cmd += " --peer-trusted-ca-file=" + fn
 		cmd += " --peer-client-cert-auth=true"
+		cmd += " --name=" + conf.DeviceID
 	}
 
 	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)
@@ -445,16 +448,6 @@ func sPlatformActions() {
 	time.Sleep(20 * time.Second)
 
 	G.s.Logf("Ensuring platform data is accessible")
-	// Make sure the device key is generated, and get the device ID for etcd
-	//{ // do not leak platform data other than deviceId outside of this block
-		//data, err := tpmGetPlatformData()
-		//if err != nil {
-		//	log.Printf("Couldn't get platform data: %v", err)
-		//	return
-	//	}
-		//G.deviceID = data.DeviceID
-	//}
-	G.s.Logf("OK! Device ID: %s", G.deviceID)
 
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
