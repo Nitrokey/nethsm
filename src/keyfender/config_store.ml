@@ -12,6 +12,7 @@ module Make (KV : Kv_ext.RW) = struct
   type _ k =
     | Unlock_salt : string k
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
+    | Cluster_CA : X509.Certificate.t k
     | Private_key : X509.Private_key.t k
     | Version : Version.t k
     | Ip_config : Json.network k
@@ -34,6 +35,9 @@ module Make (KV : Kv_ext.RW) = struct
       | Certificate, Certificate -> Eq
       | Certificate, _ -> Lt
       | _, Certificate -> Gt
+      | Cluster_CA, Cluster_CA -> Eq
+      | Cluster_CA, _ -> Lt
+      | _, Cluster_CA -> Gt
       | Private_key, Private_key -> Eq
       | Private_key, _ -> Lt
       | _, Private_key -> Gt
@@ -64,6 +68,7 @@ module Make (KV : Kv_ext.RW) = struct
   let name : type a. a k -> string = function
     | Unlock_salt -> "unlock-salt"
     | Certificate -> "certificate"
+    | Cluster_CA -> "cluster-ca"
     | Private_key -> "private-key"
     | Version -> "version"
     | Ip_config -> "ip-config"
@@ -73,21 +78,22 @@ module Make (KV : Kv_ext.RW) = struct
     | Time_offset -> "time-offset"
     | Unattended_boot -> "unattended-boot"
 
+  let encode_one_cert crt =
+    let data = X509.Certificate.encode_der crt in
+    let l = String.length data in
+    let buf = Bytes.create (l + 4) in
+    Bytes.set_int32_be buf 0 (Int32.of_int l);
+    Bytes.blit_string data 0 buf 4 l;
+    Bytes.unsafe_to_string buf
+
   let to_string : type a. a k -> a -> string =
    fun k v ->
     match (k, v) with
     | Unlock_salt, salt -> salt
     | Certificate, (server, chain) ->
         (* maybe upstream/extend X509.Certificate *)
-        let encode_one crt =
-          let data = X509.Certificate.encode_der crt in
-          let l = String.length data in
-          let buf = Bytes.create (l + 4) in
-          Bytes.set_int32_be buf 0 (Int32.of_int l);
-          Bytes.blit_string data 0 buf 4 l;
-          Bytes.unsafe_to_string buf
-        in
-        String.concat "" (List.map encode_one (server :: chain))
+        String.concat "" (List.map encode_one_cert (server :: chain))
+    | Cluster_CA, ca -> encode_one_cert ca
     | Private_key, key ->
         (* TODO encode_der (x509 0.8.1) *)
         X509.Private_key.encode_pem key
@@ -104,10 +110,18 @@ module Make (KV : Kv_ext.RW) = struct
         | None -> "0")
     | Unattended_boot, b -> if b then "1" else "0"
 
+  let guard p err = if p then Ok () else Error (`Msg err)
+
+  let decode_one_cert data =
+    let total = String.length data in
+    let open Rresult.R.Infix in
+    guard (total >= 4) "invalid data (no length field)" >>= fun () ->
+    let len = Option.get (Int32.unsigned_to_int (String.get_int32_be data 0)) in
+    guard (total - 4 >= len) "invalid data (too short)" >>= fun () ->
+    X509.Certificate.decode_der (String.sub data 4 len)
+
   let of_string : type a. a k -> string -> (a, [> `Msg of string ]) result =
    fun key data ->
-    let open Rresult.R.Infix in
-    let guard p err = if p then Ok () else Error (`Msg err) in
     match key with
     | Unlock_salt -> Ok data
     | Certificate -> (
@@ -115,13 +129,12 @@ module Make (KV : Kv_ext.RW) = struct
           let total = String.length data in
           if total = 0 then Ok (List.rev acc)
           else
-            guard (total >= 4) "invalid data (no length field)" >>= fun () ->
-            let len =
-              Option.get (Int32.unsigned_to_int (String.get_int32_be data 0))
-            in
-            guard (total - 4 >= len) "invalid data (too short)" >>= fun () ->
-            match X509.Certificate.decode_der (String.sub data 4 len) with
+            match decode_one_cert data with
             | Ok cert ->
+                let len =
+                  Option.get
+                    (Int32.unsigned_to_int (String.get_int32_be data 0))
+                in
                 decode
                   (String.sub data (len + 4) (total - len - 4))
                   (cert :: acc)
@@ -131,6 +144,7 @@ module Make (KV : Kv_ext.RW) = struct
         | Ok (server :: chain) -> Ok (server, chain)
         | Ok [] -> Error (`Msg "empty certificate chain")
         | Error e -> Error e)
+    | Cluster_CA -> decode_one_cert data
     | Private_key -> X509.Private_key.decode_pem data
     | Version -> Version.of_string data
     | Ip_config ->
@@ -151,7 +165,9 @@ module Make (KV : Kv_ext.RW) = struct
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
 
   let is_global_config : type a. a k -> bool = function
-    | Version (* the store version is for the whole cluster *) -> true
+    | Version (* the store version is for the whole cluster *)
+    | Cluster_CA (* the root CA must be shared to maintain communication *) ->
+        true
     | Time_offset (* offset might be different for different hardware *)
     | Unlock_salt | Certificate | Private_key | Ip_config | Backup_salt
     | Backup_key | Log_config | Unattended_boot ->

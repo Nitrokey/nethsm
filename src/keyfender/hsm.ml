@@ -82,6 +82,8 @@ module type S = sig
     val tls_public_pem_digest : t -> string option Lwt.t
     val tls_cert_pem : t -> string Lwt.t
     val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_cluster_ca : t -> string option Lwt.t
+    val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
     val tls_cert_digest : t -> string option Lwt.t
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
@@ -2338,6 +2340,22 @@ module Make (KV : Kv_ext.Platform) = struct
                  ( Bad_request,
                    "public key in certificate does not match private key." )
 
+    let set_tls_cluster_ca t cert_data =
+      match X509.Certificate.decode_pem cert_data with
+      | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
+      | Ok cert ->
+          with_write_lock (fun () ->
+              internal_server_error Write "Write cluster CA" KV.pp_write_error
+                (Config_store.set t.config_store Cluster_CA cert))
+
+    let tls_cluster_ca t =
+      let open Lwt.Infix in
+      Config_store.get t.config_store Cluster_CA >|= function
+      | Error _ -> None
+      | Ok x ->
+          let cert = X509.Certificate.encode_pem x in
+          Some cert
+
     let tls_cert_digest t =
       let open Lwt.Infix in
       Config_store.digest t.config_store Certificate >|= function
@@ -2481,6 +2499,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
     let join_cluster t join_req =
+      (* TODO ensure that TLS is configured and Root CA as well *)
       (* TODO sanity check join_req *)
       let open Lwt.Infix in
       (* TODO figure out the syntax etcd expects for multiple URIs per peer *)

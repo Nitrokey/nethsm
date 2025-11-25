@@ -63,6 +63,43 @@ struct
         Wm.continue digest rd
     end
 
+  class tls_cluster_ca hsm_state ip =
+    object (self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      method private get rd =
+        Hsm.Config.tls_cluster_ca hsm_state >>= fun cert_pem ->
+        let cert_pem = Option.get cert_pem in
+        (* checked by resource_exists *)
+        Wm.continue (`String cert_pem) rd
+
+      method private set rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        Hsm.Config.set_tls_cluster_ca hsm_state content >>= function
+        | Ok () ->
+            let cc hdr =
+              Cohttp.Header.replace hdr "Location" (Uri.path rd.uri)
+            in
+            let rd' = Webmachine.Rd.with_resp_headers cc rd in
+            Wm.continue true rd'
+        | Error e -> Endpoint.respond_error e rd
+
+      method content_types_provided =
+        Wm.continue [ ("application/x-pem-file", self#get) ]
+
+      method content_types_accepted =
+        Wm.continue [ ("application/x-pem-file", self#set) ]
+
+      method! allowed_methods = Wm.continue [ `GET; `PUT ]
+
+      method! resource_exists rd =
+        Hsm.Config.tls_cluster_ca hsm_state >>= fun cert ->
+        Wm.continue (Option.is_some cert) rd
+    end
+
   class tls_csr hsm_state ip =
     object
       inherit Endpoint.base_with_body_length

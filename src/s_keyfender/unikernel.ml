@@ -439,6 +439,11 @@ struct
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
           let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           write_to_platform cmd
+      | Hsm.Join_cluster initial_cluster as cmd ->
+          write_to_platform cmd >>= fun () ->
+          (* TODO wait and create local stores (including copy of old config
+               store *)
+          (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
           Lwt.async (fun () -> setup_https_listener http certificates);
           (handle_cb [@tailcall]) http

@@ -82,6 +82,8 @@ module type S = sig
     val tls_public_pem_digest : t -> string option Lwt.t
     val tls_cert_pem : t -> string Lwt.t
     val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_cluster_ca : t -> string option Lwt.t
+    val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
     val tls_cert_digest : t -> string option Lwt.t
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
