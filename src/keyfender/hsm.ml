@@ -3153,9 +3153,17 @@ module Make (KV : Kv_ext.Platform) = struct
          | `Greater ->
              (* here's the place to embed migration code, at least for the
                 configuration store *)
+             Log.info (fun m ->
+                 m "Migrating config and domain key stores from older version");
              lwt_error_to_msg ~pp_error:Config_store.pp_error
                (Config_store.migrate_v0_v1 config_store)
-             >>= fun _ -> boot ()))
+             >>= fun () ->
+             lwt_error_to_msg ~pp_error:Config_store.pp_error
+               Domain_key_store.(
+                 migrate_v0_v1 (connect kv system_info.deviceId))
+             >>= fun () ->
+             Log.info (fun m -> m "Migration done.");
+             boot ()))
     >|= function
     | Ok t ->
         let dump_key_ops () =

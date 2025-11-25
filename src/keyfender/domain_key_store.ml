@@ -34,4 +34,15 @@ module Make (KV : Kv_ext.RW) = struct
 
   let remove t slot = KV.remove t.kv (key_path t.device_id slot)
   let connect kv device_id = { kv; device_id }
+
+  let migrate_v0_v1 t =
+    let just_move slot =
+      KV.get t.kv (key_path "" slot) >>= function
+      | Error _ -> Lwt.return (Ok ()) (* slot may not be filled *)
+      | Ok data ->
+          KV.set t.kv (key_path t.device_id slot) data >|= fun r ->
+          Result.map_error (fun e -> `Kv_write e) r
+    in
+    let open Lwt_result.Infix in
+    just_move Attended >>= fun () -> just_move Unattended
 end

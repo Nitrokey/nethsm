@@ -1589,7 +1589,7 @@ let config_logging_ok =
       in
       Alcotest.(check string)
         "default config"
-        "{\"ipAddress\":null,\"port\":514,\"logLevel\":\"info\"}" body)
+        "{\"ipAddress\":\"0.0.0.0\",\"port\":514,\"logLevel\":\"info\"}" body)
 
 let config_logging_set_ok =
   "PUT on /config/logging succeeds" @? fun () ->
