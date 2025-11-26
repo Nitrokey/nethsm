@@ -1946,7 +1946,9 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get network configuration. IP address, netmask, router.
+      description: |
+        Get network configuration. IP address, netmask, router.
+        If IPv6 is configured (not by default), returns its CIDR and gateway.
       security:
         - basic: []
       x-annotation-role:
@@ -1973,7 +1975,9 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Configure network.
+      description: |
+        Configure IPv4 network. Optionally, an 'ipv6' field can be passed
+        to configure IPv6 network as well (passing 'null' will disable IPv6).
       requestBody:
         content:
           application/json:
@@ -2008,7 +2012,7 @@ paths:
       description: |
         Get logging configuration.
         Protocol is always syslog over UDP.
-        Configurable are IP adress and port, log level.
+        Configurable are IP (v4 or v6) adress and port, log level.
       security:
         - basic: []
       x-annotation-role:
@@ -3008,10 +3012,20 @@ components:
           type: string
         gateway:
           type: string
+        ipv6:
+          $ref: "#/components/schemas/Ipv6Config"
       required:
         - ipAddress
         - netmask
-        - gateway
+    Ipv6Config:
+      example:
+        cidr: de:ad:be:ef::42/8
+        gateway: de:ad:be:ef::1
+      properties:
+        cidr:
+          type: string
+        gateway:
+          type: string
     LoggingConfig:
       example:
         ipAddress: 0.0.0.0

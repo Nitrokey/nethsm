@@ -2540,7 +2540,10 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
       Lwt_mvar.take t.res_mbox >>= function
-      | Ok () -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+      | Ok () ->
+          (* TODO take care of any device-specific config or domain key transfer here *)
+          Log.warn (fun m -> m "joining cluster OK! rebooting now!");
+          Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
       | Error msg ->
           Log.warn (fun m -> m "joining cluster failed: %s" msg);
           Lwt.return (Error (Bad_request, "joining cluster failed: " ^ msg))
