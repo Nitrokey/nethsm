@@ -2085,6 +2085,78 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
+  /config/tls/cluster-ca.pem:
+    get:
+      responses:
+        "200":
+          description: Successful retrieval of previously set CA.
+          content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemCert"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "404":
+          description: Cluster CA has never been set before.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+        "415":
+          description: Content type in Accept header not supported or not present.
+      description: Get currently set CA for cluster peer traffic.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    put:
+      responses:
+        "201":
+          description: Successfully set cluster CA.
+        "400":
+          description: Certificate malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Set cluster certificate authority used for etcd peer traffic.
+        It is not set by default. When set, it cannot be unset (but it can be updated).
+
+        The NetHSM cert must be signed by this CA for this operation to succeed, it will be aborted otherwise.
+        *Note that this is checked for this node but not for all peers!*
+        If you need to change the CA, ensure all nodes of the cluster have their cert signed by both the new and the old CA,
+        then change the CA. Afterwards, you can update the individual certs to be signed only by the new CA.
+
+        When changed, the underlying etcd server is restarted with the new CA.
+      requestBody:
+        content:
+          application/x-pem-file:
+            schema:
+              $ref: "#/components/schemas/PemCert"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
   /config/network:
     get:
       responses:

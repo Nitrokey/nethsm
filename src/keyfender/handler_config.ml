@@ -70,10 +70,12 @@ struct
       inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
-        Hsm.Config.tls_cluster_ca hsm_state >>= fun cert_pem ->
-        let cert_pem = Option.get cert_pem in
-        (* checked by resource_exists *)
-        Wm.continue (`String cert_pem) rd
+        Hsm.Config.tls_cluster_ca hsm_state >>= function
+        | Some cert_pem -> Wm.continue (`String cert_pem) rd
+        | None ->
+            Endpoint.respond_status
+              (`Not_found, "cluster CA is absent unless configured")
+              rd
 
       method private set rd =
         let body = rd.Webmachine.Rd.req_body in
@@ -94,10 +96,6 @@ struct
         Wm.continue [ ("application/x-pem-file", self#set) ]
 
       method! allowed_methods = Wm.continue [ `GET; `PUT ]
-
-      method! resource_exists rd =
-        Hsm.Config.tls_cluster_ca hsm_state >>= fun cert ->
-        Wm.continue (Option.is_some cert) rd
     end
 
   class tls_csr hsm_state ip =

@@ -52,7 +52,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state ip);
         ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state ip);
         ("/config/tls/generate", fun () -> new Config.tls_generate hsm_state ip);
-        ( "/config/cluster-ca.pem",
+        ( "/config/tls/cluster-ca.pem",
           fun () -> new Config.tls_cluster_ca hsm_state ip );
         ("/config/network", fun () -> new Config.network hsm_state ip);
         ("/config/logging", fun () -> new Config.logging hsm_state ip);

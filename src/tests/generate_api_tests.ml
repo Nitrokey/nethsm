@@ -30,6 +30,7 @@ let skip_endpoints =
     ("/system/restore", `All);
     ("/system/update", `All);
     ("/cluster/members", `Set [ "post" ]);
+    ("/config/tls/cluster-ca.pem", `All);
   ]
 
 let skip_body_endpoints =

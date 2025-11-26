@@ -24,9 +24,19 @@ let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
 
+let msg_with_body body msg =
+  let body =
+    match body with
+    | `Empty -> "empty"
+    | `String str -> str
+    | _ -> "not empty but not string"
+  in
+  Fmt.str "%s (body was: %s)" msg body
+
 let returns_empty' ~with_status = function
   | new_state, Some (status, _, body, _) ->
-      Alcotest.(check http_status) "status" with_status status;
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
       begin match body with
       | `Empty -> new_state
       | _ -> Alcotest.fail "did not return empty body"
@@ -37,7 +47,8 @@ let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
 
 let returns_string' ~with_status = function
   | new_state, Some (status, _, body, _) ->
-      Alcotest.(check http_status) "status" with_status status;
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
       begin match body with
       | `String s -> (new_state, s)
       | _ -> Alcotest.fail "did not return string"
@@ -1251,6 +1262,12 @@ let unattended_boot_failed_wrong_device_key =
         >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked )
   | _ -> false
 
+(*
+          get_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem_fail;
+          *)
+
 let get_config_tls_public_pem =
   "get tls public pem file succeeds" @? fun () ->
   let headers = admin_headers in
@@ -1260,6 +1277,17 @@ let get_config_tls_public_pem =
   with
   | _, Some (`OK, _, _, _) -> true
   | _ -> false
+
+let get_config_tls_cluster_ca_pem =
+  Alcotest.test_case "get tls cluster CA succeeds (absent by default)" `Quick
+    (fun () ->
+      let headers = admin_headers in
+      request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
+        "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`Not_found
+      |> Alcotest.(
+           check string "expected error"
+             {|{"message":"cluster CA is absent unless configured"}|}))
 
 let get_config_tls_cert_pem =
   "get tls cert pem file succeeds" @? fun () ->
@@ -1290,6 +1318,56 @@ let put_config_tls_cert_pem =
           | Some loc -> String.equal loc "/api/v1/config/tls/cert.pem")
       | _ -> false)
   | _ -> false
+
+let test_ca =
+  {|-----BEGIN CERTIFICATE-----
+MIIDhTCCAm2gAwIBAgIUSniZP+w3uTPsJ7P3MWkAnpJ0ALEwDQYJKoZIhvcNAQEL
+BQAwUjELMAkGA1UEBhMCRlIxEzARBgNVBAgMClNvbWUtU3RhdGUxEDAOBgNVBAoM
+B1RhcmlkZXMxHDAaBgNVBAMME1ZpcmdpbGUgUm9ibGVzIFRlc3QwHhcNMjUxMTI2
+MTQ0OTU2WhcNMzAxMTI1MTQ0OTU2WjBSMQswCQYDVQQGEwJGUjETMBEGA1UECAwK
+U29tZS1TdGF0ZTEQMA4GA1UECgwHVGFyaWRlczEcMBoGA1UEAwwTVmlyZ2lsZSBS
+b2JsZXMgVGVzdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJvz7y/v
+Sq02anm6uw9mrg88wEvGGDBOoeC+FGHknMZk0VXv4af1tg/rH+X4SenQxCrz+FnF
+eCsNthKEW2eKbhsLFmqNPyDUuIkeWJdZGEcXo7nUYUCONwZRG0OJcRfFJ3B6r17+
+Su6iqYTNzJ/0wE754etNT8MUolTJ9ZVgVcSfOeo9j6jorAWMPgwB0+iokQrWFbA/
+N7YfqXIRNOBU8kTSngj1UjaROePgqGfLFGLhy0iLa/BZ8BGe7AV405oxZvB1GUvq
+utWdOVBinS52PYFzNlHYutZQirrgh8ohWdIYcmRyxXyFGIMoxEZHeN7ZNkSnxl5l
+qHW6qLBNRKhtwr0CAwEAAaNTMFEwHQYDVR0OBBYEFKYehXO2ytNvFpcNVt8jzw7W
+T/SFMB8GA1UdIwQYMBaAFKYehXO2ytNvFpcNVt8jzw7WT/SFMA8GA1UdEwEB/wQF
+MAMBAf8wDQYJKoZIhvcNAQELBQADggEBAFLLlhWFEouWk/Fl7uQg7s9q0wuk9yQH
+GPGevd5tDMT7pBlbwASCVMgKVhPGurpWrtF7rVL9zmcxDNGisdIz4LdByWLHfZP3
+UXC+OYMNIn2v6/gPpvphLybaA4ik+lkxAf/Xd37lAfcQHLnAheUZskv9E5k8BiwF
+4w81xop+oMz+lZfZGY5DhNiMoaDpygZ+ezLSwmoObuqo5gk1awjXWM7itphw1vca
+LpPtdOfUWVgco31FirTc4TFaoBpc6ZpbNdqQISvNq+E4Xe6RdC3ZN8pmil7X+tRN
+LKKw6NBIox/vE7m+0ICBrzRZ6QL+PYsoIOdAIfqPD88TWfCA3iYzFNE=
+-----END CERTIFICATE-----
+|}
+
+let put_config_tls_cluster_ca_pem =
+  Alcotest.test_case "put tls cluster CA succeeds" `Quick (fun () ->
+      let headers = admin_headers in
+      let content_type = "application/x-pem-file" in
+      let expect =
+        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
+      in
+      let hsm_state =
+        request ~expect ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
+          ~content_type ~body:(`String test_ca) "/config/tls/cluster-ca.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`OK
+      |> Alcotest.(check string "cert matches" test_ca))
+
+let put_config_tls_cluster_ca_pem_fail =
+  Alcotest.test_case "put tls cluster CA succeeds" `Quick (fun () ->
+      let headers = admin_headers in
+      let content_type = "application/x-pem-file" in
+      request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~content_type
+        ~body:(`String "this is not a PEM file") "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error message" "{\"message\":\"No certificate\"}"))
 
 let put_config_tls_cert_pem_fail =
   "post tls cert pem file fail" @? fun () ->
@@ -4788,6 +4866,12 @@ let () =
           get_config_tls_cert_pem;
           put_config_tls_cert_pem;
           put_config_tls_cert_pem_fail;
+        ] );
+      ( "/config/tls/cluster-ca.pem",
+        [
+          get_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem_fail;
         ] );
       ( "/config/tls/csr",
         [
