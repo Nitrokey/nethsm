@@ -4192,18 +4192,19 @@ let cluster_member_ops_not_etcd =
       in
       request ~hsm_state:(operational_mock ()) ~headers:admin_headers
         "/cluster/members"
-      |> returns_string ~with_status:`Internal_server_error
+      |> returns_string ~with_status:`Bad_request
       |> check;
       (* even when not implemented, we still check the JSON payload is
          well-formed first *)
       request ~meth:`POST ~hsm_state:(operational_mock ())
         ~headers:admin_headers "/cluster/members"
       |> returns_string ~with_status:`Bad_request
-      |> ignore;
+      |> Alcotest.(check string)
+           "bad request" "{\"message\":\"Invalid JSON: Blank input data.\"}";
       let body = `String {|{"peer_urls":["192.168.1.100"]}|} in
       request ~meth:`POST ~body ~hsm_state:(operational_mock ())
         ~headers:admin_headers "/cluster/members"
-      |> returns_string ~with_status:`Internal_server_error
+      |> returns_string ~with_status:`Bad_request
       |> check)
 
 let cluster_member_ops_admin_only =
