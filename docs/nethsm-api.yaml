@@ -1168,6 +1168,162 @@ paths:
         required: true
         schema:
           $ref: "#/components/schemas/ID"
+  /cluster/members:
+    get:
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterMemberList"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        List members of the cluster this node belongs to.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    post:
+      responses:
+        "201":
+          description: |
+            New member successfully declared to the cluster.
+            The response contains data needed for the new member to join.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterMemberList"
+        "400":
+          description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Declare a new peer to the cluster. The response of this call must
+        be passed to a call to '/cluster/join' on the peer to finalize the join.
+
+        *WARNING*: adding a member will change the quorum needed for the cluster
+        to operate. If the quorum is not met anymore (e.g. when adding a second node)
+        to a one-node cluster, the cluster (and hence the HSM) will cease to operate until
+        that new member actually joins. If it doesn't, the NetHSM is lost and must be factory reset.
+        Make sure to backup before this operation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterAddReq"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+  /cluster/members/{ClusterID}:
+    parameters:
+      - name: ClusterID
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
+    put:
+      responses:
+        "204":
+          description: Peer successfully updated.
+        "400":
+          description: |
+            Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Cluster member not found.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Update the peer URLs of a cluster member (i.e. how others can reach it).
+
+        *WARNING*: misconfiguring this may lead to the peer not being reachable anymore. If this makes the cluster
+        lose quorum, the cluster will cease to operate, in which case the NetHSM is lost and must be factory reset.
+        Make sure to backup before this operation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterAddReq"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+      x-test-value-ClusterID: 8e9e05c52164694d
+    delete:
+      responses:
+        "204":
+          description: Peer successfully removed from cluster.
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Cluster member not found.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Irreversibly remove a peer from the cluster.
+
+        *WARNING*: this MUST be called before resetting or otherwise isolating a peer from the cluster. Not doing this
+        may lead the cluster to lose quorum and cease to operate.
+        Make sure to backup before this operation.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+      x-test-value-ClusterID: 8e9e05c52164694d
   /namespaces:
     get:
       responses:
@@ -2592,6 +2748,48 @@ components:
           $ref: "#/components/schemas/UserID"
       required:
         - user
+    ClusterAddReq:
+      example:
+          peer_urls:
+            - http://192.168.1.2:2380
+      type: object
+      properties:
+        peer_urls:
+          $ref: "#/components/schemas/PeerURLs"
+    ClusterMemberList:
+      example:
+        - id: 8e9e05c52164694d
+          name: default
+          peer_urls:
+            - http://192.168.1.1:2380
+      type: array
+      items:
+        $ref: "#/components/schemas/ClusterMember"
+    ClusterMember:
+      example:
+        id: 8e9e05c52164694d
+        name: default
+        peer_urls:
+          - http://192.168.1.1:2380
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        name:
+          type: string
+        peer_urls:
+          $ref: "#/components/schemas/PeerURLs"
+    PeerURL:
+      pattern: ^http://.+:2380$
+      minLength: 1
+      maxLength: 1024
+      type: string
+    PeerURLs:
+      example:
+        - http://192.168.1.1:2380
+      type: array
+      items:
+        $ref: "#/components/schemas/PeerURL"
     NamespaceList:
       example:
         - id: namespace1
@@ -3021,6 +3219,7 @@ components:
       example:
         cidr: de:ad:be:ef::42/8
         gateway: de:ad:be:ef::1
+      type: object
       properties:
         cidr:
           type: string

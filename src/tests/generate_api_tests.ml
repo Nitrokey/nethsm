@@ -22,13 +22,14 @@ let all_states = [ "Unprovisioned"; "Locked"; "Operational" ]
 
 let skip_endpoints =
   [
-    "/config/tls/cert.pem";
-    "/keys/{KeyID}/cert";
-    "/system/backup";
-    "/system/cancel-update";
-    "/system/commit-update";
-    "/system/restore";
-    "/system/update";
+    ("/config/tls/cert.pem", `All);
+    ("/keys/{KeyID}/cert", `All);
+    ("/system/backup", `All);
+    ("/system/cancel-update", `All);
+    ("/system/commit-update", `All);
+    ("/system/restore", `All);
+    ("/system/update", `All);
+    ("/cluster/members", `Set [ "post" ]);
   ]
 
 let skip_body_endpoints =
@@ -427,21 +428,30 @@ let tests_for_states meth path cmd (response_code, response_body)
     if List.mem path skip_body_endpoints then
       ignore (Sys.command ("touch " ^ outdir ^ "/body.skip")))
 
-let print_method path (meth, req) =
+let print_method ?(meth_skips = []) path (meth, req) =
   if List.mem meth allowed_methods (* skips descriptions *) then
-    let reqs = make_req_data req meth in
-    let responses = make_resp_data req in
-    let success_response =
-      List.find (fun (c, _) -> String.get c 0 = '2') responses
-    in
-    List.iter (tests_for_states meth path (cmd path meth) success_response) reqs
+    if not (List.mem meth meth_skips) then
+      let reqs = make_req_data req meth in
+      let responses = make_resp_data req in
+      let success_response =
+        List.find (fun (c, _) -> String.get c 0 = '2') responses
+      in
+      List.iter
+        (tests_for_states meth path (cmd path meth) success_response)
+        reqs
 
 let print_methods (path, methods) =
   Printf.printf "generating tests for %s.." path;
-  if not (List.mem path skip_endpoints) then (
-    List.iter (print_method path) methods;
-    Printf.printf "done\n")
-  else Printf.printf "(skipped endpoint)\n"
+  match List.assoc_opt path skip_endpoints with
+  | Some `All -> Printf.printf "(skipped endpoint)\n"
+  | None ->
+      List.iter (print_method path) methods;
+      Printf.printf "done\n"
+  | Some (`Set meth_skips) ->
+      List.iter (print_method ~meth_skips path) methods;
+      Printf.printf "done (skipped";
+      List.iter (Printf.printf " %s") meth_skips;
+      Printf.printf ")\n"
 
 let endpoints api =
   let endpoints = Ezjsonm.(find api [ "paths" ] |> get_dict) in

@@ -2098,7 +2098,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let to_hsm_error =
       Result.map_error (function `Cluster_error s ->
-          (Internal_server_error, "cluster error: " ^ s))
+          (Bad_request, "cluster error: " ^ s))
 
     let member_list t = member_list t.kv >|= to_hsm_error
 

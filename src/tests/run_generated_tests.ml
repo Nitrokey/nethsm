@@ -101,6 +101,7 @@ module KeyfenderUnikernel : BACKEND = struct
           "512";
           "--data-dir";
           Fpath.to_string etcd_dir;
+          "--force-new-cluster";
         |]
         (Unix.environment ())
     in

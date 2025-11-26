@@ -109,11 +109,7 @@ struct
         let ok id =
           Hsm.Cluster.member_remove ~id hsm_state >>= function
           | Error e -> Endpoint.respond_error e rd
-          | Ok new_members ->
-              let body =
-                Yojson.Safe.to_string (encode_member_list new_members)
-              in
-              Wm.continue true { rd with resp_body = `String body }
+          | Ok _new_members -> Wm.continue true rd
         in
         decode_id ok rd
 
@@ -131,11 +127,7 @@ struct
             let peer_urls = member_req.peer_urls in
             Hsm.Cluster.member_update ~id ~peer_urls hsm_state >>= function
             | Error e -> Endpoint.respond_error e rd
-            | Ok new_members ->
-                let body =
-                  Yojson.Safe.to_string (encode_member_list new_members)
-                in
-                Wm.continue true { rd with resp_body = `String body }
+            | Ok _new_members -> Wm.continue true rd
           in
           Json.decode Json.member_req_of_yojson content
           |> Endpoint.err_to_bad_request ok rd
