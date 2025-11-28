@@ -2368,7 +2368,27 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
-          (* TODO check cert is signed by cluster-ca if set *)
+          let check_signed_by_ca () =
+            (* if cluster-CA is set, the new cert has to be signed (at least) by the CA *)
+            let open Lwt_result.Infix in
+            Lwt_result.ok (Config_store.get t.config_store Cluster_CA)
+            >>= function
+            | Error _ -> Lwt_result.return ()
+            | Ok ca ->
+                Lwt.return
+                  (Rresult.R.error_to_msg
+                     ~pp_error:X509.Validation.pp_chain_error
+                     (check_ca_signs_cert t ~cert ~ca)
+                  |> Result.map (fun _ -> ())
+                  |> Result.map_error (fun (`Msg msg) ->
+                      let msg =
+                        Fmt.str
+                          "the cluster CA is set, and the given cert is not \
+                           signed by it: %s"
+                          msg
+                      in
+                      (Precondition_failed, msg)))
+          in
           let key_eq a b =
             String.equal
               (X509.Public_key.fingerprint a)
@@ -2394,6 +2414,7 @@ module Make (KV : Kv_ext.Platform) = struct
             | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
             | Ok _ ->
                 let open Lwt_result.Infix in
+                check_signed_by_ca () >>= fun () ->
                 with_write_lock (fun () ->
                     internal_server_error Write "Write certificate"
                       KV.pp_write_error

@@ -1343,7 +1343,7 @@ let put_config_tls_cluster_ca_pem_fail_not_signed =
       let hsm_state, err_msg =
         request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
           ~content_type ~body:(`String test_ca) "/config/tls/cluster-ca.pem"
-        |> returns_string' ~with_status:`Bad_request
+        |> returns_string' ~with_status:`Precondition_failed
       in
       Alcotest.(
         check string "error msg"
@@ -1521,9 +1521,16 @@ let post_config_tls_csr_pem_custom_san =
 let put_config_tls_cluster_ca_pem =
   Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
     `Quick (fun () ->
-      (* first, create a self-signed CA and get the NetHSM CSR *)
+      let headers = admin_headers in
+      (* get the old cert, for last test *)
+      let hsm_state, old_cert_pem =
+        request ~headers ~hsm_state:(operational_mock ()) "/config/tls/cert.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      (* create a self-signed CA and get the NetHSM CSR *)
       let hsm_state, csr_pem =
-        admin_post_request ~body:(`String subject) "/config/tls/csr.pem"
+        admin_post_request ~hsm_state ~body:(`String subject)
+          "/config/tls/csr.pem"
         |> returns_string' ~with_status:`OK
       in
       (* sign the CSR with our CA *)
@@ -1536,7 +1543,6 @@ let put_config_tls_cluster_ca_pem =
         X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
         |> Result.get_ok
       in
-      let headers = admin_headers in
       let content_type = "application/x-pem-file" in
       let new_cert_pem = X509.Certificate.encode_pem new_cert in
       (* replace the NetHSM with that newly signed cert *)
@@ -1555,9 +1561,23 @@ let put_config_tls_cluster_ca_pem =
         |> returns_empty' ~with_status:`Created
       in
       (* we should now be able to query the CA, which should match *)
-      request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
-      |> returns_string ~with_status:`OK
-      |> Alcotest.(check string "cert matches" ca_pem))
+      let hsm_state, ca_pem' =
+        request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      Alcotest.(check string "cert matches" ca_pem ca_pem');
+      (* Check that we cannot put the old cert again, as it's not signed by the
+         CA *)
+      let err_msg =
+        request ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String old_cert_pem) "/config/tls/cert.pem"
+        |> returns_string ~with_status:`Precondition_failed
+      in
+      Alcotest.(
+        check string "error msg"
+          "{\"message\":\"the cluster CA is set, and the given cert is not \
+           signed by it: no trust anchor found for X.509 certificate"
+          (String.sub err_msg 0 118)))
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
