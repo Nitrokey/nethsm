@@ -603,11 +603,11 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
   module Cluster = struct
-    type member = { id : int64; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; urls : string list }
     type cluster_error = [ `Cluster_error of string ]
 
     let cluster_member_of_member (t : Member.t) =
-      { id = t.iD; name = t.name; peer_urls = t.peerURLs }
+      { id = t.iD; name = t.name; urls = t.peerURLs }
 
     let etcd_try f =
       etcd_try f
@@ -628,15 +628,15 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           Ok
             (List.map cluster_member_of_member resp.MemberRemoveResponse.members))
 
-    let member_update ~id ~peer_urls t =
-      let request = MemberUpdateRequest.make ~iD:id ~peerURLs:peer_urls () in
+    let member_update ~id ~urls t =
+      let request = MemberUpdateRequest.make ~iD:id ~peerURLs:urls () in
       etcd_try (fun () ->
           Etcd.member_update t.stack ~request >|= fun resp ->
           Ok
             (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
 
-    let member_add ~peer_urls t =
-      let request = MemberAddRequest.make ~peerURLs:peer_urls () in
+    let member_add ~urls t =
+      let request = MemberAddRequest.make ~peerURLs:urls () in
       etcd_try (fun () ->
           Etcd.member_add t.stack ~request >|= fun resp ->
           Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))

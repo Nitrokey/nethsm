@@ -101,7 +101,7 @@ end
 
 module type Clustered = sig
   type t
-  type member = { id : int64; name : string; peer_urls : string list }
+  type member = { id : int64; name : string; urls : string list }
   type cluster_error = [ `Cluster_error of string ]
 
   val my_id : t -> int64
@@ -110,12 +110,12 @@ module type Clustered = sig
 
   val member_update :
     id:int64 ->
-    peer_urls:string list ->
+    urls:string list ->
     t ->
     (member list, cluster_error) result Lwt.t
 
   val member_add :
-    peer_urls:string list -> t -> (member list, cluster_error) result Lwt.t
+    urls:string list -> t -> (member list, cluster_error) result Lwt.t
 end
 
 type event = { kind : [ `Put | `Delete ]; key : Mirage_kv.key }
@@ -148,15 +148,15 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
   let create_watch _ _ _ = ()
 
   module Cluster = struct
-    type member = { id : int64; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; urls : string list }
     type cluster_error = [ `Cluster_error of string ]
 
     let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
     let my_id _ = 0xdeadbeefL
     let member_list _ = not_etcd
     let member_remove ~id:_ _ = not_etcd
-    let member_update ~id:_ ~peer_urls:_ _ = not_etcd
-    let member_add ~peer_urls:_ _ = not_etcd
+    let member_update ~id:_ ~urls:_ _ = not_etcd
+    let member_add ~urls:_ _ = not_etcd
   end
 end
 

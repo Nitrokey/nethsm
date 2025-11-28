@@ -1242,9 +1242,9 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
-  /cluster/members/{ClusterID}:
+  /cluster/members/{MemberID}:
     parameters:
-      - name: ClusterID
+      - name: MemberID
         in: path
         required: true
         schema:
@@ -1290,7 +1290,7 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
-      x-test-value-ClusterID: 8e9e05c52164694d
+      x-test-value-MemberID: 8e9e05c52164694d
     delete:
       responses:
         "204":
@@ -1323,7 +1323,7 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
-      x-test-value-ClusterID: 8e9e05c52164694d
+      x-test-value-MemberID: 8e9e05c52164694d
   /namespaces:
     get:
       responses:

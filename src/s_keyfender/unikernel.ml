@@ -414,12 +414,12 @@ struct
                 | Some { cidr; _ } ->
                     [ wanted_peer_url_4; wanted_peer_url_6 cidr ]
               in
-              if List.equal String.equal member.peer_urls wanted_peer_urls then (
+              if List.equal String.equal member.urls wanted_peer_urls then (
                 Logs.info (fun m -> m "etcd peer url is up to date");
                 Lwt.return_unit)
               else
-                KV_store.Cluster.member_update ~id:own_id
-                  ~peer_urls:wanted_peer_urls store
+                KV_store.Cluster.member_update ~id:own_id ~urls:wanted_peer_urls
+                  store
                 >|= function
                 | Ok _ -> Logs.info (fun m -> m "etcd peer urls updated!")
                 | Error (`Cluster_error s) ->

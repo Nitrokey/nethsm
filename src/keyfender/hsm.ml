@@ -315,20 +315,16 @@ module type S = sig
   end
 
   module Cluster : sig
-    type member = { id : int64; name : string; peer_urls : string list }
+    type member = { id : int64; name : string; urls : string list }
 
     val member_list : t -> (member list, error) result Lwt.t
     val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
     val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
 
     val member_update :
-      id:int64 ->
-      peer_urls:string list ->
-      t ->
-      (member list, error) result Lwt.t
+      id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
 
-    val member_add :
-      peer_urls:string list -> t -> (member list, error) result Lwt.t
+    val member_add : urls:string list -> t -> (member list, error) result Lwt.t
   end
 end
 
@@ -2109,10 +2105,10 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let member_remove ~id t = member_remove ~id t.kv >|= to_hsm_error
 
-    let member_update ~id ~peer_urls t =
-      member_update ~id ~peer_urls t.kv >|= to_hsm_error
+    let member_update ~id ~urls t =
+      member_update ~id ~urls t.kv >|= to_hsm_error
 
-    let member_add ~peer_urls t = member_add ~peer_urls t.kv >|= to_hsm_error
+    let member_add ~urls t = member_add ~urls t.kv >|= to_hsm_error
   end
 
   let provision t ~unlock ~admin time =
@@ -2537,7 +2533,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let open Lwt.Infix in
       (* TODO figure out the syntax etcd expects for multiple URIs per peer *)
       let print_peer fmt (p : Json.join_req_member) =
-        Fmt.pf fmt "%s=%s" p.name (List.hd p.peer_urls)
+        Fmt.pf fmt "%s=%s" p.name (List.hd p.urls)
       in
       let initial_cluster =
         Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) join_req

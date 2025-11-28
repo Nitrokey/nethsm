@@ -220,9 +220,7 @@ let encode_network (net : network) =
   let netmask = Ipaddr.V4.Prefix.netmask net.ipv4.cidr in
   network_api_to_yojson { ipAddress; netmask; gateway; ipv6 = net.ipv6 }
 
-type join_req_member = { name : string; peer_urls : string list }
-[@@deriving yojson]
-
+type join_req_member = { name : string; urls : string list } [@@deriving yojson]
 type join_req = join_req_member list [@@deriving yojson]
 
 let is_unattended_boot_to_yojson r =
@@ -612,7 +610,7 @@ let decode_user_req content =
 type user_res = { realName : string; role : role } [@@deriving yojson]
 type info = { vendor : string; product : string } [@@deriving yojson]
 type state = [ `Unprovisioned | `Operational | `Locked ] [@@deriving yojson]
-type member_req = { peer_urls : string list } [@@deriving yojson]
+type member_req = { urls : string list } [@@deriving yojson]
 
 let state_to_yojson state = `Assoc [ ("state", head @@ state_to_yojson state) ]
 

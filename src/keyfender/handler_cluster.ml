@@ -32,7 +32,7 @@ struct
   type member = Hsm.Cluster.member = {
     id : int64; [@to_yojson encode_id] [@of_yojson decode_id_yojson]
     name : string;
-    peer_urls : string list;
+    urls : string list;
   }
   [@@deriving yojson]
 
@@ -54,8 +54,8 @@ struct
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
         let ok (member_req : Json.member_req) =
-          let peer_urls = member_req.peer_urls in
-          Hsm.Cluster.member_add ~peer_urls hsm_state >>= function
+          let urls = member_req.urls in
+          Hsm.Cluster.member_add ~urls hsm_state >>= function
           | Error e -> Endpoint.respond_error e rd
           | Ok new_members ->
               let body =
@@ -124,8 +124,8 @@ struct
           let body = rd.Webmachine.Rd.req_body in
           Cohttp_lwt.Body.to_string body >>= fun content ->
           let ok (member_req : Json.member_req) =
-            let peer_urls = member_req.peer_urls in
-            Hsm.Cluster.member_update ~id ~peer_urls hsm_state >>= function
+            let urls = member_req.urls in
+            Hsm.Cluster.member_update ~id ~urls hsm_state >>= function
             | Error e -> Endpoint.respond_error e rd
             | Ok _new_members -> Wm.continue true rd
           in
