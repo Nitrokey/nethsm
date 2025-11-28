@@ -1313,50 +1313,51 @@ let put_config_tls_cert_pem =
       | _ -> false)
   | _ -> false
 
-(* openssl req -x509 -new -nodes -key myCA.key -sha256 -days 1825 -out myCA.pem
-   -addext keyUsage=critical,keyCertSign *)
-let test_ca =
-  {|-----BEGIN CERTIFICATE-----
-MIIDezCCAmOgAwIBAgIUakxK/ibVIaprOP430Z3tAGTu9r8wDQYJKoZIhvcNAQEL
-BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
-GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNTExMjgyMTU2NDRaFw0zMDEx
-MjcyMTU2NDRaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
-HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB
-AQUAA4IBDwAwggEKAoIBAQDNzWp3nmQF8W1DHKwtSsV1zFnSb8Axaonb5mnp5pDT
-e16y7yG2igqcFhV+NTtPry6mYFDXWMIJEJ6YK4ag4A89lT0H1wh93WOdH7LGtpk4
-JnD/7BvbTYdacIF1/sHwE6vd5tuShNNQpD92Wih5ZGgsdyQzqJvl7xvrvtC1nTpI
-IIVcuq4KXU5gORzgCb7d276SE8ZsacyXB02egrJ4VOtu9rjrfBRu6VY2hQZISSFi
-rcmj2z9ZGNWRIeI1LwoyNW2H50N2b2nOoWzPhCLmdcXfNjY9QXnrSvlnNgV4mO1g
-B4ntUo6LuyjcQeCVhcPhLc6jE/ay/JlJc/JW8K0VajW/AgMBAAGjYzBhMB0GA1Ud
-DgQWBBTwDUGaSbChoiRt3OpnL4HMaGNClDAfBgNVHSMEGDAWgBTwDUGaSbChoiRt
-3OpnL4HMaGNClDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwICBDANBgkq
-hkiG9w0BAQsFAAOCAQEAs5P1WdtsM/FNVCxurlUXlhb6cK027Nyk0zbsTWOFQkXd
-d9piEI1vYHUKpOhxNndEtDckGQ8b8WnFH94yYdU0XhpSyrcGqvdkRU81GsLqWTcs
-Qb16/NeueO+eUwIaGSA+URuHGLCTXqdTo1KiVqY3hTB6UGmie6cR9oRINNCyEOzw
-jODVEd3pEdJZxWDrSOu7p+12lKt5C7MdsIbcT9EC0qE5Nq4yTftsZuE2WAUnl/sx
-9KDTq3hp5HbGWLhPvBcmcjnL1gkkHJGK3JEuvWDK3tj9gJt5UmHU3lg4FuamLOgI
-rvNNmXZglI9yNzshP/CQP6CGVt7pbC4ORrOu9/bQUQ==
------END CERTIFICATE-----
-|}
+let gen_ca () =
+  let pr_key = X509.Private_key.generate `RSA in
+  let sub = [ X509.Distinguished_name.Relative_distinguished_name.empty ] in
+  let self_csr = X509.Signing_request.create sub pr_key |> Result.get_ok in
+  let now = Ptime.of_year 2025 |> Option.get in
+  let valid_until = Ptime.of_year 2030 |> Option.get in
+  let extensions =
+    X509.Extension.(
+      empty
+      |> add Basic_constraints (true, (true, None))
+      |> add Key_usage (true, [ `Key_cert_sign ]))
+  in
+  let ca =
+    X509.Signing_request.sign self_csr ~valid_from:now ~valid_until ~extensions
+      pr_key sub
+    |> Result.get_ok
+  in
+  (sub, pr_key, ca)
 
-let put_config_tls_cluster_ca_pem =
-  Alcotest.test_case "put tls cluster CA succeeds" `Quick (fun () ->
+let put_config_tls_cluster_ca_pem_fail_not_signed =
+  Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
+    `Quick (fun () ->
+      let _, _, ca = gen_ca () in
+      let test_ca = X509.Certificate.encode_pem ca in
       let headers = admin_headers in
       let content_type = "application/x-pem-file" in
-      let expect =
-        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
-      in
-      let hsm_state =
-        request ~expect ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
+      (* try to set CA without signing tls cert first *)
+      let hsm_state, err_msg =
+        request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
           ~content_type ~body:(`String test_ca) "/config/tls/cluster-ca.pem"
-        |> returns_empty' ~with_status:`Created
+        |> returns_string' ~with_status:`Bad_request
       in
+      Alcotest.(
+        check string "error msg"
+          "{\"message\":\"the installed TLS cert is not signed by this CA: no \
+           trust anchor found for X.509 certificate")
+        (String.sub err_msg 0 104);
       request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
-      |> returns_string ~with_status:`OK
-      |> Alcotest.(check string "cert matches" test_ca))
+      |> returns_string ~with_status:`Not_found
+      |> Alcotest.(
+           check string "cert matches"
+             "{\"message\":\"cluster CA is absent unless configured\"}"))
 
-let put_config_tls_cluster_ca_pem_fail =
-  Alcotest.test_case "put tls cluster CA succeeds" `Quick (fun () ->
+let put_config_tls_cluster_ca_pem_fail_invalid =
+  Alcotest.test_case "put tls cluster CA fails when not a CA" `Quick (fun () ->
       let headers = admin_headers in
       let content_type = "application/x-pem-file" in
       request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~content_type
@@ -1516,6 +1517,47 @@ let post_config_tls_csr_pem_custom_san =
           | None -> false)
       | Error _ -> false)
   | _ -> false
+
+let put_config_tls_cluster_ca_pem =
+  Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
+    `Quick (fun () ->
+      (* first, create a self-signed CA and get the NetHSM CSR *)
+      let hsm_state, csr_pem =
+        admin_post_request ~body:(`String subject) "/config/tls/csr.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      (* sign the CSR with our CA *)
+      let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+      let ca_sub, ca_key, ca = gen_ca () in
+      let ca_pem = X509.Certificate.encode_pem ca in
+      let valid_from = Ptime.of_year 2025 |> Option.get in
+      let valid_until = Ptime.of_year 2030 |> Option.get in
+      let new_cert =
+        X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
+        |> Result.get_ok
+      in
+      let headers = admin_headers in
+      let content_type = "application/x-pem-file" in
+      let new_cert_pem = X509.Certificate.encode_pem new_cert in
+      (* replace the NetHSM with that newly signed cert *)
+      let hsm_state =
+        request ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      (* now set the NetHSM CA *)
+      let expect =
+        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
+      in
+      let hsm_state =
+        request ~expect ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      (* we should now be able to query the CA, which should match *)
+      request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`OK
+      |> Alcotest.(check string "cert matches" ca_pem))
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
@@ -4866,8 +4908,9 @@ let () =
       ( "/config/tls/cluster-ca.pem",
         [
           get_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem_fail_invalid;
+          put_config_tls_cluster_ca_pem_fail_not_signed;
           put_config_tls_cluster_ca_pem;
-          put_config_tls_cluster_ca_pem_fail;
         ] );
       ( "/config/tls/csr",
         [

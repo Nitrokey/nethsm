@@ -2322,28 +2322,41 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt.return
                 (Error (Bad_request, "setting local config failed: " ^ msg)))
 
-    let _check_ca_signs_cert ~cert ~ca =
-      let time () = Some (now ()) in
+    let check_ca_signs_cert t ~cert ~ca =
+      let is_mock = t.system_info.hardwareVersion = "N/A" in
+      let time () = if is_mock then None else Some (now ()) in
       X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None [ cert ]
 
     let set_tls_cluster_ca t cert_data =
+      let is_mock = t.system_info.hardwareVersion = "N/A" in
+      let time = if is_mock then None else Some (now ()) in
       let open Lwt_result.Infix in
       match X509.Certificate.decode_pem cert_data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok cert -> (
+      | Ok cert ->
           (* check this is indeed a CA *)
           Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_ca_error
-            (X509.Validation.valid_ca cert)
-          |> Result.map_error (fun (`Msg msg) -> (Bad_request, msg))
+            (X509.Validation.valid_ca ?time cert)
+          |> Result.map_error (fun (`Msg msg) ->
+              let msg = Fmt.str "this is not a valid CA: %s" msg in
+              (Bad_request, msg))
           |> Lwt.return
-          (* TODO check cert is signed by this *)
-          >>= function
-          | () ->
-              with_write_lock (fun () ->
-                  internal_server_error Write "Write cluster CA"
-                    KV.pp_write_error
-                    (Config_store.set t.config_store Cluster_CA cert))
-              >>= fun () -> set_local_config t)
+          >>= fun () ->
+          (* check TLS cert is signed by this *)
+          Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
+            (check_ca_signs_cert t ~cert:t.cert ~ca:cert)
+          |> Result.map_error (fun (`Msg msg) ->
+              let msg =
+                Fmt.str "the installed TLS cert is not signed by this CA: %s"
+                  msg
+              in
+              (Precondition_failed, msg))
+          |> Lwt.return
+          >>= fun _ ->
+          with_write_lock (fun () ->
+              internal_server_error Write "Write cluster CA" KV.pp_write_error
+                (Config_store.set t.config_store Cluster_CA cert))
+          >>= fun () -> set_local_config t
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):

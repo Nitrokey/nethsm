@@ -2120,7 +2120,9 @@ paths:
         "201":
           description: Successfully set cluster CA.
         "400":
-          description: Certificate malformed.
+          description: |
+            Certificate malformed.
+            Check that it has the proper extensions for a CA (basicConstraint, keyUsage).
           content:
             application/json:
               schema:
@@ -2132,7 +2134,9 @@ paths:
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Precondition failed (NetHSM was not *Operational*).
+          description: |
+            Either the NetHSM was not *Operational*, or the installed TLS certificate
+            is not signed by the given CA. Install a certificate signed by this CA first.
       description: |
         Set cluster certificate authority used for etcd peer traffic (i.e. how cluster members communicate).
         It is not set by default. When set, it cannot be unset (but it can be updated).
