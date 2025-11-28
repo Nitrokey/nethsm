@@ -2322,16 +2322,28 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt.return
                 (Error (Bad_request, "setting local config failed: " ^ msg)))
 
+    let _check_ca_signs_cert ~cert ~ca =
+      let time () = Some (now ()) in
+      X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None [ cert ]
+
     let set_tls_cluster_ca t cert_data =
+      let open Lwt_result.Infix in
       match X509.Certificate.decode_pem cert_data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok cert ->
+      | Ok cert -> (
+          (* check this is indeed a CA *)
+          Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_ca_error
+            (X509.Validation.valid_ca cert)
+          |> Result.map_error (fun (`Msg msg) -> (Bad_request, msg))
+          |> Lwt.return
           (* TODO check cert is signed by this *)
-          let open Lwt_result.Infix in
-          with_write_lock (fun () ->
-              internal_server_error Write "Write cluster CA" KV.pp_write_error
-                (Config_store.set t.config_store Cluster_CA cert))
-          >>= fun () -> set_local_config t
+          >>= function
+          | () ->
+              with_write_lock (fun () ->
+                  internal_server_error Write "Write cluster CA"
+                    KV.pp_write_error
+                    (Config_store.set t.config_store Cluster_CA cert))
+              >>= fun () -> set_local_config t)
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
@@ -2343,6 +2355,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
+          (* TODO check cert is signed by cluster-ca if set *)
           let key_eq a b =
             String.equal
               (X509.Public_key.fingerprint a)
@@ -2528,25 +2541,31 @@ module Make (KV : Kv_ext.Platform) = struct
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
     let join_cluster t join_req =
-      (* TODO ensure that TLS is configured and Root CA as well *)
-      (* TODO sanity check join_req *)
       let open Lwt.Infix in
-      (* TODO figure out the syntax etcd expects for multiple URIs per peer *)
-      let print_peer fmt (p : Json.join_req_member) =
-        Fmt.pf fmt "%s=%s" p.name (List.hd p.urls)
-      in
-      let initial_cluster =
-        Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) join_req
-      in
-      Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
-      Lwt_mvar.take t.res_mbox >>= function
-      | Ok () ->
-          (* TODO take care of any device-specific config or domain key transfer here *)
-          Log.warn (fun m -> m "joining cluster OK! rebooting now!");
-          Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
-      | Error msg ->
-          Log.warn (fun m -> m "joining cluster failed: %s" msg);
-          Lwt.return (Error (Bad_request, "joining cluster failed: " ^ msg))
+      Config.tls_cluster_ca t >>= function
+      | None ->
+          Lwt.return (Error (Precondition_failed, "cluster-ca.pem must be set"))
+      | Some _cluster_ca -> (
+          (* TODO sanity check join_req in Json *)
+          (* TODO figure out the syntax etcd expects for multiple URIs per peer *)
+          let print_peer fmt (p : Json.join_req_member) =
+            Fmt.pf fmt "%s=%s" p.name (List.hd p.urls)
+          in
+          let initial_cluster =
+            Fmt.str "%a"
+              (Fmt.list ~sep:Fmt.(const string ",") print_peer)
+              join_req
+          in
+          Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
+          Lwt_mvar.take t.res_mbox >>= function
+          | Ok () ->
+              (* TODO take care of any device-specific config or domain key transfer here *)
+              Log.warn (fun m -> m "joining cluster OK! rebooting now!");
+              Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+          | Error msg ->
+              Log.warn (fun m -> m "joining cluster failed: %s" msg);
+              Lwt.return (Error (Bad_request, "joining cluster failed: " ^ msg))
+          )
 
     type stream_buffer = {
       stream : string Lwt_stream.t;

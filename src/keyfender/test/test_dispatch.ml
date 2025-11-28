@@ -1262,12 +1262,6 @@ let unattended_boot_failed_wrong_device_key =
         >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked )
   | _ -> false
 
-(*
-          get_config_tls_cluster_ca_pem;
-          put_config_tls_cluster_ca_pem;
-          put_config_tls_cluster_ca_pem_fail;
-          *)
-
 let get_config_tls_public_pem =
   "get tls public pem file succeeds" @? fun () ->
   let headers = admin_headers in
@@ -1319,27 +1313,29 @@ let put_config_tls_cert_pem =
       | _ -> false)
   | _ -> false
 
+(* openssl req -x509 -new -nodes -key myCA.key -sha256 -days 1825 -out myCA.pem
+   -addext keyUsage=critical,keyCertSign *)
 let test_ca =
   {|-----BEGIN CERTIFICATE-----
-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
+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
 -----END CERTIFICATE-----
 |}
 
