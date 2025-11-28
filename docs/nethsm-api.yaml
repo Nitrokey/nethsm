@@ -2828,6 +2828,8 @@ components:
       properties:
         peer_urls:
           $ref: "#/components/schemas/PeerURLs"
+      required:
+        - peer_urls
     ClusterMemberList:
       example:
         - id: 8e9e05c52164694d
@@ -2851,6 +2853,10 @@ components:
           type: string
         peer_urls:
           $ref: "#/components/schemas/PeerURLs"
+      required:
+        - id
+        - name
+        - peer_urls
     PeerURL:
       pattern: ^http://.+:2380$
       minLength: 1
