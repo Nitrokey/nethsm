@@ -1220,8 +1220,8 @@ paths:
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
-        Declare a new peer to the cluster. The response of this call must
-        be passed to a call to '/cluster/join' on the peer to finalize the join.
+        Declare a new member to the cluster. The response of this call must
+        be passed to a call to '/cluster/join' on the new member to finalize the join.
 
         *WARNING*: adding a member will change the quorum needed for the cluster
         to operate. If the quorum is not met anymore (e.g. when adding a second node)
@@ -1252,7 +1252,7 @@ paths:
     put:
       responses:
         "204":
-          description: Peer successfully updated.
+          description: Member successfully updated.
         "400":
           description: |
             Bad request (specified properties are invalid).
@@ -1273,7 +1273,7 @@ paths:
       description: |
         Update the peer URLs of a cluster member (i.e. how others can reach it).
 
-        *WARNING*: misconfiguring this may lead to the peer not being reachable anymore. If this makes the cluster
+        *WARNING*: misconfiguring this may lead to the member not being reachable anymore. If this makes the cluster
         lose quorum, the cluster will cease to operate, in which case the NetHSM is lost and must be factory reset.
         Make sure to backup before this operation.
       requestBody:
@@ -1294,7 +1294,7 @@ paths:
     delete:
       responses:
         "204":
-          description: Peer successfully removed from cluster.
+          description: Member successfully removed from cluster.
         "400":
           description: Bad request.
           content:
@@ -1310,9 +1310,9 @@ paths:
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
-        Irreversibly remove a peer from the cluster.
+        Irreversibly remove a member from the cluster.
 
-        *WARNING*: this MUST be called before resetting or otherwise isolating a peer from the cluster. Not doing this
+        *WARNING*: this MUST be called before resetting or otherwise isolating a member from the cluster. Not doing this
         may lead the cluster to lose quorum and cease to operate.
         Make sure to backup before this operation.
       security:
@@ -2106,7 +2106,7 @@ paths:
           description: Precondition failed (NetHSM was not *Operational*).
         "415":
           description: Content type in Accept header not supported or not present.
-      description: Get currently set CA for cluster peer traffic.
+      description: Get currently set CA for cluster peer traffic (i.e. how cluster members communicate).
       security:
         - basic: []
       x-annotation-role:
@@ -2134,11 +2134,11 @@ paths:
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
-        Set cluster certificate authority used for etcd peer traffic.
+        Set cluster certificate authority used for etcd peer traffic (i.e. how cluster members communicate).
         It is not set by default. When set, it cannot be unset (but it can be updated).
 
         The NetHSM cert must be signed by this CA for this operation to succeed, it will be aborted otherwise.
-        *Note that this is checked for this node but not for all peers!*
+        *Note that this is checked for this node but not for all members!*
         If you need to change the CA, ensure all nodes of the cluster have their cert signed by both the new and the old CA,
         then change the CA. Afterwards, you can update the individual certs to be signed only by the new CA.
 
