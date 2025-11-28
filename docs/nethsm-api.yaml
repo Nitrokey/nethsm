@@ -2165,7 +2165,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NetworkConfig"
+                $ref: "#/components/schemas/NetworkConfigOutput"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -2210,7 +2210,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NetworkConfig"
+              $ref: "#/components/schemas/NetworkConfigInput"
         required: true
       security:
         - basic: []
@@ -3275,7 +3275,7 @@ components:
           $ref: "#/components/schemas/Switch"
       required:
         - status
-    NetworkConfig:
+    NetworkConfigInput:
       example:
         ipAddress: 192.168.1.1
         netmask: 255.255.255.0
@@ -3293,6 +3293,25 @@ components:
       required:
         - ipAddress
         - netmask
+    NetworkConfigOutput:
+      example:
+        ipAddress: 192.168.1.1
+        netmask: 255.255.255.0
+        gateway: 0.0.0.0
+      type: object
+      properties:
+        ipAddress:
+          type: string
+        netmask:
+          type: string
+        gateway:
+          type: string
+        ipv6:
+          $ref: "#/components/schemas/Ipv6Config"
+      required:
+        - ipAddress
+        - netmask
+        - gateway
     Ipv6Config:
       example:
         cidr: de:ad:be:ef::42/8
