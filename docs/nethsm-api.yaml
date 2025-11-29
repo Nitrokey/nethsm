@@ -2006,7 +2006,7 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: |
-            Either NetHSM was not *Operational*), or "cluster-ca.pem" is set and the
+            Either NetHSM was not *Operational*, or "cluster-ca.pem" is set and the
             provided certicicate is not signed by that CA.
       description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
       requestBody:

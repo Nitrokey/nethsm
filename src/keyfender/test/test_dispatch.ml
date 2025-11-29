@@ -41,7 +41,7 @@ let returns_empty' ~with_status = function
       | `Empty -> new_state
       | _ -> Alcotest.fail "did not return empty body"
       end
-  | _ -> Alcotest.fail "invalid response form"
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
 
 let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
 
@@ -53,7 +53,7 @@ let returns_string' ~with_status = function
       | `String s -> (new_state, s)
       | _ -> Alcotest.fail "did not return string"
       end
-  | _ -> Alcotest.fail "invalid response form"
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
 
 let returns_string ~with_status r =
   let _, body = returns_string' ~with_status r in
@@ -431,12 +431,16 @@ let system_update_version_downgrade =
       Hsm.state hsm_state = `Operational
   | _ -> false
 
-let operational_mock_with_mbox () =
+let operational_mock_with_mbox' f =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
     >>= fun (state, o, m) ->
       Lwt.async (fun () ->
-          let rec go () = Lwt_mvar.take o >>= fun _ -> go () in
+          let rec go () =
+            Lwt_mvar.take o >>= fun cb ->
+            f cb;
+            go ()
+          in
           go ());
       Lwt.async (fun () ->
           let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
@@ -451,6 +455,8 @@ let operational_mock_with_mbox () =
       Hsm.User.add state (user "backup") ~role:`Backup
         ~passphrase:"backupUserPassphrase" ~name:"backup"
       >|= fun _ -> state )
+
+let operational_mock_with_mbox () = operational_mock_with_mbox' (fun _ -> ())
 
 let multipart_log =
   {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
@@ -4350,6 +4356,67 @@ let cluster_member_ops_admin_only =
       request ~meth:`POST ~hsm_state:(operational_mock ()) "/cluster/members"
       |> returns_empty ~with_status:`Unauthorized)
 
+let cluster_join =
+  Alcotest.test_case "POST /cluster/join succeeds" `Quick (fun () ->
+      let headers = admin_headers in
+      (* create a self-signed CA and get the NetHSM CSR *)
+      let log_cb (cb : Hsm.cb) =
+        match cb with
+        | Join_cluster cfg -> Logs.info (fun f -> f "join-cluster (%s)" cfg)
+        | Set_local_config _ -> Logs.info (fun f -> f "set-local-config")
+        | Tls _ -> Logs.info (fun f -> f "tls")
+        | Reboot -> Logs.info (fun f -> f "reboot")
+        | _ -> Logs.info (fun f -> f "got another command")
+      in
+      let hsm_state, csr_pem =
+        admin_post_request
+          ~hsm_state:(operational_mock_with_mbox' log_cb)
+          ~body:(`String subject) "/config/tls/csr.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      (* sign the CSR with our CA *)
+      let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+      let ca_sub, ca_key, ca = gen_ca () in
+      let ca_pem = X509.Certificate.encode_pem ca in
+      let valid_from = Ptime.of_year 2025 |> Option.get in
+      let valid_until = Ptime.of_year 2030 |> Option.get in
+      let new_cert =
+        X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
+        |> Result.get_ok
+      in
+      let content_type = "application/x-pem-file" in
+      let new_cert_pem = X509.Certificate.encode_pem new_cert in
+      (* replace the NetHSM with that newly signed cert *)
+      let hsm_state =
+        request ~expect:(info "tls") ~hsm_state ~meth:`PUT ~headers
+          ~content_type ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      (* now set the NetHSM CA *)
+      let expect =
+        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
+      in
+      let hsm_state =
+        request ~expect ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      let join_req =
+        {|[{"name": "node1", "urls": ["http://192.168.1.1:2380"]},
+           {"name": "node2", "urls": ["http://192.168.1.2:2380", "http://[::1]:2380"]}]|}
+      in
+      let expect =
+        info
+          "join-cluster \
+           (node1=http://192.168.1.1:2380,node2=http://192.168.1.2:2380,node2=http://[::1]:2380)"
+        ^ warning "joining cluster OK! rebooting now!"
+        ^ info "reboot"
+      in
+      (* finally, join *)
+      admin_post_request ~expect ~hsm_state ~body:(`String join_req)
+        "/cluster/join"
+      |> returns_empty ~with_status:`No_content)
+
 let rate_limit_for_unlock =
   let path = "/unlock" in
   "rate limit for unlock" @? fun () ->
@@ -5189,6 +5256,7 @@ let () =
         ] );
       ( "/cluster/members",
         [ cluster_member_ops_not_etcd; cluster_member_ops_admin_only ] );
+      ("/cluster/join", [ cluster_join ]);
       ( "rate limit",
         [
           rate_limit_for_get;

@@ -2316,7 +2316,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           Lwt_mvar.put t.mbox (Set_local_config local_config) >>= fun () ->
           Lwt_mvar.take t.res_mbox >>= function
-          | Ok () -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+          | Ok () -> Lwt_result.return ()
           | Error msg ->
               Log.warn (fun m -> m "setting local config failed: %s" msg);
               Lwt.return
@@ -2581,14 +2581,20 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (Precondition_failed, "cluster-ca.pem must be set"))
       | Some _cluster_ca -> (
           (* TODO sanity check join_req in Json *)
-          (* TODO figure out the syntax etcd expects for multiple URIs per peer *)
-          let print_peer fmt (p : Json.join_req_member) =
-            Fmt.pf fmt "%s=%s" p.name (List.hd p.urls)
+          (* to pass multiple peer urls for the same node, etcd simply expects
+             to pass name=url multiple times *)
+          let peers =
+            List.map
+              (fun (p : Json.join_req_member) ->
+                List.map (fun url -> (`Name p.name, `Url url)) p.urls)
+              join_req
+            |> List.concat
+          in
+          let print_peer fmt (`Name name, `Url url) =
+            Fmt.pf fmt "%s=%s" name url
           in
           let initial_cluster =
-            Fmt.str "%a"
-              (Fmt.list ~sep:Fmt.(const string ",") print_peer)
-              join_req
+            Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
           in
           Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
           Lwt_mvar.take t.res_mbox >>= function
