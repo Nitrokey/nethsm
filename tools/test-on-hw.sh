@@ -12,20 +12,8 @@ echo "done."
 cd src/tests
 NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh
 #NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
+NETHSM_URL="https://${NETHSM_IP}/api" ./clustering_test.sh
 
 curl -s -k -X PUT -H "content-type: application/json" -d \
     '{"ipAddress":"0.0.0.0","port":0,"logLevel":"info"}' \
     https://admin:Administrator@${NETHSM_IP}/api/v1/config/logging
-
-echo "clustering tests"
-
-curl -s -k https://admin:Administrator@${NETHSM_IP}/api/v1/cluster/members
-
-curl --no-progress-meter -i -k https://admin:Administrator@${NETHSM_IP}/api/v1/health/state
-
-echo "openssl"
-openssl --version || true
-echo "etcdctl"
-etcdctl version || true
-echo "etcd"
-etcd --version || true

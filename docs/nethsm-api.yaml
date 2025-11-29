@@ -2829,7 +2829,7 @@ components:
     ClusterAddReq:
       example:
           urls:
-            - http://192.168.1.2:2380
+            - https://192.168.1.2:2380
       type: object
       properties:
         urls:
@@ -2841,7 +2841,7 @@ components:
         - id: 8e9e05c52164694d
           name: default
           urls:
-            - http://192.168.1.1:2380
+            - https://192.168.1.1:2380
       type: array
       items:
         $ref: "#/components/schemas/ClusterMember"
@@ -2850,7 +2850,7 @@ components:
         id: 8e9e05c52164694d
         name: default
         urls:
-          - http://192.168.1.1:2380
+          - https://192.168.1.1:2380
       type: object
       properties:
         id:
@@ -2864,13 +2864,13 @@ components:
         - name
         - urls
     PeerURL:
-      pattern: ^http://.+:2380$
+      pattern: ^https://.+:2380$
       minLength: 1
       maxLength: 1024
       type: string
     PeerURLs:
       example:
-        - http://192.168.1.1:2380
+        - https://192.168.1.1:2380
       type: array
       items:
         $ref: "#/components/schemas/PeerURL"

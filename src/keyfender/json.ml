@@ -236,7 +236,7 @@ let check_join_req (members : join_req) =
   let check_url s =
     let uri = Uri.of_string s in
     let* () =
-      guard (Uri.scheme uri = Some "http") "member URL must start with http://"
+      guard (Uri.scheme uri = Some "https") "member URL must start with https://"
     in
     let* () =
       guard (Uri.port uri = Some 2380) "member URL must have explicit port 2380"

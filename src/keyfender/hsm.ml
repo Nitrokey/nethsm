@@ -2614,6 +2614,12 @@ module Make (KV : Kv_ext.Platform) = struct
       let* () =
         Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
       in
+      (match t.state with
+      | Operational v ->
+          User_store.clear_cache v.auth_store;
+          Key_store.clear_cache v.key_store;
+          Namespace_store.clear_cache v.namespace_store
+      | _ -> assert false);
       let* () =
         Lwt_mvar.take t.res_mbox
         |> Lwt_result.map_error (fun msg ->

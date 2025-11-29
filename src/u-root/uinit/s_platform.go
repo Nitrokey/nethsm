@@ -224,24 +224,43 @@ func platformListener(result chan string) {
 
 		// SET-LOCAL-CONFIG
 		doSetLocalConfig := func() ([]byte, error, bool) {
-			log.Printf("[%s] Requested SET-LOCAL-CONFIG.", remoteAddr)
-			configJSON, err := io.ReadAll(r)
+			conn.SetDeadline(time.Now().Add(time.Second * 30))
+			param, err := r.ReadString('\n')
+			if err != nil {
+				return nil, err, false
+			}
+			param = strings.TrimSuffix(param, "\n")
+			paramU64, err := strconv.ParseUint(param, 10, 0)
+			if err != nil {
+				return nil, err, false
+			}
+			dataSize := int(paramU64)
+			log.Printf("[%s] Requested SET-LOCAL-CONFIG (%d bytes).", remoteAddr, dataSize)
+			lr.N = int64(dataSize * 2)
+			configJSON := make([]byte, dataSize)
+			_, err = io.ReadFull(r, configJSON)
 			if err != nil {
 				return errorResponse(err), err, false
 			}
 			var config localConf
 			err = json.Unmarshal(configJSON, &config)
 			if err != nil {
+				err := fmt.Errorf("couldn't parse: '%s'", configJSON)
 				return errorResponse(err), err, false
 			}
+			log.Printf("data OK, setting it!")
 			err = setLocalConfig(&config)
 			if err != nil {
 				return errorResponse(err), err, false
 			}
+			log.Printf("restarting etcd now")
 			G.killEtcd()
 			time.Sleep(1 * time.Second)
 			err = startEtcd(EtcdNormal)
-			return okResponse(""), err, false
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			return okResponse(""), nil, false
 		}
 
 		var response []byte = nil
@@ -356,7 +375,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			" --snapshot-count=5000" +
 			" --auto-compaction-retention=1h" +
 			" --quota-backend-bytes=5694816256" + // should not be more than RAM
-			" --listen-peer-urls=http://169.254.169.2:2380" +
 			// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
 			// --initial-cluster <- just ourself, expanded at runtime
 			" --v2-deprecation=gone" +
@@ -404,6 +422,9 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		cmd += " --peer-trusted-ca-file=" + fn
 		cmd += " --peer-client-cert-auth=true"
 		cmd += " --name=" + conf.DeviceID
+		cmd += " --listen-peer-urls=https://169.254.169.2:2380"
+	} else {
+		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
 	}
 
 	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)

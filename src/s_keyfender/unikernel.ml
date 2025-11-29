@@ -401,11 +401,11 @@ struct
               Lwt.return_unit
           | Some member -> (
               let wanted_peer_url_4 =
-                Fmt.str "http://%a:2380" Ipaddr.V4.pp
+                Fmt.str "https://%a:2380" Ipaddr.V4.pp
                   (Ipaddr.V4.Prefix.address network.ipv4.cidr)
               in
               let wanted_peer_url_6 cidr =
-                Fmt.str "http://[%a]:2380" Ipaddr.V6.pp
+                Fmt.str "https://[%a]:2380" Ipaddr.V6.pp
                   (Ipaddr.V6.Prefix.address cidr)
               in
               let wanted_peer_urls =
@@ -457,16 +457,24 @@ struct
       | Hsm.Set_local_config conf as cmd ->
           let write () =
             let additional_data write =
-              Keyfender.Json.local_conf_to_yojson conf
-              |> Yojson.Safe.to_string |> write
+              let ( let* ) = Lwt_result.bind in
+              let data =
+                Keyfender.Json.local_conf_to_yojson conf
+                |> Yojson.Safe.to_string
+              in
+              let* () = write (string_of_int (String.length data) ^ "\n") in
+              write data
             in
-            write_platform ~additional_data internal_stack
-              (Hsm.cb_to_string cmd)
-            >|= function
-            | Ok _ -> ()
-            | Error e ->
-                Logs.err (fun m ->
-                    m "error %a communicating with platform" pp_platform_err e)
+            Lwt_mutex.with_lock KV_store.Etcd.connection_create_mtx (fun () ->
+                (* block etcd requests while reconfig is going on *)
+                KV_store.Etcd.shutdown_persistent_connection ();
+                write_platform ~additional_data internal_stack
+                  (Hsm.cb_to_string cmd)
+                >>= function
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Error e ->
+                    Lwt_mvar.put res_mvar
+                      (Error (Fmt.to_to_string pp_platform_err e)))
           in
           write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
