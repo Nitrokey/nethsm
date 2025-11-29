@@ -1530,7 +1530,9 @@ let put_config_tls_cluster_ca_pem =
       let headers = admin_headers in
       (* get the old cert, for last test *)
       let hsm_state, old_cert_pem =
-        request ~headers ~hsm_state:(operational_mock ()) "/config/tls/cert.pem"
+        request ~headers
+          ~hsm_state:(operational_mock_with_mbox ())
+          "/config/tls/cert.pem"
         |> returns_string' ~with_status:`OK
       in
       (* create a self-signed CA and get the NetHSM CSR *)
@@ -1558,11 +1560,8 @@ let put_config_tls_cluster_ca_pem =
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)
-      let expect =
-        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
-      in
       let hsm_state =
-        request ~expect ~hsm_state ~meth:`PUT ~headers ~content_type
+        request ~hsm_state ~meth:`PUT ~headers ~content_type
           ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
         |> returns_empty' ~with_status:`Created
       in
@@ -4393,12 +4392,9 @@ let cluster_join =
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)
-      let expect =
-        info "not running on real hardware, skipping SET-LOCAL-CONFIG"
-      in
       let hsm_state =
-        request ~expect ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+        request ~expect:(info "set-local-config") ~hsm_state ~meth:`PUT ~headers
+          ~content_type ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
         |> returns_empty' ~with_status:`Created
       in
       let join_req =

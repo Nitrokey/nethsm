@@ -2303,10 +2303,6 @@ module Make (KV : Kv_ext.Platform) = struct
       | None ->
           (* do not set the local conf if no cluster CA set *)
           Lwt.return (Ok ())
-      | Some _ when t.system_info.hardwareVersion = "N/A" ->
-          Log.info (fun m ->
-              m "not running on real hardware, skipping SET-LOCAL-CONFIG");
-          Lwt.return (Ok ())
       | Some tls_cluster_ca -> (
           let device_id = t.system_info.deviceId in
           tls_cert_pem t >>= fun tls_cert ->
