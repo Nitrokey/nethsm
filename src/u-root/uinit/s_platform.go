@@ -392,6 +392,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	conf, _ := localConfig.Get()
 	if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
+		G.s.Logf("Using local cache to start etcd with TLS")
 		fn := "/tmp/ectd_tls_cert.pem"
 		os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
 		cmd += " --peer-cert-file=" + fn

@@ -205,6 +205,59 @@ module Make (KV : Kv_ext.RW) = struct
   let digest t key = KV.digest t.kv (key_path t.device_id key)
   let connect kv device_id = { kv; device_id }
 
+  type local_backup = {
+    unlock_salt : string option;
+    certificate : (X509.Certificate.t * X509.Certificate.t list) option;
+    private_key : X509.Private_key.t option;
+    ip_config : Json.network option;
+    backup_salt : string option;
+    backup_key : string option;
+    log_config : Json.log option;
+    time_offset : Ptime.span option;
+    unattended_boot : bool option;
+  }
+
+  let backup_local_config t =
+    let ( let* ) = Lwt_result.bind in
+    let* unlock_salt = get_opt t Unlock_salt in
+    let* certificate = get_opt t Certificate in
+    let* private_key = get_opt t Private_key in
+    let* ip_config = get_opt t Ip_config in
+    let* backup_salt = get_opt t Backup_salt in
+    let* backup_key = get_opt t Backup_key in
+    let* log_config = get_opt t Log_config in
+    let* time_offset = get_opt t Time_offset in
+    let* unattended_boot = get_opt t Unattended_boot in
+    Lwt_result.return
+      {
+        unlock_salt;
+        certificate;
+        private_key;
+        ip_config;
+        backup_salt;
+        backup_key;
+        log_config;
+        time_offset;
+        unattended_boot;
+      }
+
+  let restore_local_config t (b : local_backup) =
+    let ( let* ) = Lwt_result.bind in
+    let set_opt k = function
+      | None -> Lwt_result.return ()
+      | Some v -> set t k v
+    in
+    let* () = set_opt Unlock_salt b.unlock_salt in
+    let* () = set_opt Certificate b.certificate in
+    let* () = set_opt Private_key b.private_key in
+    let* () = set_opt Ip_config b.ip_config in
+    let* () = set_opt Backup_salt b.backup_salt in
+    let* () = set_opt Backup_key b.backup_key in
+    let* () = set_opt Log_config b.log_config in
+    let* () = set_opt Time_offset b.time_offset in
+    let* () = set_opt Unattended_boot b.unattended_boot in
+    Lwt_result.return ()
+
   let migrate_v0_v1 t =
     let old = { t with device_id = "" } in
     let just_move (type a) (k : a k) =

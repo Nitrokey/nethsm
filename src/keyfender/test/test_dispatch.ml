@@ -4402,9 +4402,11 @@ let cluster_join =
         |> returns_empty' ~with_status:`Created
       in
       let expect =
-        info
-          "join-cluster \
-           (node1=http://192.168.1.1:2380,node2=http://192.168.1.2:2380,node2=http://[::1]:2380)"
+        info "set-local-config"
+        ^ warning "now erasing all data and joining cluster!"
+        ^ info
+            "join-cluster \
+             (node1=http://192.168.1.1:2380,node2=http://192.168.1.2:2380,node2=http://[::1]:2380)"
         ^ warning "joining cluster OK! rebooting now!"
         ^ info "reboot"
       in

@@ -2571,36 +2571,81 @@ module Make (KV : Kv_ext.Platform) = struct
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
     let join_cluster t join_req =
-      let open Lwt.Infix in
-      Config.tls_cluster_ca t >>= function
-      | None ->
-          Lwt.return (Error (Precondition_failed, "cluster-ca.pem must be set"))
-      | Some _cluster_ca -> (
-          (* to pass multiple peer urls for the same node, etcd simply expects
-             to pass name=url multiple times *)
-          let peers =
-            List.map
-              (fun (p : Json.join_req_member) ->
-                List.map (fun url -> (`Name p.name, `Url url)) p.urls)
-              join_req
-            |> List.concat
-          in
-          let print_peer fmt (`Name name, `Url url) =
-            Fmt.pf fmt "%s=%s" name url
-          in
-          let initial_cluster =
-            Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
-          in
-          Lwt_mvar.put t.mbox (Join_cluster initial_cluster) >>= fun () ->
-          Lwt_mvar.take t.res_mbox >>= function
-          | Ok () ->
-              (* TODO take care of any device-specific config or domain key transfer here *)
-              Log.warn (fun m -> m "joining cluster OK! rebooting now!");
-              Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
-          | Error msg ->
-              Log.warn (fun m -> m "joining cluster failed: %s" msg);
-              Lwt.return (Error (Bad_request, "joining cluster failed: " ^ msg))
-          )
+      let ( let* ) = Lwt_result.bind in
+      let wrap_config_res ~pp_error ~err r =
+        lwt_error_to_msg ~pp_error r
+        |> Lwt_result.map_error (fun (`Msg msg) ->
+            let msg = Fmt.str "%s: %s" err msg in
+            (Internal_server_error, msg))
+      in
+      (* refuse to join if CA is not set *)
+      let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
+      let* () =
+        match cluster_ca with
+        | None ->
+            Lwt.return
+              (Error (Precondition_failed, "cluster-ca.pem must be set"))
+        | Some _cluster_ca -> Lwt_result.return ()
+      in
+      (* ensure local cache is up to date *)
+      let* () = Config.set_local_config t in
+      (* backup local config to restore after join *)
+      let* config_backup =
+        wrap_config_res ~pp_error:Config_store.pp_error
+          ~err:"could not back up config store"
+          (Config_store.backup_local_config t.config_store)
+      in
+      (* to pass multiple peer urls for the same node, etcd simply expects
+         to pass name=url multiple times *)
+      let peers =
+        List.map
+          (fun (p : Json.join_req_member) ->
+            List.map (fun url -> (`Name p.name, `Url url)) p.urls)
+          join_req
+        |> List.concat
+      in
+      let print_peer fmt (`Name name, `Url url) = Fmt.pf fmt "%s=%s" name url in
+      let initial_cluster =
+        Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
+      in
+      (* make the jump ! this will erase all local etcd data and restart
+         etcd in join mode *)
+      Log.warn (fun m -> m "now erasing all data and joining cluster!");
+      let* () =
+        Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
+      in
+      let* () =
+        Lwt_mvar.take t.res_mbox
+        |> Lwt_result.map_error (fun msg ->
+            Log.err (fun m -> m "joining cluster failed: %s" msg);
+            (Bad_request, "joining cluster failed: " ^ msg))
+      in
+      (* Give time for etcd to restart, keyfender to reconnect,
+         and etcd to start receiving data from the peers *)
+      let* () = Mirage_sleep.ns (Duration.of_sec 10) |> Lwt_result.ok in
+      let* version =
+        wrap_config_res ~pp_error:Config_store.pp_error
+          ~err:"could not fetch version after join"
+          (Config_store.get t.config_store Version)
+      in
+      let* () =
+        if version = Version.V1 then Lwt_result.return ()
+        else
+          Lwt.return
+            (Error
+               ( Internal_server_error,
+                 "joined cluster is not V1, refusing to continue" ))
+      in
+      (* restore local config backup in our directory *)
+      let* () =
+        wrap_config_res ~pp_error:Config_store.pp_error
+          ~err:"could not restore local config after join"
+          (Config_store.restore_local_config t.config_store config_backup
+          |> Lwt_result.map_error (fun e -> `Kv_write e))
+      in
+      (* TODO take care of any device-specific config or domain key transfer here *)
+      Log.warn (fun m -> m "joining cluster OK! rebooting now!");
+      Lwt_mvar.put t.mbox Reboot |> Lwt_result.ok
 
     type stream_buffer = {
       stream : string Lwt_stream.t;
