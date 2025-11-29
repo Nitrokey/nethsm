@@ -89,7 +89,7 @@ struct
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
         in
-        Json.join_req_of_yojson json |> Endpoint.err_to_bad_request ok rd
+        Json.decode_join_req json |> Endpoint.err_to_bad_request ok rd
     end
 
   class handler_member hsm_state ip =

@@ -2576,7 +2576,6 @@ module Make (KV : Kv_ext.Platform) = struct
       | None ->
           Lwt.return (Error (Precondition_failed, "cluster-ca.pem must be set"))
       | Some _cluster_ca -> (
-          (* TODO sanity check join_req in Json *)
           (* to pass multiple peer urls for the same node, etcd simply expects
              to pass name=url multiple times *)
           let peers =

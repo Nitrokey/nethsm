@@ -223,6 +223,43 @@ let encode_network (net : network) =
 type join_req_member = { name : string; urls : string list } [@@deriving yojson]
 type join_req = join_req_member list [@@deriving yojson]
 
+let check_join_req (members : join_req) =
+  let names = List.map (fun m -> m.name) members in
+  let uniq_names = List.sort_uniq String.compare names in
+  let ( let* ) = Result.bind in
+  let* () =
+    guard
+      (List.length names = List.length uniq_names)
+      "duplicate names for members"
+  in
+  let all_urls = List.map (fun m -> m.urls) members |> List.concat in
+  let check_url s =
+    let uri = Uri.of_string s in
+    let* () =
+      guard (Uri.scheme uri = Some "http") "member URL must start with http://"
+    in
+    let* () =
+      guard (Uri.port uri = Some 2380) "member URL must have explicit port 2380"
+    in
+    Ok (Uri.canonicalize uri)
+  in
+  let rec fold_err acc = function
+    | [] -> Ok acc
+    | Ok uri :: tl -> fold_err (uri :: acc) tl
+    | Error e :: _ -> Error e
+  in
+  let* uris = fold_err [] (List.map check_url all_urls) in
+  let uniq_uris = List.sort_uniq Uri.compare uris in
+  let* () =
+    guard (List.length uris = List.length uniq_uris) "duplicate member URLs"
+  in
+  Ok members
+
+let decode_join_req json =
+  let ( let* ) = Result.bind in
+  let* req = join_req_of_yojson json in
+  check_join_req req
+
 let is_unattended_boot_to_yojson r =
   `Assoc [ ("status", `String (if r then "on" else "off")) ]
 
