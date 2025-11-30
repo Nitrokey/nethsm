@@ -48,10 +48,49 @@ echo "- cluster state: $CLUSTER"
 
 body=$(POST_admin /v1/cluster/join <<EOM
 [{"name": "", "urls": ["https://192.168.1.1:2380"]},
-{"name": "node2", "urls": ["https://192.168.1.2:2380"]}]
+{"name": "witness", "urls": ["https://192.168.1.100:2380"]}]
 EOM
 ) || true
 echo "$body"
+
+CLUSTER=$(GET_admin /v1/cluster/members)
+echo "- cluster state: $CLUSTER"
+
+echo "launch new witness etcd"
+
+CLUSTER="witness=https://192.168.1.100:2380"
+
+rm -rf witness.etcd
+etcd_name="etcd-v3.6.5-linux-arm64"
+tar xvf "$etcd_name.tar.gz"
+
+make -f cert.make own.pem
+
+"$etcd_name/etcd" \
+    --log-format console \
+    --log-level warn \
+    --initial-cluster "$CLUSTER" \
+    --peer-client-cert-auth=true \
+    --peer-trusted-ca-file=CA.pem \
+    --peer-cert-file=own.pem \
+    --peer-key-file=own.key \
+    --data-dir=witness.etcd --name witness \
+    --initial-advertise-peer-urls https://192.168.1.100:2380 --listen-peer-urls https://0.0.0.0:2380 \
+    --advertise-client-urls "" --listen-client-urls http://0.0.0.0:2379 &
+
+sleep 5
+
+body=$(POST_admin /v1/cluster/join <<EOM
+[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+{"name": "witness", "urls": ["https://192.168.1.100:2380"]}]
+EOM
+) || true
+echo "$body"
+
+sleep 20
+
+STATE=$(GET /v1/health/state)
+echo "- state: $STATE" # should be Operational
 
 # try a request to see if the restarted etcd is healthy
 

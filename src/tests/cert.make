@@ -8,6 +8,17 @@ new_cert.pem: nethsm.csr CA.pem
 	openssl x509 -req -days 1825 -in nethsm.csr -CA CA.pem  \
 		-CAkey CA.key -out new_cert.pem -set_serial 01 -sha256
 
+own.key:
+	openssl genrsa -out own.key 2048
+
+own.pem: own.key CA.pem
+	rm -rf own.csr
+	openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" -out own.csr
+	openssl x509 -req -days 1825 -in own.csr -CA CA.pem  \
+		-CAkey CA.key -out own.pem -set_serial 01 -sha256
+
 .PHONY: clean
 clean:
-	rm -rf CA.key CA.pem new_cert.pem nethsm.csr
+	rm -rf CA.key CA.pem new_cert.pem nethsm.csr own.key own.pem
+
+# vi: ft=make
