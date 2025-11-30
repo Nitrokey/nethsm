@@ -41,7 +41,7 @@ CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
 
 POST_admin /v1/cluster/join <<EOM
-[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+[{"name": "", "urls": ["https://192.168.1.1:2380"]},
 {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]
 EOM
 

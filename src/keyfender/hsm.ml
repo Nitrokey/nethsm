@@ -2572,6 +2572,15 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let join_cluster t join_req =
       let ( let* ) = Lwt_result.bind in
+      (* set our name to our device ID, since that's what the platform will use *)
+      let join_req =
+        List.map
+          (fun (m : Json.join_req_member) ->
+            if m.name = "" then { m with name = t.system_info.deviceId } else m)
+          join_req
+      in
+      (* TODO check if our own peer URLs match with how the network is
+         configured *)
       let wrap_config_res ~pp_error ~err r =
         lwt_error_to_msg ~pp_error r
         |> Lwt_result.map_error (fun (`Msg msg) ->

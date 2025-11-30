@@ -224,14 +224,25 @@ type join_req_member = { name : string; urls : string list } [@@deriving yojson]
 type join_req = join_req_member list [@@deriving yojson]
 
 let check_join_req (members : join_req) =
+  let ( let* ) = Result.bind in
+  let* () =
+    guard
+      (List.length members >= 2)
+      "the join request must have at least members (ourself and an existing \
+       member)"
+  in
   let names = List.map (fun m -> m.name) members in
   let uniq_names = List.sort_uniq String.compare names in
-  let ( let* ) = Result.bind in
   let* () =
     guard
       (List.length names = List.length uniq_names)
       "duplicate names for members"
   in
+  let* () =
+    guard (List.mem "" names)
+      "exactly one member (the new joiner) is expected to have an empty name"
+  in
+  (* the empty name will be replaced by our device-ID down the line *)
   let all_urls = List.map (fun m -> m.urls) members |> List.concat in
   let check_url s =
     let uri = Uri.of_string s in
