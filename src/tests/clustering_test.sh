@@ -11,6 +11,12 @@ echo "- cluster state: $CLUSTER"
 echo -n "- openssl version: "
 openssl version || true
 
+echo "network configuration: "
+ip a
+
+echo "arch: "
+uname -a
+
 echo "- get cert csr"
 
 csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
@@ -40,10 +46,12 @@ echo
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
 
-POST_admin /v1/cluster/join <<EOM
+body=$(POST_admin /v1/cluster/join <<EOM
 [{"name": "", "urls": ["https://192.168.1.1:2380"]},
-{"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]
+{"name": "node2", "urls": ["https://192.168.1.2:2380"]}]
 EOM
+) || true
+echo "$body"
 
 # try a request to see if the restarted etcd is healthy
 

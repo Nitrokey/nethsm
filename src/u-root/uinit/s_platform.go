@@ -406,17 +406,16 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	if mode == EtcdClusterJoin {
 		// !! remove all previous etcd data before joining a new cluster
-		G.s.Logf("Erasing previous etcd data!")
-		err := os.RemoveAll("/data/etcd")
-		if err != nil {
+		// !! will get restored if etcd fails to start, but definitely deleted
+		// !! otherwise
+		G.s.Logf("Moving previous etcd data!")
+		if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
 			return err
 		}
-		err = os.Mkdir("/data/etcd", 0700)
-		if err != nil {
+		if err := os.Mkdir("/data/etcd", 0700); err != nil {
 			return err
 		}
-		err = os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID)
-		if err != nil {
+		if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
 			return err
 		}
 	}
@@ -435,8 +434,10 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		cmd += " --peer-trusted-ca-file=" + fn
 		cmd += " --peer-client-cert-auth=true"
 		cmd += " --name=" + conf.DeviceID
+		//cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
 		cmd += " --listen-peer-urls=https://169.254.169.2:2380"
 	} else {
+		//cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
 		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
 	}
 
@@ -478,9 +479,28 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	select {
 	case <-G.etcdStoppedCh:
 		log.Printf("etcd exited immediately: %s", lastEtcdError)
-		return fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
+		var origErr = fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
+		if mode == EtcdClusterJoin {
+			log.Printf("restoring data before join and restarting etcd!")
+			if err := os.RemoveAll("/data/etcd"); err != nil {
+				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
+			}
+			if err := os.Rename("/data/etcd.backup", "/data/etcd"); err != nil {
+				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
+			}
+			if err := startEtcd(EtcdNormal); err != nil {
+				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
+			}
+		}
+		return origErr
 	case <-aliveCh:
 		log.Printf("etcd is now serving requests!")
+		if mode == EtcdClusterJoin {
+			log.Printf("join succeeded: removing backed up data")
+			if err := os.RemoveAll("/data/etcd.backup"); err != nil {
+				return err
+			}
+		}
 		return G.s.Err()
 	case <-timeoutCh:
 		log.Printf("etcd took too long to start: %s", lastEtcdError)
@@ -512,6 +532,7 @@ func sPlatformActions() {
 	loadUnikernelNets()
 
 	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
+	//G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
 	G.s.Execf("/bbin/ip link set dev net0 up")
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)

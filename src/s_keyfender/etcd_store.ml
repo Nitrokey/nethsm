@@ -769,6 +769,7 @@ struct
 
   let listen x y target =
     X.listen x ~port:etcd_peer_port (fun flow ->
+        Log.err (fun f -> f "relay starting...");
         let target =
           match target with Some target -> target | None -> X.src flow |> fst
         in
