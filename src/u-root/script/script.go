@@ -22,6 +22,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -86,30 +87,41 @@ func (s *Script) Execf(format string, a ...interface{}) {
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running.
-func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...interface{}) context.CancelFunc {
+func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...interface{}) (context.CancelFunc, io.ReadCloser) {
 	if s.err != nil {
-		return nil
+		return nil, nil
 	}
 
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
 	if len(cmdSplit) == 0 {
 		s.err = fmt.Errorf("Empty command string")
-		return nil
+		return nil, nil
 	}
 
 	context, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(context, cmdSplit[0], cmdSplit[1:]...)
 	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	// Does go have an option type? Could use that instead of -1.
 	if uidgid != -1 {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
 	}
+	var logPipe io.ReadCloser
+	if exitCh != nil {
+		var err error
+		logPipe, err = cmd.StderrPipe()
+		if err != nil {
+			s.err = fmt.Errorf("Cannot acquire stdout pipe: %v", err)
+			return cancel, nil
+		}
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 	if err := cmd.Start(); err != nil {
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
+		return cancel, nil
 	}
 	go func(child *exec.Cmd) {
 		err := child.Wait()
@@ -126,11 +138,11 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 			close(exitCh)
 		}
 	}(cmd)
-	return cancel
+	return cancel, logPipe
 }
 
 func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
-	_ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
+	_, _ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
 }
 
 func (s *Script) BackgroundExecf(format string, a ...interface{}) {

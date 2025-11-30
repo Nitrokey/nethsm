@@ -191,7 +191,7 @@ func platformListener(result chan string) {
 
 		// JOIN-CLUSTER
 		doJoinCluster := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 30))
+			conn.SetDeadline(time.Now().Add(time.Second * 50))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -230,7 +230,7 @@ func platformListener(result chan string) {
 
 		// SET-LOCAL-CONFIG
 		doSetLocalConfig := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 30))
+			conn.SetDeadline(time.Now().Add(time.Second * 50))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -394,7 +394,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			log.Printf("Missing initial cluster state when starting etcd in join mode! Falling back to normal")
 			mode = EtcdNormal
 		} else {
-			cmd += " --initial-cluster='" + joinArgs[0].initialCluster + "'"
+			cmd += " --initial-cluster=" + strings.TrimSpace(joinArgs[0].initialCluster)
 		}
 	}
 
@@ -434,27 +434,45 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	G.etcdStoppedCh = make(chan bool)
 	aliveCh := make(chan struct{})
+	timeoutCh := make(chan struct{})
 
-	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
+	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
+
+	if err := G.s.Err(); err != nil {
+		return fmt.Errorf("couldn't exec etcd: %e", err)
+	}
+
+	G.killEtcd = cancel
 
 	go func() {
-		// TODO probe for liveness isntead of just waiting
-		if _, err := os.Stat("/bin/etcdctl"); err == nil {
-			log.Printf("etcdl exists!!")
-			G.s.Execf("/bin/etcdctl version")
-			G.s.ClearErr()
-		} else {
-			log.Printf("etcdl does not exist :/")
+		logs := bufio.NewReader(logPipe)
+		for {
+			line, err := logs.ReadString('\n')
+			if err != nil {
+				return
+			}
+			log.Printf("etcd: %s", line)
+			if strings.Contains(line, "ready to serve client requests") {
+				close(aliveCh)
+				return
+			}
 		}
-		time.Sleep(10 * time.Second)
-		close(aliveCh)
+	}()
+	go func() {
+		// timeout for etcd starting up
+		time.Sleep(30 * time.Second)
+		close(timeoutCh)
 	}()
 	select {
 	case <-G.etcdStoppedCh:
-		log.Printf("etcd failed to start")
+		log.Printf("etcd exited immediately")
 		return fmt.Errorf("etcd exited immediately")
 	case <-aliveCh:
+		log.Printf("etcd is now serving requests")
 		return G.s.Err()
+	case <-timeoutCh:
+		log.Printf("etcd took too long to start")
+		return fmt.Errorf("etcd took too long to start")
 	}
 }
 
