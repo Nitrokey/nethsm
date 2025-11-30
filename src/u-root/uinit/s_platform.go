@@ -191,6 +191,7 @@ func platformListener(result chan string) {
 
 		// JOIN-CLUSTER
 		doJoinCluster := func() ([]byte, error, bool) {
+			conn.SetDeadline(time.Now().Add(time.Second * 30))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -198,10 +199,9 @@ func platformListener(result chan string) {
 			initialCluster := strings.TrimSuffix(param, "\n")
 			args := JoinArgs{initialCluster}
 			log.Printf("[%s] Requested JOIN-CLUSTER (%s).", remoteAddr, initialCluster)
-			conn.SetDeadline(time.Now().Add(time.Second * 30))
-			// kill previously running etcd and wait 5 seconds
+			// kill previously running etcd and wait until it exits
 			G.killEtcd()
-			time.Sleep(1 * time.Second)
+			<-G.etcdStoppedCh
 			err = startEtcd(EtcdClusterJoin, args)
 			if err != nil {
 				return errorResponse(err), err, false
@@ -230,7 +230,7 @@ func platformListener(result chan string) {
 
 		// SET-LOCAL-CONFIG
 		doSetLocalConfig := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 10))
+			conn.SetDeadline(time.Now().Add(time.Second * 30))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -258,8 +258,9 @@ func platformListener(result chan string) {
 			if err != nil {
 				return errorResponse(err), err, false
 			}
+			// kill previously running etcd and wait until it exits
 			G.killEtcd()
-			time.Sleep(1 * time.Second)
+			<-G.etcdStoppedCh
 			err = startEtcd(EtcdNormal)
 			if err != nil {
 				return errorResponse(err), err, false
@@ -431,11 +432,30 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
 	}
 
-	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdUIDGID, "%s", cmd)
+	G.etcdStoppedCh = make(chan bool)
+	aliveCh := make(chan struct{})
 
-	// TODO probe etcd for liveness, report any error, maybe fallback to normal mode
+	G.killEtcd = G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
 
-	return G.s.Err()
+	go func() {
+		// TODO probe for liveness isntead of just waiting
+		if _, err := os.Stat("/bin/etcdctl"); err == nil {
+			log.Printf("etcdl exists!!")
+			G.s.Execf("/bin/etcdctl version")
+			G.s.ClearErr()
+		} else {
+			log.Printf("etcdl does not exist :/")
+		}
+		time.Sleep(10 * time.Second)
+		close(aliveCh)
+	}()
+	select {
+	case <-G.etcdStoppedCh:
+		log.Printf("etcd failed to start")
+		return fmt.Errorf("etcd exited immediately")
+	case <-aliveCh:
+		return G.s.Err()
+	}
 }
 
 // sPlatformActions are executed for S-Platform.

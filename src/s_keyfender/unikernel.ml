@@ -441,7 +441,7 @@ struct
           write_to_platform cmd
       | Hsm.Join_cluster initial_cluster as cmd ->
           let write () =
-            let additional_data write = write initial_cluster in
+            let additional_data write = write (initial_cluster ^ "\n") in
             Lwt_mutex.with_lock KV_store.Etcd.connection_create_mtx (fun () ->
                 (* block etcd requests while reconfig is going on *)
                 KV_store.Etcd.shutdown_persistent_connection ();

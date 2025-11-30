@@ -13,11 +13,11 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"log"
 	"os"
 	"syscall"
-	"context"
 
 	"nethsm/hw"
 	"nethsm/script"
@@ -44,8 +44,9 @@ type globalState struct {
 	listenerPort         string
 	keyfenderIP          string
 	entropyPort          string
-	deviceID			 string
-	killEtcd			 context.CancelFunc
+	deviceID             string
+	killEtcd             context.CancelFunc
+	etcdStoppedCh        chan bool
 }
 
 // G is the actual singleton instance of globalState used throughout. This
@@ -63,8 +64,9 @@ var G = &globalState{
 	listenerPort:         ":1023",
 	keyfenderIP:          "169.254.169.1",
 	entropyPort:          "4444",
-	deviceID:			  "",
-	killEtcd:			  nil,
+	deviceID:             "",
+	killEtcd:             nil,
+	etcdStoppedCh:        nil,
 }
 
 func main() {

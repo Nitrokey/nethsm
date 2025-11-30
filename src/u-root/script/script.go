@@ -86,7 +86,7 @@ func (s *Script) Execf(format string, a ...interface{}) {
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running.
-func (s *Script) CancelableBackgroundExecAsf(uidgid int, format string, a ...interface{}) context.CancelFunc {
+func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...interface{}) context.CancelFunc {
 	if s.err != nil {
 		return nil
 	}
@@ -113,17 +113,24 @@ func (s *Script) CancelableBackgroundExecAsf(uidgid int, format string, a ...int
 	}
 	go func(child *exec.Cmd) {
 		err := child.Wait()
+		var success bool
 		if err != nil {
 			log.Printf("Background process '%s' exited with status: %v", cmdSplit[0], err)
+			success = false
 		} else {
 			log.Printf("Background process '%s' exited", cmdSplit[0])
+			success = true
+		}
+		if exitCh != nil {
+			exitCh <- success
+			close(exitCh)
 		}
 	}(cmd)
 	return cancel
 }
 
 func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
-	_ = s.CancelableBackgroundExecAsf(-1, format, a...)
+	_ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
 }
 
 func (s *Script) BackgroundExecf(format string, a ...interface{}) {
