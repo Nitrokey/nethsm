@@ -411,6 +411,14 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		if err != nil {
 			return err
 		}
+		err = os.Mkdir("/data/etcd", 0700)
+		if err != nil {
+			return err
+		}
+		err = os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID)
+		if err != nil {
+			return err
+		}
 	}
 
 	conf, _ := localConfig.Get()
@@ -443,6 +451,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	G.killEtcd = cancel
+	var lastEtcdError = "unknown error"
 
 	go func() {
 		logs := bufio.NewReader(logPipe)
@@ -456,6 +465,9 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 				close(aliveCh)
 				return
 			}
+			if strings.Contains(line, "fatal") || strings.Contains(line, "error") {
+				lastEtcdError = line
+			}
 		}
 	}()
 	go func() {
@@ -465,14 +477,14 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}()
 	select {
 	case <-G.etcdStoppedCh:
-		log.Printf("etcd exited immediately")
-		return fmt.Errorf("etcd exited immediately")
+		log.Printf("etcd exited immediately: %s", lastEtcdError)
+		return fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
 	case <-aliveCh:
-		log.Printf("etcd is now serving requests")
+		log.Printf("etcd is now serving requests!")
 		return G.s.Err()
 	case <-timeoutCh:
-		log.Printf("etcd took too long to start")
-		return fmt.Errorf("etcd took too long to start")
+		log.Printf("etcd took too long to start: %s", lastEtcdError)
+		return fmt.Errorf("etcd took too long to start: %s", lastEtcdError)
 	}
 }
 
