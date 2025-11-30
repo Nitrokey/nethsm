@@ -453,8 +453,7 @@ struct
                     Lwt_mvar.put res_mvar
                       (Error (Fmt.to_to_string pp_platform_err e)))
           in
-          write () >>= fun () ->
-          (handle_cb [@tailcall]) http
+          write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Set_local_config conf as cmd ->
           let write () =
             let additional_data write =

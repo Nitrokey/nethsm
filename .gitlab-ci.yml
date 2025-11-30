@@ -408,7 +408,8 @@ test_muen_prodrive_hermes:
     - cat <$TTY >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
-    - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh
+    - exit_code=0
+    - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
       while true ; do
@@ -419,6 +420,7 @@ test_muen_prodrive_hermes:
         sleep 1
       done
       echo "done."
+    - if [ $exit_code -ne 0 ]; then exit 1; fi # but still report failure
     - if grep -a -v '^\[ERROR\]' $SERIALTXT | grep -a ' ERR\(OR:\)\? ' ; then exit 1 ; fi
   after_script:
     - >-
@@ -460,7 +462,7 @@ test_muen_msi_z790:
     - cat <$TTY >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
-    - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh
+    - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
       while true ; do
@@ -471,6 +473,7 @@ test_muen_msi_z790:
         sleep 1
       done
       echo "done."
+    - if [ $exit_code -ne 0 ]; then exit 1; fi # but still report failure
     - if grep -a -v '^\[ERROR\]' $SERIALTXT | grep -a ' ERR\(OR:\)\? ' ; then exit 1 ; fi
   after_script:
     - >-

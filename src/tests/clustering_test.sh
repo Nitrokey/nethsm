@@ -26,12 +26,12 @@ make -f cert.make new_cert.pem
 sleep 5 # clock drift
 
 echo -n "- installing new cert... "
-curl -s -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./new_cert.pem -k "${NETHSM_URL}/v1/config/tls/cert.pem"
 echo
 
 echo -n "- installing cluster CA... "
-curl -s -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"
 echo
 
@@ -49,6 +49,3 @@ EOM
 
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
-
-# avoid truncating logs
-sleep 20
