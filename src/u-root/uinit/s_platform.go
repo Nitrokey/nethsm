@@ -198,11 +198,17 @@ func platformListener(result chan string) {
 			initialCluster := strings.TrimSuffix(param, "\n")
 			args := JoinArgs{initialCluster}
 			log.Printf("[%s] Requested JOIN-CLUSTER (%s).", remoteAddr, initialCluster)
-			conn.SetDeadline(time.Now().Add(time.Second * 15))
+			conn.SetDeadline(time.Now().Add(time.Second * 30))
 			// kill previously running etcd and wait 5 seconds
 			G.killEtcd()
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 			err = startEtcd(EtcdClusterJoin, args)
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			// give some initial time for etcd to start learning from the
+			// cluster
+			time.Sleep(10 * time.Second)
 			return okResponse(""), err, false
 		}
 
@@ -224,7 +230,7 @@ func platformListener(result chan string) {
 
 		// SET-LOCAL-CONFIG
 		doSetLocalConfig := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 30))
+			conn.SetDeadline(time.Now().Add(time.Second * 10))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -248,12 +254,10 @@ func platformListener(result chan string) {
 				err := fmt.Errorf("couldn't parse: '%s'", configJSON)
 				return errorResponse(err), err, false
 			}
-			log.Printf("data OK, setting it!")
 			err = setLocalConfig(&config)
 			if err != nil {
 				return errorResponse(err), err, false
 			}
-			log.Printf("restarting etcd now")
 			G.killEtcd()
 			time.Sleep(1 * time.Second)
 			err = startEtcd(EtcdNormal)

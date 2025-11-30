@@ -442,17 +442,18 @@ struct
       | Hsm.Join_cluster initial_cluster as cmd ->
           let write () =
             let additional_data write = write initial_cluster in
-            write_platform ~additional_data internal_stack
-              (Hsm.cb_to_string cmd)
-            >|= function
-            | Ok _ -> ()
-            | Error e ->
-                Logs.err (fun m ->
-                    m "error %a communicating with platform" pp_platform_err e)
+            Lwt_mutex.with_lock KV_store.Etcd.connection_create_mtx (fun () ->
+                (* block etcd requests while reconfig is going on *)
+                KV_store.Etcd.shutdown_persistent_connection ();
+                write_platform ~additional_data internal_stack
+                  (Hsm.cb_to_string cmd)
+                >>= function
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Error e ->
+                    Lwt_mvar.put res_mvar
+                      (Error (Fmt.to_to_string pp_platform_err e)))
           in
           write () >>= fun () ->
-          (* TODO wait and create local stores (including copy of old config
-               store *)
           (handle_cb [@tailcall]) http
       | Hsm.Set_local_config conf as cmd ->
           let write () =

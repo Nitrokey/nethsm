@@ -2626,9 +2626,7 @@ module Make (KV : Kv_ext.Platform) = struct
             Log.err (fun m -> m "joining cluster failed: %s" msg);
             (Bad_request, "joining cluster failed: " ^ msg))
       in
-      (* Give time for etcd to restart, keyfender to reconnect,
-         and etcd to start receiving data from the peers *)
-      let* () = Mirage_sleep.ns (Duration.of_sec 10) |> Lwt_result.ok in
+      (* we are now on the other side *)
       let* version =
         wrap_config_res ~pp_error:Config_store.pp_error
           ~err:"could not fetch version after join"

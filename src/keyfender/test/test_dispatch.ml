@@ -4356,8 +4356,8 @@ let cluster_member_ops_admin_only =
       |> returns_empty ~with_status:`Unauthorized)
 
 let join_req =
-  {|[{"name": "node1", "urls": ["http://192.168.1.1:2380"]},
-     {"name": "node2", "urls": ["http://192.168.1.2:2380", "http://[::1]:2380"]}]|}
+  {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+     {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
 
 let cluster_join =
   Alcotest.test_case "POST /cluster/join succeeds" `Quick (fun () ->
@@ -4406,7 +4406,7 @@ let cluster_join =
         ^ warning "now erasing all data and joining cluster!"
         ^ info
             "join-cluster \
-             (node1=http://192.168.1.1:2380,node2=http://192.168.1.2:2380,node2=http://[::1]:2380)"
+             (node1=https://192.168.1.1:2380,node2=https://192.168.1.2:2380,node2=https://[::1]:2380)"
         ^ warning "joining cluster OK! rebooting now!"
         ^ info "reboot"
       in
@@ -4428,8 +4428,8 @@ let cluster_join_fail_invalid =
   Alcotest.test_case "POST /cluster/join fails when payload is invalid" `Quick
     (fun () ->
       let dup_names_req =
-        {|[{"name": "node1", "urls": ["http://192.168.1.1:2380"]},
-           {"name": "node1", "urls": ["http://192.168.1.2:2380", "http://[::1]:2380"]}]|}
+        {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "node1", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String dup_names_req) "/cluster/join"
       |> returns_string ~with_status:`Bad_request
@@ -4437,16 +4437,16 @@ let cluster_join_fail_invalid =
            check string "error msg"
              "{\"message\":\"duplicate names for members\"}"));
       let dup_uris_req =
-        {|[{"name": "node1", "urls": ["http://192.168.1.1:2380"]},
-           {"name": "node2", "urls": ["http://192.168.1.1:2380/", "http://[::1]:2380"]}]|}
+        {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "node2", "urls": ["https://192.168.1.1:2380/", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String dup_uris_req) "/cluster/join"
       |> returns_string ~with_status:`Bad_request
       |> Alcotest.(
            check string "error msg" "{\"message\":\"duplicate member URLs\"}"));
       let wrong_port_req =
-        {|[{"name": "node1", "urls": ["http://192.168.1.1:2381"]},
-           {"name": "node2", "urls": ["http://192.168.1.2:2380", "http://[::1]:2380"]}]|}
+        {|[{"name": "node1", "urls": ["https://192.168.1.1:2381"]},
+           {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String wrong_port_req) "/cluster/join"
       |> returns_string ~with_status:`Bad_request
@@ -4455,13 +4455,13 @@ let cluster_join_fail_invalid =
              "{\"message\":\"member URL must have explicit port 2380\"}"));
       let missing_scheme_req =
         {|[{"name": "node1", "urls": ["192.168.1.1:2380"]},
-           {"name": "node2", "urls": ["http://192.168.1.2:2380", "http://[::1]:2380"]}]|}
+           {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       admin_post_request ~body:(`String missing_scheme_req) "/cluster/join"
       |> returns_string ~with_status:`Bad_request
       |> Alcotest.(
            check string "error msg"
-             "{\"message\":\"member URL must start with http://\"}"))
+             "{\"message\":\"member URL must start with https://\"}"))
 
 let rate_limit_for_unlock =
   let path = "/unlock" in
