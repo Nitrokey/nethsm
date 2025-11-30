@@ -8,6 +8,7 @@ const (
 	Version    = "msi-z790-1"
 	DiskDev    = "/dev/nvme0n1"
 	DiskPrefix = "/dev/nvme0n1p"
+	TRNGDev    = "/dev/ttyS1"
 )
 
 func MeasuredPCRs() tpm2.PCRSelect {

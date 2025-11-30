@@ -2,9 +2,9 @@
 
 : ${UNLOCKPW:=unlockunlock}
 
-KEYFENDER_IP="127.0.0.1"
-KEYFENDER_INT_IP="127.0.0.1"
-PLATFORM_IP="127.0.0.1"
+KEYFENDER_IP="192.168.1.1"
+KEYFENDER_INT_IP="169.254.169.1"
+ETCD_IP="169.254.169.2"
 ETCD_PORT="2379"
 
 if [ -n "$DEBUG_LOG" ] ; then
@@ -17,30 +17,19 @@ if capsh --has-p=cap_net_admin 2>/dev/null ; then
   echo "Using Mirage TCP/IP stack with tap devices."
   mkdir -p /dev/net
   mknod /dev/net/tun c 10 200
-  USE_TAP=1
-  KEYFENDER_IP="192.168.1.1"
-  PLATFORM_IP="169.254.169.2"
-  KEYFENDER_INT_IP="169.254.169.1"
   if [ -e /sys/class/net/eth1 ] ; then
     echo "Using eth1 as internal network."
     INT_IF="eth1"
   fi
+else
+  echo "need --cap-add=NET_ADMIN"
 fi
 
-if [ $USE_TAP ] ; then
   echo "Setting up bridge with eth0 and tap_ext."
   ip -o -f inet address show eth0
-  IP=$(ip -o -f inet address show eth0 | awk '{print $4}' | head -1)
-  echo "Detected IP: $IP"
-  GW=$(ip -o -f inet route list | grep "^default via" | head -1 | awk '{print $3}')
-  echo "Detected gateway: $GW"
-  ip addr flush dev eth0
+  IP=192.168.1.1/24
   ip tuntap add dev tap_ext mode tap
-  ip link add name br_ext type bridge
-  ip link set dev eth0 master br_ext
-  ip link set dev tap_ext master br_ext
-  ip link set dev eth0 type bridge_slave learning off
-  ip link set dev br_ext up
+  ip addr add 192.168.1.100/24 dev tap_ext
   ip link set dev tap_ext up
 
   ip tuntap add dev tap_int mode tap
@@ -53,29 +42,24 @@ if [ $USE_TAP ] ; then
     ip link set dev eth1 type bridge_slave learning off
     ip link set dev br_int up
   else
-    echo "Configuring tap_int for platform."
+    echo "Configuring tap_int for etcd."
     ip addr add 169.254.169.2/16 dev tap_int
   fi
   ip link set dev tap_int up
-fi
+
+screen -dmS nethsm_debug
+screen -S nethsm_debug -X hardstatus alwayslastline
+screen -S nethsm_debug -X hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W}%c %{g}]'
 
 if [ ! $INT_IF ]; then
-  if [ $USE_TAP ] ; then
-    echo "Starting uinit on $PLATFORM_IP."
-    /uinit platform 2>&1 &
-  else
-    echo "Starting etcd on $PLATFORM_IP."
-    etcd \
-      --listen-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
-      --advertise-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
-      --data-dir /data \
-      --host-whitelist "$KEYFENDER_INT_IP" \
-      --max-txn-ops 512 \
-      $ETCD_DEBUG_LOG \
-      2>&1 | sed "s/^/[etcd] /" \
-      &
-    ETCD_PID=$!
-  fi
+screen -S nethsm_debug -X screen -t "etcd" \
+  etcd \
+    --listen-client-urls "http://$ETCD_IP:$ETCD_PORT" \
+    --advertise-client-urls "http://$ETCD_IP:$ETCD_PORT" \
+    --data-dir /data \
+    --host-whitelist "$KEYFENDER_INT_IP" \
+    --max-txn-ops 512 \
+    $ETCD_DEBUG_LOG
 fi
 
 if [ $ADMINPW ] ; then
@@ -89,21 +73,16 @@ if [ $ADMINPW ] ; then
 }&
 fi
 
-if [ $GW ] ; then
-  IP="$IP,$GW"
-fi
 
-if [ $USE_TAP ] ; then
-  echo "Starting keyfender.tap"
-  /keyfender.tap $KEYFENDER_DEBUG_LOG --default-net=$IP --platform=169.254.169.2 \
+screen -S nethsm_debug -X screen -t "nethsm" \
+  /keyfender.tap $KEYFENDER_DEBUG_LOG --platform=169.254.169.2 \
     --external-interface=tap_ext --internal-interface=tap_int \
-    --internal-ipv4=169.254.169.1/16 --start &
-  KEYFENDER_PID=$!
-else
-  echo "Starting keyfender.unix"
-  /keyfender.unix $KEYFENDER_DEBUG_LOG --http=8080 --https=8443 --platform=127.0.0.1 --start &
-  KEYFENDER_PID=$!
-fi
+    --internal-ipv4=169.254.169.1/16 --start
+
+
+screen -S nethsm_debug -X screen -t "tcpdump" tcpdump -i tap_ext -e -v -n
+
+screen -S nethsm_debug -X screen -t "shell" bash
 
 _signal_termination() {
   kill -TERM "$KEYFENDER_PID"
@@ -113,5 +92,4 @@ _signal_termination() {
 trap _signal_termination SIGTERM
 trap _signal_termination SIGINT
 
-wait "$KEYFENDER_PID"
-[ $ETCD_PID ] && wait "$ETCD_PID"
+screen -r nethsm_debug

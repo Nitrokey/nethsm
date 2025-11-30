@@ -7,7 +7,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base32"
 	"encoding/hex"
@@ -67,6 +69,12 @@ func withTPMContext(f func(*tpm2.TPMContext) error) error {
 }
 
 func tpmRand() (buf []byte, err error) {
+	if hw.IsTesting() {
+		buf = make([]byte, tpmRandSize)
+		rand.Read(buf)
+		return
+	}
+
 	_ = withTPMContext(func(tpm *tpm2.TPMContext) error {
 		buf, err = tpm.GetRandom(tpmRandSize)
 		return nil
@@ -238,6 +246,38 @@ func tpmCreatePlatformData() error {
 		return nil
 	})
 	return err
+}
+
+// mockCreatePlatformData returns fake data
+func mockCreatePlatformData() {
+	log.Printf("Creating mock platform data")
+
+	// this must be called before withTPMContext(), because seeding also uses a
+	// TPMContext
+	if !randIsFullySeeded() {
+		log.Panic("waiting for TRNG seeding timed out")
+	}
+
+	var data platformData
+
+	hostname, _ := os.Hostname()
+	log.Printf("using hostname for device key/id: %", hostname)
+	hash := sha256.Sum256([]byte(hostname))
+	data.DeviceKey = hash[:]
+	data.DeviceID = base32.NewEncoding(base32Chars).EncodeToString(data.DeviceKey[:7])[:10]
+
+	data.FirmwareVersion = "n/a"
+	data.HardwareVersion = hw.Version
+
+	data.AKPub = make(map[string][]byte)
+	data.PCR = make(map[int]string)
+
+	platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
+	log.Printf("Fake Platform Data: %v\n", string(platformDataJSON))
+
+	setLocalConfigKey(data.DeviceKey)
+	platformDataCh <- data
+	close(platformDataCh)
 }
 
 // sealDeviceKey seals the supplied secret to a sealed object in the storage hierarchy

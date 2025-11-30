@@ -32,14 +32,14 @@ import (
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
 func platformListener(result chan string) {
-	listener, err := net.Listen(G.listenerProtocol, G.listenerPort)
+	listener, err := net.Listen(G.listenerProtocol, G.listenerAddress)
 	if err != nil {
-		log.Fatalf("Unable to launch listener on %s%s: %v", G.listenerProtocol,
-			G.listenerPort, err)
+		log.Fatalf("Unable to launch listener on %s:%s: %v", G.listenerProtocol,
+			G.listenerAddress, err)
 	}
 	defer listener.Close()
-	log.Printf("platformListener: Listening on %s%s.", G.listenerProtocol,
-		G.listenerPort)
+	log.Printf("platformListener: Listening on %s:%s.", G.listenerProtocol,
+		G.listenerAddress)
 
 	// haveUpdate is set to true if an UPDATE command was successfully
 	// processed in a previous connection and COMMIT-UPDATE should be enabled.
@@ -514,24 +514,28 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 }
 
-// sPlatformActions are executed for S-Platform.
-func sPlatformActions() {
+func setupPlatform() error {
+	if hw.IsTesting() {
+		err := os.MkdirAll("/data/etcd", 0o755)
+		check(err)
+		err = os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID)
+		check(err)
+		return nil
+	}
+
 	// Load TPM kernel modules first, as platformListener needs TPM for
 	// GetDeviceKey().
 	G.s.Logf("Loading TPM driver")
 	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
 	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
-	// Refuse to continue if the above failed.
-	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
-	}
 
 	mountMuenFs()
+
 	G.s.Logf("Channels:")
 	G.s.Execf("/bbin/ls -l /muenfs")
 
 	mountMuenEvents()
+
 	G.s.Logf("Events:")
 	G.s.Execf("/bbin/ls -l /muenevents")
 
@@ -545,20 +549,12 @@ func sPlatformActions() {
 
 	dumpNetworkStatus()
 
-	c := make(chan string)
-	startTask("TRNG", trngTask)
-	startTask("Platform Listener", func() { platformListener(c) })
-	time.Sleep(20 * time.Second)
-
-	G.s.Logf("Ensuring platform data is accessible")
-
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
 	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + hw.DiskPrefix + "3 /data")
 
 	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
+		return fmt.Errorf("script failed: %w", err)
 	}
 
 	// If /data/initialised-v1 does NOT exist, assume /data is empty and
@@ -567,14 +563,31 @@ func sPlatformActions() {
 	if _, err := os.Stat(initFile); os.IsNotExist(err) {
 		log.Printf("Populating /data")
 		if err := extractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
-			log.Printf("Error extracting /data template: %v", err)
-			return
+			return fmt.Errorf("error extracting /data template: %w", err)
 		}
 	}
+	return nil
+}
 
-	if err := tpmCreatePlatformData(); err != nil {
-		log.Printf("Creating platform data failed: %v", err)
+// sPlatformActions are executed for S-Platform.
+func sPlatformActions() {
+	if err := setupPlatform(); err != nil {
+		log.Printf("setupPlatform: %v", err)
+		return
 	}
+
+	c := make(chan string)
+	startTask("TRNG", trngTask)
+	startTask("Platform Listener", func() { platformListener(c) })
+
+	if !hw.IsTesting() {
+		if err := tpmCreatePlatformData(); err != nil {
+			log.Printf("Creating platform data failed: %v", err)
+		}
+	} else {
+		mockCreatePlatformData()
+	}
+
 	if err := loadLocalConfigFromCache(); err != nil {
 		log.Printf("Loading local config cache failed: %v", err)
 	}
@@ -586,6 +599,11 @@ func sPlatformActions() {
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
+
+	if hw.IsTesting() {
+		log.Printf("received terminal command, exiting: %s", request)
+		return
+	}
 
 	G.s.Logf("Terminating all processes.")
 	killAll(syscall.Signal(15))
