@@ -15,7 +15,7 @@ csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
   "organizationalUnitName": "",
   "commonName": "nethsm",
   "emailAddress": "info@nitrokey.com",
-  "subjectAltNames": [ "IP:192.168.1.1" ]
+  "subjectAltNames": [ "IP:192.168.1.1", "IP:169.254.169.1" ]
 }
 EOM
 )

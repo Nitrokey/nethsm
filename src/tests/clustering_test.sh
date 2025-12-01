@@ -2,6 +2,9 @@
 
 source "$(dirname $0)/common_functions.sh"
 
+pkill -9 etcd || true
+sleep 2
+
 STATE=$(GET /v1/health/state)
 echo "- state: $STATE" # should be Operational
 
@@ -32,8 +35,6 @@ GET_admin /v1/cluster/members
 
 echo "- launch fresh etcd witness"
 
-pkill -9 etcd || true
-sleep 2
 rm -rf witness.etcd
 etcd_name="etcd-v3.6.5-linux-arm64"
 tar xf "$etcd_name.tar.gz"

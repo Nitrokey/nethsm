@@ -14,7 +14,7 @@ own.key:
 own.pem: own.key CA.pem
 	rm -rf own.csr
 	openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" \
-		-addext "subjectAltName=IP:192.168.1.100" --out own.csr
+		-addext "subjectAltName=IP:192.168.1.100,IP:169.254.169.1" --out own.csr
 	openssl x509 -req -days 1825 -in own.csr -CA CA.pem -copy_extensions copy \
 		-CAkey CA.key -out own.pem -set_serial 01 -sha256
 
