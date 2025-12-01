@@ -2932,6 +2932,10 @@ components:
         - joinerKit
     ClusterMemberList:
       example:
+        - id: 8e9e05c52164694d
+          name: default
+          urls:
+            - https://192.168.1.1:2380
       type: array
       items:
         $ref: "#/components/schemas/ClusterMember"
@@ -3574,7 +3578,7 @@ components:
     PemCSR:
       example: |
         -----BEGIN CERTIFICATE REQUEST-----
-        MIIC6TCCAdECAQAwajEVMBMGA1UEAwwMbmV0aHNtLmxvY2FsMQswCQYDVQQGEwJE
+        MIIC7zCCAdcCAQAwajEVMBMGA1UEAwwMbmV0aHNtLmxvY2FsMQswCQYDVQQGEwJE
         RTEPMA0GA1UEBwwGQmVybGluMREwDwYDVQQKDAhOaXRyb2tleTEgMB4GCSqGSIb3
         DQEJARYRaW5mb0BuaXRyb2tleS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw
         ggEKAoIBAQDHuCF+uj5UR6libLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wC
@@ -3582,14 +3586,14 @@ components:
         HKv5pOUTeObZc/XYKrHTCxgYigmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48
         TJXJwkfl8wEH2H7YHFzgHFo8oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K
         5JsGbzc6CpGF2TU/qv++o5UqvFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8
-        lO8a2o4S6CCK3fa1XXolcJmOdh48C+03AgMBAAGgOjA4BgkqhkiG9w0BCQ4xKzAp
-        MCcGA1UdEQQgMB6CC2V4YW1wbGUuY29tgg93d3cuZXhhbXBsZS5jb20wDQYJKoZI
-        hvcNAQELBQADggEBABD92ZM2fDcq8hNl/SrHIXyFdZIV+uGWVultZ22isLRuJbuh
-        jb+onDXT9F5mKa4JAoAWvBPnQZpO1d/tf2bPhg9F46Fd/1zd79dvStRrUTjmxdN3
-        6M2ExIRekBRyx5o5h5yjve6tmG1vWOqgcczJwQFG5GawiaBNVenXjJROBx1ad9ou
-        W1cCAvKISOD9OTHsw/Amksu3HyPUW+/celAF4GOzlT2F41rNMoiW0rCTiiJfBotE
-        FvTLWty55EECqoWbAOupRKutt/fu2zewTHINYAR+8NEZDOm8RxLoq4zqc+p1y5ax
-        n9jM28FJC+nYGFwrOmfMV5P/CMxjpp/6pttAvVY=
+        lO8a2o4S6CCK3fa1XXolcJmOdh48C+03AgMBAAGgQDA+BgkqhkiG9w0BCQ4xMTAv
+        MC0GA1UdEQQmMCSCC2V4YW1wbGUuY29tgg93d3cuZXhhbXBsZS5jb22HBMCoAQEw
+        DQYJKoZIhvcNAQELBQADggEBABWDe7Na8w0zeVgKHEQi8CPnIm/32j/RSj5W3oWA
+        tyWvuKNkhx80kvueGlsRO6HELj7aUG9gXz/2Q5WZBfitdFcx3H8i1cbPZEa8Uonk
+        XNsRnOV8lqnGiBRYvkWzNVNgd03kz/f43qpe5mzBVUNSEWSB15vY5NmXBPsxpA/4
+        KJgiPmVd7/X2vvfbzF/YVkI07fJakH8TJlEwpSzpGuWqrEPLtYG5nWlfz3XBjEZj
+        Fr0JBLINKW4qiryTaro3wVV38Ew1ZojBh9UZ2SiH/W3bKO9AZwacjwy/mqlzIv5Q
+        RNB95c627sR1F7zbVewmbM9LG44P3ARdHeEejOTl8WFFnV0=
         -----END CERTIFICATE REQUEST-----
       type: string
     PemCert:
