@@ -1,6 +1,6 @@
 # Allow overriding from environment.
 NETHSM_URL="${NETHSM_URL:-https://192.168.1.1/api}"
-CURL="${CURL:-curl -f -sS -k}"
+CURL="${CURL:-curl --fail-with-body -sS -k}"
 
 GET()
 {

@@ -16,6 +16,7 @@ make USE_CCACHE= -i "$etcd_download"
 cd src/tests
 NETHSM_URL="https://${NETHSM_IP}/api" ./provision_test.sh
 #NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
+NETHSM_URL="https://${NETHSM_IP}/api" ./cluster_ca.sh
 NETHSM_URL="https://${NETHSM_IP}/api" ./clustering_test.sh
 
 curl -s -k -X PUT -H "content-type: application/json" -d \
