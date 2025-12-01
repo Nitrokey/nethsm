@@ -57,9 +57,9 @@ struct
           let urls = member_req.urls in
           Hsm.Cluster.member_add ~urls hsm_state >>= function
           | Error e -> Endpoint.respond_error e rd
-          | Ok new_members ->
+          | Ok join_req ->
               let body =
-                Yojson.Safe.to_string (encode_member_list new_members)
+                Yojson.Safe.to_string (Json.join_req_to_yojson join_req)
               in
               Wm.continue true { rd with resp_body = `String body }
         in

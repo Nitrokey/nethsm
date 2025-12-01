@@ -324,7 +324,8 @@ module type S = sig
     val member_update :
       id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
 
-    val member_add : urls:string list -> t -> (member list, error) result Lwt.t
+    val member_add :
+      urls:string list -> t -> (Json.join_req, error) result Lwt.t
   end
 end
 
@@ -2127,7 +2128,71 @@ module Make (KV : Kv_ext.Platform) = struct
     let member_update ~id ~urls t =
       member_update ~id ~urls t.kv >|= to_hsm_error
 
-    let member_add ~urls t = member_add ~urls t.kv >|= to_hsm_error
+    let member_add ~urls t =
+      let ( let** ) = Lwt_result.bind in
+      (* prepare a joiner kit for the new node to be able to
+         get the domain key *)
+      let** unlock_salt =
+        internal_server_error Read "Read unlock salt" Config_store.pp_error
+          (Config_store.get t.config_store Unlock_salt)
+      in
+      let** backup_key_opt =
+        internal_server_error Read "Read backup key" Config_store.pp_error
+          (Config_store.get_opt t.config_store Backup_key)
+      in
+      let** backup_key =
+        match backup_key_opt with
+        | None ->
+            Lwt.return
+              (Error
+                 ( Precondition_failed,
+                   "Please configure a backup key before adding new cluster \
+                    members" ))
+        | Some key -> Lwt_result.return key
+      in
+      let** backup_salt =
+        internal_server_error Read "Read backup salt" Config_store.pp_error
+          (Config_store.get t.config_store Backup_salt)
+      in
+      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+      let encryption_key = t.device_key in
+      let** locked_domain_key =
+        internal_server_error Read "Read locked domain key"
+          Config_store.pp_error
+          (Domain_key_store.get domain_store Attended ~encryption_key)
+      in
+      let backup_key' = Crypto.GCM.of_secret backup_key in
+      let encrypted_locked_domkey =
+        let adata = "domain-key" in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata
+          locked_domain_key
+      in
+      let encrypted_unlock_salt =
+        let adata = "unlock-salt" in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata
+          unlock_salt
+      in
+      let joiner_kit =
+        {
+          Json.backup_salt = Base64.encode_string backup_salt;
+          unlock_salt = Base64.encode_string encrypted_unlock_salt;
+          locked_domain_key = Base64.encode_string encrypted_locked_domkey;
+        }
+      in
+      let joiner_kit =
+        Json.joiner_kit_to_yojson joiner_kit
+        |> Yojson.Safe.to_string |> Base64.encode_string
+      in
+      let** member_list = member_add ~urls t.kv >|= to_hsm_error in
+      Lwt_result.return
+        {
+          Json.joiner_kit;
+          members =
+            List.map
+              (fun m : Json.join_req_member -> { name = m.name; urls = m.urls })
+              member_list;
+          backup_passphrase = None;
+        }
   end
 
   let provision t ~unlock ~admin time =
@@ -2589,23 +2654,80 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
 
-    let join_cluster t join_req =
+    let decode_joiner_kit ~backup_passphrase s =
+      (* this should not error: checked by Json before *)
+      let map_error adata = function
+        | Error `Insufficient_data ->
+            Error
+              (Bad_request, "Could not decrypt " ^ adata ^ ": truncated data")
+        | Error `Not_authenticated ->
+            Error
+              ( Bad_request,
+                "Could not decrypt " ^ adata ^ ": invalid passphrase" )
+        | Ok x -> Ok x
+      in
       let ( let* ) = Lwt_result.bind in
+      let* joiner_kit =
+        Base64.decode_exn s |> Yojson.Safe.from_string
+        |> Json.joiner_kit_of_yojson
+        |> Result.map_error (fun e -> (Bad_request, e))
+        |> Lwt.return
+      in
+      let* backup_salt =
+        joiner_kit.backup_salt |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid backup salt"))
+        |> Lwt.return
+      in
+      let* unlock_salt_encrypted =
+        joiner_kit.unlock_salt |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid unlock salt"))
+        |> Lwt.return
+      in
+      let* locked_domain_key_encrypted =
+        joiner_kit.locked_domain_key |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid locked key"))
+        |> Lwt.return
+      in
+      let backup_key =
+        Crypto.key_of_passphrase ~salt:backup_salt backup_passphrase
+        |> Crypto.GCM.of_secret
+      in
+      let* unlock_salt =
+        Crypto.decrypt ~key:backup_key ~adata:"unlock-salt"
+          unlock_salt_encrypted
+        |> map_error "unlock-salt" |> Lwt.return
+      in
+      let* locked_domain_key =
+        Crypto.decrypt ~key:backup_key ~adata:"domain-key"
+          locked_domain_key_encrypted
+        |> map_error "domain-key" |> Lwt.return
+      in
+      Lwt_result.return (unlock_salt, locked_domain_key)
+
+    let join_cluster t (join_req : Json.join_req) =
+      let ( let* ) = Lwt_result.bind in
+      (* parse the join request *)
+      let* backup_passphrase =
+        join_req.backup_passphrase
+        |> Option.to_result
+             ~none:(Internal_server_error, "missing backup passphrase")
+        |> Lwt.return
+      in
+      let* unlock_salt, locked_domain_key =
+        decode_joiner_kit ~backup_passphrase join_req.joiner_kit
+      in
       (* set our name to our device ID, since that's what the platform will use *)
-      let join_req =
+      let members =
         List.map
           (fun (m : Json.join_req_member) ->
             if m.name = "" then { m with name = t.system_info.deviceId } else m)
-          join_req
+          join_req.members
       in
       (* TODO check if our own peer URLs match with how the network is
          configured *)
-      let wrap_config_res ~pp_error ~err r =
-        lwt_error_to_msg ~pp_error r
-        |> Lwt_result.map_error (fun (`Msg msg) ->
-            let msg = Fmt.str "%s: %s" err msg in
-            (Internal_server_error, msg))
-      in
       (* refuse to join if CA is not set *)
       let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
       let* () =
@@ -2619,8 +2741,8 @@ module Make (KV : Kv_ext.Platform) = struct
       let* () = Config.set_local_config t in
       (* backup local config to restore after join *)
       let* config_backup =
-        wrap_config_res ~pp_error:Config_store.pp_error
-          ~err:"could not back up config store"
+        internal_server_error Read "Backup local config store"
+          Config_store.pp_error
           (Config_store.backup_local_config t.config_store)
       in
       (* to pass multiple peer urls for the same node, etcd simply expects
@@ -2629,7 +2751,7 @@ module Make (KV : Kv_ext.Platform) = struct
         List.map
           (fun (p : Json.join_req_member) ->
             List.map (fun url -> (`Name p.name, `Url url)) p.urls)
-          join_req
+          members
         |> List.concat
       in
       let print_peer fmt (`Name name, `Url url) = Fmt.pf fmt "%s=%s" name url in
@@ -2656,8 +2778,8 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       (* we are now on the other side *)
       let* version =
-        wrap_config_res ~pp_error:Config_store.pp_error
-          ~err:"could not fetch version after join"
+        internal_server_error Read "Fetch version after join"
+          Config_store.pp_error
           (Config_store.get t.config_store Version)
       in
       let* () =
@@ -2670,14 +2792,28 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       (* restore local config backup in our directory *)
       let* () =
-        wrap_config_res ~pp_error:Config_store.pp_error
-          ~err:"could not restore local config after join"
-          (Config_store.restore_local_config t.config_store config_backup
-          |> Lwt_result.map_error (fun e -> `Kv_write e))
+        internal_server_error Write "Restore local config" KV.pp_write_error
+          (Config_store.restore_local_config t.config_store config_backup)
       in
-      (* TODO take care of any device-specific config or domain key transfer here *)
-      Log.warn (fun m -> m "joining cluster OK! rebooting now!");
-      Lwt_mvar.put t.mbox Reboot |> Lwt_result.ok
+      (* use unlock salt and locked domain key retrieved from joiner kit *)
+      let* () =
+        internal_server_error Write "Override unlock salt" KV.pp_write_error
+          (Config_store.set t.config_store Unlock_salt unlock_salt)
+      in
+      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+      let encryption_key = t.device_key in
+      let* () =
+        internal_server_error Write "Write locked domain key" KV.pp_write_error
+          (Domain_key_store.set domain_store Attended ~encryption_key
+             locked_domain_key)
+      in
+      Log.warn (fun m -> m "joining cluster OK! locking now");
+      let* new_state =
+        boot_config_store ~cache_settings:t.cache_settings t.config_store
+          t.device_key
+      in
+      t.state <- new_state;
+      Lwt_result.return ()
 
     type stream_buffer = {
       stream : string Lwt_stream.t;

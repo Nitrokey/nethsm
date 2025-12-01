@@ -53,17 +53,27 @@ curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"
 echo
 
-# try a request to see if the restarted etcd is healthy
+# try a request to see if the restarted etcd is after etcd restart
 
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
 
+# try to join a non-existent cluster, this should restart etcd twice 
+# (join attempt + recovery)
+
 body=$(POST_admin /v1/cluster/join <<EOM
-[{"name": "", "urls": ["https://192.168.1.1:2380"]},
-{"name": "witness", "urls": ["https://192.168.1.100:2380"]}]
+{
+  "members":
+    [{"name": "", "urls": ["https://192.168.1.1:2380"]},
+     {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
+  "backupPassphrase": "backupPassphrase",
+  "joinerKit": "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+}
 EOM
 ) || true
 echo "$body"
+
+# should still be healthy afterward
 
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
@@ -89,32 +99,42 @@ make -f cert.make own.pem
     --initial-advertise-peer-urls https://192.168.1.100:2380 --listen-peer-urls https://0.0.0.0:2380 \
     --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2479 &
 
-sleep 20
+sleep 5
+
+# test that we can locally send requests to the witness
 
 echo "-member list (local): "
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 member list || true
 
+# new attempt to join, with the witness listening this time
+# the witness is not expecting a new members, so this should still fail (with an
+# appropriate error)
+
 body=$(POST_admin /v1/cluster/join <<EOM
-[{"name": "", "urls": ["https://192.168.1.1:2380"]},
-{"name": "witness", "urls": ["https://192.168.1.100:2380"]}]
+{
+  "members":
+    [{"name": "", "urls": ["https://192.168.1.1:2380"]},
+     {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
+  "backupPassphrase": "backupPassphrase",
+  "joinerKit": "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+}
 EOM
 ) || true
 echo "$body"
 
-sleep 20
-
-STATE=$(GET /v1/health/state)
-echo "- state: $STATE" # should be Operational
-
-# try a request to see if the restarted etcd is healthy
+# still healthy after failed join
 
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
 
-echo "-health: "
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 endpoint health || true
-
-echo "-member list (local): "
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 member list || true
+# show the return value of adding a member
+#
+body=$(POST_admin /v1/cluster/members <<EOM
+{
+    "urls": ["https://192.168.1.100:2380"]
+}
+EOM
+)
+echo "$body"
 
 pkill etcd || true

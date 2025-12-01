@@ -220,11 +220,37 @@ let encode_network (net : network) =
   let netmask = Ipaddr.V4.Prefix.netmask net.ipv4.cidr in
   network_api_to_yojson { ipAddress; netmask; gateway; ipv6 = net.ipv6 }
 
-type join_req_member = { name : string; urls : string list } [@@deriving yojson]
-type join_req = join_req_member list [@@deriving yojson]
+type joiner_kit = {
+  (* to allow the old passphrase to still decode the new *)
+  backup_salt : string; (* unencrypted *)
+  unlock_salt : string; (* encrypted by backup key *)
+  (* encrypted by backup key (outer) and unlock
+  passphrase (inner) with above salt *)
+  locked_domain_key : string;
+}
+[@@deriving yojson]
 
-let check_join_req (members : join_req) =
+type join_req_member = { name : string; urls : string list } [@@deriving yojson]
+
+type join_req = {
+  members : join_req_member list;
+  joiner_kit : string; [@key "joinerKit"]
+  backup_passphrase : string option; [@default None] [@key "backupPassphrase"]
+}
+[@@deriving yojson]
+
+let check_join_req (req : join_req) =
+  let members = req.members in
   let ( let* ) = Result.bind in
+  let* () =
+    guard (Option.is_some req.backup_passphrase) "missing backup passphrase"
+  in
+  let* _joiner_kit =
+    try
+      Base64.decode_exn req.joiner_kit
+      |> Yojson.Safe.from_string |> joiner_kit_of_yojson
+    with _ -> Error "joiner_kit is not of the expected format"
+  in
   let* () =
     guard
       (List.length members >= 2)
@@ -266,7 +292,7 @@ let check_join_req (members : join_req) =
   let* () =
     guard (List.length uris = List.length uniq_uris) "duplicate member URLs"
   in
-  Ok members
+  Ok { req with members }
 
 let decode_join_req json =
   let ( let* ) = Result.bind in

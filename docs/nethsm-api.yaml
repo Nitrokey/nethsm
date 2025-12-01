@@ -1168,6 +1168,60 @@ paths:
         required: true
         schema:
           $ref: "#/components/schemas/ID"
+  /cluster/join:
+    post:
+      responses:
+        "204":
+          description: Join successful.
+        "400":
+          description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: |
+            Precondition failed. NetHSM was not *Operational* or no cluster CA
+            was set before.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description:
+        Attempt to join an existing NetHSM cluster i.e. **wipe all user data** and
+        use the cluster data instead. This does **not** merge data on this node to cluster data.
+
+        'POST /cluster/members' *MUST* have been called on an existing member of the cluster
+        beforehand. The data returned by that call must be passed here along with the backup
+        passphrase *of the node that registered the new member*.
+
+        On success, the node will end up in a *Locked* stated, unlockable with the unlock passphrase
+        *of the node that registered the new member*. All device-specific configuration will be preserved
+        from before the join.
+
+        On immediate failure (e.g. if the cluster is not reachable), the NetHSM will attempt to
+        reverse the join. **WARNING**. Existing data will be definitely wiped after a first successful
+        connection to the cluster. Be sure to backup anything important.
+      security:
+        - basic: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterJoinReq"
+        required: true
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
   /cluster/members:
     get:
       responses:
@@ -1200,11 +1254,10 @@ paths:
         "201":
           description: |
             New member successfully declared to the cluster.
-            The response contains data needed for the new member to join.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClusterMemberList"
+                $ref: "#/components/schemas/ClusterMemberAddResponse"
         "400":
           description: Bad request (specified properties are invalid).
           content:
@@ -1218,10 +1271,14 @@ paths:
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Precondition failed (NetHSM was not *Operational*).
+          description: |
+            Precondition failed. NetHSM was not *Operational* or a backup key
+            has not been configured before.
       description: |
         Declare a new member to the cluster. The response of this call must
-        be passed to a call to '/cluster/join' on the new member to finalize the join.
+        be passed to a call to '/cluster/join' on the new member to finalize the join,
+        along with the backup passphrase.
+        A backup key must be configured prior to this call.
 
         *WARNING*: adding a member will change the quorum needed for the cluster
         to operate. If the quorum is not met anymore (e.g. when adding a second node)
@@ -2836,12 +2893,45 @@ components:
           $ref: "#/components/schemas/PeerURLs"
       required:
         - urls
+    ClusterInitialMember:
+      type: object
+      properties:
+        name:
+          type: string
+        urls:
+          $ref: "#/components/schemas/PeerURLs"
+      required:
+        - name
+        - urls
+    ClusterJoinReq:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterInitialMember"
+        joinerKit:
+          type: string
+        backupPassphrase:
+          type: string
+      required:
+        - members
+        - joinerKit
+        - backupPassphrase
+    ClusterMemberAddResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterInitialMember"
+        joinerKit:
+          type: string
+      required:
+        - members
+        - joinerKit
     ClusterMemberList:
       example:
-        - id: 8e9e05c52164694d
-          name: default
-          urls:
-            - https://192.168.1.1:2380
       type: array
       items:
         $ref: "#/components/schemas/ClusterMember"

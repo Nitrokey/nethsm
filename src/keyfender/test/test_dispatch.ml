@@ -4341,20 +4341,26 @@ let cluster_member_ops_not_etcd =
         Alcotest.(check string)
           "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
       in
-      request ~hsm_state:(operational_mock ()) ~headers:admin_headers
-        "/cluster/members"
+      let backup_body =
+        {|{"newPassphrase" : "testtesttest", "currentPassphrase" : ""}|}
+      in
+      let hsm_state =
+        admin_put_request ~hsm_state:(operational_mock ())
+          ~body:(`String backup_body) "/config/backup-passphrase"
+        |> returns_empty' ~with_status:`No_content
+      in
+      request ~hsm_state ~headers:admin_headers "/cluster/members"
       |> returns_string ~with_status:`Bad_request
       |> check;
       (* even when not implemented, we still check the JSON payload is
          well-formed first *)
-      request ~meth:`POST ~hsm_state:(operational_mock ())
-        ~headers:admin_headers "/cluster/members"
+      request ~meth:`POST ~hsm_state ~headers:admin_headers "/cluster/members"
       |> returns_string ~with_status:`Bad_request
       |> Alcotest.(check string)
            "bad request" "{\"message\":\"Invalid JSON: Blank input data.\"}";
       let body = `String {|{"urls":["192.168.1.100"]}|} in
-      request ~meth:`POST ~body ~hsm_state:(operational_mock ())
-        ~headers:admin_headers "/cluster/members"
+      request ~meth:`POST ~body ~hsm_state ~headers:admin_headers
+        "/cluster/members"
       |> returns_string ~with_status:`Bad_request
       |> check)
 
@@ -4365,8 +4371,17 @@ let cluster_member_ops_admin_only =
       request ~meth:`POST ~hsm_state:(operational_mock ()) "/cluster/members"
       |> returns_empty ~with_status:`Unauthorized)
 
+let joiner_kit =
+  "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+
+let join_req' members =
+  Fmt.str
+    {|{"members": %s, "joinerKit": "%s", "backupPassphrase":"testtesttest"}|}
+    members joiner_kit
+
 let join_req =
-  {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+  join_req'
+    {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
      {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
 
 let cluster_join =
@@ -4417,8 +4432,7 @@ let cluster_join =
         ^ info
             "join-cluster \
              (0000000000=https://192.168.1.1:2380,node2=https://192.168.1.2:2380,node2=https://[::1]:2380)"
-        ^ warning "joining cluster OK! rebooting now!"
-        ^ info "reboot"
+        ^ warning "joining cluster OK! locking now"
       in
       (* finally, join *)
       admin_post_request ~expect ~hsm_state ~body:(`String join_req)
@@ -4438,7 +4452,8 @@ let cluster_join_fail_invalid =
   Alcotest.test_case "POST /cluster/join fails when payload is invalid" `Quick
     (fun () ->
       let dup_names_req =
-        {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
            {"name": "", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String dup_names_req) "/cluster/join"
@@ -4447,7 +4462,8 @@ let cluster_join_fail_invalid =
            check string "error msg"
              "{\"message\":\"duplicate names for members\"}"));
       let dup_uris_req =
-        {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
            {"name": "node2", "urls": ["https://192.168.1.1:2380/", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String dup_uris_req) "/cluster/join"
@@ -4455,7 +4471,8 @@ let cluster_join_fail_invalid =
       |> Alcotest.(
            check string "error msg" "{\"message\":\"duplicate member URLs\"}"));
       let wrong_port_req =
-        {|[{"name": "", "urls": ["https://192.168.1.1:2381"]},
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2381"]},
            {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String wrong_port_req) "/cluster/join"
@@ -4464,7 +4481,8 @@ let cluster_join_fail_invalid =
            check string "error msg"
              "{\"message\":\"member URL must have explicit port 2380\"}"));
       let missing_scheme_req =
-        {|[{"name": "", "urls": ["192.168.1.1:2380"]},
+        join_req'
+          {|[{"name": "", "urls": ["192.168.1.1:2380"]},
            {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       (admin_post_request ~body:(`String missing_scheme_req) "/cluster/join"
@@ -4473,7 +4491,8 @@ let cluster_join_fail_invalid =
            check string "error msg"
              "{\"message\":\"member URL must start with https://\"}"));
       let missing_empty_name_req =
-        {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+        join_req'
+          {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
            {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
       in
       admin_post_request ~body:(`String missing_empty_name_req) "/cluster/join"
