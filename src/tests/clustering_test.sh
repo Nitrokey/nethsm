@@ -19,7 +19,7 @@ body=$(POST_admin /v1/cluster/join <<EOM
     [{"name": "", "urls": ["https://192.168.1.1:2380"]},
      {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
   "backupPassphrase": "backupPassphrase",
-  "joinerKit": "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+  "joinerKit": "eyJiYWNrdXBfc2FsdCI6Im9xRHBQTmR1ODdlZVBOb0ZlcmtOaGc9PSIsInVubG9ja19zYWx0IjoiRkJ4RU5ITHg3NGljNHhOd2lCVnhyaUlTYTZ2T0JiV0VGaUFGWkI0d2NQVHQ3bnc0dEd6TVFVN1diYVU9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiI3Vy9qTnRJQkdEQktzSWxPMmwrN1RrOFdMa1pQbWRMc3ppazBMNm9MRXYvU1N1b3UrR2F6Nk1qU0pZM25XMDBOWisyUGxoZzVQV0FBQzhFekRDZ1FxYURzYnNKdFJwR1lKY1dzSlZEV3k3bk1MVklVOXQ0K3R3PT0ifQ=="
 }
 EOM
 ) || true
@@ -69,7 +69,7 @@ body=$(POST_admin /v1/cluster/join <<EOM
     [{"name": "", "urls": ["https://192.168.1.1:2380"]},
      {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
   "backupPassphrase": "backupPassphrase",
-  "joinerKit": "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+  "joinerKit": "eyJiYWNrdXBfc2FsdCI6Im9xRHBQTmR1ODdlZVBOb0ZlcmtOaGc9PSIsInVubG9ja19zYWx0IjoiRkJ4RU5ITHg3NGljNHhOd2lCVnhyaUlTYTZ2T0JiV0VGaUFGWkI0d2NQVHQ3bnc0dEd6TVFVN1diYVU9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiI3Vy9qTnRJQkdEQktzSWxPMmwrN1RrOFdMa1pQbWRMc3ppazBMNm9MRXYvU1N1b3UrR2F6Nk1qU0pZM25XMDBOWisyUGxoZzVQV0FBQzhFekRDZ1FxYURzYnNKdFJwR1lKY1dzSlZEV3k3bk1MVklVOXQ0K3R3PT0ifQ=="
 }
 EOM
 ) || true
@@ -90,7 +90,7 @@ body=$(POST_admin /v1/cluster/join <<EOM
     [{"name": "", "urls": ["https://192.168.1.1:2380"]},
      {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
   "backupPassphrase": "backupPassphrase",
-  "joinerKit": "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+  "joinerKit": "eyJiYWNrdXBfc2FsdCI6Im9xRHBQTmR1ODdlZVBOb0ZlcmtOaGc9PSIsInVubG9ja19zYWx0IjoiRkJ4RU5ITHg3NGljNHhOd2lCVnhyaUlTYTZ2T0JiV0VGaUFGWkI0d2NQVHQ3bnc0dEd6TVFVN1diYVU9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiI3Vy9qTnRJQkdEQktzSWxPMmwrN1RrOFdMa1pQbWRMc3ppazBMNm9MRXYvU1N1b3UrR2F6Nk1qU0pZM25XMDBOWisyUGxoZzVQV0FBQzhFekRDZ1FxYURzYnNKdFJwR1lKY1dzSlZEV3k3bk1MVklVOXQ0K3R3PT0ifQ=="
 }
 EOM
 ) || true
