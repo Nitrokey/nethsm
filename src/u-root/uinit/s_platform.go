@@ -378,6 +378,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			" --advertise-client-urls=" +
 			" --data-dir=/data/etcd" +
 			" --snapshot-count=5000" +
+			" --peer-skip-client-san-verification=true" +
 			" --auto-compaction-retention=1h" +
 			" --quota-backend-bytes=5694816256" + // should not be more than RAM
 			// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
