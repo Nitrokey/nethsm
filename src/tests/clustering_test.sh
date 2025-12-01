@@ -13,6 +13,10 @@ openssl version || true
 
 echo "network configuration: "
 ip a
+echo "routes: "
+ip route
+
+sudo ip link set dev lo up
 
 echo "arch: "
 uname -a
@@ -20,7 +24,15 @@ uname -a
 echo "- get cert csr"
 
 csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
-{ "countryName": "DE", "stateOrProvinceName": "", "localityName": "Berlin", "organizationName": "Nitrokey", "organizationalUnitName": "", "commonName": "nethsm.local", "emailAddress": "info@nitrokey.com", "subjectAltNames": [ "example.com", "www.example.com" ] }
+{ "countryName": "DE",
+  "stateOrProvinceName": "",
+  "localityName": "Berlin",
+  "organizationName": "Nitrokey",
+  "organizationalUnitName": "",
+  "commonName": "nethsm",
+  "emailAddress": "info@nitrokey.com",
+  "subjectAltNames": [ "IP:192.168.1.1" ]
+}
 EOM
 )
 
@@ -58,8 +70,8 @@ echo "- cluster state: $CLUSTER"
 
 echo "launch new witness etcd"
 
-CLUSTER="witness=https://192.168.1.100:2380"
-
+pkill -9 etcd || true
+sleep 5
 rm -rf witness.etcd
 etcd_name="etcd-v3.6.5-linux-arm64"
 tar xvf "$etcd_name.tar.gz"
@@ -68,17 +80,19 @@ make -f cert.make own.pem
 
 "$etcd_name/etcd" \
     --log-format console \
-    --log-level warn \
-    --initial-cluster "$CLUSTER" \
+    --log-level info \
     --peer-client-cert-auth=true \
     --peer-trusted-ca-file=CA.pem \
     --peer-cert-file=own.pem \
     --peer-key-file=own.key \
     --data-dir=witness.etcd --name witness \
     --initial-advertise-peer-urls https://192.168.1.100:2380 --listen-peer-urls https://0.0.0.0:2380 \
-    --advertise-client-urls "" --listen-client-urls http://0.0.0.0:2379 &
+    --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2479 &
 
-sleep 5
+sleep 20
+
+echo "-member list (local): "
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 member list || true
 
 body=$(POST_admin /v1/cluster/join <<EOM
 [{"name": "", "urls": ["https://192.168.1.1:2380"]},
@@ -96,3 +110,11 @@ echo "- state: $STATE" # should be Operational
 
 CLUSTER=$(GET_admin /v1/cluster/members)
 echo "- cluster state: $CLUSTER"
+
+echo "-health: "
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 endpoint health || true
+
+echo "-member list (local): "
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2479 member list || true
+
+pkill etcd || true

@@ -950,7 +950,26 @@ module Make (KV : Kv_ext.Platform) = struct
     match subject.Json.subjectAltNames with
     | Some [] -> None
     | Some names ->
-        let san_names = X509.General_name.(add DNS names empty) in
+        (* support IP:X.X.X.X as syntax for IP SAN, like OpenSSL *)
+        let ip_names, dns_names =
+          List.partition_map
+            (fun name ->
+              if String.starts_with ~prefix:"IP:" name then
+                let ip = String.sub name 3 (String.length name - 3) in
+                match Ipaddr.of_string ip with
+                | Error _ ->
+                    Logs.warn (fun f ->
+                        f "using IP SAN '%s' as DNS: not a valid IP" name);
+                    Either.right name
+                | Ok ip ->
+                    (* RFC 3280 4.2.1.7 par 6 *)
+                    Either.left (Ipaddr.to_octets ip)
+              else Either.right name)
+            names
+        in
+        let san_names =
+          X509.General_name.(add DNS dns_names (add IP ip_names empty))
+        in
         let ext_map =
           X509.Extension.(add Subject_alt_name (false, san_names) empty)
         in

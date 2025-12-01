@@ -1418,7 +1418,7 @@ let subject_custom_san =
     "organizationalUnitName": "",
     "commonName": "nethsm.local",
     "emailAddress": "info@nitrokey.com",
-    "subjectAltNames": ["test1.example.com", "test2.example.com"]
+    "subjectAltNames": ["test1.example.com", "test2.example.com", "IP:192.168.1.1"]
   }|}
 
 let post_config_tls_csr_pem =
@@ -1511,14 +1511,24 @@ let post_config_tls_csr_pem_custom_san =
           match X509.Signing_request.Ext.find Extensions info.extensions with
           | Some extensions -> (
               match X509.Extension.find Subject_alt_name extensions with
-              | Some (_, general_names) -> (
-                  match X509.General_name.find DNS general_names with
-                  | Some dns_names ->
-                      List.mem "test1.example.com" dns_names
-                      && List.mem "test2.example.com" dns_names
-                      && not (List.mem "nethsm.local" dns_names)
-                      (* Should NOT contain commonName *)
-                  | None -> false)
+              | Some (_, general_names) ->
+                  let dns_ok =
+                    match X509.General_name.find DNS general_names with
+                    | Some dns_names ->
+                        List.mem "test1.example.com" dns_names
+                        && List.mem "test2.example.com" dns_names
+                        && not (List.mem "nethsm.local" dns_names)
+                        (* Should NOT contain commonName *)
+                    | None -> false
+                  in
+                  let ip_ok =
+                    match X509.General_name.find IP general_names with
+                    | Some [ ip_oct ] ->
+                        Ipaddr.of_string_exn "192.168.1.1"
+                        |> Ipaddr.to_octets = ip_oct
+                    | _ -> false
+                  in
+                  dns_ok && ip_ok
               | None -> false)
           | None -> false)
       | Error _ -> false)

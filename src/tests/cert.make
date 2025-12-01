@@ -5,7 +5,7 @@ CA.pem: CA.key
 	yes "" | openssl req -x509 -new -nodes -key CA.key -sha256 -days 1825 -out CA.pem -addext keyUsage=critical,keyCertSign
 
 new_cert.pem: nethsm.csr CA.pem
-	openssl x509 -req -days 1825 -in nethsm.csr -CA CA.pem  \
+	openssl x509 -req -days 1825 -in nethsm.csr -CA CA.pem -copy_extensions copy \
 		-CAkey CA.key -out new_cert.pem -set_serial 01 -sha256
 
 own.key:
@@ -13,8 +13,9 @@ own.key:
 
 own.pem: own.key CA.pem
 	rm -rf own.csr
-	openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" -out own.csr
-	openssl x509 -req -days 1825 -in own.csr -CA CA.pem  \
+	openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" \
+		-addext "subjectAltName=IP:192.168.1.100" --out own.csr
+	openssl x509 -req -days 1825 -in own.csr -CA CA.pem -copy_extensions copy \
 		-CAkey CA.key -out own.pem -set_serial 01 -sha256
 
 .PHONY: clean
