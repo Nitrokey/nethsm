@@ -738,7 +738,7 @@ struct
               Ipaddr.pp target Y.pp_error e);
         Lwt.return_unit
     | Ok yf ->
-        Log.info (fun f ->
+        Log.debug (fun f ->
             f "relay: new session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
         let close_all () = X.close xf >>= fun () -> Y.close yf in
         let relay_unidir (type f1) (type f2)
@@ -750,9 +750,7 @@ struct
             | Error _ -> close_all ()
             | Ok (`Data b) -> (
                 B.write bf b >>= function
-                | Ok () ->
-                    Log.debug (fun f -> f "relay: transmitted some data");
-                    aux ()
+                | Ok () -> aux ()
                 | Error _ -> close_all ())
           in
           aux ()
@@ -763,13 +761,12 @@ struct
             relay_unidir (module Y) (module X) yf xf;
           ]
         >>= fun () ->
-        Log.info (fun f ->
+        Log.debug (fun f ->
             f "relay: end of session: %a -> %a" Ipaddr.pp src Ipaddr.pp target);
         Lwt.return_unit
 
   let listen x y target =
     X.listen x ~port:etcd_peer_port (fun flow ->
-        Log.err (fun f -> f "relay starting...");
         let target =
           match target with Some target -> target | None -> X.src flow |> fst
         in
