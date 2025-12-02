@@ -47,6 +47,7 @@ type localConf struct {
 	TLSKey       string `json:"tls_key"`
 	TLSTrustedCA string `json:"tls_cluster_ca"`
 	DeviceID	 string `json:"device_id"`
+	TimeOffsetS  int	`json:"time_offset_s"` // 0 if unknown
 }
 
 var localConfig Observable[localConf]

@@ -812,10 +812,12 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
 
   let set_time_offset kv timestamp =
+    let (let*) = Lwt_result.bind in
     Hsm_clock.set timestamp;
     let span = Hsm_clock.get_offset () in
-    internal_server_error Write "Write time offset" KV.pp_write_error
-      (Config_store.set kv Time_offset span)
+    let* () = internal_server_error Write "Write time offset" KV.pp_write_error
+      (Config_store.set kv Time_offset span) in
+    Config.set_local_config t
 
   let decrypt_with_pass_key encrypted ~pass_key =
     let key = Crypto.GCM.of_secret pass_key in
@@ -2382,25 +2384,40 @@ module Make (KV : Kv_ext.Platform) = struct
           Some cert
 
     let set_local_config t =
-      let open Lwt.Infix in
-      tls_cluster_ca t >>= function
+      let ( let* ) = Lwt_result.bind in
+      let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
+      let+ cluster_ca_opt = tls_cluster_ca t in
+      match cluster_ca_opt with
       | None ->
           (* do not set the local conf if no cluster CA set *)
-          Lwt.return (Ok ())
-      | Some tls_cluster_ca -> (
+          Lwt_result.return ()
+      | Some tls_cluster_ca ->
           let device_id = t.system_info.deviceId in
-          tls_cert_pem t >>= fun tls_cert ->
+          let* time_offset_opt =
+            internal_server_error Read "Read time offset" Config_store.pp_error
+              (Config_store.get_opt t.config_store Time_offset)
+          in
+          let* time_offset_s =
+            match time_offset_opt with
+            | Some time_offset ->
+                Ptime.Span.to_int_s time_offset
+                |> Option.to_result
+                     ~none:
+                       ( Internal_server_error,
+                         "time offset is too big for an integer" )
+                |> Lwt.return
+            | None -> Lwt_result.return 0
+          in
+          let+ tls_cert = tls_cert_pem t in
           let tls_key = t.key |> X509.Private_key.encode_pem in
           let local_config =
-            { Json.device_id; tls_cert; tls_cluster_ca; tls_key }
+            { Json.device_id; tls_cert; tls_cluster_ca; tls_key; time_offset_s }
           in
-          Lwt_mvar.put t.mbox (Set_local_config local_config) >>= fun () ->
-          Lwt_mvar.take t.res_mbox >>= function
-          | Ok () -> Lwt_result.return ()
-          | Error msg ->
+          let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
+          Lwt_mvar.take t.res_mbox
+          |> Lwt_result.map_error (fun msg ->
               Log.warn (fun m -> m "setting local config failed: %s" msg);
-              Lwt.return
-                (Error (Bad_request, "setting local config failed: " ^ msg)))
+              (Bad_request, "setting local config failed: " ^ msg))
 
     let check_ca_signs_cert t ~cert ~ca =
       let is_mock = t.system_info.hardwareVersion = "N/A" in

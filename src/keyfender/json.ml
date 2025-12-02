@@ -750,6 +750,7 @@ type local_conf = {
   tls_key : string;
   tls_cluster_ca : string;
   device_id : string;
+  time_offset_s : int; (* 0 is unset *)
 }
 [@@deriving yojson]
 
