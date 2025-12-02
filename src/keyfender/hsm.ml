@@ -1030,15 +1030,21 @@ module Make (KV : Kv_ext.Platform) = struct
   let info t = t.info
   let own_cert t = `Single (t.cert :: t.chain, t.key)
 
-  let default_network_configuration =
-    {
-      Json.ipv4 =
-        {
-          cidr = Ipaddr.V4.Prefix.of_string_exn "192.168.1.1/24";
-          gateway = None;
-        };
-      ipv6 = None;
-    }
+  let default_network_configuration net =
+    let net, gateway =
+      match String.split_on_char ',' net with
+      | [ net ] -> (net, None)
+      | [ net; gw ] -> (net, Some (Ipaddr.V4.of_string_exn gw))
+      | _ -> failwith "Invalid default net config format"
+    in
+    let net =
+      match String.split_on_char '/' net with
+      | [ ip ] -> ip ^ "/24"
+      | [ _; _ ] -> net
+      | _ -> failwith "Invalid CIDR format"
+    in
+    let cidr = Ipaddr.V4.Prefix.of_string_exn net in
+    { Json.ipv4 = { cidr; gateway }; ipv6 = None }
 
   let network_configuration t =
     let open Lwt.Infix in
@@ -1048,7 +1054,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Log.warn (fun m ->
             m "error %a while retrieving IP, using default"
               Config_store.pp_error e);
-        default_network_configuration
+        default_network_configuration t.default_net
 
   let random n = Base64.encode_string @@ Mirage_crypto_rng.generate n
 
