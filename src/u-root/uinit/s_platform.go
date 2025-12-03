@@ -442,6 +442,10 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
 	}
 
+	if conf.TimeOffsetS != 0 {
+		// TODO SET PLATFORM TIME
+	}
+
 	G.etcdStoppedCh = make(chan bool)
 	aliveCh := make(chan struct{})
 	timeoutCh := make(chan struct{})

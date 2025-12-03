@@ -812,12 +812,10 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
 
   let set_time_offset kv timestamp =
-    let (let*) = Lwt_result.bind in
     Hsm_clock.set timestamp;
     let span = Hsm_clock.get_offset () in
-    let* () = internal_server_error Write "Write time offset" KV.pp_write_error
-      (Config_store.set kv Time_offset span) in
-    Config.set_local_config t
+    internal_server_error Write "Write time offset" KV.pp_write_error
+      (Config_store.set kv Time_offset span)
 
   let decrypt_with_pass_key encrypted ~pass_key =
     let key = Crypto.GCM.of_secret pass_key in
@@ -2197,102 +2195,6 @@ module Make (KV : Kv_ext.Platform) = struct
         }
   end
 
-  let provision t ~unlock ~admin time =
-    let open Lwt_result.Infix in
-    (* state already checked in Handler_provision.service_available *)
-    let start = now () in
-    assert (state t = `Unprovisioned);
-    let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
-    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-    let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
-    let auth_store_key, key_store_key, namespace_store_key =
-      make_store_keys domain_key
-    in
-    with_write_lock (fun () ->
-        Config_store.batch t.config_store (fun b ->
-            internal_server_error Write "Initializing configuration store"
-              KV.pp_write_error
-              (Config_store.set b Version Version.current)
-            >>= fun () ->
-            internal_server_error Write "Writing private RSA key"
-              KV.pp_write_error
-              (Config_store.set b Private_key t.key)
-            >>= fun () ->
-            internal_server_error Write "Writing certificate chain key"
-              KV.pp_write_error
-              (Config_store.set b Certificate (t.cert, t.chain))
-            >>= fun () ->
-            let auth_store =
-              Encrypted_store.v Authentication ~key:auth_store_key t.kv
-            in
-            let a_v_key, a_v_value =
-              Encrypted_store.prepare_set auth_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing authentication store"
-              KV.pp_write_error
-              (KV.set b.kv a_v_key a_v_value)
-            >>= fun () ->
-            let key_store = Encrypted_store.v Key ~key:key_store_key t.kv in
-            let k_v_key, k_v_value =
-              Encrypted_store.prepare_set key_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing key store"
-              KV.pp_write_error
-              (KV.set b.kv k_v_key k_v_value)
-            >>= fun () ->
-            (* Initializing the namespace store is also done on the fly if
-               unlocking an old store without namespaces, in
-               Encrypted_store.unlock *)
-            let namespace_store =
-              Encrypted_store.v Namespace ~key:namespace_store_key t.kv
-            in
-            let n_v_key, n_v_value =
-              Encrypted_store.prepare_set namespace_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing namespace store"
-              KV.pp_write_error
-              (KV.set b.kv n_v_key n_v_value)
-            >>= fun () ->
-            let keys =
-              {
-                domain_key;
-                auth_store = User_store.connect auth_store;
-                key_store = Key_store.connect key_store;
-                namespace_store = Namespace_store.connect namespace_store;
-              }
-            in
-            t.state <- Operational keys;
-            let admin_k, admin_v =
-              let name = "admin" in
-              let admin =
-                User.prepare_user ~name ~passphrase:admin ~role:`Administrator
-              in
-              let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
-              Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name)
-                value
-            in
-            internal_server_error Write "Write Administrator user"
-              KV.pp_write_error
-              (KV.set b.kv admin_k admin_v)
-            >>= fun () ->
-            let enc_dk =
-              encrypt_with_pass_key domain_key ~pass_key:unlock_key
-            in
-            let encryption_key = t.device_key in
-            let domain_store = Domain_key_store.connect b.kv b.device_id in
-            internal_server_error Write "Write passphrase domain key"
-              KV.pp_write_error
-              (Domain_key_store.set domain_store Attended ~encryption_key enc_dk)
-            >>= fun () ->
-            internal_server_error Write "Write unlock-salt" KV.pp_write_error
-              (Config_store.set b Unlock_salt unlock_salt)
-            >>= fun () ->
-            let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
-            set_time_offset b time))
-
   module Config = struct
     let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
       match t.state with
@@ -2386,38 +2288,33 @@ module Make (KV : Kv_ext.Platform) = struct
     let set_local_config t =
       let ( let* ) = Lwt_result.bind in
       let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
-      let+ cluster_ca_opt = tls_cluster_ca t in
-      match cluster_ca_opt with
-      | None ->
-          (* do not set the local conf if no cluster CA set *)
-          Lwt_result.return ()
-      | Some tls_cluster_ca ->
-          let device_id = t.system_info.deviceId in
-          let* time_offset_opt =
-            internal_server_error Read "Read time offset" Config_store.pp_error
-              (Config_store.get_opt t.config_store Time_offset)
-          in
-          let* time_offset_s =
-            match time_offset_opt with
-            | Some time_offset ->
-                Ptime.Span.to_int_s time_offset
-                |> Option.to_result
-                     ~none:
-                       ( Internal_server_error,
-                         "time offset is too big for an integer" )
-                |> Lwt.return
-            | None -> Lwt_result.return 0
-          in
-          let+ tls_cert = tls_cert_pem t in
-          let tls_key = t.key |> X509.Private_key.encode_pem in
-          let local_config =
-            { Json.device_id; tls_cert; tls_cluster_ca; tls_key; time_offset_s }
-          in
-          let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
-          Lwt_mvar.take t.res_mbox
-          |> Lwt_result.map_error (fun msg ->
-              Log.warn (fun m -> m "setting local config failed: %s" msg);
-              (Bad_request, "setting local config failed: " ^ msg))
+      let+ tls_cluster_ca = tls_cluster_ca t in
+      let device_id = t.system_info.deviceId in
+      let* time_offset_opt =
+        internal_server_error Read "Read time offset" Config_store.pp_error
+          (Config_store.get_opt t.config_store Time_offset)
+      in
+      let* time_offset_s =
+        match time_offset_opt with
+        | Some time_offset ->
+            Ptime.Span.to_int_s time_offset
+            |> Option.to_result
+                 ~none:
+                   ( Internal_server_error,
+                     "time offset is too big for an integer" )
+            |> Lwt.return
+        | None -> Lwt_result.return 0
+      in
+      let+ tls_cert = tls_cert_pem t in
+      let tls_key = t.key |> X509.Private_key.encode_pem in
+      let local_config =
+        { Json.device_id; tls_cert; tls_cluster_ca; tls_key; time_offset_s }
+      in
+      let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
+      Lwt_mvar.take t.res_mbox
+      |> Lwt_result.map_error (fun msg ->
+          Log.warn (fun m -> m "setting local config failed: %s" msg);
+          (Bad_request, "setting local config failed: " ^ msg))
 
     let check_ca_signs_cert t ~cert ~ca =
       let is_mock = t.system_info.hardwareVersion = "N/A" in
@@ -2655,8 +2552,108 @@ module Make (KV : Kv_ext.Platform) = struct
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      with_write_lock (fun () -> set_time_offset t.config_store time)
+      let ( let* ) = Lwt_result.bind in
+      let* () =
+        with_write_lock (fun () -> set_time_offset t.config_store time)
+      in
+      set_local_config t
   end
+
+  let provision t ~unlock ~admin time =
+    let open Lwt_result.Infix in
+    (* state already checked in Handler_provision.service_available *)
+    let start = now () in
+    assert (state t = `Unprovisioned);
+    let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+    let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
+    let auth_store_key, key_store_key, namespace_store_key =
+      make_store_keys domain_key
+    in
+    with_write_lock (fun () ->
+        Config_store.batch t.config_store (fun b ->
+            internal_server_error Write "Initializing configuration store"
+              KV.pp_write_error
+              (Config_store.set b Version Version.current)
+            >>= fun () ->
+            internal_server_error Write "Writing private RSA key"
+              KV.pp_write_error
+              (Config_store.set b Private_key t.key)
+            >>= fun () ->
+            internal_server_error Write "Writing certificate chain key"
+              KV.pp_write_error
+              (Config_store.set b Certificate (t.cert, t.chain))
+            >>= fun () ->
+            let auth_store =
+              Encrypted_store.v Authentication ~key:auth_store_key t.kv
+            in
+            let a_v_key, a_v_value =
+              Encrypted_store.prepare_set auth_store Version.filename
+                Version.(to_string current)
+            in
+            internal_server_error Write "Initializing authentication store"
+              KV.pp_write_error
+              (KV.set b.kv a_v_key a_v_value)
+            >>= fun () ->
+            let key_store = Encrypted_store.v Key ~key:key_store_key t.kv in
+            let k_v_key, k_v_value =
+              Encrypted_store.prepare_set key_store Version.filename
+                Version.(to_string current)
+            in
+            internal_server_error Write "Initializing key store"
+              KV.pp_write_error
+              (KV.set b.kv k_v_key k_v_value)
+            >>= fun () ->
+            (* Initializing the namespace store is also done on the fly if
+               unlocking an old store without namespaces, in
+               Encrypted_store.unlock *)
+            let namespace_store =
+              Encrypted_store.v Namespace ~key:namespace_store_key t.kv
+            in
+            let n_v_key, n_v_value =
+              Encrypted_store.prepare_set namespace_store Version.filename
+                Version.(to_string current)
+            in
+            internal_server_error Write "Initializing namespace store"
+              KV.pp_write_error
+              (KV.set b.kv n_v_key n_v_value)
+            >>= fun () ->
+            let keys =
+              {
+                domain_key;
+                auth_store = User_store.connect auth_store;
+                key_store = Key_store.connect key_store;
+                namespace_store = Namespace_store.connect namespace_store;
+              }
+            in
+            t.state <- Operational keys;
+            let admin_k, admin_v =
+              let name = "admin" in
+              let admin =
+                User.prepare_user ~name ~passphrase:admin ~role:`Administrator
+              in
+              let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
+              Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name)
+                value
+            in
+            internal_server_error Write "Write Administrator user"
+              KV.pp_write_error
+              (KV.set b.kv admin_k admin_v)
+            >>= fun () ->
+            let enc_dk =
+              encrypt_with_pass_key domain_key ~pass_key:unlock_key
+            in
+            let encryption_key = t.device_key in
+            let domain_store = Domain_key_store.connect b.kv b.device_id in
+            internal_server_error Write "Write passphrase domain key"
+              KV.pp_write_error
+              (Domain_key_store.set domain_store Attended ~encryption_key enc_dk)
+            >>= fun () ->
+            internal_server_error Write "Write unlock-salt" KV.pp_write_error
+              (Config_store.set b Unlock_salt unlock_salt)
+            >>= fun () ->
+            let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
+            set_time_offset b time >>= fun () -> Config.set_local_config t))
 
   module System = struct
     let system_info t = t.system_info
@@ -3402,7 +3399,9 @@ module Make (KV : Kv_ext.Platform) = struct
           | Some new_time -> (
               let elapsed = Ptime.diff stop_ts start_ts in
               match Ptime.add_span new_time elapsed with
-              | Some ts -> set_time_offset t.config_store ts
+              | Some ts ->
+                  let** () = set_time_offset t.config_store ts in
+                  Config.set_local_config t
               | None ->
                   t.state <- initial_state;
                   Lwt.return

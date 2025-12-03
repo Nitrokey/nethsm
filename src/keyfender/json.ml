@@ -748,7 +748,7 @@ type platform_data = {
 type local_conf = {
   tls_cert : string;
   tls_key : string;
-  tls_cluster_ca : string;
+  tls_cluster_ca : string option; [@default None]
   device_id : string;
   time_offset_s : int; (* 0 is unset *)
 }
