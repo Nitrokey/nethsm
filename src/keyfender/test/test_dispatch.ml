@@ -113,6 +113,33 @@ let random_error_bad_length =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let operational_mock_with_mbox' f =
+  Lwt_main.run
+    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+    >>= fun (state, o, m) ->
+      Lwt.async (fun () ->
+          let rec go () =
+            Lwt_mvar.take o >>= fun cb ->
+            f cb;
+            go ()
+          in
+          go ());
+      Lwt.async (fun () ->
+          let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
+          go ());
+      Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
+        Ptime.epoch
+      >>= fun _ ->
+      Hsm.User.add state (user "operator") ~role:`Operator
+        ~passphrase:"test2Passphrase" ~name:"operator"
+      >>= fun _ ->
+      Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
+      Hsm.User.add state (user "backup") ~role:`Backup
+        ~passphrase:"backupUserPassphrase" ~name:"backup"
+      >|= fun _ -> state )
+
+let operational_mock_with_mbox () = operational_mock_with_mbox' (fun _ -> ())
+
 let provision_json =
   {| {
   "unlockPassphrase": "UnlockPassphrase",
@@ -121,20 +148,25 @@ let provision_json =
 } |}
 
 let provision_ok =
-  "an initial provision request is successful (state transition to \
-   operational, HTTP response 204)"
-  @? fun () ->
-  let body = `String provision_json in
-  match request ~body ~meth:`POST "/provision" with
-  | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
-  | _ -> false
+  Alcotest.test_case
+    "an initial provision request is successful (state transition to \
+     operational, HTTP response 204)"
+    `Quick (fun () ->
+      let body = `String provision_json in
+      let hsm_state =
+        request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "new state operational" true
+          (Hsm.state hsm_state = `Operational)))
 
 let provision_error_malformed_request =
   "an initial provision request with invalid json returns a malformed request \
    with 400"
   @? fun () ->
   let body = `String ("hallo" ^ provision_json) in
-  match request ~body ~meth:`POST "/provision" with
+  match request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision" with
   | hsm_state, Some (`Bad_request, _, _, _) ->
       Hsm.state hsm_state = `Unprovisioned
   | _ -> false
@@ -144,7 +176,7 @@ let provision_error_precondition_failed =
    with 412"
   @? fun () ->
   let body = `String provision_json in
-  match request ~body ~meth:`POST "/provision" with
+  match request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision" with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match request ~hsm_state ~body ~meth:`POST "/provision" with
       | _, Some (`Precondition_failed, _, _, _) -> true
@@ -191,7 +223,8 @@ let system_info_error_forbidden =
 let system_reboot_ok =
   "a request for /system/reboot with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/reboot" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/reboot" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -207,7 +240,8 @@ let system_reboot_namespaced_fails =
 let system_shutdown_ok =
   "a request for /system/shutdown with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/shutdown" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/shutdown" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -248,7 +282,8 @@ let system_shutdown_locked_no_auth =
 let system_factory_reset_ok =
   "a request for /system/factory-reset with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/factory-reset" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/factory-reset" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -319,7 +354,8 @@ let system_update_ok =
     let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     `String (sign_update update ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`OK, _, `String release_notes, _) ->
       String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes
       && Hsm.state hsm_state = `Operational
@@ -349,7 +385,8 @@ let system_update_signature_mismatch =
     let signature = sign_update (update ^ "\000") in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -363,7 +400,8 @@ let system_update_too_much_data =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -380,7 +418,8 @@ let system_update_too_few_data =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -391,7 +430,8 @@ let system_update_invalid_data =
       "\000\000\003signature too long\000\000\018A new system \
        image\000\000\0039.0binary data is here"
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`Bad_request, _, `String body, _) ->
       Logs.info (fun m -> m "Update with invalid data returned %s" body);
       Hsm.state hsm_state = `Operational
@@ -407,7 +447,14 @@ let system_update_platform_bad =
   in
   let hsm_state =
     operational_mock
-      ~mbox:(fun mbox -> Lwt_mvar.put mbox (Error "platform bad"))
+      ~mbox:(fun o mbox ->
+        Lwt.async (fun () ->
+            let rec go () = Lwt_mvar.take o >>= fun _ -> go () in
+            go ());
+        Lwt.async (fun () ->
+            Lwt_mvar.put mbox (Ok ()) >>= fun () ->
+            Lwt_mvar.put mbox (Error "platform bad"));
+        Lwt.return_unit)
       ()
   in
   match admin_post_request ~expect ~hsm_state ~body "/system/update" with
@@ -424,39 +471,13 @@ let system_update_version_downgrade =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`Conflict, _, `String body, _) ->
       Logs.info (fun m ->
           m "Update with older software version returned %s" body);
       Hsm.state hsm_state = `Operational
   | _ -> false
-
-let operational_mock_with_mbox' f =
-  Lwt_main.run
-    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-    >>= fun (state, o, m) ->
-      Lwt.async (fun () ->
-          let rec go () =
-            Lwt_mvar.take o >>= fun cb ->
-            f cb;
-            go ()
-          in
-          go ());
-      Lwt.async (fun () ->
-          let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
-          go ());
-      Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
-        Ptime.epoch
-      >>= fun _ ->
-      Hsm.User.add state (user "operator") ~role:`Operator
-        ~passphrase:"test2Passphrase" ~name:"operator"
-      >>= fun _ ->
-      Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
-      Hsm.User.add state (user "backup") ~role:`Backup
-        ~passphrase:"backupUserPassphrase" ~name:"backup"
-      >|= fun _ -> state )
-
-let operational_mock_with_mbox () = operational_mock_with_mbox' (fun _ -> ())
 
 let multipart_log =
   {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
@@ -512,7 +533,8 @@ let system_update_cancel_ok =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, _, _) -> (
       match admin_post_request ~hsm_state "/system/cancel-update" with
       | _, Some (`No_content, _, _, _) -> true
@@ -542,7 +564,9 @@ let system_backup_and_restore_ok =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
   match
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -569,8 +593,8 @@ let system_backup_and_restore_ok =
           in
           let expect = multipart_log in
           match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              "/system/restore"
+            request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST
+              ~content_type ~body:(`String body) "/system/restore"
           with
           | hsm_state', Some (`No_content, _, _, _) -> (
               assert (Hsm.state hsm_state' = `Locked);
@@ -594,7 +618,9 @@ let system_backup_and_restore_no_backuppassphrase_fails =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
   match
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -629,8 +655,8 @@ let system_backup_and_restore_no_backuppassphrase_fails =
              test_dispatch.exe: [DEBUG] Decode a 8-bit part.\n"
           in
           match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              "/system/restore"
+            request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST
+              ~content_type ~body:(`String body) "/system/restore"
           with
           | _, Some (`Bad_request, _, `String b, _) ->
               Alcotest.(check string)
@@ -648,8 +674,10 @@ let system_backup_and_restore_changed_devkey =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
+  let hsm_state = operational_mock_with_mbox () in
   match
-    admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       let headers = auth_header "backup" "backupUserPassphrase" in
@@ -680,7 +708,8 @@ let system_backup_and_restore_changed_devkey =
           let hsm_state_2 =
             Lwt_main.run
               ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-              >|= fun (y, _, _) -> y )
+              >>= fun (y, o, m) ->
+                happy_mbox o m >|= fun () -> y )
           in
           let expect =
             multipart_log ^ info "Device Key changed."
@@ -709,7 +738,7 @@ let system_backup_and_restore_unattended =
   Alcotest.test_case "/system/restore with unattended mode -> operational"
     `Quick
   @@ fun () ->
-  let hsm_state = hsm_with_key () in
+  let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
     admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
       "/config/unattended-boot"
@@ -733,8 +762,8 @@ let system_backup_and_restore_unattended =
   let hsm_state, store =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >|= fun (y, _, _) ->
-        (y, store) )
+        Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> (y, store) )
   in
   let* hsm_state =
     let arguments =
@@ -771,7 +800,7 @@ let system_backup_and_restore_unattended_changed_devkey =
   Alcotest.test_case
     "/system/restore with unattended mode and new device key -> locked" `Quick
   @@ fun () ->
-  let hsm_state = hsm_with_key () in
+  let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
     admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
       "/config/unattended-boot"
@@ -798,8 +827,8 @@ let system_backup_and_restore_unattended_changed_devkey =
   let hsm_state, store =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >|= fun (y, _, _) ->
-        (y, store) )
+        Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> (y, store) )
   in
   let* hsm_state =
     let expect =
@@ -892,7 +921,9 @@ let system_backup_and_restore_operational =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
   let* hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -1057,7 +1088,8 @@ let system_update_from_file_ok =
    disk returns 200"
   @? fun () ->
   let body = readfile "update.bin" in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, `String _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
 
@@ -1071,7 +1103,8 @@ let sign_update_ok =
   in
   assert (returncode = 0);
   let body = readfile "signed_update.bin" in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, `String _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
 
@@ -1126,7 +1159,8 @@ let unlock_fails_wrong_device_key =
   let kv =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun kv ->
-        Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+        happy_mbox o m >>= fun () ->
         Hsm.provision state ~unlock:"test1234Passphrase"
           ~admin:"test1Passphrase" Ptime.epoch
         >|= fun r ->
@@ -1227,7 +1261,8 @@ let unattended_boot_succeeds =
   let store, hsm_state =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, o, m) ->
+        happy_mbox o m >>= fun () ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
           Ptime.epoch
         >|= fun _ -> (store, state) )
@@ -1247,7 +1282,8 @@ let unattended_boot_failed_wrong_device_key =
   let store, hsm_state =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, o, m) ->
+        happy_mbox o m >>= fun () ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
           Ptime.epoch
         >|= fun _ -> (store, state) )
@@ -1303,8 +1339,9 @@ let put_config_tls_cert_pem =
   "put tls cert pem file succeeds" @? fun () ->
   let headers = admin_headers in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/tls/cert.pem"
+    request
+      ~hsm_state:(operational_mock_with_mbox ())
+      ~meth:`GET ~headers "/config/tls/cert.pem"
   with
   | hsm_state, Some (`OK, _, `String body, _) -> (
       let content_type = "application/x-pem-file" in
@@ -1610,7 +1647,7 @@ let post_config_tls_generate =
     | _ -> raise (Failure "get_public_key")
   in
   "post tls generate" @? fun () ->
-  let hsm_state = operational_mock () in
+  let hsm_state = operational_mock_with_mbox () in
   try
     (* obtain generated key at provision *)
     let initial_key = get_public_key ~hsm_state in
@@ -1679,22 +1716,27 @@ let config_network_set_ok =
       let old_network =
         {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
       in
-      let hsm_state =
-        admin_put_request ~body:(`String new_network) "/config/network"
+      let hsm_state = operational_mock_with_mbox () in
+      let hsm_state' =
+        admin_put_request ~hsm_state ~body:(`String new_network)
+          "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
-        request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
+        request ~hsm_state:hsm_state' ~meth:`GET ~headers:admin_headers
+          "/config/network"
         |> returns_string ~with_status:`OK
       in
       Alcotest.(check string) "returns the same config" old_network body;
       (* still accept old config format *)
-      let hsm_state =
-        admin_put_request ~body:(`String old_network) "/config/network"
+      let hsm_state' =
+        admin_put_request ~hsm_state ~body:(`String old_network)
+          "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
-        request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
+        request ~hsm_state:hsm_state' ~meth:`GET ~headers:admin_headers
+          "/config/network"
         |> returns_string ~with_status:`OK
       in
       Alcotest.(check string) "returns the same config" old_network body)
@@ -1705,8 +1747,10 @@ let config_network_set_ipv6_ok =
       let new_network =
         {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":{"cidr":"::1/8","gateway":"::1"}}|}
       in
+      let hsm_state = operational_mock_with_mbox () in
       let hsm_state =
-        admin_put_request ~body:(`String new_network) "/config/network"
+        admin_put_request ~hsm_state ~body:(`String new_network)
+          "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
@@ -1745,7 +1789,10 @@ let config_logging_ok =
 let config_logging_set_ok =
   "PUT on /config/logging succeeds" @? fun () ->
   let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"error"}|} in
-  match admin_put_request ~body:(`String new_logging) "/config/logging" with
+  let hsm_state = operational_mock_with_mbox () in
+  match
+    admin_put_request ~hsm_state ~body:(`String new_logging) "/config/logging"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match
         request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/logging"
@@ -1779,7 +1826,11 @@ let config_time_ok =
 let config_time_set_ok =
   "PUT on /config/time succeeds" @? fun () ->
   let new_time = {|{time: "1970-01-01T00:00:00-00:00"}|} in
-  match admin_put_request ~body:(`String new_time) "/config/time" with
+  match
+    admin_put_request
+      ~hsm_state:(operational_mock_with_mbox ())
+      ~body:(`String new_time) "/config/time"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match request ~hsm_state ~headers:admin_headers "/config/time" with
       | _, Some (`OK, _, `String body, _) -> (
@@ -4416,8 +4467,10 @@ let cluster_join =
       let new_cert_pem = X509.Certificate.encode_pem new_cert in
       (* replace the NetHSM with that newly signed cert *)
       let hsm_state =
-        request ~expect:(info "tls") ~hsm_state ~meth:`PUT ~headers
-          ~content_type ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+        request
+          ~expect:(info "tls" ^ info "set-local-config")
+          ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String new_cert_pem) "/config/tls/cert.pem"
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)

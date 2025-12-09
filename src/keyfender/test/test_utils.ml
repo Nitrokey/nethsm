@@ -85,7 +85,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     resp;
   (hsm_state', resp)
 
-let good_platform mbox = Lwt_mvar.put mbox (Ok ())
+let good_platform _ m = Lwt_mvar.put m (Ok ())
 
 let copy t =
   let v = Marshal.to_string t [ Closures ] in
@@ -93,11 +93,30 @@ let copy t =
 
 let user ?namespace id = { Hsm.Nid.id; namespace }
 
+let happy_mbox ?(f = fun _ -> ()) o m =
+  Lwt.async (fun () ->
+      let rec go () =
+        Lwt_mvar.take o >>= fun cb ->
+        f cb;
+        go ()
+      in
+      go ());
+  Lwt.async (fun () ->
+      let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
+      go ());
+  Lwt.return_unit
+
+let booted_mock () =
+  Lwt_main.run
+    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+    >>= fun (y, o, m) ->
+      happy_mbox o m >|= fun () -> y )
+
 let create_operational_mock mbox =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-    >>= fun (state, _, m) ->
-      mbox m >>= fun () ->
+    >>= fun (state, o, m) ->
+      mbox o m >>= fun () ->
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun _ ->
@@ -142,14 +161,16 @@ let create_locked_mock () =
     ( (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
       Kv_mem.connect ()
     >>= fun kv ->
-      Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
+      Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+      good_platform o m >>= fun () ->
       (* provision HSM, leading to state operational (and writes to the kv store) *)
       Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun r ->
       (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
       assert (r = Ok ());
-      Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y )
+      Hsm.boot ~platform software_update_key kv >>= fun (y, o, m) ->
+      happy_mbox o m >|= fun () -> y )
 
 let locked_mock = lazy (create_locked_mock ())
 
@@ -184,9 +205,9 @@ let test_key =
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
 
-let hsm_with_key ?and_namespace
+let hsm_with_key ?mbox ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
-  let state = operational_mock () in
+  let state = operational_mock ?mbox () in
   Lwt_main.run
     ( Hsm.Key.add_pem state mechanisms ~namespace:None ~id:"keyID" test_key_pem
         no_restrictions

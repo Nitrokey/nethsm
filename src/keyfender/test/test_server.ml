@@ -46,7 +46,7 @@ let () =
   Mirage_crypto_rng_unix.use_default ();
   Lwt_main.run
     ( Kv_mem.connect () >>= fun store ->
-      Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, _) ->
+      Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, p) ->
       let any = Ipaddr.V4.Prefix.global in
       Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None
       >>= fun tcp ->
@@ -74,6 +74,8 @@ let () =
       let rec handle_cb () =
         Lwt_mvar.take mvar >>= function
         | Hsm.Shutdown -> Lwt.return_unit
+        | Hsm.Set_local_config _ ->
+            Lwt_mvar.put p (Ok ()) >>= fun () -> handle_cb ()
         | _ -> handle_cb ()
       in
       handle_cb () )
