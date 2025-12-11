@@ -13,6 +13,8 @@ func getFirmwareVersion(pcr map[int]string) string {
 		"6164cc90d15caca5da0bbcba579c438b1e274dfb979b8aeeb5a497b2e4ab2e69": "hermes-1.0-prod",
 		"f05930700c770ccb6095d12e9c173e3c415fb7656997e68ae7397b0fbeb9fa06": "z790-1.0-devel",
 		"865ecc5ebc82e9ffebe245b1e9cc9fd7797b76e982faa90cf17884927e10a774": "z790-1.0-prod",
+		"c8bcd9e3b0f27a0344c98396ef1b8c19123d83b91a785381440c7b6f1b4560d5": "z790-1.1-devel",
+		"3dbafc595c214d4d693d52af44473f092eee59f52c1119e36212de3d728c7e2a": "z790-1.1-prod",
 	}
 	version, ok := firmwareVersions[pcr[firmwarePCRIdx]]
 	if ok {
