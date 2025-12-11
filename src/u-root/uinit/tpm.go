@@ -129,10 +129,14 @@ func tpmGetPlatformData() (platformData, error) {
 	var pcrIdxs tpm2.PCRSelect = hw.MeasuredPCRs()
 
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
-		err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
-		if err != nil {
-			log.Printf("DictionaryAttackLockReset: %v\n", err)
+		resetDA := func() {
+			err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
+			if err != nil {
+				log.Printf("DictionaryAttackLockReset: %v\n", err)
+			}
 		}
+		resetDA()
+		defer resetDA()
 
 		srkCtx, _, _, _, _, err := tpm.CreatePrimary(tpm.OwnerHandleContext(), nil,
 			objectutil.NewECCStorageKeyTemplate(
@@ -195,21 +199,23 @@ func tpmGetPlatformData() (platformData, error) {
 				tpm2.TaggedHashList{tpm2.MakeTaggedHash(tpm2.HashAlgorithmSHA256, zeros)},
 				nil)
 		}
-		_, err = unsealDeviceKey(tpm, srkCtx)
-		if tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandUnseal, tpm2.AnySessionIndex) {
-			log.Printf("Successfully capped PCR values.")
-		} else {
-			return fmt.Errorf("capping PCR values failed: %w", err)
-		}
 
-		_, pcrValues, err = tpm.PCRRead(pcrSelection)
+		_, newPCRValues, err := tpm.PCRRead(pcrSelection)
 		if err != nil {
 			return fmt.Errorf("reading PCR values failed: %w", err)
 		}
 
+		for _, i := range pcrIdxs {
+			if bytes.Equal(pcrValues[tpm2.HashAlgorithmSHA256][i], newPCRValues[tpm2.HashAlgorithmSHA256][i]) {
+				return fmt.Errorf("capping PCR values failed")
+			}
+		}
+
+		log.Printf("Successfully capped PCR values.")
+
 		data.PCR = make(map[int]string)
 		for _, i := range pcrIdxs {
-			data.PCR[i] = hex.EncodeToString(pcrValues[tpm2.HashAlgorithmSHA256][i])
+			data.PCR[i] = hex.EncodeToString(newPCRValues[tpm2.HashAlgorithmSHA256][i])
 		}
 
 		data.DeviceID, data.AKPub, err = tpmGetAKData(tpm)
