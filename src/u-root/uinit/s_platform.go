@@ -369,6 +369,11 @@ type JoinArgs struct {
 	initialCluster string // of the form "name1=url1:2380,name2=url2:2380,..."
 }
 
+func setSystemTime(t time.Time) error {
+	tv := syscall.NsecToTimeval(t.UnixNano())
+	return syscall.Settimeofday(&tv)
+}
+
 func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
@@ -444,7 +449,11 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	if conf != nil && conf.TimeOffsetS != 0 {
-		// TODO SET PLATFORM TIME
+		t := time.Unix(int64(conf.TimeOffsetS), 0)
+		G.s.Logf("Setting local time to %v", t)
+		if err := setSystemTime(t); err != nil {
+			log.Printf("Failed to set system time: %v", err)
+		}
 	}
 
 	G.etcdStoppedCh = make(chan bool)
