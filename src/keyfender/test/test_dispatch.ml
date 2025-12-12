@@ -154,7 +154,9 @@ let provision_ok =
     `Quick (fun () ->
       let body = `String provision_json in
       let hsm_state =
-        request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
+        request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
         |> returns_empty' ~with_status:`No_content
       in
       Alcotest.(
@@ -176,7 +178,11 @@ let provision_error_precondition_failed =
    with 412"
   @? fun () ->
   let body = `String provision_json in
-  match request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision" with
+  match
+    request
+      ~expect:(debug "caching config to the platform")
+      ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match request ~hsm_state ~body ~meth:`POST "/provision" with
       | _, Some (`Precondition_failed, _, _, _) -> true
@@ -591,7 +597,7 @@ let system_backup_and_restore_ok =
             create_multipart_request
               [ ("arguments", arguments); ("backup_data", backup_data) ]
           in
-          let expect = multipart_log in
+          let expect = multipart_log ^ debug "caching config to the platform" in
           match
             request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST
               ~content_type ~body:(`String body) "/system/restore"
@@ -714,6 +720,7 @@ let system_backup_and_restore_changed_devkey =
           let expect =
             multipart_log ^ info "Device Key changed."
             ^ info "Rewriting stored Domain Key."
+            ^ debug "caching config to the platform"
           in
           match
             request ~expect ~meth:`POST ~content_type ~body:(`String body)
@@ -780,7 +787,7 @@ let system_backup_and_restore_unattended =
       create_multipart_request
         [ ("arguments", arguments); ("backup_data", backup_data) ]
     in
-    let expect = multipart_log in
+    let expect = multipart_log ^ debug "caching config to the platform" in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
       "/system/restore"
     |> Expect.no_content
@@ -835,6 +842,7 @@ let system_backup_and_restore_unattended_changed_devkey =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
       ^ error "unattended boot failed with not authenticated"
+      ^ debug "caching config to the platform"
     in
     let arguments =
       Yojson.Safe.to_string
@@ -976,6 +984,7 @@ let system_backup_and_restore_operational =
       ^ info "Rewriting stored Domain Key."
       ^ info "removing: /key/newKeyID\n"
       ^ info "removing: /namespace/namespace3\n"
+      ^ debug "caching config to the platform"
     in
     let arguments =
       Yojson.Safe.to_string
@@ -1024,7 +1033,7 @@ let system_backup_and_restore_operational =
   in
   (* second restore *)
   let* hsm_state =
-    let expect = multipart_log in
+    let expect = multipart_log ^ debug "caching config to the platform" in
     let arguments =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson
@@ -1346,8 +1355,10 @@ let put_config_tls_cert_pem =
   | hsm_state, Some (`OK, _, `String body, _) -> (
       let content_type = "application/x-pem-file" in
       match
-        request ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~body:(`String body) "/config/tls/cert.pem"
+        request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String body)
+          "/config/tls/cert.pem"
       with
       | _, Some (`Created, headers, _, _) -> (
           match Cohttp.Header.get headers "location" with
@@ -1572,7 +1583,7 @@ let post_config_tls_csr_pem_custom_san =
   | _ -> false
 
 let put_config_tls_cluster_ca_pem =
-  Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
+  Alcotest.test_case "put tls cluster CA succeeds when cert is signed by it"
     `Quick (fun () ->
       let headers = admin_headers in
       (* get the old cert, for last test *)
@@ -1603,12 +1614,14 @@ let put_config_tls_cluster_ca_pem =
       (* replace the NetHSM with that newly signed cert *)
       let hsm_state =
         request ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~expect:(debug "caching config to the platform")
           ~body:(`String new_cert_pem) "/config/tls/cert.pem"
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)
       let hsm_state =
         request ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~expect:(debug "caching config to the platform")
           ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
         |> returns_empty' ~with_status:`Created
       in
@@ -1654,6 +1667,7 @@ let post_config_tls_generate =
     (* call the generate endpoint to generate an RSA key *)
     match
       admin_post_request ~hsm_state ~body:(`String generate_json)
+        ~expect:(debug "caching config to the platform")
         "/config/tls/generate"
     with
     | _, Some (`No_content, _, _, _) ->
@@ -1829,6 +1843,7 @@ let config_time_set_ok =
   match
     admin_put_request
       ~hsm_state:(operational_mock_with_mbox ())
+      ~expect:(debug "caching config to the platform")
       ~body:(`String new_time) "/config/time"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
@@ -4468,19 +4483,26 @@ let cluster_join =
       (* replace the NetHSM with that newly signed cert *)
       let hsm_state =
         request
-          ~expect:(info "tls" ^ info "set-local-config")
+          ~expect:
+            (info "tls"
+            ^ debug "caching config to the platform"
+            ^ info "set-local-config")
           ~hsm_state ~meth:`PUT ~headers ~content_type
           ~body:(`String new_cert_pem) "/config/tls/cert.pem"
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)
       let hsm_state =
-        request ~expect:(info "set-local-config") ~hsm_state ~meth:`PUT ~headers
-          ~content_type ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+        request
+          ~expect:
+            (debug "caching config to the platform" ^ info "set-local-config")
+          ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String ca_pem)
+          "/config/tls/cluster-ca.pem"
         |> returns_empty' ~with_status:`Created
       in
       let expect =
-        info "set-local-config"
+        debug "caching config to the platform"
+        ^ info "set-local-config"
         ^ warning "now erasing all data and joining cluster!"
         ^ info
             "join-cluster \

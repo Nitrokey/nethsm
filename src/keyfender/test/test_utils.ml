@@ -23,6 +23,7 @@ module Test_logs = struct
     result
 end
 
+let debug msg = Fmt.str "test_dispatch.exe: [DEBUG] %s\n" msg
 let info msg = Fmt.str "test_dispatch.exe: [INFO] %s\n" msg
 let warning msg = Fmt.str "test_dispatch.exe: [WARNING] %s\n" msg
 let error msg = Fmt.str "test_dispatch.exe: [ERROR] %s\n" msg

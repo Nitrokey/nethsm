@@ -2310,6 +2310,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let local_config =
         { Json.device_id; tls_cert; tls_cluster_ca; tls_key; time_offset_s }
       in
+      Logs.debug (fun f -> f "caching config to the platform");
       let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
       Lwt_mvar.take t.res_mbox
       |> Lwt_result.map_error (fun msg ->
