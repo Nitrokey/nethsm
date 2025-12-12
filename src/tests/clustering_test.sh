@@ -50,7 +50,7 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
 
 "$etcd_name/etcd" \
     --log-format console \
-    --log-level error \
+    --log-level info \
     --peer-client-cert-auth=true \
     --peer-trusted-ca-file=CA.pem \
     --peer-cert-file=own.pem \

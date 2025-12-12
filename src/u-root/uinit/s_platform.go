@@ -438,11 +438,12 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		//cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
 		cmd += " --listen-peer-urls=https://169.254.169.2:2380"
 	} else {
+		G.s.Logf("Local cache is incomplete, starting without TLS")
 		//cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
 		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
 	}
 
-	if conf.TimeOffsetS != 0 {
+	if conf != nil && conf.TimeOffsetS != 0 {
 		// TODO SET PLATFORM TIME
 	}
 
@@ -450,6 +451,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	aliveCh := make(chan struct{})
 	timeoutCh := make(chan struct{})
 
+	G.s.Logf("now launching: %s", cmd)
 	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
 
 	if err := G.s.Err(); err != nil {
