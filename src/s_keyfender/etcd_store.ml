@@ -24,6 +24,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
 
   let etcd_port = 2379
   let persistent_connection = ref None
+  let last_known_revision = ref 0L
   let set_persistent_connection x = persistent_connection := Some x
 
   let shutdown_connection conn =
@@ -239,6 +240,15 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             f "bi-directional stream closed: %a" Grpc.Status.pp status));
     push_request
 
+  let ( let* ) = Lwt.bind
+
+  let update_revision (header : ResponseHeader.t option) =
+    match header with
+    | None -> ()
+    | Some { revision; _ } ->
+        Log.info (fun f -> f "last rev: %Ld" revision);
+        last_known_revision := revision
+
   let txn stack ~(request : TxnRequest.t) : TxnResponse.t Lwt.t =
     let request = TxnRequest.to_proto request |> Etcd_client.Writer.contents in
     let decode = function
@@ -247,7 +257,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> TxnResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Txn" ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Txn" ~request
+        ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let put stack ~(request : PutRequest.t) : PutResponse.t Lwt.t =
     let request = PutRequest.to_proto request |> Etcd_client.Writer.contents in
@@ -257,7 +272,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> PutResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Put" ~request
+        ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let range stack ~(request : RangeRequest.t) : RangeResponse.t Lwt.t =
     let request =
@@ -269,8 +289,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> RangeResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request
-      ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"Range" ~request
+        ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let delete_range stack ~(request : DeleteRangeRequest.t) :
       DeleteRangeResponse.t Lwt.t =
@@ -283,8 +307,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> DeleteRangeResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange" ~request
-      ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.KV" ~rpc:"DeleteRange"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let member_list stack ~(request : MemberListRequest.t) :
       MemberListResponse.t Lwt.t =
@@ -297,8 +325,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberListResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberList"
-      ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberList"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let member_add stack ~(request : MemberAddRequest.t) :
       MemberAddResponse.t Lwt.t =
@@ -311,8 +343,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberAddResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberAdd"
-      ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberAdd"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let member_remove stack ~(request : MemberRemoveRequest.t) :
       MemberRemoveResponse.t Lwt.t =
@@ -325,8 +361,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberRemoveResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberRemove"
-      ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberRemove"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let member_update stack ~(request : MemberUpdateRequest.t) :
       MemberUpdateResponse.t Lwt.t =
@@ -339,8 +379,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> MemberUpdateResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate"
-      ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberUpdate"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
 
   let maintenance_status stack : StatusResponse.t Lwt.t =
     let request =
@@ -352,8 +396,22 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Etcd_client.Reader.create s
           |> StatusResponse.from_proto |> Result.map Option.some
     in
-    do_grpc_unary ~stack ~service:"etcdserverpb.Maintenance" ~rpc:"Status"
-      ~request ~decode
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Maintenance" ~rpc:"Status"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
+
+  let is_future_rev (header : ResponseHeader.t option) =
+    match header with
+    | None ->
+        Log.warn (fun f -> f "response has no header");
+        true (* to be sure *)
+    | Some { revision; _ } ->
+        let is_future = Int64.compare revision !last_known_revision > 0 in
+        last_known_revision := revision;
+        is_future
 
   module Watch = struct
     type callback = Event.t -> unit Lwt.t
@@ -374,7 +432,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       | Some callback ->
           if resp.created then
             Log.warn (fun f -> f "watch %Ld created but already exists!" id);
-          List.map callback resp.events |> Lwt.join
+          (* only forward events that we do not already know about *)
+          if is_future_rev resp.header then
+            List.map callback resp.events |> Lwt.join
+          else (
+            Log.err (fun f -> f "watch event ignored because known");
+            Lwt.return_unit)
       | None when resp.created -> (
           match Queue.take_opt waiting_watch_id with
           | None ->
@@ -384,6 +447,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           | Some callback ->
               Log.info (fun f -> f "watch %Ld created" id);
               Hashtbl.add callbacks id callback;
+              update_revision resp.header;
               List.map callback resp.events |> Lwt.join)
       | None when resp.canceled ->
           Log.warn (fun f -> f "watch %Ld cancelled before created" id);

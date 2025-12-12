@@ -106,7 +106,7 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
         refresh_loop ~settings ~kv ~cache stream
 
   let handle_event t (_event : Kv_ext.event) =
-    Logs.debug (fun f ->
+    Logs.info (fun f ->
         f "got write event from store: invalidating whole cache!");
     clear_cache t;
     Lwt.return_unit
