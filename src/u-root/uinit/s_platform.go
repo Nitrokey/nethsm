@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+
 	//"os/exec"
 	"strconv"
 	"strings"
@@ -372,21 +373,20 @@ type JoinArgs struct {
 func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
-	cmd :=
-		"/bin/etcd" +
-			" --listen-client-urls=http://169.254.169.2:2379" +
-			" --advertise-client-urls=" +
-			" --data-dir=/data/etcd" +
-			" --snapshot-count=5000" +
-			" --peer-skip-client-san-verification=true" +
-			" --auto-compaction-retention=1h" +
-			" --quota-backend-bytes=5694816256" + // should not be more than RAM
-			// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
-			// --initial-cluster <- just ourself, expanded at runtime
-			" --v2-deprecation=gone" +
-			" --max-txn-ops=512" +
-			// " --log-level debug"+
-			""
+	cmd := "/bin/etcd" +
+		" --listen-client-urls=http://169.254.169.2:2379" +
+		" --advertise-client-urls=" +
+		" --data-dir=/data/etcd" +
+		" --snapshot-count=5000" +
+		" --peer-skip-client-san-verification=true" +
+		" --auto-compaction-retention=1h" +
+		" --quota-backend-bytes=5694816256" + // should not be more than RAM
+		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
+		// --initial-cluster <- just ourself, expanded at runtime
+		" --v2-deprecation=gone" +
+		" --max-txn-ops=512" +
+		// " --log-level debug"+
+		""
 
 	initialState := " --initial-cluster-state=new"
 	if mode == EtcdClusterJoin {
@@ -413,7 +413,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
 			return err
 		}
-		if err := os.Mkdir("/data/etcd", 0700); err != nil {
+		if err := os.Mkdir("/data/etcd", 0o700); err != nil {
 			return err
 		}
 		if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
@@ -421,29 +421,30 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		}
 	}
 
-	conf, _ := localConfig.Get()
-	if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
-		G.s.Logf("Using local cache to start etcd with TLS")
-		fn := "/tmp/ectd_tls_cert.pem"
-		os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
-		cmd += " --peer-cert-file=" + fn
-		fn = "/tmp/ectd_tls_key.pem"
-		os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
-		cmd += " --peer-key-file=" + fn
-		fn = "/tmp/ectd_tls_trusted_ca.pem"
-		os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
-		cmd += " --peer-trusted-ca-file=" + fn
-		cmd += " --peer-client-cert-auth=true"
-		cmd += " --name=" + conf.DeviceID
-		//cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
-		cmd += " --listen-peer-urls=https://169.254.169.2:2380"
-	} else {
-		//cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
-		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
-	}
+	if conf, _ := localConfig.Get(); conf != nil {
+		if conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
+			G.s.Logf("Using local cache to start etcd with TLS")
+			fn := "/tmp/ectd_tls_cert.pem"
+			os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
+			cmd += " --peer-cert-file=" + fn
+			fn = "/tmp/ectd_tls_key.pem"
+			os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
+			cmd += " --peer-key-file=" + fn
+			fn = "/tmp/ectd_tls_trusted_ca.pem"
+			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
+			cmd += " --peer-trusted-ca-file=" + fn
+			cmd += " --peer-client-cert-auth=true"
+			cmd += " --name=" + conf.DeviceID
+			// cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
+			cmd += " --listen-peer-urls=https://169.254.169.2:2380"
+		} else {
+			// cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
+			cmd += " --listen-peer-urls=http://169.254.169.2:2380"
+		}
 
-	if conf.TimeOffsetS != 0 {
-		// TODO SET PLATFORM TIME
+		if conf.TimeOffsetS != 0 {
+			// TODO SET PLATFORM TIME
+		}
 	}
 
 	G.etcdStoppedCh = make(chan bool)
@@ -457,7 +458,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	G.killEtcd = cancel
-	var lastEtcdError = "unknown error"
+	lastEtcdError := "unknown error"
 
 	go func() {
 		logs := bufio.NewReader(logPipe)
@@ -484,7 +485,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	select {
 	case <-G.etcdStoppedCh:
 		log.Printf("etcd exited immediately: %s", lastEtcdError)
-		var origErr = fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
+		origErr := fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
 		if mode == EtcdClusterJoin {
 			log.Printf("restoring data before join and restarting etcd!")
 			if err := os.RemoveAll("/data/etcd"); err != nil {
@@ -537,7 +538,7 @@ func sPlatformActions() {
 	loadUnikernelNets()
 
 	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
-	//G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
+	// G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
 	G.s.Execf("/bbin/ip link set dev net0 up")
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
