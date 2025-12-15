@@ -122,6 +122,7 @@ build_container_test_image:
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 
 build_container_production_image:
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:

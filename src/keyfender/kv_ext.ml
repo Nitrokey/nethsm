@@ -133,6 +133,8 @@ end
 module type Platform = sig
   include Ranged
   module Cluster : Clustered with type t := t
+
+  val clear_watches : t -> unit
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
@@ -146,6 +148,7 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
     List.filter (fun (k, _) -> Range.within range k) items
 
   let create_watch _ _ _ = ()
+  let clear_watches _ = ()
 
   module Cluster = struct
     type member = { id : int64; name : string; urls : string list }

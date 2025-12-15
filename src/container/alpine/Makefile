@@ -1,4 +1,4 @@
-.PHONY: rebuild down up logs clean
+.PHONY: rebuild down up logs clean flogs
 
 clean:
 	sudo rm -rf data
@@ -14,3 +14,6 @@ up: down clean
 
 logs:
 	docker compose -f ./compose-multi.yaml logs
+
+flogs:
+	docker compose -f ./compose-multi.yaml logs -f

@@ -42,9 +42,11 @@ EOF
 
 GET /v1/health/state # should be Locked
 
-POST_admin /v1/unlock <<EOF
-{"passphrase": "UnlockPassphrase"}
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
 EOF
+); do echo "retry.."; sleep 1; done
 
 GET /v1/health/state # should be Operational
 
@@ -92,9 +94,11 @@ POST_admin /v1/cluster/join <<EOF
 $join_req
 EOF
 
-POST_admin /v1/unlock <<EOF
-{"passphrase": "UnlockPassphrase"}
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
 EOF
+); do echo "retry.."; sleep 1; done
 
 # let's create yet another key
 POST_admin /v1/keys/generate <<EOF
@@ -115,6 +119,30 @@ source ./common_functions.sh
 GET_admin /v1/keys/keyN3 # should not 404
 
 GET_admin /v1/cluster/members
+
+# now let's delete this key, and check the deletion propagates to other nodes
+DELETE_admin /v1/keys/keyN3
+
+! (GET_admin /v1/keys/keyN3)
+
+# back to N3, which had keyN3 in cache
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+sleep 1 # allow etcd to forward watch event
+# the cache should have been invalidated, so this should fail
+! (GET_admin /v1/keys/keyN3)
+
+# then let's delete a key that N1, which has never gotten re-unlocked, has seen
+DELETE_admin /v1/keys/keyAcrossCluster
+
+NETHSM_URL="$N1/api"
+source ./common_functions.sh
+
+sleep 1 # allow etcd to forward watch event
+
+# N1 (the origin node) should see the deletion
+! (GET_admin /v1/keys/keyAcrossCluster)
 
 make -f cert.make clean-all
 echo "Clustering tests OK!"

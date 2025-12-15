@@ -31,6 +31,8 @@ curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application
     -X PUT --data-binary @./new_cert.pem -k "${NETHSM_URL}/v1/config/tls/cert.pem"
 echo
 
+sleep 3
+
 echo -n "- installing cluster CA... "
 curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"

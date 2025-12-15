@@ -26,6 +26,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let persistent_connection = ref None
   let last_known_revision = ref 0L
   let set_persistent_connection x = persistent_connection := Some x
+  let connection_established_callbacks = ref []
 
   let shutdown_connection conn =
     match H2C.is_closed conn with
@@ -138,7 +139,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             >>= fun conn ->
             Log.info (fun m -> m "HTTP/2 connection to etcd established");
             set_persistent_connection (conn, h2_conn_error);
-            Lwt.return (conn, h2_conn_error))
+            Lwt_list.iter_p (fun f -> f ()) !connection_established_callbacks
+            >>= fun () -> Lwt.return (conn, h2_conn_error))
 
   let get_connection ~stack =
     (match persistent_connection () with
@@ -183,7 +185,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             Lwt.async (fun () -> callback response);
             read_incoming_responses ()
       in
-      Lwt.join [ send_queued_request (); read_incoming_responses () ]
+      Lwt.pick [ send_queued_request (); read_incoming_responses () ]
+      >|= fun () -> Log.info (fun f -> f "bidir handler stopped")
     in
     Grpc_lwt.Client.Rpc.bidirectional_streaming ~f
 
@@ -245,9 +248,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let update_revision (header : ResponseHeader.t option) =
     match header with
     | None -> ()
-    | Some { revision; _ } ->
-        Log.info (fun f -> f "last rev: %Ld" revision);
-        last_known_revision := revision
+    | Some { revision; _ } -> last_known_revision := revision
 
   let txn stack ~(request : TxnRequest.t) : TxnResponse.t Lwt.t =
     let request = TxnRequest.to_proto request |> Etcd_client.Writer.contents in
@@ -410,16 +411,27 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         true (* to be sure *)
     | Some { revision; _ } ->
         let is_future = Int64.compare revision !last_known_revision > 0 in
-        last_known_revision := revision;
+        if not is_future then
+          Log.debug (fun f ->
+              f "watch event ignored (rev %Ld <= %Ld)" revision
+                !last_known_revision);
+        (* do NOT update revision. other watchers may receive events for the
+           same revision, and we don't want to reject them *)
         is_future
 
   module Watch = struct
     type callback = Event.t -> unit Lwt.t
 
     type t = {
-      write_request : string option -> unit;
-      callbacks : (int64, callback) Hashtbl.t;
-      waiting_watch_id : callback Queue.t;
+      mutable write_request : string option -> unit;
+          (** function obtained by establishing a connection, to push new
+              requests to the long-lived connection *)
+      callbacks : (int64, callback * WatchCreateRequest.t) Hashtbl.t;
+          (** map from obtained watch id to maching callback (and initial
+              request, if we need to recreate them) *)
+      waiting_watch_id : (callback * WatchCreateRequest.t) Queue.t;
+          (** when we send requests, remember the pending ones so we can match
+              them with incoming "watcher created" events *)
     }
 
     let demux (callbacks, waiting_watch_id) (resp : WatchResponse.t) =
@@ -429,24 +441,22 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
           Log.info (fun f -> f "watch %Ld cancelled" id);
           Hashtbl.remove callbacks id;
           Lwt.return_unit
-      | Some callback ->
+      | Some (callback, _) ->
           if resp.created then
             Log.warn (fun f -> f "watch %Ld created but already exists!" id);
           (* only forward events that we do not already know about *)
           if is_future_rev resp.header then
             List.map callback resp.events |> Lwt.join
-          else (
-            Log.err (fun f -> f "watch event ignored because known");
-            Lwt.return_unit)
+          else Lwt.return_unit
       | None when resp.created -> (
           match Queue.take_opt waiting_watch_id with
           | None ->
               Log.err (fun f ->
                   f "watch %Ld created but we have no callback for it!" id);
               Lwt.return_unit
-          | Some callback ->
+          | Some (callback, request) ->
               Log.info (fun f -> f "watch %Ld created" id);
-              Hashtbl.add callbacks id callback;
+              Hashtbl.add callbacks id (callback, request);
               update_revision resp.header;
               List.map callback resp.events |> Lwt.join)
       | None when resp.canceled ->
@@ -457,33 +467,75 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
               f "received watch %Ld event but we have no callback!" id);
           Lwt.return_unit
 
-    let init stack =
-      let callbacks = Hashtbl.create 10 in
-      let waiting_watch_id = Queue.create () in
+    let connect stack f =
+      last_known_revision := 0L;
       let callback str =
         Etcd_client.Reader.create str
         |> WatchResponse.from_proto |> Result.map Option.some
         |> function
         | Error e -> etcd_err (Etcd_client.Result.show_error e)
         | Ok None -> etcd_err "no response!"
-        | Ok (Some r) -> demux (callbacks, waiting_watch_id) r
+        | Ok (Some r) -> f r
       in
       let write_request =
         do_grpc_bidir ~stack ~service:"etcdserverpb.Watch" ~rpc:"Watch"
           ~callback
       in
-      Log.info (fun f -> f "watch stream started");
-      { write_request; callbacks; waiting_watch_id }
+      write_request
 
-    let create t ~(request : WatchCreateRequest.t) ~(callback : callback) =
+    let cancel t ~(request : WatchCancelRequest.t) =
+      let id = request in
       let request =
-        WatchRequest.make ~request_union:(`Create_request request) ()
+        WatchRequest.make ~request_union:(`Cancel_request request) ()
       in
       let request =
         WatchRequest.to_proto request |> Etcd_client.Writer.contents
       in
-      Queue.add callback t.waiting_watch_id;
+      Log.info (fun f -> f "request to cancel watch %Ld sent" id);
       t.write_request (Some request)
+
+    let clear_all t =
+      Hashtbl.iter
+        (fun watch_id _ ->
+          let request = WatchCancelRequest.make ~watch_id () in
+          cancel t ~request)
+        t.callbacks;
+      Hashtbl.clear t.callbacks;
+      Queue.clear t.waiting_watch_id
+
+    let init stack =
+      let callbacks = Hashtbl.create 10 in
+      let waiting_watch_id = Queue.create () in
+      let f = demux (callbacks, waiting_watch_id) in
+      let write_request = connect stack f in
+      Log.info (fun f -> f "initial watch stream started");
+      { write_request; callbacks; waiting_watch_id }
+
+    let create t ~(request : WatchCreateRequest.t) ~(callback : callback) =
+      let request' =
+        WatchRequest.make ~request_union:(`Create_request request) ()
+      in
+      let request' =
+        WatchRequest.to_proto request' |> Etcd_client.Writer.contents
+      in
+      Queue.add (callback, request) t.waiting_watch_id;
+      Log.info (fun f -> f "new watch request sent");
+      t.write_request (Some request')
+
+    let reconnect t stack =
+      let f = demux (t.callbacks, t.waiting_watch_id) in
+      let pending = Queue.to_seq t.waiting_watch_id |> List.of_seq in
+      Queue.clear t.waiting_watch_id;
+      let active = Hashtbl.to_seq_values t.callbacks |> List.of_seq in
+      Hashtbl.clear t.callbacks;
+      let to_replay = pending @ active in
+      t.write_request <- connect stack f;
+      Log.info (fun f ->
+          f "watch stream restarted. replaying %d watchers..."
+            (List.length to_replay));
+      List.iter
+        (fun (callback, request) -> create t ~request ~callback)
+        to_replay
   end
 
   (* let compact ~ctx ~req =
@@ -615,6 +667,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     in
     (key, range_end)
 
+  let pp_event fmt (event : Keyfender.Kv_ext.event) =
+    let kind = match event.kind with `Put -> "PUT" | `Delete -> "DELETE" in
+    Fmt.pf fmt "(%s %a)" kind Mirage_kv.Key.pp event.key
+
   let create_watch t (range : Keyfender.Kv_ext.Range.t) callback =
     let key, range_end = etcd_range_of_range range in
     let request =
@@ -629,9 +685,12 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           let key = Mirage_kv.Key.v (String.of_bytes kv.key) in
           let kind = match event.type' with DELETE -> `Delete | PUT -> `Put in
           let event' = Keyfender.Kv_ext.{ kind; key } in
+          Log.debug (fun f -> f "processing remote event %a" pp_event event');
           callback event'
     in
     Etcd.Watch.create t.watcher ~request ~callback
+
+  let clear_watches t = Etcd.Watch.clear_all t.watcher
 
   (* remove *consecutive* duplicates in a list*)
   let rec dedup = function
@@ -728,6 +787,12 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     | Ok member_id ->
         let watcher = Etcd.Watch.init stack in
         let t = { stack; mode = `Normal; member_id; watcher } in
+        let restart_watcher () =
+          Etcd.Watch.reconnect watcher stack;
+          Lwt.return_unit
+        in
+        Etcd.connection_established_callbacks :=
+          restart_watcher :: !Etcd.connection_established_callbacks;
         Ok t
 end
 

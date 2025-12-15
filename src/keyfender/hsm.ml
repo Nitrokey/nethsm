@@ -759,7 +759,10 @@ module Make (KV : Kv_ext.Platform) = struct
   }
 
   let state t = to_external_state t.state
-  let lock t = t.state <- Locked
+
+  let lock t =
+    KV.clear_watches t.kv;
+    t.state <- Locked
 
   let kv_equal a b =
     let open Lwt_result.Infix in
@@ -2844,6 +2847,7 @@ module Make (KV : Kv_ext.Platform) = struct
              locked_domain_key)
       in
       Log.warn (fun m -> m "joining cluster OK! locking now");
+      KV.clear_watches t.kv;
       let* new_state =
         boot_config_store ~cache_settings:t.cache_settings t.config_store
           t.device_key
