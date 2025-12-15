@@ -8,6 +8,7 @@ const (
 	Version    = "prodrive-hermes-1"
 	DiskDev    = "/dev/sda"
 	DiskPrefix = "/dev/sda"
+	TRNGDev    = "/dev/ttyS1"
 )
 
 func MeasuredPCRs() tpm2.PCRSelect {

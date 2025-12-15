@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+
 	//"os/exec"
 	"strconv"
 	"strings"
@@ -31,14 +32,14 @@ import (
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
 func platformListener(result chan string) {
-	listener, err := net.Listen(G.listenerProtocol, G.listenerPort)
+	listener, err := net.Listen(G.listenerProtocol, G.listenerAddress)
 	if err != nil {
-		log.Fatalf("Unable to launch listener on %s%s: %v", G.listenerProtocol,
-			G.listenerPort, err)
+		log.Fatalf("Unable to launch listener on %s:%s: %v", G.listenerProtocol,
+			G.listenerAddress, err)
 	}
 	defer listener.Close()
-	log.Printf("platformListener: Listening on %s%s.", G.listenerProtocol,
-		G.listenerPort)
+	log.Printf("platformListener: Listening on %s:%s.", G.listenerProtocol,
+		G.listenerAddress)
 
 	// haveUpdate is set to true if an UPDATE command was successfully
 	// processed in a previous connection and COMMIT-UPDATE should be enabled.
@@ -377,21 +378,20 @@ func setSystemTime(t time.Time) error {
 func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
-	cmd :=
-		"/bin/etcd" +
-			" --listen-client-urls=http://169.254.169.2:2379" +
-			" --advertise-client-urls=" +
-			" --data-dir=/data/etcd" +
-			" --snapshot-count=5000" +
-			" --peer-skip-client-san-verification=true" +
-			" --auto-compaction-retention=1h" +
-			" --quota-backend-bytes=5694816256" + // should not be more than RAM
-			// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
-			// --initial-cluster <- just ourself, expanded at runtime
-			" --v2-deprecation=gone" +
-			" --max-txn-ops=512" +
-			// " --log-level debug"+
-			""
+	cmd := "/bin/etcd" +
+		" --listen-client-urls=http://169.254.169.2:2379" +
+		" --advertise-client-urls=" +
+		" --data-dir=/data/etcd" +
+		" --snapshot-count=5000" +
+		" --peer-skip-client-san-verification=true" +
+		" --auto-compaction-retention=1h" +
+		" --quota-backend-bytes=5694816256" + // should not be more than RAM
+		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
+		// --initial-cluster <- just ourself, expanded at runtime
+		" --v2-deprecation=gone" +
+		" --max-txn-ops=512" +
+		// " --log-level debug"+
+		""
 
 	initialState := " --initial-cluster-state=new"
 	if mode == EtcdClusterJoin {
@@ -418,7 +418,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
 			return err
 		}
-		if err := os.Mkdir("/data/etcd", 0700); err != nil {
+		if err := os.Mkdir("/data/etcd", 0o700); err != nil {
 			return err
 		}
 		if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
@@ -426,33 +426,33 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		}
 	}
 
-	conf, _ := localConfig.Get()
-	if conf != nil && conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
-		G.s.Logf("Using local cache to start etcd with TLS")
-		fn := "/tmp/ectd_tls_cert.pem"
-		os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
-		cmd += " --peer-cert-file=" + fn
-		fn = "/tmp/ectd_tls_key.pem"
-		os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
-		cmd += " --peer-key-file=" + fn
-		fn = "/tmp/ectd_tls_trusted_ca.pem"
-		os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
-		cmd += " --peer-trusted-ca-file=" + fn
-		cmd += " --peer-client-cert-auth=true"
-		cmd += " --name=" + conf.DeviceID
-		//cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
-		cmd += " --listen-peer-urls=https://169.254.169.2:2380"
-	} else {
-		G.s.Logf("Local cache is incomplete, starting without TLS")
-		//cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
-		cmd += " --listen-peer-urls=http://169.254.169.2:2380"
-	}
+	if conf, _ := localConfig.Get(); conf != nil {
+		if conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
+			G.s.Logf("Using local cache to start etcd with TLS")
+			fn := "/tmp/ectd_tls_cert.pem"
+			os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
+			cmd += " --peer-cert-file=" + fn
+			fn = "/tmp/ectd_tls_key.pem"
+			os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
+			cmd += " --peer-key-file=" + fn
+			fn = "/tmp/ectd_tls_trusted_ca.pem"
+			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
+			cmd += " --peer-trusted-ca-file=" + fn
+			cmd += " --peer-client-cert-auth=true"
+			cmd += " --name=" + conf.DeviceID
+			// cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
+			cmd += " --listen-peer-urls=https://169.254.169.2:2380"
+		} else {
+			// cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
+			cmd += " --listen-peer-urls=http://169.254.169.2:2380"
+		}
 
-	if conf != nil && conf.TimeOffsetS != 0 {
-		t := time.Unix(int64(conf.TimeOffsetS), 0)
-		G.s.Logf("Setting local time to %v", t)
-		if err := setSystemTime(t); err != nil {
-			log.Printf("Failed to set system time: %v", err)
+		if conf.TimeOffsetS != 0 {
+			t := time.Unix(int64(conf.TimeOffsetS), 0)
+			G.s.Logf("Setting local time to %v", t)
+			if err := setSystemTime(t); err != nil {
+				log.Printf("Failed to set system time: %v", err)
+			}
 		}
 	}
 
@@ -468,7 +468,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	G.killEtcd = cancel
-	var lastEtcdError = "unknown error"
+	lastEtcdError := "unknown error"
 
 	go func() {
 		logs := bufio.NewReader(logPipe)
@@ -495,7 +495,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	select {
 	case <-G.etcdStoppedCh:
 		log.Printf("etcd exited immediately: %s", lastEtcdError)
-		var origErr = fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
+		origErr := fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
 		if mode == EtcdClusterJoin {
 			log.Printf("restoring data before join and restarting etcd!")
 			if err := os.RemoveAll("/data/etcd"); err != nil {
@@ -524,51 +524,47 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 }
 
-// sPlatformActions are executed for S-Platform.
-func sPlatformActions() {
+func setupPlatform() error {
+	if hw.IsTesting() {
+		err := os.MkdirAll("/data/etcd", 0o755)
+		check(err)
+		err = os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID)
+		check(err)
+		return nil
+	}
+
 	// Load TPM kernel modules first, as platformListener needs TPM for
 	// GetDeviceKey().
 	G.s.Logf("Loading TPM driver")
 	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
 	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
-	// Refuse to continue if the above failed.
-	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
-	}
 
 	mountMuenFs()
+
 	G.s.Logf("Channels:")
 	G.s.Execf("/bbin/ls -l /muenfs")
 
 	mountMuenEvents()
+
 	G.s.Logf("Events:")
 	G.s.Execf("/bbin/ls -l /muenevents")
 
 	loadUnikernelNets()
 
 	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
-	//G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
+	// G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
 	G.s.Execf("/bbin/ip link set dev net0 up")
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
 
 	dumpNetworkStatus()
 
-	c := make(chan string)
-	startTask("TRNG", trngTask)
-	startTask("Platform Listener", func() { platformListener(c) })
-	time.Sleep(20 * time.Second)
-
-	G.s.Logf("Ensuring platform data is accessible")
-
 	G.s.Logf("Mounting /data")
 	G.s.Execf("/bbin/mkdir -p /data")
 	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + hw.DiskPrefix + "3 /data")
 
 	if err := G.s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
+		return fmt.Errorf("script failed: %w", err)
 	}
 
 	// If /data/initialised-v1 does NOT exist, assume /data is empty and
@@ -577,14 +573,31 @@ func sPlatformActions() {
 	if _, err := os.Stat(initFile); os.IsNotExist(err) {
 		log.Printf("Populating /data")
 		if err := extractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
-			log.Printf("Error extracting /data template: %v", err)
-			return
+			return fmt.Errorf("error extracting /data template: %w", err)
 		}
 	}
+	return nil
+}
 
-	if err := tpmCreatePlatformData(); err != nil {
-		log.Printf("Creating platform data failed: %v", err)
+// sPlatformActions are executed for S-Platform.
+func sPlatformActions() {
+	if err := setupPlatform(); err != nil {
+		log.Printf("setupPlatform: %v", err)
+		return
 	}
+
+	c := make(chan string)
+	startTask("TRNG", trngTask)
+	startTask("Platform Listener", func() { platformListener(c) })
+
+	if !hw.IsTesting() {
+		if err := tpmCreatePlatformData(); err != nil {
+			log.Printf("Creating platform data failed: %v", err)
+		}
+	} else {
+		mockCreatePlatformData()
+	}
+
 	if err := loadLocalConfigFromCache(); err != nil {
 		log.Printf("Loading local config cache failed: %v", err)
 	}
@@ -596,6 +609,11 @@ func sPlatformActions() {
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
+
+	if hw.IsTesting() {
+		log.Printf("received terminal command, exiting: %s", request)
+		return
+	}
 
 	G.s.Logf("Terminating all processes.")
 	killAll(syscall.Signal(15))
