@@ -2454,26 +2454,35 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let tls_generate t typ ~length =
       let open Lwt_result.Infix in
-      (* generate key *)
-      Lwt.return (Key.generate_x509 typ ~length) >>= fun priv ->
-      (* generate self-signed certificate *)
-      let cert, key = generate_cert priv in
-      (* update store *)
-      with_write_lock (fun () ->
-          Config_store.batch t.config_store @@ fun kv ->
-          internal_server_error Write "Write tls private key" KV.pp_write_error
-            (Config_store.set kv Private_key key)
+      Lwt_result.ok (Config_store.get t.config_store Cluster_CA) >>= function
+      | Ok _ca ->
+          Lwt.return
+            (Error
+               ( Precondition_failed,
+                 "cannot generate cert if cluster CA has been set" ))
+      | Error _ ->
+          (* generate key *)
+          Lwt.return (Key.generate_x509 typ ~length) >>= fun priv ->
+          (* generate self-signed certificate *)
+          let cert, key = generate_cert priv in
+          (* update store *)
+          with_write_lock (fun () ->
+              Config_store.batch t.config_store @@ fun kv ->
+              internal_server_error Write "Write tls private key"
+                KV.pp_write_error
+                (Config_store.set kv Private_key key)
+              >>= fun () ->
+              internal_server_error Write "Write tls certificate"
+                KV.pp_write_error
+                (Config_store.set kv Certificate (cert, [])))
           >>= fun () ->
-          internal_server_error Write "Write tls certificate" KV.pp_write_error
-            (Config_store.set kv Certificate (cert, [])))
-      >>= fun () ->
-      (* update state *)
-      t.key <- key;
-      t.cert <- cert;
-      t.chain <- [];
-      (* notify server *)
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
-      set_local_config t
+          (* update state *)
+          t.key <- key;
+          t.cert <- cert;
+          t.chain <- [];
+          (* notify server *)
+          Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
+          set_local_config t
 
     let network = network_configuration
 

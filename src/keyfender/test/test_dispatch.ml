@@ -1642,7 +1642,15 @@ let put_config_tls_cluster_ca_pem =
         check string "error msg"
           "{\"message\":\"the cluster CA is set, and the given cert is not \
            signed by it: no trust anchor found for X.509 certificate"
-          (String.sub err_msg 0 118)))
+          (String.sub err_msg 0 118));
+      (* Check that we cannot generate a new cert when cluster CA is set *)
+      let keygen_req = {|{ "type": "RSA", "length": 2048 }|} in
+      admin_post_request ~hsm_state ~body:(`String keygen_req)
+        "/config/tls/generate"
+      |> returns_string ~with_status:`Precondition_failed
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"cannot generate cert if cluster CA has been set\"}"))
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
