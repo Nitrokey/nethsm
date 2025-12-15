@@ -6,8 +6,6 @@ N3=https://172.22.1.4
 N4=https://172.22.1.5
 EW=https://172.22.1.10
 
-SYSTEM_TIME="$(date -u +%FT%TZ)"
-
 # Provision and install cert with same CA in N1, N2, N3
 NETHSM_URL="$N1/api"
 source ./provision_test.sh
@@ -70,9 +68,12 @@ NETHSM_URL="$N1/api"
 source ./common_functions.sh
 
 GET_admin /v1/health/state # should be Operational
+
+GET_admin /v1/cluster/members
+
 GET_admin /v1/keys/keyAcrossCluster # should not 404
 
-# let's add a third node, from N2
+# let's add a third node, from N1
 
 resp=$(POST_admin /v1/cluster/members <<EOF
 {"urls": ["$N3:2380"] }
@@ -82,7 +83,7 @@ EOF
 join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
 echo "join req: $join_req"
 
-# N2 join N1 with the info from last request
+# N3 join N1 with the info from last request
 NETHSM_URL="$N3/api"
 source ./common_functions.sh
 
@@ -115,4 +116,5 @@ GET_admin /v1/keys/keyN3 # should not 404
 
 GET_admin /v1/cluster/members
 
+make -f cert.make clean-all
 echo "Clustering tests OK!"

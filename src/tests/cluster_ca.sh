@@ -32,7 +32,7 @@ curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application
 echo
 
 echo -n "- installing cluster CA... "
-curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"
 echo
 
