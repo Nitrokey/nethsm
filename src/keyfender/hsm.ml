@@ -3272,6 +3272,29 @@ module Make (KV : Kv_ext.Platform) = struct
                    (KV.remove kv k))
            (Ok ())
 
+    let apply_migrations kv device_id stored_version =
+      let config_store = Config_store.connect kv device_id in
+      let open Lwt_result.Infix in
+      match Version.(compare current stored_version) with
+      | `Equal -> Lwt_result.return ()
+      | `Smaller ->
+          let msg =
+            "store has higher version than software, please update software \
+             version"
+          in
+          Lwt.return (Error (`Msg msg))
+      | `Greater ->
+          (* here's the place to embed migration code, at least for the
+                configuration store *)
+          Log.info (fun m ->
+              m "Migrating config and domain key stores from older version");
+          lwt_error_to_msg ~pp_error:Config_store.pp_error
+            (Config_store.migrate_v0_v1 config_store)
+          >>= fun () ->
+          lwt_error_to_msg ~pp_error:Config_store.pp_error
+            Domain_key_store.(migrate_v0_v1 (connect kv device_id))
+          >|= fun () -> Log.info (fun m -> m "Migration done.")
+
     let restore t json stream =
       let sb = sb_of_stream stream in
       let ( let** ) = Lwt_result.bind in
@@ -3412,6 +3435,23 @@ module Make (KV : Kv_ext.Platform) = struct
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
               let** new_state =
+                let** stored_version =
+                  internal_server_error Read "Get passphrase salt"
+                    Config_store.pp_error
+                    (Config_store.get_opt t.config_store Config_store.Version)
+                in
+                let** () =
+                  match stored_version with
+                  | None -> Lwt_result.return ()
+                  | Some stored_version ->
+                      apply_migrations t.kv t.system_info.deviceId
+                        stored_version
+                      |> Lwt_result.map_error (fun (`Msg msg) ->
+                          ( Bad_request,
+                            Fmt.str
+                              "could not apply migrations to old backup: %s" msg
+                          ))
+                in
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
               in
@@ -3505,7 +3545,7 @@ module Make (KV : Kv_ext.Platform) = struct
            }
          in
          Lwt.return (Ok t)
-     | Some version -> (
+     | Some version ->
          let boot () =
            boot_config_store ~cache_settings config_store device_key
            >>= fun state ->
@@ -3528,29 +3568,7 @@ module Make (KV : Kv_ext.Platform) = struct
              default_net;
            }
          in
-
-         match Version.(compare current version) with
-         | `Equal -> boot ()
-         | `Smaller ->
-             let msg =
-               "store has higher version than software, please update software \
-                version"
-             in
-             Lwt.return (Error (`Msg msg))
-         | `Greater ->
-             (* here's the place to embed migration code, at least for the
-                configuration store *)
-             Log.info (fun m ->
-                 m "Migrating config and domain key stores from older version");
-             lwt_error_to_msg ~pp_error:Config_store.pp_error
-               (Config_store.migrate_v0_v1 config_store)
-             >>= fun () ->
-             lwt_error_to_msg ~pp_error:Config_store.pp_error
-               Domain_key_store.(
-                 migrate_v0_v1 (connect kv system_info.deviceId))
-             >>= fun () ->
-             Log.info (fun m -> m "Migration done.");
-             boot ()))
+         System.apply_migrations kv system_info.deviceId version >>= boot)
     >|= function
     | Ok t ->
         let dump_key_ops () =
