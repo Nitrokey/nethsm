@@ -6,7 +6,7 @@ N3=https://172.22.1.4
 N4=https://172.22.1.5
 EW=https://172.22.1.10
 
-# Provision and install cert with same CA in N1, N2, N3
+# Provision and install cert with same CA in N1, N2, N3, N4
 NETHSM_URL="$N1/api"
 source ./provision_test.sh
 source ./cluster_ca.sh
@@ -16,6 +16,10 @@ source ./provision_test.sh
 source ./cluster_ca.sh
 
 NETHSM_URL="$N3/api"
+source ./provision_test.sh
+source ./cluster_ca.sh
+
+NETHSM_URL="$N4/api"
 source ./provision_test.sh
 source ./cluster_ca.sh
 
@@ -83,7 +87,6 @@ EOF
 )
 
 join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
-echo "join req: $join_req"
 
 # N3 join N1 with the info from last request
 NETHSM_URL="$N3/api"
@@ -119,6 +122,10 @@ source ./common_functions.sh
 GET_admin /v1/keys/keyN3 # should not 404
 
 GET_admin /v1/cluster/members
+
+echo "creating backup"
+POST /v1/system/backup --user backup:BackupBackup -o backup.bin <<EOF
+EOF
 
 # now let's delete this key, and check the deletion propagates to other nodes
 DELETE_admin /v1/keys/keyN3
@@ -183,6 +190,45 @@ DELETE_admin "/v1/cluster/members/$N2_id"
 # N3 remains operational
 GET_admin /v1/cluster/members
 GET_admin /v1/keys/myKey1 > /dev/null
+
+# Now add N4 to form a 2-node cluster again
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N4:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+
+NETHSM_URL="$N4/api"
+source ./common_functions.sh
+
+echo "attempt to join, this may take some time"
+POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+
+GET /v1/health/state # should be Locked
+
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
+EOF
+); do echo "retry.."; sleep 1; done
+
+echo "restoring backup done previously"
+${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "backupPassphrase"}' \
+    -F backup=@backup.bin \
+    $N4/api/v1/system/restore || exit 1
+
+# N4 still alive and can see old key
+GET_admin /v1/keys/keyN3 > /dev/null
+
+
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+# N3 still alive and can see old key
+GET_admin /v1/keys/keyN3 > /dev/null
 
 make -f cert.make clean-all
 echo "Clustering tests OK!"
