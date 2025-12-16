@@ -733,6 +733,13 @@ type system_info = {
 }
 [@@deriving yojson]
 
+let network_config_of_string = function
+  | `Null -> Ok None
+  | `String "" -> Ok None
+  | `String s ->
+      Yojson.Safe.from_string s |> network_of_yojson |> Result.map Option.some
+  | _ -> Error "expecting serialized network config"
+
 (* must be in sync with platformData in src/u-root/uinit/tpm.go *)
 type platform_data = {
   deviceId : string;
@@ -741,9 +748,16 @@ type platform_data = {
   akPub : assoc_list;
   hardwareVersion : string;
   firmwareVersion : string;
-  networkConfig : network option; [@default None]
+  networkConfig : network option;
+      [@default None] [@of_yojson network_config_of_string]
 }
 [@@deriving yojson]
+
+let network_config_to_string = function
+  | None -> `Null
+  | Some net ->
+      let payload = network_to_yojson net |> Yojson.Safe.to_string in
+      `String payload
 
 (* must be in sync with localConf in src/u-root/uinit/local_conf.go *)
 type local_conf = {
@@ -752,7 +766,8 @@ type local_conf = {
   tls_cluster_ca : string option; [@default None]
   device_id : string;
   time_offset_s : int; (* 0 is unset *)
-  network_config : network option; [@default None]
+  network_config : network option;
+      [@default None] [@to_yojson network_config_to_string]
 }
 [@@deriving yojson]
 

@@ -1049,16 +1049,6 @@ module Make (KV : Kv_ext.Platform) = struct
     let cidr = Ipaddr.V4.Prefix.of_string_exn net in
     { Json.ipv4 = { cidr; gateway }; ipv6 = None }
 
-  let network_configuration t =
-    let open Lwt.Infix in
-    Config_store.(get t.config_store Ip_config) >|= function
-    | Ok cfg -> cfg
-    | Error e ->
-        Log.warn (fun m ->
-            m "error %a while retrieving IP, using default"
-              Config_store.pp_error e);
-        default_network_configuration t.default_net
-
   let random n = Base64.encode_string @@ Mirage_crypto_rng.generate n
 
   let generate_id () =
@@ -2324,7 +2314,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let+ tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
       let* network_config =
-        internal_server_error Read "Write cluster CA" Config_store.pp_error
+        internal_server_error Read "Read cluster CA" Config_store.pp_error
           Config_store.(get_opt t.config_store Ip_config)
       in
       let local_config =
@@ -2499,7 +2489,24 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
           set_local_config t
 
-    let network = network_configuration
+    let network t =
+      let open Lwt.Infix in
+      Config_store.(get t.config_store Ip_config) >>= function
+      | Ok cfg -> Lwt.return cfg
+      | Error e -> (
+          Log.warn (fun m ->
+              m "error %a while retrieving IP, using and storing default"
+                Config_store.pp_error e);
+          let network = default_network_configuration t.default_net in
+          with_write_lock (fun () ->
+              internal_server_error Write "Write network configuration"
+                KV.pp_write_error
+                Config_store.(set t.config_store Ip_config network))
+          >|= function
+          | Error (_, e) ->
+              Log.warn (fun f -> f "failed to store network config: %s" e);
+              network
+          | Ok () -> network)
 
     let set_network t (network : Json.network) =
       let open Lwt_result.Infix in
@@ -2508,7 +2515,8 @@ module Make (KV : Kv_ext.Platform) = struct
             KV.pp_write_error
             Config_store.(set t.config_store Ip_config network))
       >>= fun r ->
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >|= fun () -> r
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >>= fun () ->
+      set_local_config t >|= fun () -> r
 
     let network_digest t =
       let open Lwt.Infix in
@@ -2595,6 +2603,8 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       set_local_config t
   end
+
+  let network_configuration = Config.network
 
   let provision t ~unlock ~admin time =
     let open Lwt_result.Infix in

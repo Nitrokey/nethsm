@@ -1718,11 +1718,12 @@ let config_network_ok =
       let expect =
         warning
           "error Cannot find the key /0000000000/config/ip-config while \
-           retrieving IP, using default"
+           retrieving IP, using and storing default"
       in
       let body =
-        request ~expect ~hsm_state:(operational_mock ()) ~meth:`GET
-          ~headers:admin_headers "/config/network"
+        request ~expect
+          ~hsm_state:(operational_mock_with_mbox ())
+          ~meth:`GET ~headers:admin_headers "/config/network"
         |> returns_string ~with_status:`OK
       in
       Alcotest.(check string)
@@ -1740,8 +1741,9 @@ let config_network_set_ok =
       in
       let hsm_state = operational_mock_with_mbox () in
       let hsm_state' =
-        admin_put_request ~hsm_state ~body:(`String new_network)
-          "/config/network"
+        admin_put_request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state ~body:(`String new_network) "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
@@ -1752,8 +1754,9 @@ let config_network_set_ok =
       Alcotest.(check string) "returns the same config" old_network body;
       (* still accept old config format *)
       let hsm_state' =
-        admin_put_request ~hsm_state ~body:(`String old_network)
-          "/config/network"
+        admin_put_request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state ~body:(`String old_network) "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
@@ -1771,8 +1774,9 @@ let config_network_set_ipv6_ok =
       in
       let hsm_state = operational_mock_with_mbox () in
       let hsm_state =
-        admin_put_request ~hsm_state ~body:(`String new_network)
-          "/config/network"
+        admin_put_request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state ~body:(`String new_network) "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
