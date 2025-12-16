@@ -215,23 +215,33 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
     | Ok r -> r
 
-  let handle_decode_response = function
-    | Error e, _ -> etcd_err (Etcd_client.Result.show_error e)
-    | Ok None, status ->
-        let open Grpc.Status in
-        let err =
-          Fmt.str "no response! status = (code: %a, msg: %a)" pp_code
-            (code status)
-            Fmt.(option string)
-            (message status)
-        in
-        etcd_err err
-    | Ok (Some r), _ -> r
-
-  let do_grpc_unary ~stack ~service ~rpc ~request ~decode =
+  let rec do_grpc_unary ~stack ~service ~rpc ~request ~decode =
     let handler = make_unary_handler ~request ~decode in
     let repr = String.escaped request in
-    do_grpc ~stack ~service ~rpc ~handler ~repr >|= handle_decode_response
+    do_grpc ~stack ~service ~rpc ~handler ~repr >>= function
+    | Error e, _ -> etcd_err (Etcd_client.Result.show_error e)
+    | Ok None, status -> (
+        let open Grpc.Status in
+        let code = code status in
+        let message = message status in
+        match code with
+        | Unavailable ->
+            Log.warn (fun f ->
+                f
+                  "request failed because service unavailable (%a), retrying \
+                   in one second..."
+                  Fmt.(option string)
+                  message);
+            Mirage_sleep.ns (Duration.of_sec 1) >>= fun () ->
+            do_grpc_unary ~stack ~service ~rpc ~request ~decode
+        | _ ->
+            let err =
+              Fmt.str "no response! status = (code: %a, msg: %a)" pp_code code
+                Fmt.(option string)
+                message
+            in
+            etcd_err err)
+    | Ok (Some r), _ -> Lwt.return r
 
   let do_grpc_bidir ~stack ~service ~rpc ~callback =
     let requests, push_request = Lwt_stream.create () in
