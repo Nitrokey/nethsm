@@ -2767,93 +2767,99 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       (* TODO check if our own peer URLs match with how the network is
          configured *)
-      (* refuse to join if CA is not set *)
-      let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
-      let* () =
-        match cluster_ca with
-        | None ->
-            Lwt.return
-              (Error (Precondition_failed, "cluster-ca.pem must be set"))
-        | Some _cluster_ca -> Lwt_result.return ()
-      in
-      (* ensure local cache is up to date *)
-      let* () = Config.set_local_config t in
-      (* backup local config to restore after join *)
-      let* config_backup =
-        internal_server_error Read "Backup local config store"
-          Config_store.pp_error
-          (Config_store.backup_local_config t.config_store)
-      in
-      (* to pass multiple peer urls for the same node, etcd simply expects
+      with_write_lock (fun () ->
+          (* refuse to join if CA is not set *)
+          let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
+          let* () =
+            match cluster_ca with
+            | None ->
+                Lwt.return
+                  (Error (Precondition_failed, "cluster-ca.pem must be set"))
+            | Some _cluster_ca -> Lwt_result.return ()
+          in
+          (* ensure local cache is up to date *)
+          let* () = Config.set_local_config t in
+          (* backup local config to restore after join *)
+          let* config_backup =
+            internal_server_error Read "Backup local config store"
+              Config_store.pp_error
+              (Config_store.backup_local_config t.config_store)
+          in
+          (* to pass multiple peer urls for the same node, etcd simply expects
          to pass name=url multiple times *)
-      let peers =
-        List.map
-          (fun (p : Json.join_req_member) ->
-            List.map (fun url -> (`Name p.name, `Url url)) p.urls)
-          members
-        |> List.concat
-      in
-      let print_peer fmt (`Name name, `Url url) = Fmt.pf fmt "%s=%s" name url in
-      let initial_cluster =
-        Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
-      in
-      (* make the jump ! this will erase all local etcd data and restart
+          let peers =
+            List.map
+              (fun (p : Json.join_req_member) ->
+                List.map (fun url -> (`Name p.name, `Url url)) p.urls)
+              members
+            |> List.concat
+          in
+          let print_peer fmt (`Name name, `Url url) =
+            Fmt.pf fmt "%s=%s" name url
+          in
+          let initial_cluster =
+            Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
+          in
+          (* make the jump ! this will erase all local etcd data and restart
          etcd in join mode *)
-      Log.warn (fun m -> m "now erasing all data and joining cluster!");
-      let* () =
-        Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
-      in
-      (match t.state with
-      | Operational v ->
-          User_store.clear_cache v.auth_store;
-          Key_store.clear_cache v.key_store;
-          Namespace_store.clear_cache v.namespace_store
-      | _ -> assert false);
-      let* () =
-        Lwt_mvar.take t.res_mbox
-        |> Lwt_result.map_error (fun msg ->
-            Log.err (fun m -> m "joining cluster failed: %s" msg);
-            (Bad_request, "joining cluster failed: " ^ msg))
-      in
-      (* we are now on the other side *)
-      let* version =
-        internal_server_error Read "Fetch version after join"
-          Config_store.pp_error
-          (Config_store.get t.config_store Version)
-      in
-      let* () =
-        if version = Version.V1 then Lwt_result.return ()
-        else
-          Lwt.return
-            (Error
-               ( Internal_server_error,
-                 "joined cluster is not V1, refusing to continue" ))
-      in
-      (* restore local config backup in our directory *)
-      let* () =
-        internal_server_error Write "Restore local config" KV.pp_write_error
-          (Config_store.restore_local_config t.config_store config_backup)
-      in
-      (* use unlock salt and locked domain key retrieved from joiner kit *)
-      let* () =
-        internal_server_error Write "Override unlock salt" KV.pp_write_error
-          (Config_store.set t.config_store Unlock_salt unlock_salt)
-      in
-      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
-      let encryption_key = t.device_key in
-      let* () =
-        internal_server_error Write "Write locked domain key" KV.pp_write_error
-          (Domain_key_store.set domain_store Attended ~encryption_key
-             locked_domain_key)
-      in
-      Log.warn (fun m -> m "joining cluster OK! locking now");
-      KV.clear_watches t.kv;
-      let* new_state =
-        boot_config_store ~cache_settings:t.cache_settings t.config_store
-          t.device_key
-      in
-      t.state <- new_state;
-      Lwt_result.return ()
+          Log.warn (fun m -> m "now erasing all data and joining cluster!");
+          let* () =
+            Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
+          in
+          (match t.state with
+          | Operational v ->
+              User_store.clear_cache v.auth_store;
+              Key_store.clear_cache v.key_store;
+              Namespace_store.clear_cache v.namespace_store
+          | _ -> assert false);
+          let* () =
+            Lwt_mvar.take t.res_mbox
+            |> Lwt_result.map_error (fun msg ->
+                Log.err (fun m -> m "joining cluster failed: %s" msg);
+                (Bad_request, "joining cluster failed: " ^ msg))
+          in
+          (* we are now on the other side *)
+          let* version =
+            internal_server_error Read "Fetch version after join"
+              Config_store.pp_error
+              (Config_store.get t.config_store Version)
+          in
+          let* () =
+            if version = Version.V1 then Lwt_result.return ()
+            else
+              Lwt.return
+                (Error
+                   ( Internal_server_error,
+                     "joined cluster is not V1, refusing to continue" ))
+          in
+          (* restore local config backup in our directory *)
+          let* () =
+            internal_server_error Write "Restore local config" KV.pp_write_error
+              (Config_store.restore_local_config t.config_store config_backup)
+          in
+          (* use unlock salt and locked domain key retrieved from joiner kit *)
+          let* () =
+            internal_server_error Write "Override unlock salt" KV.pp_write_error
+              (Config_store.set t.config_store Unlock_salt unlock_salt)
+          in
+          let domain_store =
+            Domain_key_store.connect t.kv t.system_info.deviceId
+          in
+          let encryption_key = t.device_key in
+          let* () =
+            internal_server_error Write "Write locked domain key"
+              KV.pp_write_error
+              (Domain_key_store.set domain_store Attended ~encryption_key
+                 locked_domain_key)
+          in
+          Log.warn (fun m -> m "joining cluster OK! locking now");
+          KV.clear_watches t.kv;
+          let* new_state =
+            boot_config_store ~cache_settings:t.cache_settings t.config_store
+              t.device_key
+          in
+          t.state <- new_state;
+          Lwt_result.return ())
 
     type stream_buffer = {
       stream : string Lwt_stream.t;
