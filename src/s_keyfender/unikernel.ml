@@ -420,15 +420,20 @@ struct
       in
       Lwt.return http
     in
-    let* default_net =
+    let default_net = Args.default_net () in
+    let* () =
       match platform.networkConfig with
-      | None -> Lwt.return (Args.default_net ())
+      | None -> Lwt.return_unit
       | Some network ->
           (* if the platform has stored a network config, use it to
-                 initially configure the network, so that etcd can connect to a
-                 potential cluster *)
+             initially configure the network, so that etcd can connect to a
+             potential cluster *)
+          Log.warn (fun f ->
+              f
+                "platform has stored network config: setting up initial \
+                 network with it");
           let* _ = reconfigure_network network in
-          Lwt.return None
+          Lwt.return_unit
     in
     let rec store_connect () =
       KV_store.connect internal_stack >>= function

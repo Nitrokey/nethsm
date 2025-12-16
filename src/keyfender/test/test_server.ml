@@ -29,6 +29,7 @@ let platform =
     akPub = [];
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
+    networkConfig = None;
   }
 
 let () =
@@ -63,11 +64,11 @@ let () =
       let open Webserver in
       let https =
         Log.info (fun f -> f "listening on %d/TCP" https_port);
-        http tls @@ serve @@ dispatch hsm_state
+        http tls @@ serve @@ dispatch ~hsm_state
       in
       let http =
         Log.info (fun f -> f "listening on %d/TCP" http_port);
-        http tcp @@ serve @@ dispatch hsm_state
+        http tcp @@ serve @@ dispatch ~hsm_state
       in
       Lwt.async (fun () -> https);
       Lwt.async (fun () -> http);

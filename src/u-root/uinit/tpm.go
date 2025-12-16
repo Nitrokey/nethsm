@@ -50,6 +50,7 @@ type platformData struct {
 	AKPub           map[string][]byte `json:"akPub"`
 	HardwareVersion string            `json:"hardwareVersion"`
 	FirmwareVersion string            `json:"firmwareVersion"`
+	NetworkConfig   string            `json:"networkConfig"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -239,7 +240,13 @@ func tpmCreatePlatformData() error {
 		log.Printf("Platform Data: %v\n", string(platformDataJSON))
 
 		data.DeviceKey = deviceKey
+
 		setLocalConfigKey(deviceKey)
+		if conf, _ := localConfig.Get(); conf != nil {
+			// return stored network config as part of platform data
+			data.NetworkConfig = conf.NetworkConfig
+		}
+
 		platformDataCh <- data
 		close(platformDataCh)
 
