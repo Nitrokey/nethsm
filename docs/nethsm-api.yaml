@@ -1367,11 +1367,19 @@ paths:
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: |
-        Irreversibly remove a member from the cluster.
+        Irreversibly remove a member from the cluster. The member in question
+        (even if it is ourself) will become inoperable and should be immediately
+        factory reset. It cannot be added back to the cluster without going
+        through a fresh join process.
 
-        *WARNING*: this MUST be called before resetting or otherwise isolating a member from the cluster. Not doing this
-        may lead the cluster to lose quorum and cease to operate.
-        Make sure to backup before this operation.
+        *WARNING*: this MUST be called before resetting or otherwise isolating a
+        member from the cluster. Not doing this may lead the cluster to lose
+        quorum and cease to operate. Make sure to backup before this
+        operation.
+
+        If a member has failed and the cluster is still operable (it still has
+        quorum), this method MUST be called to remove voting power to the failed
+        node (if there is no hope that the member becomes available again).
       security:
         - basic: []
       x-annotation-role:

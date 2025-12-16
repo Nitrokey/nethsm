@@ -141,29 +141,48 @@ source ./common_functions.sh
 
 sleep 0.5 # allow etcd to forward watch event
 
-# N1 (the origin node) should see the deletion
+# N1 (the original node) should see the deletion
 ! (GET_admin /v1/keys/keyAcrossCluster) || exit 1
 
-N1_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.2")))[0].id')
-echo "N1 etcd ID is: $N1_id"
+# let's simulate N1 crashing without warning, we want the other nodes
+# to keep going
+POST_admin /v1/system/shutdown <<EOF
+EOF
 
-# remove ourselves from the cluster!
-DELETE_admin "/v1/cluster/members/$N1_id"
+sleep 1
 
 NETHSM_URL="$N2/api"
 source ./common_functions.sh
 
 # N2 still operational
 GET_admin /v1/cluster/members
-GET_admin /v1/keys/myKey1
+GET_admin /v1/keys/myKey1 > /dev/null
 
 NETHSM_URL="$N3/api"
 source ./common_functions.sh
 
 # N3 still operational
 GET_admin /v1/cluster/members
-GET_admin /v1/keys/myKey1
+GET_admin /v1/keys/myKey1 > /dev/null
 
+N1_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.2")))[0].id')
+echo "N1 etcd ID is: $N1_id"
+
+# seeing N1 has failed, we can safely remove it from the cluster
+DELETE_admin "/v1/cluster/members/$N1_id"
+
+GET_admin /v1/cluster/members
+
+# finally let's remove N2 before it crashes, because we don't want to be left
+# with a 2-node cluster. This will in effect crash N2
+N2_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.3")))[0].id')
+echo "N2 etcd ID is: $N2_id"
+
+DELETE_admin "/v1/cluster/members/$N2_id"
+
+# N3 remains operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1 > /dev/null
 
 make -f cert.make clean-all
 echo "Clustering tests OK!"
