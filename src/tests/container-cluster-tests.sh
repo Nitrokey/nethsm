@@ -123,15 +123,15 @@ GET_admin /v1/cluster/members
 # now let's delete this key, and check the deletion propagates to other nodes
 DELETE_admin /v1/keys/keyN3
 
-! (GET_admin /v1/keys/keyN3)
+! (GET_admin /v1/keys/keyN3) || exit 1
 
 # back to N3, which had keyN3 in cache
 NETHSM_URL="$N3/api"
 source ./common_functions.sh
 
-sleep 1 # allow etcd to forward watch event
+sleep 0.5 # allow etcd to forward watch event
 # the cache should have been invalidated, so this should fail
-! (GET_admin /v1/keys/keyN3)
+! (GET_admin /v1/keys/keyN3) || exit 1
 
 # then let's delete a key that N1, which has never gotten re-unlocked, has seen
 DELETE_admin /v1/keys/keyAcrossCluster
@@ -139,10 +139,31 @@ DELETE_admin /v1/keys/keyAcrossCluster
 NETHSM_URL="$N1/api"
 source ./common_functions.sh
 
-sleep 1 # allow etcd to forward watch event
+sleep 0.5 # allow etcd to forward watch event
 
 # N1 (the origin node) should see the deletion
-! (GET_admin /v1/keys/keyAcrossCluster)
+! (GET_admin /v1/keys/keyAcrossCluster) || exit 1
+
+N1_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.2")))[0].id')
+echo "N1 etcd ID is: $N1_id"
+
+# remove ourselves from the cluster!
+DELETE_admin "/v1/cluster/members/$N1_id"
+
+NETHSM_URL="$N2/api"
+source ./common_functions.sh
+
+# N2 still operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1
+
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+# N3 still operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1
+
 
 make -f cert.make clean-all
 echo "Clustering tests OK!"
