@@ -56,6 +56,7 @@ let platform =
     akPub = [];
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
+    networkConfig = None;
   }
 
 let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)

@@ -741,6 +741,7 @@ type platform_data = {
   akPub : assoc_list;
   hardwareVersion : string;
   firmwareVersion : string;
+  networkConfig : network option; [@default None]
 }
 [@@deriving yojson]
 
@@ -751,6 +752,7 @@ type local_conf = {
   tls_cluster_ca : string option; [@default None]
   device_id : string;
   time_offset_s : int; (* 0 is unset *)
+  network_config : network option; [@default None]
 }
 [@@deriving yojson]
 

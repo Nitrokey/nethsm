@@ -2295,6 +2295,7 @@ module Make (KV : Kv_ext.Platform) = struct
           Some cert
 
     let set_local_config t =
+      let ( let* ) = Lwt_result.bind in
       let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
       let+ tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
@@ -2322,8 +2323,19 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       let+ tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
+      let* network_config =
+        internal_server_error Read "Write cluster CA" Config_store.pp_error
+          Config_store.(get_opt t.config_store Ip_config)
+      in
       let local_config =
-        { Json.device_id; tls_cert; tls_cluster_ca; tls_key; time_offset_s }
+        {
+          Json.device_id;
+          tls_cert;
+          tls_cluster_ca;
+          tls_key;
+          time_offset_s;
+          network_config;
+        }
       in
       Logs.debug (fun f -> f "caching config to the platform");
       let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in

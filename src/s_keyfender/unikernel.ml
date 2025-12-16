@@ -242,6 +242,7 @@ struct
       akPub = [];
       hardwareVersion = "N/A";
       firmwareVersion = "N/A";
+      networkConfig = None;
     }
 
   let start update_key_store assets internal_stack ext_stack
@@ -258,31 +259,6 @@ struct
       Log.warn (fun m ->
           m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
       Mirage_sleep.ns (Duration.of_sec 1)
-    in
-    let rec store_connect () =
-      KV_store.connect internal_stack >>= function
-      | Ok store -> Lwt.return store
-      | Error e ->
-          let err = Fmt.to_to_string KV_store.pp_error e in
-          let* () = sleep err in
-          (store_connect [@tailcall]) ()
-    in
-    let* store = store_connect () in
-    Logs.app (fun m -> m "connected to store");
-    let ini = Mirage_kv.Key.v ".initialized" in
-    let* () =
-      KV_store.exists store ini >>= function
-      | Ok None -> (
-          KV_store.set store ini "" >>= function
-          | Ok () -> Lwt.return_unit
-          | Error e ->
-              Log.err (fun m ->
-                  m "couldn't write to store %a" KV_store.pp_write_error e);
-              Lwt.fail_with "store not writable")
-      | Ok (Some _) -> Lwt.return_unit
-      | Error e ->
-          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
-          Lwt.fail_with "store not readable"
     in
     let* platform =
       write_platform internal_stack "PLATFORM-DATA" >>= function
@@ -325,10 +301,6 @@ struct
           | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)
           )
     in
-    let default_net = Args.default_net () in
-    let* hsm_state, mvar, res_mvar =
-      Hsm.boot ~cache_settings ?default_net ~platform update_key store
-    in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
       match log.Keyfender.Json.ipAddress with
@@ -347,7 +319,7 @@ struct
       let open Webserver in
       Log.info (fun f -> f "listening on %d/TCP for HTTP" http_port);
       http tcp @@ serve (redirect (Args.https_port ()))
-    and setup_https_listener http certificates =
+    and setup_https_listener ?hsm_state http certificates =
       match Tls.Config.server ~certificates () with
       | Error e -> assert false
       | Ok tls_cfg ->
@@ -355,7 +327,7 @@ struct
           let tls = `TLS (tls_cfg, `TCP https_port) in
           let open Webserver in
           Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
-          http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
+          http tls @@ serve @@ opt_static_file assets @@ dispatch ?hsm_state
     and write_to_platform cmd =
       write_platform internal_stack (Hsm.cb_to_string cmd) >|= function
       | Ok _ -> ()
@@ -363,25 +335,7 @@ struct
           Logs.err (fun m ->
               m "error %a communicating with platform" pp_platform_err e)
     in
-    let reconfigure_network (network : Keyfender.Json.network) =
-      let* () = Ext_reconfigurable_stack.setup ext_stack network in
-      let stack = Ext_reconfigurable_stack.stack ext_stack in
-      let http = Srv.listen stack in
-      (let module S = Ext_reconfigurable_stack.Stack in
-      (* relay incoming etcd peer traffic to internal stack *)
-      (* but only if there are actually two different stacks *)
-      if not Conf_args.single_interface then
-        Lwt.async (fun () ->
-            Etcd_relay_inbound.listen (S.tcp stack)
-              (Internal_stack.tcp internal_stack)
-              (Some (Ipaddr.V4 (Args.platform ()))));
-      (* relay internal etcd peer traffic to its original destination *)
-      (* but only if etcd cannot route the outside by itself *)
-      if not Conf_args.no_platform then
-        Lwt.async (fun () ->
-            Etcd_relay_outbound.listen
-              (Internal_stack.tcp internal_stack)
-              (S.tcp stack) None);
+    let align_peer_urls store (network : Keyfender.Json.network) =
       (* if needed, update how S-Platform's etcd advertise its IP *)
       KV_store.Cluster.member_list store >>= function
       | Error (`Cluster_error s) ->
@@ -423,13 +377,86 @@ struct
                 >|= function
                 | Ok _ -> Logs.info (fun m -> m "etcd peer urls updated!")
                 | Error (`Cluster_error s) ->
-                    Logs.err (fun m -> m "couldn't update peer url: %s" s))))
+                    Logs.err (fun m -> m "couldn't update peer url: %s" s)))
+    in
+    let reconfigure_network ?hsm_state ?store (network : Keyfender.Json.network)
+        =
+      let* () = Ext_reconfigurable_stack.setup ext_stack network in
+      let stack = Ext_reconfigurable_stack.stack ext_stack in
+      let http = Srv.listen stack in
+      (let module S = Ext_reconfigurable_stack.Stack in
+      (* relay incoming etcd peer traffic to internal stack *)
+      (* but only if there are actually two different stacks *)
+      if not Conf_args.single_interface then
+        Lwt.async (fun () ->
+            Etcd_relay_inbound.listen (S.tcp stack)
+              (Internal_stack.tcp internal_stack)
+              (Some (Ipaddr.V4 (Args.platform ()))));
+      (* relay internal etcd peer traffic to its original destination *)
+      (* but only if etcd cannot route the outside by itself *)
+      if not Conf_args.no_platform then
+        Lwt.async (fun () ->
+            Etcd_relay_outbound.listen
+              (Internal_stack.tcp internal_stack)
+              (S.tcp stack) None);
+      match store with
+      | None -> Lwt.return_unit
+      | Some store -> align_peer_urls store network)
       >>= fun () ->
       Lwt.async (fun () -> setup_http_listener http);
-      Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
-      let* log = Hsm.Config.log hsm_state in
-      setup_log stack log;
+      let certificates =
+        match hsm_state with
+        | None -> `None
+        | Some hsm_state -> Hsm.own_cert hsm_state
+      in
+      Lwt.async (fun () -> setup_https_listener ?hsm_state http certificates);
+      let* () =
+        match hsm_state with
+        | None -> Lwt.return_unit
+        | Some hsm_state ->
+            let* log = Hsm.Config.log hsm_state in
+            setup_log stack log;
+            Lwt.return_unit
+      in
       Lwt.return http
+    in
+    let* default_net =
+      match platform.networkConfig with
+      | None -> Lwt.return (Args.default_net ())
+      | Some network ->
+          (* if the platform has stored a network config, use it to
+                 initially configure the network, so that etcd can connect to a
+                 potential cluster *)
+          let* _ = reconfigure_network network in
+          Lwt.return None
+    in
+    let rec store_connect () =
+      KV_store.connect internal_stack >>= function
+      | Ok store -> Lwt.return store
+      | Error e ->
+          let err = Fmt.to_to_string KV_store.pp_error e in
+          let* () = sleep err in
+          (store_connect [@tailcall]) ()
+    in
+    let* store = store_connect () in
+    Logs.app (fun m -> m "connected to store");
+    let ini = Mirage_kv.Key.v ".initialized" in
+    let* () =
+      KV_store.exists store ini >>= function
+      | Ok None -> (
+          KV_store.set store ini "" >>= function
+          | Ok () -> Lwt.return_unit
+          | Error e ->
+              Log.err (fun m ->
+                  m "couldn't write to store %a" KV_store.pp_write_error e);
+              Lwt.fail_with "store not writable")
+      | Ok (Some _) -> Lwt.return_unit
+      | Error e ->
+          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
+          Lwt.fail_with "store not readable"
+    in
+    let* hsm_state, mvar, res_mvar =
+      Hsm.boot ~cache_settings ?default_net ~platform update_key store
     in
     let rec handle_cb http =
       Lwt_mvar.take mvar >>= function
@@ -478,11 +505,12 @@ struct
           in
           write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
-          Lwt.async (fun () -> setup_https_listener http certificates);
+          Lwt.async (fun () ->
+              setup_https_listener ~hsm_state http certificates);
           (handle_cb [@tailcall]) http
       | Hsm.Network network ->
           let* () = Ext_reconfigurable_stack.disconnect ext_stack in
-          let* http = reconfigure_network network in
+          let* http = reconfigure_network ~store ~hsm_state network in
           (handle_cb [@tailcall]) http
       | Hsm.Update (blocks, stream) as cmd ->
           let additional_data write =
@@ -524,7 +552,7 @@ struct
         Mirage_sleep.ns (Duration.of_sec delay))
       else Lwt.return_unit
     in
-    let* http = reconfigure_network network in
+    let* http = reconfigure_network ~store ~hsm_state network in
     (match conf_args.memtrace_port with
     | None -> ()
     | Some port ->
