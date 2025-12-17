@@ -235,13 +235,15 @@ func doBench(name string, url, auth string,
 	handler func(*http.Response),
 ) {
 	var start, last time.Time
-	var once sync.Once
 	var jobs sync.WaitGroup
 	var stats benchStats
 	stats.name = name
 	stats.latencyMin = time.Hour
 
-	chout := make(chan time.Duration)
+	type result = struct {
+		t1, t2 time.Time
+	}
+	resultCh := make(chan result)
 	quit := make(chan bool)
 
 	for i := 0; i < jobFlag; i++ {
@@ -249,77 +251,79 @@ func doBench(name string, url, auth string,
 		go func() {
 			defer jobs.Done()
 			req := newRequest(url, auth)
+			var r result
 			for {
 				req.Body = genBody()
-				once.Do(func() {
-					start = time.Now()
-				})
-				resp, latency, err := doRequest(req)
+				resp, t1, t2, err := doRequest(req)
+				r.t1, r.t2 = t1, t2
 				check(err)
 				if handler != nil {
 					handler(resp)
 				}
+				resultCh <- r
 				select {
 				case <-quit:
 					return
-				case chout <- latency:
+				default:
 				}
 			}
 		}()
 	}
 
-	jobs.Add(1)
 	go func() {
-		defer jobs.Done()
-		for {
-			select {
-			case <-quit:
-				return
-			case l := <-chout:
-				last = time.Now()
-				stats.latencySum += l
-				if l < stats.latencyMin {
-					stats.latencyMin = l
-				}
-				if l > stats.latencyMax {
-					stats.latencyMax = l
-				}
-				stats.numRequests++
-			}
-		}
+		time.Sleep(time.Second * time.Duration(durationFlag))
+		close(quit)
+		jobs.Wait()
+		close(resultCh)
 	}()
-	time.Sleep(time.Second * time.Duration(durationFlag))
-	close(quit)
-	jobs.Wait()
+
+	for r := range resultCh {
+		if start.After(r.t1) || start.IsZero() {
+			start = r.t1
+		}
+		if last.Before(r.t2) {
+			last = r.t2
+		}
+		latency := r.t2.Sub(r.t1)
+		stats.latencySum += latency
+		if latency < stats.latencyMin {
+			stats.latencyMin = latency
+		}
+		if latency > stats.latencyMax {
+			stats.latencyMax = latency
+		}
+		stats.numRequests++
+	}
+
 	stats.duration = last.Sub(start)
 	fmt.Printf("%13.13s (%ds|%dc): ", name, durationFlag, jobFlag)
 	printStats(stats)
 	results = append(results, stats)
 }
 
-func doRequest(req *http.Request) (*http.Response, time.Duration, error) {
-	t := time.Now()
+func doRequest(req *http.Request) (*http.Response, time.Time, time.Time, error) {
+	t1 := time.Now()
 	resp, err := client.Do(req)
+	t2 := time.Now()
 	if err != nil {
 		reqDump, _ := httputil.DumpRequest(req, true)
-		return nil, 0, fmt.Errorf("Error making request: %w\nreq: %s", err, reqDump)
+		return nil, t1, t2, fmt.Errorf("Error making request: %w\nreq: %s", err, reqDump)
 	}
 	if resp.StatusCode >= 300 {
 		reqDump, _ := httputil.DumpRequest(req, true)
 		respDump, _ := httputil.DumpResponse(resp, true)
-		return nil, 0, fmt.Errorf("Error making request: %s\n\nreq:\n%s", respDump, reqDump)
+		return nil, t1, t2, fmt.Errorf("Error making request: %s\n\nreq:\n%s", respDump, reqDump)
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	latency := time.Since(t)
-	return resp, latency, nil
+	return resp, t1, t2, nil
 }
 
 func genKey(bench benchParam) string {
 	url := "https://" + hostFlag + keysPath + "generate"
 	req := newRequest(url, adminFlag)
 	req.Body = io.NopCloser(strings.NewReader(bench.data))
-	resp, _, err := doRequest(req)
+	resp, _, _, err := doRequest(req)
 	check(err)
 	loc := resp.Header.Get("location")
 	return loc
@@ -332,7 +336,7 @@ func delKey(loc string) {
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Basic "+
 		base64.StdEncoding.EncodeToString([]byte(adminFlag)))
-	_, _, err = doRequest(req)
+	_, _, _, err = doRequest(req)
 	check(err)
 }
 
@@ -370,14 +374,19 @@ func getClient() *http.Client {
 	// MaxIdleConnsPerHost controls the number of persistent
 	// connections per host.
 	// transport.MaxIdleConnsPerHost = 1 // Set to 1 to ensure a single connection.
+	transport.MaxIdleConnsPerHost = 100
 
+	// var connCount int64
 	// transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
 	// 	dialer := &net.Dialer{
 	// 		Timeout:   30 * time.Second,
 	// 		KeepAlive: 30 * time.Second,
 	// 	}
 	// 	conn, err := dialer.DialContext(ctx, network, addr)
-	// 	return &CustomConn{conn}, err
+	// 	count := atomic.AddInt64(&connCount, 1)
+	// 	fmt.Fprintf(os.Stderr, "[TCP] New connection #%d to %s\n", count, addr)
+
+	// 	return conn, err
 	// }
 
 	// Create an HTTP client with a custom Transport

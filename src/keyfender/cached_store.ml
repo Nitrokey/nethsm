@@ -15,6 +15,12 @@ type settings = {
 module Make (KV : Kv_ext.Typed_ranged) = struct
   type creation_time = int64
 
+  type cache_entry = {
+    value : KV.value;
+    created_at : creation_time;
+    refreshing : bool;
+  }
+
   module Cache =
     Lru.F.Make
       (struct
@@ -23,7 +29,7 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
         let compare = Mirage_kv.Key.compare
       end)
       (struct
-        type t = KV.value * creation_time
+        type t = cache_entry
 
         let weight _ = 1
       end)
@@ -56,31 +62,43 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
     | Cache c -> c.cache <- Cache.empty c.settings.cache_size
 
   let update cache key value =
-    Cache.add key (value, Mirage_mtime.elapsed_ns ()) cache
+    let entry =
+      { value; created_at = Mirage_mtime.elapsed_ns (); refreshing = false }
+    in
+    Cache.add key entry cache
 
-  type ('a, 'b) validation =
-    | Up_to_date of 'a
-    | Stale of ('a * 'b)
+  type validation =
+    | Up_to_date of cache_entry
+    | Stale of cache_entry
     | Invalid
     | Unknown
 
-  let check ~settings ~async_refresh cache id =
+  let check ~settings cache id =
     let now = Mirage_mtime.elapsed_ns () in
     let invalid_threshold = Int64.(sub now (s_to_ns settings.evict_delay_s)) in
     let stale_threshold =
-      Option.bind async_refresh (fun async_refesh ->
-          Option.map
-            (fun refresh_delay ->
-              (Int64.(sub now (s_to_ns refresh_delay)), async_refesh))
-            settings.refresh_delay_s)
+      match settings.refresh_delay_s with
+      | Some delay -> Some Int64.(sub now (s_to_ns delay))
+      | None -> None
     in
-    match (Cache.find id cache, stale_threshold) with
-    | None, _ -> Unknown
-    | Some (_, date), _ when Int64.compare date invalid_threshold < 0 -> Invalid
-    | Some (v, date), Some (stale_threshold, async_refresh)
-      when Int64.compare date stale_threshold < 0 ->
-        Stale (v, async_refresh)
-    | Some (v, _), _ -> Up_to_date v
+    match Cache.find id cache with
+    | None -> Unknown
+    | Some entry when Int64.compare entry.created_at invalid_threshold < 0 ->
+        Invalid
+    | Some entry -> (
+        match stale_threshold with
+        | Some threshold when Int64.compare entry.created_at threshold < 0 ->
+            Stale entry
+        | _ -> Up_to_date entry)
+
+  let mark_for_refresh c id entry async_refresh =
+    match async_refresh with
+    | None -> ()
+    | Some { request; _ } ->
+        if not entry.refreshing then (
+          let updated_entry = { entry with refreshing = true } in
+          c.cache <- Cache.add id updated_entry c.cache;
+          request id)
 
   let rec refresh_loop ~settings ~kv ~cache stream =
     let* v = Lwt_stream.get stream in
@@ -88,9 +106,7 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
     | None -> Lwt.return ()
     | Some key ->
         let* result = KV.get kv key in
-        (match
-           (result, check ~settings ~async_refresh:(Some ()) cache.cache key)
-         with
+        (match (result, check ~settings cache.cache key) with
         | Ok value, (Stale _ | Invalid) ->
             cache.cache <- update cache.cache key value
         | Ok _, (Unknown | Up_to_date _) ->
@@ -103,6 +119,7 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
             Logs.warn (fun f ->
                 f "Failed to refresh stale value: %a" KV.pp_read_error e);
             cache.cache <- Cache.remove key cache.cache);
+        (* Note: refreshing flag is reset to false by update, or entry is removed *)
         refresh_loop ~settings ~kv ~cache stream
 
   let handle_event t (_event : Kv_ext.event) =
@@ -176,11 +193,11 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
     match t.mode with
     | Batch _ -> KV.get t.kv id
     | Cache ({ cache; settings; async_refresh; _ } as c) -> (
-        match check ~settings ~async_refresh cache id with
-        | Up_to_date v -> Lwt.return_ok v
-        | Stale (v, { request; _ }) ->
-            request id;
-            Lwt.return_ok v
+        match check ~settings cache id with
+        | Up_to_date entry -> Lwt.return_ok entry.value
+        | Stale entry ->
+            mark_for_refresh c id entry async_refresh;
+            Lwt.return_ok entry.value
         | (Invalid | Unknown) as check ->
             let++ value = KV.get t.kv id in
             c.cache <- update cache id value;
@@ -190,11 +207,11 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
   let exists t id =
     match t.mode with
     | Batch _ -> KV.exists t.kv id
-    | Cache { cache; settings; async_refresh; _ } -> (
-        match check ~settings ~async_refresh cache id with
+    | Cache ({ cache; settings; async_refresh; _ } as c) -> (
+        match check ~settings cache id with
         | Up_to_date _ -> Lwt.return_ok (Some `Value)
-        | Stale (_, { request; _ }) ->
-            request id;
+        | Stale entry ->
+            mark_for_refresh c id entry async_refresh;
             Lwt.return_ok (Some `Value)
         | Invalid | Unknown -> KV.exists t.kv id)
 

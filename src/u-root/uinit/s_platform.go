@@ -192,7 +192,7 @@ func platformListener(result chan string) {
 
 		// JOIN-CLUSTER
 		doJoinCluster := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 50))
+			conn.SetDeadline(time.Now().Add(time.Second * 150))
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
