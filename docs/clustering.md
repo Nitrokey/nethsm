@@ -1,6 +1,7 @@
 # Operating a NetHSM cluster
 
-We will call "node" a NetHSM that is expected to be part of a cluster.
+We will call "node" a NetHSM that is expected to be part of a cluster. A "peer"
+of a node is another node within the same cluster.
 
 [[_TOC_]]
 
@@ -40,10 +41,6 @@ $ openssl req -x509 -new -nodes -key CA.key -sha256 -days 1825 -out CA.pem -adde
 
 This CA now has to be installed to every node.
 
-Installing this CA to a node is done though the new endpoint
-`/config/tls/cluster-ca.pem`. However right now it wouldn't be accepted, because
-the node would detect its TLS cert is not signed by our CA yet.
-
 To do this, first generate a Certificate Signing Request (CSR) from
 the node with the `/config/tls/csr.pem` endpoint (refer to its documentation).
 
@@ -70,8 +67,10 @@ $ openssl x509 -req -days 1825 -in nethsm.csr -CA CA.pem -copy_extensions copy \
 Then install the obtained `new_cert.pem` with the `/config/tls/cert.pem`
 endpoint (refer to its documentation).
 
-Finally, the CA (`CA.pem`) can now be installed with the
+Finally, the CA (`CA.pem`) can now be installed with the new
 `/config/tls/cluster-ca.pem` (refer to its documentation).
+This is only possible now that the installed TLS certificate is signed by it.
+Otherwise, the operation would be rejected.
 
 **Note that this process has to be repeated for every node**
 
@@ -124,14 +123,14 @@ If successful, this returns a JSON body of the form
 
 which contains information necessary for the new node the join the cluster. In
 particular, it lists all members of the cluster (where the member with an empty
-name is the new joiner). It also contains it contains the domain key encrypted
+name is the new joiner). It also contains the domain key encrypted
 by both the unlock and backup passphrases -- so a backup passphrase must have
 been configured before.
 
 Keep that response for the next step.
 
 **WARNING**: registering a node immediately introduces a new node in the
-cluster, modifying the quorum theshold, even if the node has not actually joined
+cluster, modifying the quorum threshold, even if the node has not actually joined
 yet. This can render the existing nodes inoperable until the new node has
 actually joined. Refer to the endpoints' documentation and the "Operational
 Redundancy" section of this document.
@@ -184,8 +183,8 @@ The only exceptions to this (i.e. data which are not shared but instead node-spe
 - logging configuration
 - unattended boot configuration
 - device key
-- unlock and backup passphrases
-- unlock and backup salt
+- unlock passphrase and backup passphrase
+- unlock salt and backup salt
 
 Configuration data that **are** shared are:
 - the software version (nodes must have a uniform version)
@@ -204,7 +203,7 @@ This implies the following scenarios.
 
 #### One node goes down and quorum is still reached
 
-In a 3-node cluster, if one node fails (crashes are becomes unreachable due to
+In a 3-node cluster, if one node fails (crashes or becomes unreachable due to
 network conditions), the two other nodes will continue to work and serve
 requests.
 
