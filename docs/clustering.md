@@ -117,7 +117,7 @@ node of the cluster). This is done using the `POST /cluster/members` endpoint
 (refer to its documentation), passing it a JSON body containing the peer URL.
 
 If successful, this returns a JSON body of the form
-```
+```json
 {
   "members": [
     {
@@ -184,16 +184,35 @@ example. In that case, give it some time and try again.
 
 ### What it means to have a cluster
 
-- keys/users/namespaces are shared
-- backup/restore
-- some configs are shared, some are not
+Having a cluster of NetHSMs means that most of the data is shared between them.
+Any addition, modification or deletion of keys, user, or namespaces on one node are eventually reflected on all the others.
+In general, any operation that modifies state, will modify state for every node.
 
-### Updating the CA
+This include the backup **restore** operation, which works as before. Note that restoring a large backup may overwhelm the cluster for a while, while the node applying the restore forwards changes to the others.
 
-### Changing the peer URLs
+The only exceptions to this (i.e. data which are not shared but instead node-specific) are config data and the domain store:
+- TLS certificates
+- clock configuration
+- network configuration
+- logging configuration
+- unattended boot configuration
+- device key
+- unlock and backup passphrases
+- unlock and backup salt
+
+Configuration data that **are** shared are:
+- the software version (nodes must have a uniform version)
+- the cluster CA
+
+Note that the backup operation, which works as before and can be requested from any node of the cluster, will back up data for the whole cluster, including device-specific fields.
+A backup done on a cluster can be restored on the same cluster, even if some nodes have been added or removed since. It will just not affect device-specific data of the new joiners.
 
 ### Removing a node cleanly
 
+
 ## Limitations
+
+- updating CA
+- updating peer URLs
 
 ## Failure modes
