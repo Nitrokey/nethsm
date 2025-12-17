@@ -32,7 +32,7 @@ Users should create a CA by their own means and according to their own
 operational constraints, making sure it allows at least the `keyCertSign` key
 usage.
 
-For example, a minimal CA can be created by `openssl`:
+For example, a minimal CA can be created with `openssl`:
 
 ```bash
 $ openssl genrsa -out CA.key 2048 # create a key
@@ -44,16 +44,14 @@ This CA now has to be installed to every node.
 To do this, first generate a Certificate Signing Request (CSR) from
 the node with the `/config/tls/csr.pem` endpoint (refer to its documentation).
 
-**NOTE**: The properly authentify peers, the clustering backend (etcd) expects
+**NOTE**: To properly authentify nodes, the clustering backend (etcd) expects
 that each node has a certificate with a properly filled Subject Alt Names (SAN) field.
-In particular, nodes expecting to be reached via their IP only need to have a
+In particular, nodes expecting to be reached ony via their IP need to have a
 proper IP SAN in their certificate. IP SANs can be requested for the CSR by
 prefixing "IP:" to the names, as in `openssl`:
 
-```
-  ...
-  "subjectAltNames": [ "normalname.org", "IP:192.168.1.1" ]
-  ...
+```json
+"subjectAltNames": [ "normalname.org", "IP:192.168.1.1" ]
 ```
 
 Given the obtained CSR (let's call it `nethsm.csr`), we can then generate a
@@ -68,7 +66,7 @@ Then install the obtained `new_cert.pem` with the `/config/tls/cert.pem`
 endpoint (refer to its documentation).
 
 Finally, the CA (`CA.pem`) can now be installed with the new
-`/config/tls/cluster-ca.pem` (refer to its documentation).
+`/config/tls/cluster-ca.pem` endpoint (refer to its documentation).
 This is only possible now that the installed TLS certificate is signed by it.
 Otherwise, the operation would be rejected.
 
@@ -169,7 +167,7 @@ example. In that case, give it some time and try again.
 ### What is shared between nodes
 
 Having a cluster of NetHSMs means that most of the data is shared between them.
-Any addition, modification or deletion of keys, user, or namespaces on one node are eventually reflected on all the others.
+Any addition, modification or deletion of keys, users, or namespaces on one node are eventually reflected on all the others.
 In general, any operation that modifies state, will modify state for every node.
 
 This include the backup **restore** operation, which works as before. Note that restoring a large backup may overwhelm the cluster for a while, while the node applying the restore forwards changes to the others.
@@ -211,9 +209,9 @@ If the failed node is still healthy (e.g. it was just a network
 problem), it will be inoperable while isolated (not even read-only).
 
 However if the node recovers, it will cleanly resynchronize with the rest of the
-cluster and becomes operable again, without losing data.
+cluster and become operable again, without losing data.
 
-If it never recovers, it has to be remove from the cluster (see next section),
+If it never recovers, it has to be removed from the cluster (see next section),
 factory reset, and go through the join process again from scratch.
 
 #### A network partition happens and quorum is still reached
@@ -251,7 +249,7 @@ As long as some part of the cluster is still meeting quorum, any of its members
 can be used to remove another node from the cluster, whether this node is
 already unreachable or is expected to be.
 
-You first have to know the ID of the node you want to removed, by listing all
+You first have to know the ID of the node you want to remove, by listing all
 nodes through `GET /cluster/members` and looking for the right one.
 
 Then it can be removed by calling `DELETE /cluster/members/<id>`. If the node in
