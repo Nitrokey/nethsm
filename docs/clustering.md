@@ -1,5 +1,22 @@
 # Operating a NetHSM cluster
 
+* [Creating a cluster](#creating-a-cluster)
+  + [Preparing nodes](#preparing-nodes)
+      - [Networking](#networking)
+      - [Creating and installing a CA](#creating-and-installing-a-ca)
+      - [Clock sync](#clock-sync)
+  + [Adding a new node](#adding-a-new-node)
+      - [Registering a new node](#registering-a-new-node)
+      - [Actually join the cluster](#actually-join-the-cluster)
+* [Operating a cluster](#operating-a-cluster)
+  + [What it means to have a cluster](#what-it-means-to-have-a-cluster)
+  + [Updating the CA](#updating-the-ca)
+  + [Changing the peer URLs](#changing-the-peer-urls)
+  + [Removing a node cleanly](#removing-a-node-cleanly)
+* [Limitations](#limitations)
+* [Failure modes](#failure-modes)
+
+
 We will call "node" a NetHSM that is expected to be part of a cluster.
 
 ## Creating a cluster
