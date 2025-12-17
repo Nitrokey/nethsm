@@ -174,6 +174,8 @@ Any addition, modification or deletion of keys, user, or namespaces on one node 
 In general, any operation that modifies state, will modify state for every node.
 
 This include the backup **restore** operation, which works as before. Note that restoring a large backup may overwhelm the cluster for a while, while the node applying the restore forwards changes to the others.
+Note also that this operation remains compatible with backups made on previous
+versions of the NetHSM.
 
 The only exceptions to this (i.e. data which are not shared but instead node-specific) are config data and the domain store:
 - TLS certificates
@@ -259,7 +261,24 @@ and render it inoperable.
 
 ## Limitations
 
-- updating CA
-- updating peer URLs
-- IPv6 peers
-- restore fragility
+This is an experimental release that should not yet be used for production. In
+particular, in this version the config store remains unencrypted, while the
+final release will change that.
+
+Be also aware of the following, temporary limitations:
+
+- while individual nodes can be configured to have an IPv6 and used by clients
+    through that IP, only IPv4s should be used for peer URLs when registering
+    nodes ;
+- once a CA has been set and a cluster has been formed, updating the CA without
+    manually ensuring all nodes have had their TLS cert signed by the new CA,
+    might put the cluster in an inconsistent state ;
+- once a node is part of a cluster, changing its network configuration and/or
+    its advertised peer URLs is not fully supported ;
+- users should manually ensure no write operation is performed on any member of
+    a cluster while a restore operation is ongoing ;
+- if a cluster is lost (quorum is lost), the only means of recovery is
+    factory-reset + restore. Future releases will include means to recover from
+    on-disk data ;
+- system time between nodes must be manually synchronized for now. Future
+    release may include automatic clok sync.
