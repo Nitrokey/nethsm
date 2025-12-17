@@ -10,8 +10,6 @@
       - [Actually join the cluster](#actually-join-the-cluster)
 * [Operating a cluster](#operating-a-cluster)
   + [What it means to have a cluster](#what-it-means-to-have-a-cluster)
-  + [Updating the CA](#updating-the-ca)
-  + [Changing the peer URLs](#changing-the-peer-urls)
   + [Removing a node cleanly](#removing-a-node-cleanly)
 * [Limitations](#limitations)
 * [Failure modes](#failure-modes)
