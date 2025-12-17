@@ -1,21 +1,8 @@
 # Operating a NetHSM cluster
 
-* [Creating a cluster](#creating-a-cluster)
-  + [Preparing nodes](#preparing-nodes)
-      - [Networking](#networking)
-      - [Creating and installing a CA](#creating-and-installing-a-ca)
-      - [Clock sync](#clock-sync)
-  + [Adding a new node](#adding-a-new-node)
-      - [Registering a new node](#registering-a-new-node)
-      - [Actually join the cluster](#actually-join-the-cluster)
-* [Operating a cluster](#operating-a-cluster)
-  + [What it means to have a cluster](#what-it-means-to-have-a-cluster)
-  + [Removing a node cleanly](#removing-a-node-cleanly)
-* [Limitations](#limitations)
-* [Failure modes](#failure-modes)
-
-
 We will call "node" a NetHSM that is expected to be part of a cluster.
+
+[[_TOC_]]
 
 ## Creating a cluster
 
@@ -146,8 +133,8 @@ Keep that response for the next step.
 **WARNING**: registering a node immediately introduces a new node in the
 cluster, modifying the quorum theshold, even if the node has not actually joined
 yet. This can render the existing nodes inoperable until the new node has
-actually joined. Refer to the endpoints' documentation and the last section of
-the document.
+actually joined. Refer to the endpoints' documentation and the "Operational
+Redundancy" section of this document.
 
 #### Actually join the cluster
 
@@ -180,7 +167,7 @@ example. In that case, give it some time and try again.
 
 ## Operating a cluster
 
-### What it means to have a cluster
+### What is shared between nodes
 
 Having a cluster of NetHSMs means that most of the data is shared between them.
 Any addition, modification or deletion of keys, user, or namespaces on one node are eventually reflected on all the others.
@@ -205,12 +192,74 @@ Configuration data that **are** shared are:
 Note that the backup operation, which works as before and can be requested from any node of the cluster, will back up data for the whole cluster, including device-specific fields.
 A backup done on a cluster can be restored on the same cluster, even if some nodes have been added or removed since. It will just not affect device-specific data of the new joiners.
 
+### Operational redundancy
+
+**A cluster of `N` nodes will continue to operate as long as at least `(N/2)+1`
+nodes are healthy and reachable.** That minimal amount of healthy, reachable
+nodes is called the **quorum**.
+
+This implies the following scenarios.
+
+#### One node goes down and quorum is still reached
+
+In a 3-node cluster, if one node fails (crashes are becomes unreachable due to
+network conditions), the two other nodes will continue to work and serve
+requests.
+
+If the failed node is still healthy (e.g. it was just a network
+problem), it will be inoperable while isolated (not even read-only).
+
+However if the node recovers, it will cleanly resynchronize with the rest of the
+cluster and becomes operable again, without losing data.
+
+If it never recovers, it has to be remove from the cluster (see next section),
+factory reset, and go through the join process again from scratch.
+
+#### A network partition happens and quorum is still reached
+
+This is just a generalization of the previous scenario. In a 7-nodes cluster
+where e.g. 3 nodes are in one physical location A and 4 nodes are in another
+location B, a network problem isolating A and B would mean the following:
+
+- The 4 nodes in location A are meeting the quorum (4 in this case), so they
+  continue to operate.
+- The 3 nodes in location B are **not** meeting the quorum (still 4), so they
+  will stop operating (even read-only).
+- If the network issue is resolved, the 3 nodes will cleanly join back the 4
+  others.
+
+#### The quorum is durably lost
+
+A failure causing all subsets of the cluster to lose quorum will render the
+cluster and its data completely lost, unless the failure is resolved. In this
+case, nodes must be factory-reset and a backup must be restored.
+
+This can happen for example if a single node fails in a 2-node cluster (where
+the quorum is 2). In this situation, the failed node can not be
+cleanly removed from the cluster after the fact, because the remaining healthy
+node is already inoperable since it has lost quorum.
+
+Hence it is advised to always have an odd amount of nodes in a
+cluster, and to back up often. 
+
+For more information, see [etcd FAQ](https://etcd.io/docs/v3.6/faq/#why-an-odd-number-of-cluster-members)
+
 ### Removing a node cleanly
 
+As long as some part of the cluster is still meeting quorum, any of its members
+can be used to remove another node from the cluster, whether this node is
+already unreachable or is expected to be.
+
+You first have to know the ID of the node you want to removed, by listing all
+nodes through `GET /cluster/members` and looking for the right one.
+
+Then it can be removed by calling `DELETE /cluster/members/<id>`. If the node in
+question was still healthy, this will isolate it from the rest of the cluster
+and render it inoperable.
 
 ## Limitations
 
 - updating CA
 - updating peer URLs
-
-## Failure modes
+- IPv6 peers
+- restore fragility
