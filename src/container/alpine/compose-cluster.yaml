@@ -2,177 +2,104 @@ name: nethsm-cluster
 
 services:
   nethsm1:
+    hostname: nethsm1
+    image: nitrokey/nethsm:test-clustering
     build:
       context: ../../..
       dockerfile: src/container/alpine/Dockerfile
       target: nethsm_test
-      tags:
-        - nethsm-dev
     networks:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.2
-      int1:
-        interface_name: eth1
-        link_local_ips:
-          - 169.254.169.1
     # environment: {}
+    volumes:
+      - ./data/nethsm1:/data
     cap_add:
       - NET_ADMIN
-    depends_on:
-      - etcd1
-  etcd1:
-    image: "quay.io/coreos/etcd:v3.6.5"
-    networks:
-      int1:
-        link_local_ips:
-          - 169.254.169.2
-    command: >
-      etcd
-        --listen-client-urls "http://169.254.169.2:2379"
-        --advertise-client-urls "http://169.254.169.2:2379"
-        --data-dir /etcd-data/etcd1
-        --host-whitelist "169.254.169.1"
-        --max-txn-ops 512
-    # --log-level debug
-    volumes:
-      - data:/etcd-data
 
   nethsm2:
-    image: nethsm-dev
+    hostname: nethsm2
+    image: nitrokey/nethsm:test-clustering
     networks:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.3
-      int2:
-        interface_name: eth1
-        link_local_ips:
-          - 169.254.169.1
     # environment: {}
+    volumes:
+      - ./data/nethsm2:/data
     cap_add:
       - NET_ADMIN
-    depends_on:
-      - nethsm1
-      - etcd2
-  etcd2:
-    image: "quay.io/coreos/etcd:v3.6.5"
-    networks:
-      int2:
-        link_local_ips:
-          - 169.254.169.2
-    command: >
-      etcd
-        --listen-client-urls "http://169.254.169.2:2379"
-        --advertise-client-urls "http://169.254.169.2:2379"
-        --data-dir /etcd-data/etcd2
-        --host-whitelist "169.254.169.1"
-        --max-txn-ops 512
-    # --log-level debug
-    volumes:
-      - data:/etcd-data
 
   nethsm3:
-    image: nethsm-dev
+    hostname: nethsm3
+    image: nitrokey/nethsm:test-clustering
     networks:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.4
-      int3:
-        interface_name: eth1
-        link_local_ips:
-          - 169.254.169.1
+    # environment: {}
+    volumes:
+      - ./data/nethsm3:/data
+    cap_add:
+      - NET_ADMIN
+
+  nethsm4:
+    hostname: nethsm4
+    image: nitrokey/nethsm:test-clustering
+    networks:
+      nethsm:
+        interface_name: eth0
+        ipv4_address: 172.22.1.5
     # environment: {}
     cap_add:
       - NET_ADMIN
-    depends_on:
-      - nethsm1
-      - etcd3
-  etcd3:
+    volumes:
+      - ./data/nethsm4:/data
+
+  etcd-witness:
+    hostname: etcd-wittness
     image: "quay.io/coreos/etcd:v3.6.5"
     networks:
-      int3:
-        link_local_ips:
-          - 169.254.169.2
+      nethsm:
+        interface_name: eth0
+        ipv4_address: 172.22.1.10
     command: >
       etcd
-        --listen-client-urls "http://169.254.169.2:2379"
-        --advertise-client-urls "http://169.254.169.2:2379"
-        --data-dir /etcd-data/etcd3
-        --host-whitelist "169.254.169.1"
-        --max-txn-ops 512
-    # --log-level debug
+        --data-dir=/etcd-data
+        --listen-peer-urls=https://0.0.0.0:2380
+        --max-txn-ops=512
+        --peer-auto-tls
+    # --cert-file=/run/secrets/etcd_server_cert
+    # --key-file=/run/secrets/etcd_server_key
+    # --trusted-ca-file=/run/secrets/ca_cert
     volumes:
-      - data:/etcd-data
-
-  # nethsm4:
-  #   build:
-  #     context: ../../..
-  #     dockerfile: src/container/alpine/Dockerfile
-  #     target: nethsm_test
-  #   networks:
-  #     nethsm:
-  #       interface_name: eth0
-  #       ipv4_address: 172.22.1.5
-  #     int4:
-  #       interface_name: eth1
-  #       link_local_ips:
-  #         - 169.254.169.1
-  #   # environment: {}
-  #   cap_add:
-  #     - NET_ADMIN
-  #   depends_on:
-  #     - etcd4
-  # etcd4:
-  #   image: "quay.io/coreos/etcd:v3.6.5"
-  #   networks:
-  #     int4:
-  #       link_local_ips:
-  #         - 169.254.169.2
-  #   command: >
-  #     etcd
-  #       --listen-client-urls "http://169.254.169.2:2379"
-  #       --advertise-client-urls "http://169.254.169.2:2379"
-  #       --data-dir /etcd-data/etcd3
-  #       --host-whitelist "169.254.169.1"
-  #       --max-txn-ops 512
-  #   # --log-level debug
-  #   volumes:
-  #     - data:/etcd-data
-
-  # etcd-witness:
-  #   image: "quay.io/coreos/etcd:v3.6.5"
-  #   networks:
-  #     nethsm:
-  #       ipv4_address: 172.22.1.10
-  #   command: >
-  #     etcd
-  #       --data-dir=/etcd-data/etcd-witness
-  #       --cert-file=/run/secrets/etcd_server_cert
-  #       --key-file=/run/secrets/etcd_server_key
-  #       --trusted-ca-file=/run/secrets/ca_cert
-  #       --advertise-client-urls=https://0.0.0.0:2379
-  #       --listen-client-urls=https://0.0.0.0:2379
-  #       --max-txn-ops=512
-  #   volumes:
-  #     - data:/etcd-data
-  #   secrets:
-  #     - ca_cert
-  #     - etcd_server_cert
-  #     - etcd_server_key
+      - ./data/etcd-witness:/etcd-data
+    # secrets:
+    #   - ca_cert
+    #   - etcd_server_cert
+    #   - etcd_server_key
 
   nethsm-test:
-    image: nethsm-dev
+    image: nitrokey/nethsm:test-clustering
+    pull_policy: never
     depends_on:
       - nethsm1
       - nethsm2
       - nethsm3
+      - nethsm4
     entrypoint:
       - "/bin/sh"
       - "-c"
       - |-
+        echo -n "nethsm1: "
         curl -f -k -s -w '\n' https://nethsm1/api/v1/info
+        echo -n "nethsm2: "
         curl -f -k -s -w '\n' https://nethsm2/api/v1/info
+        echo -n "nethsm3: "
         curl -f -k -s -w '\n' https://nethsm3/api/v1/info
+        echo -n "nethsm4: "
+        curl -f -k -s -w '\n' https://nethsm4/api/v1/info
         sleep 1000
     networks:
       - nethsm
@@ -184,14 +111,6 @@ networks:
       driver: default
       config:
         - subnet: "172.22.1.0/24"
-  int1:
-    internal: true
-  int2:
-    internal: true
-  int3:
-    internal: true
-  int4:
-    internal: true
 volumes:
   data:
 # secrets:
