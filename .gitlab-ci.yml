@@ -583,3 +583,46 @@ run-openapi-fuzzer:
     paths:
       - src/tests/openapi-fuzzer.regressions
       - src/tests/results
+
+commit_container_test_image_clustering:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID == "418"
+  variables:
+    IMAGE_NAME: "nitrokey/nethsm"
+    IMAGE_TAG: "test-clustering"
+    REGISTRY: "docker.io"
+  stage: commit
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  needs:
+    - build_container_test_image
+  before_script:
+    - dnf install -y git-core
+    - echo $CI_REGISTRY_PASSWORD | skopeo login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - cat $DOCKERHUB_TOKEN | skopeo login -u $DOCKERHUB_USER --password-stdin $REGISTRY
+  script:
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+    - |-
+      for tag in $(git tag --points-at ${CI_COMMIT_SHA}); do
+        echo "Adding container image alias for tag: $tag"
+        skopeo copy docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA docker://$REGISTRY/$IMAGE_NAME:${IMAGE_TAG}-${tag}
+      done
+
+push_github_mirror_clustering:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID == "418"
+  stage: commit
+  image: "${CI_REGISTRY_IMAGE}/builder:latest"
+  needs:
+    - build_container_test_image
+  before_script: *setup_job_default
+  script:
+    - eval $(ssh-agent)
+    - cat $GITHUB_KEY | ssh-add -
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - git lfs uninstall
+    - git remote add github git@github.com:Nitrokey/nethsm.git
+    - git push -f --follow-tags --no-verify github ${CI_COMMIT_SHORT_SHA}:clustering
+    - echo "REMOVE BEFORE MERGING" && false
