@@ -83,6 +83,8 @@ RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine
 
 RUN cd src/u-root && CGO_ENABLED=0 go build -tags testing -o ./uinit/uinit ./uinit
 
+RUN cd src/tests && CGO_ENABLED=0 go build ./perftest.go
+
 FROM builder AS prod_builder
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
@@ -132,5 +134,7 @@ COPY --from=builder \
   /
 COPY src/container/alpine/start-debug.sh /
 COPY --from=builder /home/opam/nethsm/src/u-root/uinit/uinit /
+COPY --from=builder /home/opam/nethsm/src/tests/perftest /
+COPY src/container/alpine/provision.sh /
 
 ENTRYPOINT [ "/start.sh" ]
