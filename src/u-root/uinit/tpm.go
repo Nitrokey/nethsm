@@ -274,7 +274,7 @@ func mockCreatePlatformData() {
 	var data platformData
 
 	hostname, _ := os.Hostname()
-	log.Printf("using hostname for device key/id: %", hostname)
+	log.Printf("using hostname for device key/id: %s", hostname)
 	hash := sha256.Sum256([]byte(hostname))
 	data.DeviceKey = hash[:]
 	data.DeviceID = base32.NewEncoding(base32Chars).EncodeToString(data.DeviceKey[:7])[:10]
