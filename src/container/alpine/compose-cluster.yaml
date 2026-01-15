@@ -15,7 +15,7 @@ services:
         ipv6_address: "fc00:22:1::2"
     # environment: {}
     volumes:
-      - ./data/nethsm1:/data
+      - "data1:/data"
     cap_add:
       - NET_ADMIN
 
@@ -29,7 +29,7 @@ services:
         ipv6_address: "fc00:22:1::3"
     # environment: {}
     volumes:
-      - ./data/nethsm2:/data
+      - "data2:/data"
     cap_add:
       - NET_ADMIN
 
@@ -43,7 +43,7 @@ services:
         ipv6_address: "fc00:22:1::4"
     # environment: {}
     volumes:
-      - ./data/nethsm3:/data
+      - "data3:/data"
     cap_add:
       - NET_ADMIN
 
@@ -59,7 +59,7 @@ services:
     cap_add:
       - NET_ADMIN
     volumes:
-      - ./data/nethsm4:/data
+      - "data4:/data"
 
   etcd-witness:
     hostname: etcd-wittness
@@ -79,7 +79,7 @@ services:
     # --key-file=/run/secrets/etcd_server_key
     # --trusted-ca-file=/run/secrets/ca_cert
     volumes:
-      - ./data/etcd-witness:/etcd-data
+      - "data-witness:/etcd-data"
     # secrets:
     #   - ca_cert
     #   - etcd_server_cert
@@ -107,7 +107,9 @@ services:
         curl -f -k -s -w '\n' https://nethsm4/api/v1/info
         sleep 1000
     networks:
-      - nethsm
+      nethsm:
+        interface_name: eth0
+        ipv4_address: 172.22.1.99
 
 networks:
   nethsm:
@@ -119,7 +121,11 @@ networks:
         - subnet: "fc00:22:1::/48"
         - subnet: "172.22.1.0/24"
 volumes:
-  data:
+  data1:
+  data2:
+  data3:
+  data4:
+  data-witness:
 # secrets:
 #   ca_cert:
 #     file: ./certs/ca.crt
