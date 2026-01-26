@@ -55,9 +55,11 @@ if [ $USE_TAP ] ; then
   else
     echo "Configuring tap_int for platform."
     ip addr add 169.254.169.2/16 dev tap_int
+    ip -6 addr add fc00:1:1::2/48 dev tap_int
   fi
   ip link set dev tap_int up
   ip route add default via 169.254.169.1 dev tap_int
+  ip -6 route add default via fc00:1:1::1 dev tap_int
 fi
 
 if [ ! $INT_IF ]; then

@@ -21,19 +21,25 @@ let make_relay_stack ?group ~ipv4 ?gateway () =
   impl ~connect "Relay_stack.Make" ~runtime_args
     (network @-> ethernet @-> arpv4 @-> stackv4v6)
 
-let default_internal : ipv4_config =
+let default_internal_v4 : ipv4_config =
   let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
   let network = Ipaddr.V4.Prefix.make 24 ip in
   { network; gateway = None }
 
+let default_internal_v6 : ipv6_config =
+  let ip = Ipaddr.V6.of_string_exn "fc00:1:1::1" in
+  let network = Ipaddr.V6.Prefix.make 48 ip in
+  { network; gateway = None }
+
 let internal_stack_relay =
-  let network = default_internal.network in
-  let gateway = default_internal.gateway in
+  let network = default_internal_v4.network in
+  let gateway = default_internal_v4.gateway in
   make_relay_stack ~group:"internal" ~ipv4:network ?gateway ()
   $ internal_net $ internal_eth $ internal_arp
 
 let internal_stack_single =
-  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal
+  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal_v4
+    ~ipv6_config:default_internal_v6
     (netif ~group:"internal" "internal")
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())

@@ -552,10 +552,11 @@ func setupPlatform() error {
 	loadUnikernelNets()
 
 	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
-	// G.s.Execf("/bbin/ip -6 addr add ::ffff:169.254.169.2/24 dev net0")
+	G.s.Execf("/bbin/ip -6 addr add fc00:1:1::2/48 dev net0")
 	G.s.Execf("/bbin/ip link set dev net0 up")
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
+	G.s.Execf("/bbin/ip -6 route add default via fc00:1:1::1 dev net0", G.keyfenderIP)
 
 	dumpNetworkStatus()
 

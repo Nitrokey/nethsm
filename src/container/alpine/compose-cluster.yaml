@@ -12,6 +12,7 @@ services:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.2
+        ipv6_address: "fc00:22:1::2"
     # environment: {}
     volumes:
       - ./data/nethsm1:/data
@@ -25,6 +26,7 @@ services:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.3
+        ipv6_address: "fc00:22:1::3"
     # environment: {}
     volumes:
       - ./data/nethsm2:/data
@@ -38,6 +40,7 @@ services:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.4
+        ipv6_address: "fc00:22:1::4"
     # environment: {}
     volumes:
       - ./data/nethsm3:/data
@@ -51,6 +54,7 @@ services:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.5
+        ipv6_address: "fc00:22:1::5"
     # environment: {}
     cap_add:
       - NET_ADMIN
@@ -64,6 +68,7 @@ services:
       nethsm:
         interface_name: eth0
         ipv4_address: 172.22.1.10
+        ipv6_address: "fc00:22:1::10"
     command: >
       etcd
         --data-dir=/etcd-data
@@ -106,10 +111,12 @@ services:
 
 networks:
   nethsm:
+    enable_ipv6: true
     internal: true
     ipam:
       driver: default
       config:
+        - subnet: "fc00:22:1::/48"
         - subnet: "172.22.1.0/24"
 volumes:
   data:
