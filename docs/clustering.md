@@ -264,9 +264,6 @@ final release will change that.
 
 Be also aware of the following, temporary limitations:
 
-- while individual nodes can be configured to have an IPv6 and used by clients
-    through that IP, only IPv4s should be used for peer URLs when registering
-    nodes ;
 - once a CA has been set and a cluster has been formed, updating the CA without
     manually ensuring all nodes have had their TLS cert signed by the new CA,
     might put the cluster in an inconsistent state ;
