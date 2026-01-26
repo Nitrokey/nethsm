@@ -34,11 +34,58 @@ module Make (Net : Mirage_net.S) (Eth : Ethernet.S) (Arp : Arp.S) = struct
                     default ~proto:packet.proto ~src ~dst payload))
   end
 
-  module V6 = struct
-    include Ipv6.Make (Net) (Eth)
-    (* TODO same than for V4 *)
+  module NDP = struct
+    include Ndpv6
+
+    let orig_handle = handle
+
+    let get_dst buf =
+      if
+        (Cstruct.length buf < Ipv6_wire.sizeof_ipv6
+        || Cstruct.length buf < Ipv6_wire.sizeof_ipv6 + Ipv6_wire.get_len buf)
+        || Int32.logand (Ipv6_wire.get_version_flow buf) 0xF0000000l
+           <> 0x60000000l
+      then None
+      else
+        let buf =
+          Cstruct.sub buf 0 (Ipv6_wire.sizeof_ipv6 + Ipv6_wire.get_len buf)
+        in
+        let src = Ipv6_wire.get_src buf in
+        let dst = Ipv6_wire.get_dst buf in
+        if Ipaddr.V6.Prefix.(mem src multicast) then None else Some dst
+
+    (* This is a hack that allows the IPv6 stack to accept packets not meant for
+       us by:
+        - rewriting the packet so the dst address to our IP (to avoid next step
+          dropping the packet)
+        - letting the original NDP stack handle it
+        - revert the dst to the original one before processing by upper layers
+          (TCP, UDP, etc.)
+       It is on the platform to be careful about what it sends to the internal
+       interface! *)
+    let handle ~now ctx buf =
+      match get_ip ctx with
+      | [] -> orig_handle ~now ctx buf
+      | my_ip :: _ -> (
+          match get_dst buf with
+          | None -> orig_handle ~now ctx buf
+          | Some orig_dst ->
+              Ipv6_wire.set_dst buf my_ip;
+              let ctx', bufs, events = orig_handle ~now ctx buf in
+              let events =
+                List.map
+                  (function
+                    | `Tcp (src, dst, buf) -> `Tcp (src, orig_dst, buf)
+                    | `Udp (src, dst, buf) -> `Udp (src, orig_dst, buf)
+                    | `Default (proto, src, dst, buf) ->
+                        `Default (proto, src, orig_dst, buf))
+                  events
+              in
+              Ipv6_wire.set_dst buf orig_dst;
+              (ctx', bufs, events))
   end
 
+  module V6 = Ipv6_custom.Make (Net) (Eth) (Ndpv6)
   module Icmp = Icmpv4.Make (V4)
   module V4V6 = Tcpip_stack_direct.IPV4V6 (V4) (V6)
   module Tcp = Tcp.Flow.Make (V4V6)

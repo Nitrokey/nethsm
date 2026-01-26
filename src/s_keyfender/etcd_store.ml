@@ -868,7 +868,6 @@ module Peer_relay
     (Y : Tcpip.Tcp.S with type ipaddr = Ipaddr.t) =
 struct
   let relay_bidir (y_tcp : Y.t) (xf : X.flow) target =
-    (* TODO error management *)
     let src, _ = X.dst xf in
     Y.create_connection y_tcp (target, etcd_peer_port) >>= function
     | Error e ->
