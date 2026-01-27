@@ -184,6 +184,12 @@ let some_or_any = function
   | Some x -> ip_to_yojson x
   | None -> Ipaddr.V4.any |> ipv4_to_yojson
 
+let none_if_any json =
+  match ip_of_yojson json with
+  | Ok ip ->
+      if Ipaddr.(compare ip (V4 V4.any) = 0) then Ok None else Ok (Some ip)
+  | Error e -> Error e
+
 type network_api = {
   ipAddress : ipv4;
   netmask : ipv4;
@@ -332,7 +338,7 @@ let log_level_of_yojson = function
   | _ -> Error "expected string as log level"
 
 type log = {
-  ipAddress : ip option; [@to_yojson some_or_any]
+  ipAddress : ip option; [@to_yojson some_or_any] [@of_yojson none_if_any]
   port : int;
   logLevel : log_level;
 }

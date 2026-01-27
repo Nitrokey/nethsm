@@ -19,7 +19,7 @@
 
 [@@@ocamlformat "disable"]
 
-let src = Logs.Src.create "ipv6" ~doc:"Mirage IPv6"
+let src = Logs.Src.create "ipv6_custom" ~doc:"Mirage IPv6"
 module Log = (val Logs.src_log src : Logs.LOG)
 module I = Ipaddr
 

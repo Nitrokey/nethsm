@@ -54,6 +54,10 @@ module Make (Net : Mirage_net.S) (Eth : Ethernet.S) (Arp : Arp.S) = struct
         let dst = Ipv6_wire.get_dst buf in
         if Ipaddr.V6.Prefix.(mem src multicast) then None else Some dst
 
+    let src = Logs.Src.create "ndp_custom"
+
+    module Log = (val Logs.src_log src : Logs.LOG)
+
     (* This is a hack that allows the IPv6 stack to accept packets not meant for
        us by:
         - rewriting the packet so the dst address to our IP (to avoid next step
@@ -64,12 +68,19 @@ module Make (Net : Mirage_net.S) (Eth : Ethernet.S) (Arp : Arp.S) = struct
        It is on the platform to be careful about what it sends to the internal
        interface! *)
     let handle ~now ctx buf =
+      Log.debug (fun f -> f "handling input in custom NDP");
       match get_ip ctx with
-      | [] -> orig_handle ~now ctx buf
+      | [] ->
+          Log.debug (fun f -> f "no configured IP");
+          orig_handle ~now ctx buf
       | my_ip :: _ -> (
           match get_dst buf with
-          | None -> orig_handle ~now ctx buf
+          | None ->
+              Log.debug (fun f -> f "no clear dst");
+              orig_handle ~now ctx buf
           | Some orig_dst ->
+              Log.debug (fun f ->
+                  f "handling orig dst %a" Ipaddr.V6.pp orig_dst);
               Ipv6_wire.set_dst buf my_ip;
               let ctx', bufs, events = orig_handle ~now ctx buf in
               let events =
