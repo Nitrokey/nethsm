@@ -9,11 +9,11 @@ rm -rf witness.etcd
 echo "- state: " # should be Operational
 GET /v1/health/state
 
-ip a
-
 echo "- configure an IPv6 for the HSM"
 
-PUT_admin /v1/config/network <<EOM
+# in subshell because may fail if the stack is reconfigured before the server
+# can answer
+(PUT_admin /v1/config/network <<EOM)
 {
     "ipAddress": "192.168.1.1",
     "netmask": "255.255.255.0",
@@ -28,7 +28,11 @@ EOM
 # wait for HSM stack to restart
 sleep 2
 
-ip -6 addr add fc00:22:1::100/48 eth0
+GET_admin /v1/config/network
+
+# configure an IPv6 for the witness
+ip a
+ip -6 addr add 'fc00:22:1::100/48' dev eth2
 
 echo "- cluster state: "
 GET_admin /v1/cluster/members
@@ -78,8 +82,8 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
     --peer-key-file=own.key \
     --peer-skip-client-san-verification=true \
     --data-dir=witness.etcd --name witness \
-    --initial-advertise-peer-urls https://192.168.1.100:2380 \
-    --listen-peer-urls "https://0.0.0.0:2380,https://[::1]:2380" \
+    --initial-advertise-peer-urls "https://192.168.1.100:2380,https://[fc00:22:1::100]:2380" \
+    --listen-peer-urls "https://0.0.0.0:2380" \
     --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
 
 sleep 3 # wait for etcd to start

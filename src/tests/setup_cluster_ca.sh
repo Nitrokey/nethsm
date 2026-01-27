@@ -38,7 +38,5 @@ curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"
 echo
 
-# try a request to see if the restarted etcd is after etcd restart
-
 echo -n "- HSM still healthy after etcd restart: "
 GET_admin /v1/cluster/members
