@@ -9,6 +9,27 @@ rm -rf witness.etcd
 echo "- state: " # should be Operational
 GET /v1/health/state
 
+ip a
+
+echo "- configure an IPv6 for the HSM"
+
+PUT_admin /v1/config/network <<EOM
+{
+    "ipAddress": "192.168.1.1",
+    "netmask": "255.255.255.0",
+    "gateway": "0.0.0.0",
+    "ipv6": {
+        "cidr": "fc00:22:1::2/48",
+        "gateway": null
+    }
+}
+EOM
+
+# wait for HSM stack to restart
+sleep 2
+
+ip -6 addr add fc00:22:1::100/48 eth0
+
 echo "- cluster state: "
 GET_admin /v1/cluster/members
 
@@ -16,7 +37,7 @@ cat <<EOM > join_req.json
 {
   "members":
     [{"name": "", "urls": ["https://192.168.1.1:2380"]},
-     {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
+     {"name": "witness", "urls": ["https://[fc00:22:1::100]:2380"]}],
   "backupPassphrase": "backupPassphrase",
   "joinerKit": "eyJiYWNrdXBfc2FsdCI6Im9xRHBQTmR1ODdlZVBOb0ZlcmtOaGc9PSIsInVubG9ja19zYWx0IjoiRkJ4RU5ITHg3NGljNHhOd2lCVnhyaUlTYTZ2T0JiV0VGaUFGWkI0d2NQVHQ3bnc0dEd6TVFVN1diYVU9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiI3Vy9qTnRJQkdEQktzSWxPMmwrN1RrOFdMa1pQbWRMc3ppazBMNm9MRXYvU1N1b3UrR2F6Nk1qU0pZM25XMDBOWisyUGxoZzVQV0FBQzhFekRDZ1FxYURzYnNKdFJwR1lKY1dzSlZEV3k3bk1MVklVOXQ0K3R3PT0ifQ=="
 }
@@ -57,7 +78,8 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
     --peer-key-file=own.key \
     --peer-skip-client-san-verification=true \
     --data-dir=witness.etcd --name witness \
-    --initial-advertise-peer-urls https://192.168.1.100:2380 --listen-peer-urls https://0.0.0.0:2380 \
+    --initial-advertise-peer-urls https://192.168.1.100:2380 \
+    --listen-peer-urls "https://0.0.0.0:2380,https://[::1]:2380" \
     --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
 
 sleep 3 # wait for etcd to start
@@ -104,14 +126,3 @@ echo "- HSM cannot be unlocked because stuff is missing: "
 EOM
 
 exit 0
-
-# show the return value of adding a member
-#
-body=$(POST_admin /v1/cluster/members <<EOM
-{
-    "urls": ["https://192.168.1.100:2380"]
-}
-EOM
-)
-echo "$body"
-
