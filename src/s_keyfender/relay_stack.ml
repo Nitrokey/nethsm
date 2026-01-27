@@ -94,10 +94,10 @@ module Make (Net : Mirage_net.S) (Eth : Ethernet.S) (Arp : Arp.S) = struct
   include
     Tcpip_stack_direct.MakeV4V6 (Net) (Eth) (Arp) (V4V6) (Icmp) (Udp) (Tcp)
 
-  let connect ~cidr ?gateway net eth arp =
+  let connect ~cidr_v4 ?gateway_v4 ?cidr_v6 ?gateway_v6 net eth arp =
     let open Lwt.Syntax in
-    let* v4 = V4.connect ~cidr ?gateway eth arp in
-    let* v6 = V6.connect net eth in
+    let* v4 = V4.connect ~cidr:cidr_v4 ?gateway:gateway_v4 eth arp in
+    let* v6 = V6.connect ?cidr:cidr_v6 ?gateway:gateway_v6 net eth in
     let* icmp = Icmp.connect v4 in
     let* ip = V4V6.connect ~ipv4_only:false ~ipv6_only:false v4 v6 in
     let* tcp = Tcp.connect ip in

@@ -8,14 +8,20 @@ let internal_net = netif ~group:"internal" "internal"
 let internal_eth = ethif internal_net
 let internal_arp = arp internal_eth
 
-let make_relay_stack ?group ~ipv4 ?gateway () =
-  let ip = Runtime_arg.V4.network ?group ipv4 in
-  let gateway = Runtime_arg.V4.gateway ?group gateway in
-  let runtime_args = Runtime_arg.[ v ip; v gateway ] in
+let make_relay_stack ?group ~cidr_v4 ?gateway_v4 ?cidr_v6 ?gateway_v6 () =
+  let cidr_v4 = Runtime_arg.V4.network ?group cidr_v4 in
+  let gateway_v4 = Runtime_arg.V4.gateway ?group gateway_v4 in
+  let cidr_v6 = Runtime_arg.V6.network ?group cidr_v6 in
+  let gateway_v6 = Runtime_arg.V6.gateway ?group gateway_v6 in
+  let runtime_args =
+    Runtime_arg.[ v cidr_v4; v gateway_v4; v cidr_v6; v gateway_v6 ]
+  in
   let connect _ modname = function
-    | [ network; ethernet; arpv4; ip; gateway ] ->
-        code ~pos:__POS__ "%s.connect ~cidr:%s ?gateway:%s %s %s %s" modname ip
-          gateway network ethernet arpv4
+    | [ network; ethernet; arpv4; cidr_v4; gateway_v4; cidr_v6; gateway_v6 ] ->
+        code ~pos:__POS__
+          "%s.connect ~cidr_v4:%s ?gateway_v4:%s ?cidr_v6:%s ?gateway_v6:%s %s \
+           %s %s"
+          modname cidr_v4 gateway_v4 cidr_v6 gateway_v6 network ethernet arpv4
     | _ -> assert false
   in
   impl ~connect "Relay_stack.Make" ~runtime_args
@@ -32,9 +38,12 @@ let default_internal_v6 : ipv6_config =
   { network; gateway = None }
 
 let internal_stack_relay =
-  let network = default_internal_v4.network in
-  let gateway = default_internal_v4.gateway in
-  make_relay_stack ~group:"internal" ~ipv4:network ?gateway ()
+  let cidr_v4 = default_internal_v4.network in
+  let gateway_v4 = default_internal_v4.gateway in
+  let cidr_v6 = default_internal_v6.network in
+  let gateway_v6 = default_internal_v6.gateway in
+  make_relay_stack ~group:"internal" ~cidr_v4 ?gateway_v4 ~cidr_v6 ?gateway_v6
+    ()
   $ internal_net $ internal_eth $ internal_arp
 
 let internal_stack_single =

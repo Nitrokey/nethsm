@@ -15,7 +15,7 @@ NETHSM_URL="https://${NETHSM_IP}/api" ./backup_restore.sh
 NETHSM_URL="https://${NETHSM_IP}/api" ./setup_cluster_ca.sh
 
 curl -s -k -X PUT -H "content-type: application/json" -d \
-    '{"ipAddress":"0.0.0.0","port":0,"logLevel":"info"}' \
+    '{"ipAddress":"0.0.0.0","port":0,"logLevel":"debug"}' \
     https://admin:Administrator@${NETHSM_IP}/api/v1/config/logging
 
 #flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 50 \
