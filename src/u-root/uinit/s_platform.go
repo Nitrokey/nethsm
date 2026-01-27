@@ -556,7 +556,7 @@ func setupPlatform() error {
 	G.s.Execf("/bbin/ip link set dev net0 up")
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
-	G.s.Execf("/bbin/ip -6 route add default via fc00:1:1::1 dev net0", G.keyfenderIP)
+	G.s.Execf("/bbin/ip -6 route add default via fc00:1:1::1 dev net0")
 
 	dumpNetworkStatus()
 
