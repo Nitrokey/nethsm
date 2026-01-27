@@ -9,19 +9,19 @@ EW=https://172.22.1.10
 # Provision and install cert with same CA in N1, N2, N3, N4
 NETHSM_URL="$N1/api"
 source ./provision_test.sh
-source ./cluster_ca.sh
+source ./setup_cluster_ca.sh
 
 NETHSM_URL="$N2/api"
 source ./provision_test.sh
-source ./cluster_ca.sh
+source ./setup_cluster_ca.sh
 
 NETHSM_URL="$N3/api"
 source ./provision_test.sh
-source ./cluster_ca.sh
+source ./setup_cluster_ca.sh
 
 NETHSM_URL="$N4/api"
 source ./provision_test.sh
-source ./cluster_ca.sh
+source ./setup_cluster_ca.sh
 
 # Register N2 in N1
 NETHSM_URL="$N1/api"
