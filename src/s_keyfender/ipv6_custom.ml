@@ -17,6 +17,8 @@
 (* NOTE: This is exactly the upstream Ipv6 module, but functorized over Ndpv6
    implementation *)
 
+[@@@ocamlformat "disable"]
+
 let src = Logs.Src.create "ipv6" ~doc:"Mirage IPv6"
 module Log = (val Logs.src_log src : Logs.LOG)
 module I = Ipaddr
