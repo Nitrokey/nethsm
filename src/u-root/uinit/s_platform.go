@@ -557,6 +557,8 @@ func setupPlatform() error {
 	// route etcd peer connections through keyfender
 	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
 	G.s.Execf("/bbin/ip -6 route add default via fc00:1:1::1 dev net0")
+	// TODO remove
+	G.s.Execf("/bbin/ip -6 route show match fc00:22:1::100/48")
 
 	dumpNetworkStatus()
 

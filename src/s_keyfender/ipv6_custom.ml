@@ -102,6 +102,7 @@ module Make (N : Mirage_net.S)
 
   let input t ~tcp ~udp ~default buf =
     let now = Mirage_mtime.elapsed_ns () in
+    Log.debug (fun f -> f "NDP handling now");
     let ctx, outs, actions = NDP.handle ~now t.ctx buf in
     t.ctx <- ctx;
     Lwt_list.iter_s (function

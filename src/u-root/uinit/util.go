@@ -83,6 +83,7 @@ func dumpNetworkStatus() {
 	G.s.Execf("/bbin/ip addr")
 	G.s.Logf("Routes:")
 	G.s.Execf("/bbin/ip route")
+	G.s.Execf("/bbin/ip -6 route")
 }
 
 func setProcFs(path string, b bool) {
