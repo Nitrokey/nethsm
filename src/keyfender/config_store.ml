@@ -164,6 +164,9 @@ module Make (KV : Kv_ext.RW) = struct
         | "1" -> Ok true
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
 
+  (* global configs are shared by all nodes in a cluster
+     - they are stored in /config/xxx while local ones are in /DEVICE-ID/config/xxx
+     - they cannot be encrypted with device-specific keys *)
   let is_global_config : type a. a k -> bool = function
     | Version (* the store version is for the whole cluster *)
     | Cluster_CA (* the root CA must be shared to maintain communication *) ->
@@ -171,6 +174,22 @@ module Make (KV : Kv_ext.RW) = struct
     | Time_offset (* offset might be different for different hardware *)
     | Unlock_salt | Certificate | Private_key | Ip_config | Backup_salt
     | Backup_key | Log_config | Unattended_boot ->
+        false
+
+  (* "early" configs cannot be encrypted with the domain key, as they are
+     needed to unlock the domain key. They are stored with a derivative of the
+     device key *)
+  let is_needed_before_unlock : type a. a k -> bool = function
+    | Unlock_salt (* needed during unlock *)
+    | Certificate | Private_key (* needed for HTTPS *)
+    | Ip_config (* needed for clients to talk to us *)
+    | Log_config (* used at boot, though could be late if needed *)
+    | Unattended_boot (* needed at boot *)
+    | Time_offset (* needed by (at least) web server *)
+    | Version (* needed immediately at boot for migrations *) ->
+        true
+    | Backup_salt | Backup_key (* not used in Unprovisioned mode *)
+    | Cluster_CA (* needed by etcd but cached on platform *) ->
         false
 
   let key_path device_id key =
@@ -182,11 +201,62 @@ module Make (KV : Kv_ext.RW) = struct
     | `Kv_write e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
 
-  type t = { kv : KV.t; device_id : string }
+  type t = {
+    kv : KV.t;
+    device_id : string;
+    (* store extended version instead? *)
+    config_device_key : string;
+    mutable config_domain_key : string option;
+  }
+
+  module type Codec = sig
+    val encrypt : _ k -> string -> string
+    val decrypt : _ k -> string -> (string, [> `Msg of string ]) result
+  end
+
+  let noop_codec =
+    (module struct
+      let encrypt _ x = x
+      let decrypt _ x = Ok x
+    end : Codec)
+
+  let single_codec ?(device_id = "") encryption_key =
+    (module struct
+      let adata k = config_prefix device_id ^ name k
+
+      let encrypt k data =
+        let adata = adata k in
+        let key = Crypto.GCM.of_secret encryption_key in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
+
+      let decrypt k data =
+        let adata = adata k in
+        let key = Crypto.GCM.of_secret encryption_key in
+        Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
+          (Crypto.decrypt ~key ~adata data)
+    end : Codec)
+
+  let select_codec t key =
+    let locality = if is_global_config key then `Global else `Local in
+    let timing = if is_needed_before_unlock key then `Early else `Late in
+    match (locality, timing, t.config_domain_key) with
+    | `Global, `Early, _ -> Ok noop_codec (* TODO sign *)
+    | _, `Late, None -> Error (`Msg "missing domain key")
+    | `Local, `Early, _ ->
+        Ok (single_codec ~device_id:t.device_id t.config_device_key)
+    | `Global, `Late, Some dom_key -> Ok (single_codec dom_key)
+    | `Local, `Late, Some dom_key ->
+        (* TODO: also encrypt with device key? *)
+        Ok (single_codec dom_key)
 
   let get t key =
+    let ( let* ) = Result.bind in
     KV.get t.kv (key_path t.device_id key) >|= function
-    | Ok data -> of_string key data
+    | Ok data ->
+        let* c = select_codec t key in
+        let module C = (val c) in
+        let* decrypted = C.decrypt key data in
+        of_string key decrypted
     | Error e -> Error (`Kv e)
 
   let get_opt t key =
@@ -198,12 +268,27 @@ module Make (KV : Kv_ext.RW) = struct
   let batch t f = KV.batch t.kv (fun b -> f { t with kv = b })
 
   let set t key value =
-    let data = to_string key value in
-    KV.set t.kv (key_path t.device_id key) data
+    let ( let* ) = Lwt_result.bind in
+    let* c = select_codec t key |> Lwt_result.lift in
+    let module C = (val c) in
+    let data = to_string key value |> C.encrypt key in
+    KV.set t.kv (key_path t.device_id key) data >|= function
+    | Ok () -> Ok ()
+    | Error e -> Error (`Kv e)
+
+  let pp_write_error ppf = function
+    | `Kv e -> KV.pp_write_error ppf e
+    | `Msg msg -> Fmt.string ppf msg
 
   let remove t key = KV.remove t.kv (key_path t.device_id key)
   let digest t key = KV.digest t.kv (key_path t.device_id key)
-  let connect kv device_id = { kv; device_id }
+
+  let connect kv ~device_id ~device_key =
+    let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
+    let config_device_key = extend device_key "early_config_store" in
+    { kv; device_id; config_device_key; config_domain_key = None }
+
+  let provide_config_domain_key t k = t.config_domain_key <- Some k
 
   type local_backup = {
     unlock_salt : string option;
@@ -260,14 +345,16 @@ module Make (KV : Kv_ext.RW) = struct
 
   let migrate_v0_v1 t =
     let old = { t with device_id = "" } in
+    let wrap_write_error r =
+      Result.map_error (function `Kv e -> `Kv_write e | `Msg m -> `Msg m) r
+    in
     let just_move (type a) (k : a k) =
       if is_global_config k then Lwt.return (Ok ())
       else
         get_opt old k >>= function
         | Error e -> Lwt.return (Error e)
         | Ok None -> Lwt.return (Ok ())
-        | Ok (Some data) ->
-            set t k data >|= fun r -> Result.map_error (fun e -> `Kv_write e) r
+        | Ok (Some data) -> set t k data >|= wrap_write_error
     in
     let migrate_log_config () =
       KV.get t.kv (key_path "" Log_config) >>= function
@@ -294,8 +381,7 @@ module Make (KV : Kv_ext.RW) = struct
                       port;
                     }
                   in
-                  set t Log_config new_config
-                  |> Lwt_result.map_error (fun e -> `Kv_write e)))
+                  set t Log_config new_config >|= wrap_write_error))
     in
     let migrate_ip_config () =
       KV.get t.kv (key_path "" Ip_config) >>= function
@@ -316,8 +402,7 @@ module Make (KV : Kv_ext.RW) = struct
                 ipv6 = None;
               }
             in
-            set t Ip_config new_config
-            |> Lwt_result.map_error (fun e -> `Kv_write e)
+            set t Ip_config new_config >|= wrap_write_error
           with Ipaddr.Parse_error (msg, _) -> Lwt.return (Error (`Msg msg)))
     in
 
@@ -333,5 +418,6 @@ module Make (KV : Kv_ext.RW) = struct
     just_move Unattended_boot >>= fun () ->
     migrate_log_config () >>= fun () ->
     migrate_ip_config () >>= fun () ->
-    set t Version Version.V1 |> Lwt_result.map_error (fun e -> `Kv_write e)
+    let open Lwt.Infix in
+    set t Version Version.V1 >|= wrap_write_error
 end

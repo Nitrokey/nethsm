@@ -817,7 +817,7 @@ module Make (KV : Kv_ext.Platform) = struct
   let set_time_offset kv timestamp =
     Hsm_clock.set timestamp;
     let span = Hsm_clock.get_offset () in
-    internal_server_error Write "Write time offset" KV.pp_write_error
+    internal_server_error Write "Write time offset" Config_store.pp_write_error
       (Config_store.set kv Time_offset span)
 
   let decrypt_with_pass_key encrypted ~pass_key =
@@ -834,7 +834,10 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let make_store_keys dk =
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
-    (extend dk "auth_store", extend dk "key_store", extend dk "namespace_store")
+    ( extend dk "auth_store",
+      extend dk "key_store",
+      extend dk "namespace_store",
+      extend dk "config_store" )
 
   let load_keys kv device_key pass_key =
     let open Lwt_result.Infix in
@@ -850,10 +853,14 @@ module Make (KV : Kv_ext.Platform) = struct
       | None -> Lwt.return_ok data
       | Some k -> decrypt_with_pass_key data ~pass_key:k)
     >|= fun domain_key ->
-    let auth_store_key, key_store_key, namespace_store_key =
+    let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
     in
-    (domain_key, auth_store_key, key_store_key, namespace_store_key)
+    ( domain_key,
+      auth_store_key,
+      key_store_key,
+      namespace_store_key,
+      config_store_key )
 
   let unlock_store kv slot key =
     let open Lwt.Infix in
@@ -881,12 +888,14 @@ module Make (KV : Kv_ext.Platform) = struct
           Encrypted_store.pp_connect_error (Lwt_result.fail e)
 
   (* credential is device key with or without pass_key, depending on boot mode *)
-  let unlock ?pass_key domain_store ~cache_settings ~device_key =
+  let unlock ?pass_key ~domain_store ~config_store ~cache_settings ~device_key
+      () =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
     load_keys domain_store device_key pass_key
-    >>= fun (domain_key, as_key, ks_key, ns_key) ->
+    >>= fun (domain_key, as_key, ks_key, ns_key, config_key) ->
     let kv = domain_store.kv in
+    Config_store.provide_config_domain_key config_store config_key;
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >>= fun key_store ->
     unlock_store kv Namespace ns_key >|= fun namespace_store ->
@@ -908,7 +917,8 @@ module Make (KV : Kv_ext.Platform) = struct
     let pass_key = Crypto.key_of_passphrase ~salt passphrase in
     let device_key = t.device_key in
     let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
-    unlock domain_store ~cache_settings:t.cache_settings ~device_key ~pass_key
+    unlock ~domain_store ~config_store:t.config_store
+      ~cache_settings:t.cache_settings ~device_key ~pass_key ()
     >|= fun state' -> t.state <- state'
 
   let check_unlock_passphrase t passphrase =
@@ -923,7 +933,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
     let* keys = load_keys domain_store device_key (Some pass_key) in
     match (keys, t.state) with
-    | Ok (dk, _, _, _), Operational { domain_key = dk'; _ }
+    | Ok (dk, _, _, _, _), Operational { domain_key = dk'; _ }
       when String.equal dk dk' ->
         Lwt.return_ok ()
     | _ -> Lwt.return_error (Forbidden, "unlock passphrase is incorrect.")
@@ -1022,7 +1032,8 @@ module Make (KV : Kv_ext.Platform) = struct
         let domain_store =
           Domain_key_store.connect config_store.kv config_store.device_id
         in
-        unlock_with_device_key ~cache_settings domain_store ~device_key
+        unlock_with_device_key ~cache_settings ~domain_store ~config_store
+          ~device_key ()
         >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
@@ -2205,7 +2216,7 @@ module Make (KV : Kv_ext.Platform) = struct
           with_write_lock (fun () ->
               Config_store.batch t.config_store (fun b ->
                   internal_server_error Write "Write unlock salt"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Unlock_salt salt)
                   >>= fun () ->
                   let enc_dk =
@@ -2237,7 +2248,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | Operational keys ->
           with_write_lock (fun () ->
               internal_server_error Write "Write unattended boot"
-                KV.pp_write_error
+                Config_store.pp_write_error
                 (Config_store.set t.config_store Unattended_boot status)
               >>= fun () ->
               let domain_store =
@@ -2366,7 +2377,8 @@ module Make (KV : Kv_ext.Platform) = struct
           |> Lwt.return
           >>= fun _ ->
           with_write_lock (fun () ->
-              internal_server_error Write "Write cluster CA" KV.pp_write_error
+              internal_server_error Write "Write cluster CA"
+                Config_store.pp_write_error
                 (Config_store.set t.config_store Cluster_CA cert))
           >>= fun () -> set_local_config t
 
@@ -2429,7 +2441,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 check_signed_by_ca () >>= fun () ->
                 with_write_lock (fun () ->
                     internal_server_error Write "Write certificate"
-                      KV.pp_write_error
+                      Config_store.pp_write_error
                       (Config_store.set t.config_store Certificate (cert, chain)))
                 >>= fun r ->
                 t.cert <- cert;
@@ -2474,11 +2486,11 @@ module Make (KV : Kv_ext.Platform) = struct
           with_write_lock (fun () ->
               Config_store.batch t.config_store @@ fun kv ->
               internal_server_error Write "Write tls private key"
-                KV.pp_write_error
+                Config_store.pp_write_error
                 (Config_store.set kv Private_key key)
               >>= fun () ->
               internal_server_error Write "Write tls certificate"
-                KV.pp_write_error
+                Config_store.pp_write_error
                 (Config_store.set kv Certificate (cert, [])))
           >>= fun () ->
           (* update state *)
@@ -2500,7 +2512,7 @@ module Make (KV : Kv_ext.Platform) = struct
           let network = default_network_configuration t.default_net in
           with_write_lock (fun () ->
               internal_server_error Write "Write network configuration"
-                KV.pp_write_error
+                Config_store.pp_write_error
                 Config_store.(set t.config_store Ip_config network))
           >|= function
           | Error (_, e) ->
@@ -2512,7 +2524,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let open Lwt_result.Infix in
       with_write_lock (fun () ->
           internal_server_error Write "Write network configuration"
-            KV.pp_write_error
+            Config_store.pp_write_error
             Config_store.(set t.config_store Ip_config network))
       >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >>= fun () ->
@@ -2540,7 +2552,8 @@ module Make (KV : Kv_ext.Platform) = struct
     let set_log t log =
       let open Lwt_result.Infix in
       with_write_lock (fun () ->
-          internal_server_error Write "Write log config" KV.pp_write_error
+          internal_server_error Write "Write log config"
+            Config_store.pp_write_error
             (Config_store.set t.config_store Log_config log))
       >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () -> r
@@ -2585,11 +2598,11 @@ module Make (KV : Kv_ext.Platform) = struct
           with_write_lock (fun () ->
               Config_store.batch t.config_store (fun b ->
                   internal_server_error Write "Write backup salt"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Backup_salt backup_salt)
                   >>= fun () ->
                   internal_server_error Write "Write backup key"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Backup_key backup_key)))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
@@ -2614,21 +2627,22 @@ module Make (KV : Kv_ext.Platform) = struct
     let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
     let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
-    let auth_store_key, key_store_key, namespace_store_key =
+    let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
     in
+    Config_store.provide_config_domain_key t.config_store config_store_key;
     with_write_lock (fun () ->
         Config_store.batch t.config_store (fun b ->
             internal_server_error Write "Initializing configuration store"
-              KV.pp_write_error
+              Config_store.pp_write_error
               (Config_store.set b Version Version.current)
             >>= fun () ->
             internal_server_error Write "Writing private RSA key"
-              KV.pp_write_error
+              Config_store.pp_write_error
               (Config_store.set b Private_key t.key)
             >>= fun () ->
             internal_server_error Write "Writing certificate chain key"
-              KV.pp_write_error
+              Config_store.pp_write_error
               (Config_store.set b Certificate (t.cert, t.chain))
             >>= fun () ->
             let auth_store =
@@ -2696,7 +2710,8 @@ module Make (KV : Kv_ext.Platform) = struct
               KV.pp_write_error
               (Domain_key_store.set domain_store Attended ~encryption_key enc_dk)
             >>= fun () ->
-            internal_server_error Write "Write unlock-salt" KV.pp_write_error
+            internal_server_error Write "Write unlock-salt"
+              Config_store.pp_write_error
               (Config_store.set b Unlock_salt unlock_salt)
             >>= fun () ->
             let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
@@ -2856,12 +2871,14 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           (* restore local config backup in our directory *)
           let* () =
-            internal_server_error Write "Restore local config" KV.pp_write_error
+            internal_server_error Write "Restore local config"
+              Config_store.pp_write_error
               (Config_store.restore_local_config t.config_store config_backup)
           in
           (* use unlock salt and locked domain key retrieved from joiner kit *)
           let* () =
-            internal_server_error Write "Override unlock salt" KV.pp_write_error
+            internal_server_error Write "Override unlock salt"
+              Config_store.pp_write_error
               (Config_store.set t.config_store Unlock_salt unlock_salt)
           in
           let domain_store =
@@ -3294,8 +3311,8 @@ module Make (KV : Kv_ext.Platform) = struct
                    (KV.remove kv k))
            (Ok ())
 
-    let apply_migrations kv device_id stored_version =
-      let config_store = Config_store.connect kv device_id in
+    let apply_migrations kv ~device_id ~device_key stored_version =
+      let config_store = Config_store.connect kv ~device_id ~device_key in
       let open Lwt_result.Infix in
       match Version.(compare current stored_version) with
       | `Equal -> Lwt_result.return ()
@@ -3466,8 +3483,8 @@ module Make (KV : Kv_ext.Platform) = struct
                   match stored_version with
                   | None -> Lwt_result.return ()
                   | Some stored_version ->
-                      apply_migrations t.kv t.system_info.deviceId
-                        stored_version
+                      apply_migrations t.kv ~device_id:t.system_info.deviceId
+                        ~device_key:t.device_key stored_version
                       |> Lwt_result.map_error (fun (`Msg msg) ->
                           ( Bad_request,
                             Fmt.str
@@ -3532,7 +3549,9 @@ module Make (KV : Kv_ext.Platform) = struct
         akPub = platform.akPub;
         pcr = platform.pcr;
       }
-    and config_store = Config_store.connect kv platform.deviceId
+    in
+    let config_store =
+      Config_store.connect kv ~device_id:platform.deviceId ~device_key
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
@@ -3590,7 +3609,9 @@ module Make (KV : Kv_ext.Platform) = struct
              default_net;
            }
          in
-         System.apply_migrations kv system_info.deviceId version >>= boot)
+         System.apply_migrations kv ~device_id:system_info.deviceId ~device_key
+           version
+         >>= boot)
     >|= function
     | Ok t ->
         let dump_key_ops () =
