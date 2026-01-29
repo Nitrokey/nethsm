@@ -59,6 +59,20 @@ let returns_string ~with_status r =
   let _, body = returns_string' ~with_status r in
   body
 
+let returns_stream' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      begin match body with
+      | `Stream s -> (new_state, s)
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_stream ~with_status r =
+  let _, body = returns_stream' ~with_status r in
+  body
+
 let empty =
   "a request for / will produce no result" @? fun () ->
   match request "/" with _, None -> true | _ -> false
@@ -564,58 +578,62 @@ let system_update_cancel_namespaced_fails =
   | _ -> false
 
 let system_backup_and_restore_ok =
-  "a request for /system/restore succeeds" @? fun () ->
-  let backup_passphrase = "backup passphrase" in
-  let passphrase =
-    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
-      backup_passphrase
-  in
-  let hsm_state =
-    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
-  in
-  match
-    admin_put_request ~hsm_state ~body:(`String passphrase)
-      "/config/backup-passphrase"
-  with
-  | hsm_state, Some (`No_content, _, _, _) -> (
+  Alcotest.test_case "a request for /system/restore succeeds" `Quick (fun () ->
+      let backup_passphrase = "backup passphrase" in
+      let passphrase =
+        Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+          backup_passphrase
+      in
+      let hsm_state =
+        hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      in
+      let hsm_state =
+        admin_put_request ~hsm_state ~body:(`String passphrase)
+          "/config/backup-passphrase"
+        |> returns_empty' ~with_status:`No_content
+      in
       let headers = auth_header "backup" "backupUserPassphrase" in
-      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let arguments =
-            Yojson.Safe.to_string
-              (Keyfender.Json.restore_req_to_yojson
-                 ({
-                    backupPassphrase = Some backup_passphrase;
-                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-                  }
-                   : Keyfender.Json.restore_req))
-          in
-          let backup_data =
-            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
-          in
-          let content_type, body =
-            create_multipart_request
-              [ ("arguments", arguments); ("backup_data", backup_data) ]
-          in
-          let expect = multipart_log ^ debug "caching config to the platform" in
-          match
-            request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST
-              ~content_type ~body:(`String body) "/system/restore"
-          with
-          | hsm_state', Some (`No_content, _, _, _) -> (
-              assert (Hsm.state hsm_state' = `Locked);
-              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-              match
-                request ~meth:`POST ~body:(`String unlock_json)
-                  ~hsm_state:hsm_state' "/unlock"
-              with
-              | _, Some (`No_content, _, _, _) ->
-                  Hsm.state hsm_state' = `Operational
-                  && Lwt_main.run (Hsm.equal hsm_state hsm_state')
-              | _ -> false)
-          | _ -> false)
-      | _ -> false)
-  | _ -> false
+      let s =
+        request ~meth:`POST ~hsm_state ~headers "/system/backup"
+        |> returns_stream ~with_status:`OK
+      in
+
+      let arguments =
+        Yojson.Safe.to_string
+          (Keyfender.Json.restore_req_to_yojson
+             ({
+                backupPassphrase = Some backup_passphrase;
+                systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+              }
+               : Keyfender.Json.restore_req))
+      in
+      let backup_data =
+        String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
+      in
+      let content_type, body =
+        create_multipart_request
+          [ ("arguments", arguments); ("backup_data", backup_data) ]
+      in
+      let expect = multipart_log ^ debug "caching config to the platform" in
+      let hsm_state' =
+        request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST ~content_type
+          ~body:(`String body) "/system/restore"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+      let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+      let hsm_state'' =
+        request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+          "/unlock"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "post unlock is operational" true
+          (Hsm.state hsm_state'' = `Operational));
+      Alcotest.(
+        check bool "restored state is same as backup state" true
+          (Lwt_main.run (Hsm.equal hsm_state hsm_state''))))
 
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
@@ -1163,44 +1181,34 @@ let unlock_twice =
       | _ -> false)
   | _ -> false
 
-let unlock_fails_wrong_device_key =
-  "a request for /unlock with the wrong device key fails" @? fun () ->
-  let kv =
-    Lwt_main.run
-      ( Kv_mem.connect () >>= fun kv ->
-        Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
-        happy_mbox o m >>= fun () ->
-        Hsm.provision state ~unlock:"test1234Passphrase"
-          ~admin:"test1Passphrase" Ptime.epoch
-        >|= fun r ->
-        assert (r = Ok ());
-        kv )
-  in
-  let hsm_state =
-    Lwt_main.run
-      (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
-  in
-  match
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
-  with
-  | hsm_state, Some (`No_content, _, _, _)
-    when Hsm.state hsm_state = `Operational -> (
+let boot_device_key_change_fails =
+  Alcotest.test_case "booting with the config store of another device fails"
+    `Quick (fun () ->
+      let kv =
+        Lwt_main.run
+          ( Kv_mem.connect () >>= fun kv ->
+            Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+            happy_mbox o m >>= fun () ->
+            Hsm.provision state ~unlock:"test1234Passphrase"
+              ~admin:"test1Passphrase" Ptime.epoch
+            >|= fun r ->
+            assert (r = Ok ());
+            kv )
+      in
+      let _hsm_state =
+        Lwt_main.run
+          (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
+      in
       let platform =
         {
           platform with
           deviceKey = "//////////////////////////////////////////8=";
         }
       in
-      let hsm_state =
-        Lwt_main.run
-          (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
-      in
-      match
-        request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
-      with
-      | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Locked
-      | _ -> false)
-  | _ -> false
+      Alcotest.check_raises "boot fails" (Invalid_argument "fatal!") (fun () ->
+          Lwt_main.run
+            (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
+          |> ignore))
 
 let lock_ok =
   "a request for /lock locks the HSM" @? fun () ->
@@ -1284,33 +1292,6 @@ let unattended_boot_succeeds =
       Lwt_main.run
         ( Hsm.boot ~platform software_update_key store
         >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational )
-  | _ -> false
-
-let unattended_boot_failed_wrong_device_key =
-  "unattended boot failed (wrong Device Key)" @? fun () ->
-  let store, hsm_state =
-    Lwt_main.run
-      ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, o, m) ->
-        happy_mbox o m >>= fun () ->
-        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
-          Ptime.epoch
-        >|= fun _ -> (store, state) )
-  in
-  match
-    admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state
-      "/config/unattended-boot"
-  with
-  | _hsm_state', Some (`No_content, _, _, _) ->
-      let platform =
-        {
-          platform with
-          deviceKey = "//////////////////////////////////////////8=";
-        }
-      in
-      Lwt_main.run
-        ( Hsm.boot ~platform software_update_key store
-        >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked )
   | _ -> false
 
 let get_config_tls_public_pem =
@@ -5146,14 +5127,12 @@ let () =
           unlock_failed;
           unlock_failed_two;
           unlock_twice;
-          unlock_fails_wrong_device_key;
         ] );
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
       ( "/config/unattended_boot",
         [
           get_unattended_boot_ok;
           unattended_boot_succeeds;
-          unattended_boot_failed_wrong_device_key;
         ] );
       ( "/config/unlock-passphrase",
         [ change_unlock_passphrase; change_unlock_passphrase_empty ] );
@@ -5201,6 +5180,7 @@ let () =
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
       ("config version but no unlock salt", [ config_version_but_no_salt ]);
+      ("config store with wrong device key", [ boot_device_key_change_fails ]);
       ("/namespaces", [ namespaces_get; namespaces_get_nuser; namespaces_seq ]);
       ( "/namespaces/namespace1",
         [

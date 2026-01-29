@@ -289,6 +289,7 @@ module Make (KV : Kv_ext.RW) = struct
     { kv; device_id; config_device_key; config_domain_key = None }
 
   let provide_config_domain_key t k = t.config_domain_key <- Some k
+  let forget_config_domain_key t = t.config_domain_key <- None
 
   type local_backup = {
     unlock_salt : string option;

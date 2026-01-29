@@ -1039,7 +1039,9 @@ module Make (KV : Kv_ext.Platform) = struct
         | Error (_, msg) ->
             Log.err (fun m -> m "unattended boot failed with %s" msg);
             Ok Locked)
-    | None | Some false -> Lwt.return (Ok Locked)
+    | None | Some false ->
+        Config_store.forget_config_domain_key config_store;
+        Lwt.return (Ok Locked)
 
   let info t = t.info
   let own_cert t = `Single (t.cert :: t.chain, t.key)
