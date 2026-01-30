@@ -631,9 +631,13 @@ let system_backup_and_restore_ok =
       Alcotest.(
         check bool "post unlock is operational" true
           (Hsm.state hsm_state'' = `Operational));
-      Alcotest.(
-        check bool "restored state is same as backup state" true
-          (Lwt_main.run (Hsm.equal hsm_state hsm_state''))))
+      (* The encrypted values for the time_offset differ before and after
+         restore even though we're passing the same time offset (epoch), because
+         the nonce is randomly generated in each case. *)
+      let except_keys =
+        [ Mirage_kv.Key.(empty / platform.deviceId / "config" / "time-offset") ]
+      in
+      Lwt_main.run (Hsm.assert_equal ~except_keys hsm_state hsm_state''))
 
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
@@ -726,6 +730,7 @@ let system_backup_and_restore_changed_devkey =
           let platform =
             {
               platform with
+              deviceId = "0000000001";
               deviceKey = "//////////////////////////////////////////8=";
             }
           in
@@ -751,9 +756,13 @@ let system_backup_and_restore_changed_devkey =
                 request ~meth:`POST ~body:(`String unlock_json)
                   ~hsm_state:hsm_state' "/unlock"
               with
-              | _, Some (`No_content, _, _, _) ->
+              | _, Some (`No_content, _, _, _) -> (
                   Hsm.state hsm_state' = `Operational
-                  && not (Lwt_main.run (Hsm.equal hsm_state hsm_state'))
+                  &&
+                    try
+                      Lwt_main.run (Hsm.assert_equal hsm_state hsm_state');
+                      true
+                    with _ -> false)
               | _ -> false)
           | _ -> false)
       | _ -> false)
@@ -847,7 +856,11 @@ let system_backup_and_restore_unattended_changed_devkey =
   in
   (* restore *)
   let platform =
-    { platform with deviceKey = "//////////////////////////////////////////8=" }
+    {
+      platform with
+      deviceId = "0000000001";
+      deviceKey = "//////////////////////////////////////////8=";
+    }
   in
   let hsm_state, store =
     Lwt_main.run
@@ -855,11 +868,12 @@ let system_backup_and_restore_unattended_changed_devkey =
         Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
         happy_mbox o m >|= fun () -> (y, store) )
   in
+  (* unattended boot flag is forgotten since we're restoring to a new, fresh
+     machine. So it is not even attempted *)
   let* hsm_state =
     let expect =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
-      ^ error "unattended boot failed with not authenticated"
       ^ debug "caching config to the platform"
     in
     let arguments =
@@ -1205,7 +1219,9 @@ let boot_device_key_change_fails =
           deviceKey = "//////////////////////////////////////////8=";
         }
       in
-      Alcotest.check_raises "boot fails" (Invalid_argument "fatal!") (fun () ->
+      Alcotest.check_raises "boot fails"
+        (Invalid_argument "fatal in get time offset not authenticated")
+        (fun () ->
           Lwt_main.run
             (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
           |> ignore))
@@ -1895,7 +1911,10 @@ let invalid_config_version =
 
 let config_version_but_no_salt =
   Alcotest.test_case "config/version but no salt" `Quick @@ fun () ->
-  Alcotest.check_raises "breaks HSM" (Invalid_argument "fatal!") (fun () ->
+  Alcotest.check_raises "breaks HSM"
+    (Invalid_argument
+       "fatal in get unlock-salt Cannot find the key \
+        /0000000000/config/unlock-salt") (fun () ->
       Lwt_main.run
         ( Kv_mem.connect () >>= fun data ->
           Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
@@ -5121,19 +5140,10 @@ let () =
           system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
         ] );
-      ( "/unlock",
-        [
-          unlock_ok;
-          unlock_failed;
-          unlock_failed_two;
-          unlock_twice;
-        ] );
+      ("/unlock", [ unlock_ok; unlock_failed; unlock_failed_two; unlock_twice ]);
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
       ( "/config/unattended_boot",
-        [
-          get_unattended_boot_ok;
-          unattended_boot_succeeds;
-        ] );
+        [ get_unattended_boot_ok; unattended_boot_succeeds ] );
       ( "/config/unlock-passphrase",
         [ change_unlock_passphrase; change_unlock_passphrase_empty ] );
       ("/config/tls/public.pem", [ get_config_tls_public_pem ]);

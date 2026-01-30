@@ -42,7 +42,7 @@ module type S = sig
 
   type t
 
-  val equal : t -> t -> bool Lwt.t
+  val assert_equal : ?except_keys:Mirage_kv.Key.t list -> t -> t -> unit Lwt.t
   val info : t -> Json.info
   val state : t -> Json.state
   val lock : t -> unit
@@ -508,7 +508,7 @@ module Make (KV : Kv_ext.Platform) = struct
      hardware.. *)
   let fatal prefix ~pp_error e =
     Log.err (fun m -> m "fatal in %s %a" prefix pp_error e);
-    invalid_arg "fatal!"
+    invalid_arg (Fmt.str "fatal in %s %a" prefix pp_error e)
 
   let lwt_error_fatal prefix ~pp_error thing =
     let open Lwt.Infix in
@@ -764,41 +764,58 @@ module Make (KV : Kv_ext.Platform) = struct
     KV.clear_watches t.kv;
     t.state <- Locked
 
-  let kv_equal a b =
+  let assert_kv_equal ?(except_keys = []) a b =
     let open Lwt_result.Infix in
+    let open Alcotest in
     let rec traverse root =
       let for_all acc path =
         Lwt.return acc >>= fun acc' ->
-        traverse path >|= fun v -> acc' && v
+        traverse path >|= fun _ -> acc'
       in
       KV.exists a root >>= fun a_typ ->
       KV.exists b root >>= fun b_typ ->
       match (a_typ, b_typ) with
+      | Some `Value, Some `Value
+        when List.exists (Mirage_kv.Key.equal root) except_keys ->
+          Lwt_result.return ()
       | Some `Value, Some `Value ->
           KV.get a root >>= fun v ->
-          KV.get b root >>= fun v' -> Lwt_result.return (String.equal v v')
+          KV.get b root >>= fun v' ->
+          let s =
+            Fmt.str "values for %a is the same in both stores" Mirage_kv.Key.pp
+              root
+          in
+          Lwt_result.return (check string s v v')
       | Some `Dictionary, Some `Dictionary ->
           KV.list a root >>= fun l ->
           KV.list b root >>= fun l' ->
           if List.length l = List.length l' && List.for_all2 ( = ) l l' then
-            Lwt_list.fold_left_s for_all (Ok true) (fst (List.split l))
-          else Lwt_result.return false
-      | _ -> Lwt_result.return false
+            Lwt_list.fold_left_s for_all (Ok ()) (fst (List.split l))
+          else
+            Lwt_result.return
+            @@ failf "children of key %a are different" Mirage_kv.Key.pp root
+      | _ ->
+          Lwt_result.return
+          @@ failf "key %a has different type in both stores" Mirage_kv.Key.pp
+               root
     in
     let get_ok v =
       let open Lwt.Infix in
-      v >|= function Ok v -> v | Error _ -> false
+      v >|= function
+      | Ok () -> ()
+      | Error err -> failf "equality test has failed with: %a" KV.pp_error err
     in
     traverse Mirage_kv.Key.empty |> get_ok
 
-  let equal a b =
+  let assert_equal ?except_keys a b =
     let open Lwt.Infix in
-    kv_equal a.kv b.kv >|= fun equal_kv ->
-    equal_internal_state a.state b.state
-    && a.has_changes = b.has_changes
-    && a.info = b.info
-    && a.system_info = b.system_info
-    && equal_kv
+    let open Alcotest in
+    assert_kv_equal ?except_keys a.kv b.kv >|= fun () ->
+    if not @@ equal_internal_state a.state b.state then
+      fail "internal states differ";
+    check (option string) "check has_changes" a.has_changes b.has_changes;
+    if not (a.info = b.info) then fail "info differs";
+    if not (a.system_info = b.system_info) then fail "system_info differs"
 
   let now () = Hsm_clock.now ()
   let write_lock = Lwt_mutex.create ()
@@ -3477,8 +3494,7 @@ module Make (KV : Kv_ext.Platform) = struct
                  provisioned here. *)
               let** new_state =
                 let** stored_version =
-                  internal_server_error Read "Get passphrase salt"
-                    Config_store.pp_error
+                  internal_server_error Read "Get version" Config_store.pp_error
                     (Config_store.get_opt t.config_store Config_store.Version)
                 in
                 let** () =
@@ -3493,6 +3509,41 @@ module Make (KV : Kv_ext.Platform) = struct
                               "could not apply migrations to old backup: %s" msg
                           ))
                 in
+                (* TODO include unlock_salt in backup to copy it instead of
+                   incorrectly generating it *)
+                let open Lwt_result.Infix in
+                let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+                let** is_fresh_machine =
+                  internal_server_error Read "Get private key"
+                    Config_store.pp_error
+                    (Config_store.get_opt t.config_store
+                       Config_store.Private_key)
+                  >|= Option.is_none
+                in
+                (* if we are restoring on a fresh, unprovisioned machine (i.e. a
+                   machine for which we do not have any local config backed up,
+                   then we store the freshly generated private key and certificate *)
+                (if is_fresh_machine then
+                   (* note that we leave the following fields empty:
+                       - unattended_boot (default to attended)
+                       - log and ip configs (use default values)
+                       - time offset (same as fresh boot)
+                   *)
+                   Config_store.batch t.config_store (fun b ->
+                       internal_server_error Write "Writing private RSA key"
+                         Config_store.pp_write_error
+                         (Config_store.set b Private_key t.key)
+                       >>= fun () ->
+                       internal_server_error Write
+                         "Writing certificate chain key"
+                         Config_store.pp_write_error
+                         (Config_store.set b Certificate (t.cert, t.chain))
+                       >>= fun () ->
+                       internal_server_error Write "Write unlock-salt"
+                         Config_store.pp_write_error
+                         (Config_store.set b Unlock_salt unlock_salt))
+                 else Lwt_result.return ())
+                >>= fun () ->
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
               in
