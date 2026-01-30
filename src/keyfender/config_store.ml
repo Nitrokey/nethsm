@@ -214,10 +214,22 @@ module Make (KV : Kv_ext.RW) = struct
     val decrypt : _ k -> string -> (string, [> `Msg of string ]) result
   end
 
-  let noop_codec =
+  let sign_codec =
     (module struct
-      let encrypt _ x = x
-      let decrypt _ x = Ok x
+      let adata k = config_prefix "" ^ name k
+
+      let key =
+        let secret = Crypto.key_of_passphrase ~salt:"" "config_early_global" in
+        Crypto.GCM.of_secret secret
+
+      let encrypt k data =
+        let adata = adata k in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
+
+      let decrypt k data =
+        let adata = adata k in
+        Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
+          (Crypto.decrypt ~key ~adata data)
     end : Codec)
 
   let single_codec ?(device_id = "") encryption_key =
@@ -240,14 +252,13 @@ module Make (KV : Kv_ext.RW) = struct
     let locality = if is_global_config key then `Global else `Local in
     let timing = if is_needed_before_unlock key then `Early else `Late in
     match (locality, timing, t.config_domain_key) with
-    | `Global, `Early, _ -> Ok noop_codec (* TODO sign *)
+    | `Global, `Early, _ -> Ok sign_codec
     | _, `Late, None -> Error (`Msg "missing domain key")
     | `Local, `Early, _ ->
         Ok (single_codec ~device_id:t.device_id t.config_device_key)
     | `Global, `Late, Some dom_key -> Ok (single_codec dom_key)
     | `Local, `Late, Some dom_key ->
-        (* TODO: also encrypt with device key? *)
-        Ok (single_codec dom_key)
+        Ok (single_codec ~device_id:t.device_id dom_key)
 
   let get t key =
     let ( let* ) = Result.bind in

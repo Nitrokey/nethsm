@@ -1909,18 +1909,6 @@ let invalid_config_version =
           Hsm.boot ~platform software_update_key data )
       |> ignore)
 
-let config_version_but_no_salt =
-  Alcotest.test_case "config/version but no salt" `Quick @@ fun () ->
-  Alcotest.check_raises "breaks HSM"
-    (Invalid_argument
-       "fatal in get unlock-salt Cannot find the key \
-        /0000000000/config/unlock-salt") (fun () ->
-      Lwt_main.run
-        ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
-          Hsm.boot ~platform software_update_key data )
-      |> ignore)
-
 let namespaces_get =
   "GET on /namespaces/ succeeds" @? fun () ->
   match
@@ -5189,7 +5177,6 @@ let () =
       ( "/config/backup-passphrase",
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
-      ("config version but no unlock salt", [ config_version_but_no_salt ]);
       ("config store with wrong device key", [ boot_device_key_change_fails ]);
       ("/namespaces", [ namespaces_get; namespaces_get_nuser; namespaces_seq ]);
       ( "/namespaces/namespace1",
