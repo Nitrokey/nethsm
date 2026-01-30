@@ -7,7 +7,7 @@
  (instrumentation
   (backend bisect_ppx --bisect-sigterm))
  (libraries
-  alcotest
+  alcotest.engine
   astring
   logs
   lwt

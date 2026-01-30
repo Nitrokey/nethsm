@@ -773,7 +773,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let assert_kv_equal ?(allow_more_keys = false) ?(except_keys = []) a b =
     let open Lwt_result.Infix in
-    let open Alcotest in
+    let open Alcotest_engine.V1.Test in
     let module ChildSet = Set.Make (struct
       type t = Mirage_kv.Key.t * [ `Value | `Dictionary ]
 
@@ -826,7 +826,7 @@ module Make (KV : Kv_ext.Platform) = struct
   let assert_equal ?(except_system_info = false) ?except_keys ?allow_more_keys a
       b =
     let open Lwt.Infix in
-    let open Alcotest in
+    let open Alcotest_engine.V1.Test in
     assert_kv_equal ?except_keys ?allow_more_keys a.kv b.kv >|= fun () ->
     if not @@ equal_internal_state a.state b.state then
       fail "internal states differ";
