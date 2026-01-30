@@ -7,6 +7,10 @@ open Lwt.Infix
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
 module Make (KV : Kv_ext.RW) = struct
+  let src = Logs.Src.create "config_store"
+
+  module Log = (val Logs.src_log src : Logs.LOG)
+
   let config_prefix device_id = device_id ^ "/config"
 
   type _ k =
@@ -200,6 +204,7 @@ module Make (KV : Kv_ext.RW) = struct
     | `Kv e -> KV.pp_error ppf e
     | `Kv_write e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
+    | `Missing_domain_key -> Fmt.string ppf "cannot read this key before unlock"
 
   type t = {
     kv : KV.t;
@@ -207,12 +212,20 @@ module Make (KV : Kv_ext.RW) = struct
     (* store extended version instead? *)
     config_device_key : string;
     mutable config_domain_key : string option;
+    force_disable_decryption : bool;
+        (* used exclusively during migration from unencrypted to encrypted *)
   }
 
   module type Codec = sig
     val encrypt : _ k -> string -> string
     val decrypt : _ k -> string -> (string, [> `Msg of string ]) result
   end
+
+  let noop_codec =
+    (module struct
+      let encrypt _ _ = failwith "can never write unencrypted data"
+      let decrypt _ x = Ok x
+    end : Codec)
 
   let sign_codec =
     (module struct
@@ -253,7 +266,7 @@ module Make (KV : Kv_ext.RW) = struct
     let timing = if is_needed_before_unlock key then `Early else `Late in
     match (locality, timing, t.config_domain_key) with
     | `Global, `Early, _ -> Ok sign_codec
-    | _, `Late, None -> Error (`Msg "missing domain key")
+    | _, `Late, None -> Error `Missing_domain_key
     | `Local, `Early, _ ->
         Ok (single_codec ~device_id:t.device_id t.config_device_key)
     | `Global, `Late, Some dom_key -> Ok (single_codec dom_key)
@@ -264,7 +277,10 @@ module Make (KV : Kv_ext.RW) = struct
     let ( let* ) = Result.bind in
     KV.get t.kv (key_path t.device_id key) >|= function
     | Ok data ->
-        let* c = select_codec t key in
+        let* c =
+          if t.force_disable_decryption then Ok noop_codec
+          else select_codec t key
+        in
         let module C = (val c) in
         let* decrypted = C.decrypt key data in
         of_string key decrypted
@@ -290,6 +306,8 @@ module Make (KV : Kv_ext.RW) = struct
   let pp_write_error ppf = function
     | `Kv e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
+    | `Missing_domain_key ->
+        Fmt.string ppf "cannot write this key before unlock"
 
   let remove t key = KV.remove t.kv (key_path t.device_id key)
   let digest t key = KV.digest t.kv (key_path t.device_id key)
@@ -297,7 +315,13 @@ module Make (KV : Kv_ext.RW) = struct
   let connect kv ~device_id ~device_key =
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
     let config_device_key = extend device_key "early_config_store" in
-    { kv; device_id; config_device_key; config_domain_key = None }
+    {
+      kv;
+      device_id;
+      config_device_key;
+      config_domain_key = None;
+      force_disable_decryption = false;
+    }
 
   let provide_config_domain_key t k = t.config_domain_key <- Some k
   let forget_config_domain_key t = t.config_domain_key <- None
@@ -356,9 +380,17 @@ module Make (KV : Kv_ext.RW) = struct
     Lwt_result.return ()
 
   let migrate_v0_v1 t =
-    let old = { t with device_id = "" } in
-    let wrap_write_error r =
-      Result.map_error (function `Kv e -> `Kv_write e | `Msg m -> `Msg m) r
+    let old = { t with device_id = ""; force_disable_decryption = true } in
+    let wrap_write_error = function
+      | Error (`Kv e) -> Error (`Kv_write e)
+      | Error (`Msg m) -> Error (`Msg m)
+      | Error `Missing_domain_key ->
+          Log.warn (fun f ->
+              f
+                "dropping key during migration because it now needs the domain \
+                 key for storage");
+          Ok ()
+      | Ok () -> Ok ()
     in
     let just_move (type a) (k : a k) =
       if is_global_config k then Lwt.return (Ok ())
@@ -425,6 +457,8 @@ module Make (KV : Kv_ext.RW) = struct
     just_move Unlock_salt >>= fun () ->
     just_move Certificate >>= fun () ->
     just_move Private_key >>= fun () ->
+    (* NOTE: if migrating in locked mode (e.g. at boot),
+       Backup_salt and Backup_key are dropped *)
     just_move Backup_salt >>= fun () ->
     just_move Backup_key >>= fun () ->
     just_move Unattended_boot >>= fun () ->
