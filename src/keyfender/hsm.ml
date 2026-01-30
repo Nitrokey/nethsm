@@ -930,7 +930,10 @@ module Make (KV : Kv_ext.Platform) = struct
     load_keys domain_store device_key pass_key
     >>= fun (domain_key, as_key, ks_key, ns_key, config_key) ->
     let kv = domain_store.kv in
-    Config_store.provide_config_domain_key config_store config_key;
+    internal_server_error Write "Unlock config store"
+      Config_store.pp_write_error
+      (Config_store.provide_config_domain_key config_store config_key)
+    >>= fun () ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >>= fun key_store ->
     unlock_store kv Namespace ns_key >|= fun namespace_store ->
@@ -2667,7 +2670,10 @@ module Make (KV : Kv_ext.Platform) = struct
     let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
     in
-    Config_store.provide_config_domain_key t.config_store config_store_key;
+    internal_server_error Write "Unlock config store"
+      Config_store.pp_write_error
+      (Config_store.provide_config_domain_key t.config_store config_store_key)
+    >>= fun () ->
     with_write_lock (fun () ->
         Config_store.batch t.config_store (fun b ->
             internal_server_error Write "Initializing configuration store"

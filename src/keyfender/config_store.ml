@@ -7,10 +7,6 @@ open Lwt.Infix
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
 module Make (KV : Kv_ext.RW) = struct
-  let src = Logs.Src.create "config_store"
-
-  module Log = (val Logs.src_log src : Logs.LOG)
-
   let config_prefix device_id = device_id ^ "/config"
 
   type _ k =
@@ -206,6 +202,9 @@ module Make (KV : Kv_ext.RW) = struct
     | `Msg msg -> Fmt.string ppf msg
     | `Missing_domain_key -> Fmt.string ppf "cannot read this key before unlock"
 
+  type write_error =
+    [ `Kv of KV.write_error | `Msg of string | `Missing_domain_key ]
+
   type t = {
     kv : KV.t;
     device_id : string;
@@ -214,6 +213,8 @@ module Make (KV : Kv_ext.RW) = struct
     mutable config_domain_key : string option;
     force_disable_decryption : bool;
         (* used exclusively during migration from unencrypted to encrypted *)
+    mutable post_migration_writes :
+      (unit -> (unit, write_error) Lwt_result.t) list;
   }
 
   module type Codec = sig
@@ -321,9 +322,17 @@ module Make (KV : Kv_ext.RW) = struct
       config_device_key;
       config_domain_key = None;
       force_disable_decryption = false;
+      post_migration_writes = [];
     }
 
-  let provide_config_domain_key t k = t.config_domain_key <- Some k
+  let provide_config_domain_key t k =
+    t.config_domain_key <- Some k;
+    Lwt_list.fold_left_s
+      (fun acc op ->
+        let open Lwt_result.Infix in
+        Lwt.return acc >>= fun () -> op ())
+      (Ok ()) t.post_migration_writes
+
   let forget_config_domain_key t = t.config_domain_key <- None
 
   type local_backup = {
@@ -381,16 +390,17 @@ module Make (KV : Kv_ext.RW) = struct
 
   let migrate_v0_v1 t =
     let old = { t with device_id = ""; force_disable_decryption = true } in
-    let wrap_write_error = function
-      | Error (`Kv e) -> Error (`Kv_write e)
-      | Error (`Msg m) -> Error (`Msg m)
-      | Error `Missing_domain_key ->
-          Log.warn (fun f ->
-              f
-                "dropping key during migration because it now needs the domain \
-                 key for storage");
-          Ok ()
-      | Ok () -> Ok ()
+    let set_or_delay t k data =
+      let go () = set t k data in
+      let wrap_write_error = function
+        | Error (`Kv e) -> Error (`Kv_write e)
+        | Error (`Msg m) -> Error (`Msg m)
+        | Error `Missing_domain_key ->
+            t.post_migration_writes <- go :: t.post_migration_writes;
+            Ok ()
+        | Ok () -> Ok ()
+      in
+      go () >|= wrap_write_error
     in
     let just_move (type a) (k : a k) =
       if is_global_config k then Lwt.return (Ok ())
@@ -398,7 +408,7 @@ module Make (KV : Kv_ext.RW) = struct
         get_opt old k >>= function
         | Error e -> Lwt.return (Error e)
         | Ok None -> Lwt.return (Ok ())
-        | Ok (Some data) -> set t k data >|= wrap_write_error
+        | Ok (Some data) -> set_or_delay t k data
     in
     let migrate_log_config () =
       KV.get t.kv (key_path "" Log_config) >>= function
@@ -425,7 +435,7 @@ module Make (KV : Kv_ext.RW) = struct
                       port;
                     }
                   in
-                  set t Log_config new_config >|= wrap_write_error))
+                  set_or_delay t Log_config new_config))
     in
     let migrate_ip_config () =
       KV.get t.kv (key_path "" Ip_config) >>= function
@@ -446,7 +456,7 @@ module Make (KV : Kv_ext.RW) = struct
                 ipv6 = None;
               }
             in
-            set t Ip_config new_config >|= wrap_write_error
+            set_or_delay t Ip_config new_config
           with Ipaddr.Parse_error (msg, _) -> Lwt.return (Error (`Msg msg)))
     in
 
@@ -457,13 +467,9 @@ module Make (KV : Kv_ext.RW) = struct
     just_move Unlock_salt >>= fun () ->
     just_move Certificate >>= fun () ->
     just_move Private_key >>= fun () ->
-    (* NOTE: if migrating in locked mode (e.g. at boot),
-       Backup_salt and Backup_key are dropped *)
     just_move Backup_salt >>= fun () ->
     just_move Backup_key >>= fun () ->
     just_move Unattended_boot >>= fun () ->
     migrate_log_config () >>= fun () ->
-    migrate_ip_config () >>= fun () ->
-    let open Lwt.Infix in
-    set t Version Version.V1 >|= wrap_write_error
+    migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1
 end
