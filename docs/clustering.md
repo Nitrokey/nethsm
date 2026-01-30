@@ -258,9 +258,7 @@ and render it inoperable.
 
 ## Limitations
 
-This is an experimental release that should not yet be used for production. In
-particular, in this version the config store remains unencrypted, while the
-final release will change that.
+This is an experimental release that should not yet be used for production.
 
 Be also aware of the following, temporary limitations:
 
@@ -275,4 +273,4 @@ Be also aware of the following, temporary limitations:
     factory-reset + restore. Future releases will include means to recover from
     on-disk data ;
 - system time between nodes must be manually synchronized for now. Future
-    release may include automatic clok sync.
+    release may include automatic clock sync.
