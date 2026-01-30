@@ -94,6 +94,7 @@ let decrypt ~key ~adata data =
 
 let backup_header = "_NETHSM_BACKUP_"
 let backup_version_v0 = Char.chr 0
+let backup_version_v1 = Char.chr 1
 
 let export passphrase backup_image_filename output =
   let ( let* ) = Result.bind in
@@ -112,16 +113,18 @@ let export passphrase backup_image_filename output =
       Ok ()
     else Error "Not a NetHSM backup file"
   in
+  let handled_versions = [ backup_version_v0; backup_version_v1 ] in
   let* () =
     match version with
-    | x when x = backup_version_v0 -> Ok ()
+    | x when List.mem x handled_versions -> Ok ()
     | _ ->
         let msg =
           Printf.sprintf
             "Version mismatch on restore, provided backup version is %d, \
-             server expects %d"
+             server expects one of [%s]"
             (Char.code version)
-            (Char.code backup_version_v0)
+            (List.map Char.code handled_versions
+            |> List.fold_left (fun acc c -> acc ^ " " ^ string_of_int c) "")
         in
         Error msg
   in
@@ -138,6 +141,14 @@ let export passphrase backup_image_filename output =
   let encrypted_domain_key, backup_data = get_field backup_data in
   let adata = "domain-key" in
   let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
+  let* unlock_salt, backup_data =
+    if version = backup_version_v1 then
+      let encrypted_unlock_salt, backup_data = get_field backup_data in
+      let adata = "unlock-salt" in
+      let* unlock_salt = decrypt ~key ~adata encrypted_unlock_salt in
+      Ok (Some unlock_salt, backup_data)
+    else Ok (None, backup_data)
+  in
   let rec next acc rest =
     if rest = "" then Ok acc
     else
@@ -148,6 +159,11 @@ let export passphrase backup_image_filename output =
       next ((key, value) :: acc) rest
   in
   let init = [ (".locked-domain-key", locked_domain_key) ] in
+  let init =
+    match unlock_salt with
+    | None -> init
+    | Some unlock_salt -> (".unlock-salt", unlock_salt) :: init
+  in
   match next init backup_data with
   | Error e -> Error e
   | Ok kvs ->

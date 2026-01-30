@@ -760,7 +760,11 @@ let system_backup_and_restore_changed_devkey =
                   Hsm.state hsm_state' = `Operational
                   &&
                     try
-                      Lwt_main.run (Hsm.assert_equal hsm_state hsm_state');
+                      (* the new machine will have more keys correspondign to
+                         its own config values *)
+                      Lwt_main.run
+                        (Hsm.assert_equal ~except_system_info:true
+                           ~allow_more_keys:true hsm_state hsm_state');
                       true
                     with _ -> false)
               | _ -> false)

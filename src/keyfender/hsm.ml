@@ -42,7 +42,14 @@ module type S = sig
 
   type t
 
-  val assert_equal : ?except_keys:Mirage_kv.Key.t list -> t -> t -> unit Lwt.t
+  val assert_equal :
+    ?except_system_info:bool ->
+    ?except_keys:Mirage_kv.Key.t list ->
+    ?allow_more_keys:bool ->
+    t ->
+    t ->
+    unit Lwt.t
+
   val info : t -> Json.info
   val state : t -> Json.state
   val lock : t -> unit
@@ -764,12 +771,17 @@ module Make (KV : Kv_ext.Platform) = struct
     KV.clear_watches t.kv;
     t.state <- Locked
 
-  let assert_kv_equal ?(except_keys = []) a b =
+  let assert_kv_equal ?(allow_more_keys = false) ?(except_keys = []) a b =
     let open Lwt_result.Infix in
     let open Alcotest in
+    let module ChildSet = Set.Make (struct
+      type t = Mirage_kv.Key.t * [ `Value | `Dictionary ]
+
+      let compare = Stdlib.compare
+    end) in
     let rec traverse root =
-      let for_all acc path =
-        Lwt.return acc >>= fun acc' ->
+      let for_all (path, _) acc =
+        acc >>= fun acc' ->
         traverse path >|= fun _ -> acc'
       in
       KV.exists a root >>= fun a_typ ->
@@ -789,11 +801,15 @@ module Make (KV : Kv_ext.Platform) = struct
       | Some `Dictionary, Some `Dictionary ->
           KV.list a root >>= fun l ->
           KV.list b root >>= fun l' ->
-          if List.length l = List.length l' && List.for_all2 ( = ) l l' then
-            Lwt_list.fold_left_s for_all (Ok ()) (fst (List.split l))
-          else
-            Lwt_result.return
-            @@ failf "children of key %a are different" Mirage_kv.Key.pp root
+          let sl = ChildSet.of_list l in
+          let sl' = ChildSet.of_list l' in
+          if allow_more_keys then (
+            if not (ChildSet.subset sl sl') then
+              failf "children of key %a: lhs is not a subset of rhs"
+                Mirage_kv.Key.pp root)
+          else if not (ChildSet.equal sl sl') then
+            failf "children of key %a are different" Mirage_kv.Key.pp root;
+          ChildSet.fold for_all sl (Lwt_result.return ())
       | _ ->
           Lwt_result.return
           @@ failf "key %a has different type in both stores" Mirage_kv.Key.pp
@@ -807,15 +823,17 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     traverse Mirage_kv.Key.empty |> get_ok
 
-  let assert_equal ?except_keys a b =
+  let assert_equal ?(except_system_info = false) ?except_keys ?allow_more_keys a
+      b =
     let open Lwt.Infix in
     let open Alcotest in
-    assert_kv_equal ?except_keys a.kv b.kv >|= fun () ->
+    assert_kv_equal ?except_keys ?allow_more_keys a.kv b.kv >|= fun () ->
     if not @@ equal_internal_state a.state b.state then
       fail "internal states differ";
     check (option string) "check has_changes" a.has_changes b.has_changes;
     if not (a.info = b.info) then fail "info differs";
-    if not (a.system_info = b.system_info) then fail "system_info differs"
+    if not (a.system_info = b.system_info || except_system_info) then
+      fail "system_info differs"
 
   let now () = Hsm_clock.now ()
   let write_lock = Lwt_mutex.create ()
@@ -3111,11 +3129,13 @@ module Make (KV : Kv_ext.Platform) = struct
        - length of salt (encoded in 3 bytes); salt
        - length of ...; AES-GCM encrypted version [adata = backup-version]
        - length of ...; passphrase encrypted domain key
+       - (IN VERSION 1 ONLY) length of ...; unlock salt used for the passphrase
        - indivial key, value entries of the store:
          - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
 
     let backup_header = "_NETHSM_BACKUP_"
     let backup_version_v0 = Char.chr 0
+    let backup_version_v1 = Char.chr 1
 
     let rec backup_directory kv push backup_key path =
       let open Lwt.Infix in
@@ -3169,7 +3189,7 @@ module Make (KV : Kv_ext.Platform) = struct
                   m "error %a while reading backup salt" Config_store.pp_error e);
               Lwt.return (Error (Internal_server_error, "Corrupted database."))
           | Ok backup_salt -> (
-              let version_str = String.make 1 backup_version_v0 in
+              let version_str = String.make 1 backup_version_v1 in
               push (Some (backup_header ^ version_str));
               push (Some (prefix_len backup_salt));
               let encrypted_version =
@@ -3190,17 +3210,31 @@ module Make (KV : Kv_ext.Platform) = struct
                         Config_store.pp_error e);
                   Lwt.return
                     (Error (Internal_server_error, "Corrupted database."))
-              | Ok locked_domkey ->
+              | Ok locked_domkey -> (
                   let encrypted_domkey =
                     let adata = "domain-key" in
                     Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
                       ~adata locked_domkey
                   in
                   push (Some (prefix_len encrypted_domkey));
-                  backup_directory t.kv push backup_key' Mirage_kv.Key.empty
-                  >|= fun () ->
-                  push None;
-                  Ok ()))
+                  Config_store.get t.config_store Unlock_salt >>= function
+                  | Error e ->
+                      Log.err (fun m ->
+                          m "error %a while reading unlock salt"
+                            Config_store.pp_error e);
+                      Lwt.return
+                        (Error (Internal_server_error, "Corrupted database."))
+                  | Ok unlock_salt ->
+                      let encrypted_unlock_salt =
+                        let adata = "unlock-salt" in
+                        Crypto.encrypt Mirage_crypto_rng.generate
+                          ~key:backup_key' ~adata unlock_salt
+                      in
+                      push (Some (prefix_len encrypted_unlock_salt));
+                      backup_directory t.kv push backup_key' Mirage_kv.Key.empty
+                      >|= fun () ->
+                      push None;
+                      Ok ())))
 
     let decode_value = get_field
 
@@ -3376,18 +3410,21 @@ module Make (KV : Kv_ext.Platform) = struct
         else Error (Bad_request, "Not a NetHSM backup file")
       in
       let version = String.(get header (length backup_header)) in
+      let handled_versions = [ backup_version_v0; backup_version_v1 ] in
       let** () =
         Lwt.return
         @@
         match version with
-        | x when x = backup_version_v0 -> Ok ()
+        | x when List.mem x handled_versions -> Ok ()
         | _ ->
             let msg =
               Printf.sprintf
                 "Version mismatch on restore, provided backup version is %d, \
-                 server expects %d"
+                 server expects one of [%s]"
                 (Char.code version)
-                (Char.code backup_version_v0)
+                (List.map Char.code handled_versions
+                |> List.fold_left (fun acc c -> acc ^ " " ^ string_of_int c) ""
+                )
             in
             Error (Bad_request, msg)
       in
@@ -3423,6 +3460,16 @@ module Make (KV : Kv_ext.Platform) = struct
       let adata = "domain-key" in
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
+      in
+      let** unlock_salt =
+        if version = backup_version_v1 then
+          let** encrypted_unlock_salt = decode_value sb in
+          let adata = "unlock-salt" in
+          let** unlock_salt =
+            decrypt_backup ~key ~adata encrypted_unlock_salt
+          in
+          Lwt_result.return (Some unlock_salt)
+        else Lwt_result.return None
       in
       (* when the mode is operational, we have to clear
          user and keys that are not in the backup. *)
@@ -3509,10 +3556,7 @@ module Make (KV : Kv_ext.Platform) = struct
                               "could not apply migrations to old backup: %s" msg
                           ))
                 in
-                (* TODO include unlock_salt in backup to copy it instead of
-                   incorrectly generating it *)
                 let open Lwt_result.Infix in
-                let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
                 let** is_fresh_machine =
                   internal_server_error Read "Get private key"
                     Config_store.pp_error
@@ -3523,26 +3567,32 @@ module Make (KV : Kv_ext.Platform) = struct
                 (* if we are restoring on a fresh, unprovisioned machine (i.e. a
                    machine for which we do not have any local config backed up,
                    then we store the freshly generated private key and certificate *)
-                (if is_fresh_machine then
-                   (* note that we leave the following fields empty:
+                (match (is_fresh_machine, unlock_salt) with
+                  | false, _ -> Lwt_result.return ()
+                  | true, None ->
+                      Lwt_result.fail
+                        ( Bad_request,
+                          "v0 backups can only be restored on the same machine"
+                        )
+                  | true, Some unlock_salt ->
+                      (* note that we leave the following fields empty:
                        - unattended_boot (default to attended)
                        - log and ip configs (use default values)
                        - time offset (same as fresh boot)
-                   *)
-                   Config_store.batch t.config_store (fun b ->
-                       internal_server_error Write "Writing private RSA key"
-                         Config_store.pp_write_error
-                         (Config_store.set b Private_key t.key)
-                       >>= fun () ->
-                       internal_server_error Write
-                         "Writing certificate chain key"
-                         Config_store.pp_write_error
-                         (Config_store.set b Certificate (t.cert, t.chain))
-                       >>= fun () ->
-                       internal_server_error Write "Write unlock-salt"
-                         Config_store.pp_write_error
-                         (Config_store.set b Unlock_salt unlock_salt))
-                 else Lwt_result.return ())
+                       *)
+                      Config_store.batch t.config_store (fun b ->
+                          internal_server_error Write "Writing private RSA key"
+                            Config_store.pp_write_error
+                            (Config_store.set b Private_key t.key)
+                          >>= fun () ->
+                          internal_server_error Write
+                            "Writing certificate chain key"
+                            Config_store.pp_write_error
+                            (Config_store.set b Certificate (t.cert, t.chain))
+                          >>= fun () ->
+                          internal_server_error Write "Write unlock-salt"
+                            Config_store.pp_write_error
+                            (Config_store.set b Unlock_salt unlock_salt)))
                 >>= fun () ->
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key

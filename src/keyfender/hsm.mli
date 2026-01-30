@@ -42,7 +42,14 @@ module type S = sig
 
   type t
 
-  val assert_equal : ?except_keys:Mirage_kv.Key.t list -> t -> t -> unit Lwt.t
+  val assert_equal :
+    ?except_system_info:bool ->
+    ?except_keys:Mirage_kv.Key.t list ->
+    ?allow_more_keys:bool ->
+    t ->
+    t ->
+    unit Lwt.t
+
   val info : t -> Json.info
   val state : t -> Json.state
   val lock : t -> unit
