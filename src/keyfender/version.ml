@@ -18,6 +18,8 @@ let of_string = function
   | "1" -> Ok V1
   | s -> Rresult.R.error_msgf "unknown version %S" s
 
+  (* TODO clarify and write down semantics *)
+
 let current = V1
 let file = ".version"
 let filename = Mirage_kv.Key.v file

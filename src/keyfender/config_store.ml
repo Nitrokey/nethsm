@@ -176,6 +176,8 @@ module Make (KV : Kv_ext.RW) = struct
     | Backup_key | Log_config | Unattended_boot ->
         false
 
+  (* TODO backup key/salt local? *)
+
   (* "early" configs cannot be encrypted with the domain key, as they are
      needed to unlock the domain key. They are stored with a derivative of the
      device key *)
@@ -224,26 +226,14 @@ module Make (KV : Kv_ext.RW) = struct
 
   let noop_codec =
     (module struct
-      let encrypt _ _ = failwith "can never write unencrypted data"
+      let encrypt : type a. a k -> string -> string =
+        (* safety check so we don't misuse this codec *)
+        function
+        | Version -> fun x -> x
+        | _ ->
+            fun _ -> failwith "can never write unencrypted data other Version"
+
       let decrypt _ x = Ok x
-    end : Codec)
-
-  let sign_codec =
-    (module struct
-      let adata k = config_prefix "" ^ name k
-
-      let key =
-        let secret = Crypto.key_of_passphrase ~salt:"" "config_early_global" in
-        Crypto.GCM.of_secret secret
-
-      let encrypt k data =
-        let adata = adata k in
-        Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
-
-      let decrypt k data =
-        let adata = adata k in
-        Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
-          (Crypto.decrypt ~key ~adata data)
     end : Codec)
 
   let single_codec ?(device_id = "") encryption_key =
@@ -266,7 +256,7 @@ module Make (KV : Kv_ext.RW) = struct
     let locality = if is_global_config key then `Global else `Local in
     let timing = if is_needed_before_unlock key then `Early else `Late in
     match (locality, timing, t.config_domain_key) with
-    | `Global, `Early, _ -> Ok sign_codec
+    | `Global, `Early, _ -> Ok noop_codec
     | _, `Late, None -> Error `Missing_domain_key
     | `Local, `Early, _ ->
         Ok (single_codec ~device_id:t.device_id t.config_device_key)

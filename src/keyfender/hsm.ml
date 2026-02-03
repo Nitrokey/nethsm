@@ -3467,6 +3467,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
       in
+      (* if this is a V1 backup, extract the unlock-salt it contains *)
       let** unlock_salt =
         if version = backup_version_v1 then
           let** encrypted_unlock_salt = decode_value sb in
@@ -3576,10 +3577,9 @@ module Make (KV : Kv_ext.Platform) = struct
                 (match (is_fresh_machine, unlock_salt) with
                   | false, _ -> Lwt_result.return ()
                   | true, None ->
-                      Lwt_result.fail
-                        ( Bad_request,
-                          "v0 backups can only be restored on the same machine"
-                        )
+                      (* the unlock salt has already been restored from the
+                         plaintext v0 backup *)
+                      Lwt_result.return ()
                   | true, Some unlock_salt ->
                       (* note that we leave the following fields empty:
                        - unattended_boot (default to attended)
