@@ -28,6 +28,7 @@ module Make (KV : Kv_ext.Ranged) : sig
 
   val pp_slot : slot Fmt.t
   val slot_to_string : slot -> string
+  val current_version : slot -> Version.t
 
   val initialize :
     Version.t -> slot -> key:string -> KV.t -> (t, KV.write_error) result Lwt.t

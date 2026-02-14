@@ -15,6 +15,11 @@ module Make (KV : Kv_ext.Ranged) = struct
     | Key -> "key"
     | Namespace -> "namespace"
 
+  let current_version = function
+    | Authentication -> Version.Current.authentication_store
+    | Key -> Version.Current.key_store
+    | Namespace -> Version.Current.namespace_store
+
   let pp_slot ppf slot = Fmt.string ppf (slot_to_string slot) [@@coverage off]
 
   type error =

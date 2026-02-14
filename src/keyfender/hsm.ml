@@ -900,7 +900,8 @@ module Make (KV : Kv_ext.Platform) = struct
   let unlock_store kv slot key =
     let open Lwt.Infix in
     let slot_str = Encrypted_store.slot_to_string slot in
-    Encrypted_store.unlock Version.current slot ~key kv >>= function
+    let current_version = Encrypted_store.current_version slot in
+    Encrypted_store.unlock current_version slot ~key kv >>= function
     | Ok (`Version_greater (stored, _t)) ->
         (* upgrade code for authentication store *)
         Lwt.return
@@ -916,7 +917,7 @@ module Make (KV : Kv_ext.Platform) = struct
                Initializing it on the fly with the provided key!");
         internal_server_error Write "provisioning namespace store"
           KV.pp_write_error
-          (Encrypted_store.initialize Version.current Namespace ~key kv)
+          (Encrypted_store.initialize current_version Namespace ~key kv)
     | Error e ->
         internal_server_error Unlock
           ("connecting to " ^ slot_str ^ " store")
@@ -2678,7 +2679,8 @@ module Make (KV : Kv_ext.Platform) = struct
         Config_store.batch t.config_store (fun b ->
             internal_server_error Write "Initializing configuration store"
               Config_store.pp_write_error
-              (Config_store.set b Version Version.current)
+              (Config_store.set b Version
+                 Version.Current.config_and_domain_store)
             >>= fun () ->
             internal_server_error Write "Writing private RSA key"
               Config_store.pp_write_error
@@ -2693,7 +2695,7 @@ module Make (KV : Kv_ext.Platform) = struct
             in
             let a_v_key, a_v_value =
               Encrypted_store.prepare_set auth_store Version.filename
-                Version.(to_string current)
+                Version.(to_string Version.Current.authentication_store)
             in
             internal_server_error Write "Initializing authentication store"
               KV.pp_write_error
@@ -2702,7 +2704,7 @@ module Make (KV : Kv_ext.Platform) = struct
             let key_store = Encrypted_store.v Key ~key:key_store_key t.kv in
             let k_v_key, k_v_value =
               Encrypted_store.prepare_set key_store Version.filename
-                Version.(to_string current)
+                Version.(to_string Version.Current.key_store)
             in
             internal_server_error Write "Initializing key store"
               KV.pp_write_error
@@ -2716,7 +2718,7 @@ module Make (KV : Kv_ext.Platform) = struct
             in
             let n_v_key, n_v_value =
               Encrypted_store.prepare_set namespace_store Version.filename
-                Version.(to_string current)
+                Version.(to_string Version.Current.namespace_store)
             in
             internal_server_error Write "Initializing namespace store"
               KV.pp_write_error
@@ -3370,10 +3372,13 @@ module Make (KV : Kv_ext.Platform) = struct
                    (KV.remove kv k))
            (Ok ())
 
-    let apply_migrations kv ~device_id ~device_key stored_version =
+    let apply_config_and_domain_migrations kv ~device_id ~device_key
+        stored_version =
       let config_store = Config_store.connect kv ~device_id ~device_key in
       let open Lwt_result.Infix in
-      match Version.(compare current stored_version) with
+      match
+        Version.(compare Current.config_and_domain_store stored_version)
+      with
       | `Equal -> Lwt_result.return ()
       | `Smaller ->
           let msg =
@@ -3383,7 +3388,7 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (`Msg msg))
       | `Greater ->
           (* here's the place to embed migration code, at least for the
-                configuration store *)
+                configuration and domain stores *)
           Log.info (fun m ->
               m "Migrating config and domain key stores from older version");
           lwt_error_to_msg ~pp_error:Config_store.pp_error
@@ -3555,7 +3560,8 @@ module Make (KV : Kv_ext.Platform) = struct
                   match stored_version with
                   | None -> Lwt_result.return ()
                   | Some stored_version ->
-                      apply_migrations t.kv ~device_id:t.system_info.deviceId
+                      apply_config_and_domain_migrations t.kv
+                        ~device_id:t.system_info.deviceId
                         ~device_key:t.device_key stored_version
                       |> Lwt_result.map_error (fun (`Msg msg) ->
                           ( Bad_request,
@@ -3718,8 +3724,8 @@ module Make (KV : Kv_ext.Platform) = struct
              default_net;
            }
          in
-         System.apply_migrations kv ~device_id:system_info.deviceId ~device_key
-           version
+         System.apply_config_and_domain_migrations kv
+           ~device_id:system_info.deviceId ~device_key version
          >>= boot)
     >|= function
     | Ok t ->
