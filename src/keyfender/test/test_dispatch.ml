@@ -614,7 +614,11 @@ let system_backup_and_restore_ok =
         create_multipart_request
           [ ("arguments", arguments); ("backup_data", backup_data) ]
       in
-      let expect = multipart_log ^ debug "caching config to the platform" in
+      let expect =
+        multipart_log
+        ^ info "local configs have been restored from the backup!"
+        ^ debug "caching config to the platform"
+      in
       let hsm_state' =
         request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST ~content_type
           ~body:(`String body) "/system/restore"
@@ -743,6 +747,9 @@ let system_backup_and_restore_changed_devkey =
           let expect =
             multipart_log ^ info "Device Key changed."
             ^ info "Rewriting stored Domain Key."
+            ^ info
+                "machine has no known local config in the backup, provisioning \
+                 minimally..."
             ^ debug "caching config to the platform"
           in
           match
@@ -818,7 +825,11 @@ let system_backup_and_restore_unattended =
       create_multipart_request
         [ ("arguments", arguments); ("backup_data", backup_data) ]
     in
-    let expect = multipart_log ^ debug "caching config to the platform" in
+    let expect =
+      multipart_log
+      ^ info "local configs have been restored from the backup!"
+      ^ debug "caching config to the platform"
+    in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
       "/system/restore"
     |> Expect.no_content
@@ -878,6 +889,9 @@ let system_backup_and_restore_unattended_changed_devkey =
     let expect =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
+      ^ info
+          "machine has no known local config in the backup, provisioning \
+           minimally..."
       ^ debug "caching config to the platform"
     in
     let arguments =

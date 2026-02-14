@@ -3313,6 +3313,7 @@ module Make (KV : Kv_ext.Platform) = struct
         || Mirage_kv.Key.equal key Config_store.(key_path device_id Unlock_salt)
       in
       if should_restore_key then
+        (* Log.info (fun f -> f "restoring key: %a" Mirage_kv.Key.pp key); *)
         let** () =
           internal_server_error Write "restoring backup (writing to KV)"
             KV.pp_write_error (KV.set kv key v)
@@ -3570,41 +3571,56 @@ module Make (KV : Kv_ext.Platform) = struct
                           ))
                 in
                 let open Lwt_result.Infix in
-                let** is_fresh_machine =
-                  internal_server_error Read "Get private key"
-                    Config_store.pp_error
-                    (Config_store.get_opt t.config_store
-                       Config_store.Private_key)
-                  >|= Option.is_none
-                in
-                (* if we are restoring on a fresh, unprovisioned machine (i.e. a
+                (if not is_operational then (
+                   (* if there is no unlock salt stored for us after a restore
+                      on an unprovisioned machine, then this machine was
+                      not in the backup *)
+                   let** is_known_machine =
+                     internal_server_error Read "Check unlock salt"
+                       Config_store.pp_error
+                       (Config_store.exists t.config_store
+                          Config_store.Unlock_salt)
+                   in
+                   (* if we are restoring on a fresh, unprovisioned machine (i.e. a
                    machine for which we do not have any local config backed up,
                    then we store the freshly generated private key and certificate *)
-                (match (is_fresh_machine, unlock_salt) with
-                  | false, _ -> Lwt_result.return ()
-                  | true, None ->
-                      (* the unlock salt has already been restored from the
+                   match (is_known_machine, unlock_salt) with
+                   | true, _ ->
+                       Log.info (fun f ->
+                           f "local configs have been restored from the backup!");
+                       Lwt_result.return ()
+                   | false, None ->
+                       (* the unlock salt has already been restored from the
                          plaintext v0 backup *)
-                      Lwt_result.return ()
-                  | true, Some unlock_salt ->
-                      (* note that we leave the following fields empty:
+                       Log.info (fun f ->
+                           f
+                             "machine has no known local config in the backup, \
+                              using the global configs from v0 backup...");
+                       Lwt_result.return ()
+                   | false, Some unlock_salt ->
+                       Log.info (fun f ->
+                           f
+                             "machine has no known local config in the backup, \
+                              provisioning minimally...");
+                       (* note that we leave the following fields empty:
                        - unattended_boot (default to attended)
                        - log and ip configs (use default values)
                        - time offset (same as fresh boot)
                        *)
-                      Config_store.batch t.config_store (fun b ->
-                          internal_server_error Write "Writing private RSA key"
-                            Config_store.pp_write_error
-                            (Config_store.set b Private_key t.key)
-                          >>= fun () ->
-                          internal_server_error Write
-                            "Writing certificate chain key"
-                            Config_store.pp_write_error
-                            (Config_store.set b Certificate (t.cert, t.chain))
-                          >>= fun () ->
-                          internal_server_error Write "Write unlock-salt"
-                            Config_store.pp_write_error
-                            (Config_store.set b Unlock_salt unlock_salt)))
+                       Config_store.batch t.config_store (fun b ->
+                           internal_server_error Write "Writing private RSA key"
+                             Config_store.pp_write_error
+                             (Config_store.set b Private_key t.key)
+                           >>= fun () ->
+                           internal_server_error Write
+                             "Writing certificate chain key"
+                             Config_store.pp_write_error
+                             (Config_store.set b Certificate (t.cert, t.chain))
+                           >>= fun () ->
+                           internal_server_error Write "Write unlock-salt"
+                             Config_store.pp_write_error
+                             (Config_store.set b Unlock_salt unlock_salt)))
+                 else Lwt_result.return ())
                 >>= fun () ->
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
