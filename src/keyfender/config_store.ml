@@ -169,14 +169,13 @@ module Make (KV : Kv_ext.RW) = struct
      - they cannot be encrypted with device-specific keys *)
   let is_global_config : type a. a k -> bool = function
     | Version (* the store version is for the whole cluster *)
-    | Cluster_CA (* the root CA must be shared to maintain communication *) ->
+    | Cluster_CA (* the root CA must be shared to maintain communication *)
+    | Backup_key | Backup_salt ->
         true
     | Time_offset (* offset might be different for different hardware *)
-    | Unlock_salt | Certificate | Private_key | Ip_config | Backup_salt
-    | Backup_key | Log_config | Unattended_boot ->
+    | Unlock_salt | Certificate | Private_key | Ip_config | Log_config
+    | Unattended_boot ->
         false
-
-  (* TODO backup key/salt local? *)
 
   (* "early" configs cannot be encrypted with the domain key, as they are
      needed to unlock the domain key. They are stored with a derivative of the
@@ -231,7 +230,8 @@ module Make (KV : Kv_ext.RW) = struct
         function
         | Version -> fun x -> x
         | _ ->
-            fun _ -> failwith "can never write unencrypted data other Version"
+            fun _ ->
+              failwith "can never write unencrypted data other than Version"
 
       let decrypt _ x = Ok x
     end : Codec)
