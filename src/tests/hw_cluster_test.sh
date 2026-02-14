@@ -41,7 +41,7 @@ cat <<EOM > join_req.json
 {
   "members":
     [{"name": "", "urls": ["https://192.168.1.1:2380", "https://[fc00:22:1::2]:2380"]},
-     {"name": "witness", "urls": ["https://[fc00:22:1::100]:2380"]}],
+     {"name": "witness", "urls": ["https://192.168.1.100:2380"]}],
   "backupPassphrase": "backupPassphrase",
   "joinerKit": "eyJiYWNrdXBfc2FsdCI6Im9xRHBQTmR1ODdlZVBOb0ZlcmtOaGc9PSIsInVubG9ja19zYWx0IjoiRkJ4RU5ITHg3NGljNHhOd2lCVnhyaUlTYTZ2T0JiV0VGaUFGWkI0d2NQVHQ3bnc0dEd6TVFVN1diYVU9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiI3Vy9qTnRJQkdEQktzSWxPMmwrN1RrOFdMa1pQbWRMc3ppazBMNm9MRXYvU1N1b3UrR2F6Nk1qU0pZM25XMDBOWisyUGxoZzVQV0FBQzhFekRDZ1FxYURzYnNKdFJwR1lKY1dzSlZEV3k3bk1MVklVOXQ0K3R3PT0ifQ=="
 }
@@ -82,7 +82,7 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
     --peer-key-file=own.key \
     --peer-skip-client-san-verification=true \
     --data-dir=witness.etcd --name witness \
-    --initial-advertise-peer-urls "https://[fc00:22:1::100]:2380" \
+    --initial-advertise-peer-urls "https://192.168.1.100:2380" \
     --listen-peer-urls "https://0.0.0.0:2380" \
     --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
 
