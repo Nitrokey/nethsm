@@ -44,7 +44,8 @@ module type S = sig
 
   val assert_equal :
     ?except_system_info:bool ->
-    ?except_keys:Mirage_kv.Key.t list ->
+    ?except_key_values:Mirage_kv.Key.t list ->
+    ?except_keys:(Mirage_kv.Key.t * [ `Dictionary | `Value ]) list ->
     ?allow_more_keys:bool ->
     t ->
     t ->
@@ -771,7 +772,8 @@ module Make (KV : Kv_ext.Platform) = struct
     KV.clear_watches t.kv;
     t.state <- Locked
 
-  let assert_kv_equal ?(allow_more_keys = false) ?(except_keys = []) a b =
+  let assert_kv_equal ?(allow_more_keys = false) ?(except_key_values = [])
+      ?(except_keys = []) a b =
     let open Lwt_result.Infix in
     let open Alcotest_engine.V1.Test in
     let module ChildSet = Set.Make (struct
@@ -788,7 +790,7 @@ module Make (KV : Kv_ext.Platform) = struct
       KV.exists b root >>= fun b_typ ->
       match (a_typ, b_typ) with
       | Some `Value, Some `Value
-        when List.exists (Mirage_kv.Key.equal root) except_keys ->
+        when List.exists (Mirage_kv.Key.equal root) except_key_values ->
           Lwt_result.return ()
       | Some `Value, Some `Value ->
           KV.get a root >>= fun v ->
@@ -803,12 +805,21 @@ module Make (KV : Kv_ext.Platform) = struct
           KV.list b root >>= fun l' ->
           let sl = ChildSet.of_list l in
           let sl' = ChildSet.of_list l' in
-          if allow_more_keys then (
-            if not (ChildSet.subset sl sl') then
-              failf "children of key %a: lhs is not a subset of rhs"
-                Mirage_kv.Key.pp root)
-          else if not (ChildSet.equal sl sl') then
-            failf "children of key %a are different" Mirage_kv.Key.pp root;
+          let sl = ChildSet.(diff sl (of_list except_keys)) in
+          let sl' = ChildSet.(diff sl' (of_list except_keys)) in
+          (if allow_more_keys then (
+             if not (ChildSet.subset sl sl') then
+               let counter_example = ChildSet.(diff sl sl' |> choose) |> fst in
+               failf
+                 "children of key %a: lhs is not a subset of rhs (e.g. %a is \
+                  only in lhs)"
+                 Mirage_kv.Key.pp root Mirage_kv.Key.pp counter_example)
+           else if not (ChildSet.equal sl sl') then
+             let counter_example =
+               ChildSet.(diff (union sl sl') (inter sl sl') |> choose) |> fst
+             in
+             failf "children of key %a are different (e.g. %a is not in both)"
+               Mirage_kv.Key.pp root Mirage_kv.Key.pp counter_example);
           ChildSet.fold for_all sl (Lwt_result.return ())
       | _ ->
           Lwt_result.return
@@ -823,11 +834,12 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     traverse Mirage_kv.Key.empty |> get_ok
 
-  let assert_equal ?(except_system_info = false) ?except_keys ?allow_more_keys a
-      b =
+  let assert_equal ?(except_system_info = false) ?except_key_values ?except_keys
+      ?allow_more_keys a b =
     let open Lwt.Infix in
     let open Alcotest_engine.V1.Test in
-    assert_kv_equal ?except_keys ?allow_more_keys a.kv b.kv >|= fun () ->
+    assert_kv_equal ?except_key_values ?except_keys ?allow_more_keys a.kv b.kv
+    >|= fun () ->
     if not @@ equal_internal_state a.state b.state then
       fail "internal states differ";
     check (option string) "check has_changes" a.has_changes b.has_changes;
@@ -3316,7 +3328,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let is_local_for_other =
         match device_id_of_key key with
         | None -> false
-        | Some id -> String.equal device_id id
+        | Some id -> not (String.equal device_id id)
       in
       let should_restore_key =
         ((not is_operational) && not is_local_for_other)
@@ -3593,6 +3605,10 @@ module Make (KV : Kv_ext.Platform) = struct
                       | Error _ when Option.is_none unlock_salt ->
                           Lwt_result.return ()
                       | Error _ ->
+                          Log.info (fun f ->
+                              f
+                                "device key has changed, using unlock salt \
+                                 from backup hader");
                           let unlock_salt = Option.get unlock_salt in
                           internal_server_error Write "Write unlock-salt"
                             Config_store.pp_write_error

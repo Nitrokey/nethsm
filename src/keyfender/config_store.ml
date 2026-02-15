@@ -7,7 +7,8 @@ open Lwt.Infix
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
 module Make (KV : Kv_ext.RW) = struct
-  let config_prefix device_id = "local/" ^ device_id ^ "/config"
+  let local_config_prefix device_id = "local/" ^ device_id ^ "/config"
+  let global_config_prefix = "config"
 
   type _ k =
     | Unlock_salt : string k
@@ -194,8 +195,11 @@ module Make (KV : Kv_ext.RW) = struct
         false
 
   let key_path device_id key =
-    let device_id = if is_global_config key then "" else device_id in
-    Mirage_kv.Key.(add (v (config_prefix device_id)) (name key))
+    let prefix =
+      if is_global_config key then global_config_prefix
+      else local_config_prefix device_id
+    in
+    Mirage_kv.Key.(add (v prefix) (name key))
 
   let pp_error ppf = function
     | `Kv e -> KV.pp_error ppf e
@@ -238,7 +242,7 @@ module Make (KV : Kv_ext.RW) = struct
 
   let single_codec ?(device_id = "") encryption_key =
     (module struct
-      let adata k = config_prefix device_id ^ name k
+      let adata k = key_path device_id k |> Mirage_kv.Key.to_string
 
       let encrypt k data =
         let adata = adata k in

@@ -44,7 +44,8 @@ module type S = sig
 
   val assert_equal :
     ?except_system_info:bool ->
-    ?except_keys:Mirage_kv.Key.t list ->
+    ?except_key_values:Mirage_kv.Key.t list ->
+    ?except_keys:(Mirage_kv.Key.t * [ `Dictionary | `Value ]) list ->
     ?allow_more_keys:bool ->
     t ->
     t ->

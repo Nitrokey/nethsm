@@ -638,10 +638,13 @@ let system_backup_and_restore_ok =
       (* The encrypted values for the time_offset differ before and after
          restore even though we're passing the same time offset (epoch), because
          the nonce is randomly generated in each case. *)
-      let except_keys =
-        [ Mirage_kv.Key.(empty / platform.deviceId / "config" / "time-offset") ]
+      let except_key_values =
+        [
+          Mirage_kv.Key.(
+            empty / "local" / platform.deviceId / "config" / "time-offset");
+        ]
       in
-      Lwt_main.run (Hsm.assert_equal ~except_keys hsm_state hsm_state''))
+      Lwt_main.run (Hsm.assert_equal ~except_key_values hsm_state hsm_state''))
 
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
@@ -768,9 +771,13 @@ let system_backup_and_restore_changed_devkey =
                   &&
                     try
                       (* the new machine will have more keys correspondign to
-                         its own config values *)
+                         its own config values. The old config values will not
+                         be copied over *)
+                      let except_keys =
+                        [ (Mirage_kv.Key.v "/local/0000000000", `Dictionary) ]
+                      in
                       Lwt_main.run
-                        (Hsm.assert_equal ~except_system_info:true
+                        (Hsm.assert_equal ~except_system_info:true ~except_keys
                            ~allow_more_keys:true hsm_state hsm_state');
                       true
                     with _ -> false)
@@ -1732,7 +1739,7 @@ let config_network_ok =
   Alcotest.test_case "GET on /config/network succeeds" `Quick (fun () ->
       let expect =
         warning
-          "error Cannot find the key /0000000000/config/ip-config while \
+          "error Cannot find the key /local/0000000000/config/ip-config while \
            retrieving IP, using and storing default"
       in
       let body =
