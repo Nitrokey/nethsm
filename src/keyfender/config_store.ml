@@ -350,15 +350,24 @@ module Make (KV : Kv_ext.RW) = struct
 
   let backup_local_config t =
     let ( let* ) = Lwt_result.bind in
-    let* unlock_salt = get_opt t Unlock_salt in
-    let* certificate = get_opt t Certificate in
-    let* private_key = get_opt t Private_key in
-    let* ip_config = get_opt t Ip_config in
-    let* backup_salt = get_opt t Backup_salt in
-    let* backup_key = get_opt t Backup_key in
-    let* log_config = get_opt t Log_config in
-    let* time_offset = get_opt t Time_offset in
-    let* unattended_boot = get_opt t Unattended_boot in
+    let get_opt' t k =
+      let open Lwt.Infix in
+      get_opt t k >|= function
+      | Ok x -> Ok x
+      | Error e ->
+          Logs.warn (fun f -> f "could not read key %s: %a" (name k) pp_error e);
+          Ok None
+    in
+
+    let* unlock_salt = get_opt' t Unlock_salt in
+    let* certificate = get_opt' t Certificate in
+    let* private_key = get_opt' t Private_key in
+    let* ip_config = get_opt' t Ip_config in
+    let* backup_salt = get_opt' t Backup_salt in
+    let* backup_key = get_opt' t Backup_key in
+    let* log_config = get_opt' t Log_config in
+    let* time_offset = get_opt' t Time_offset in
+    let* unattended_boot = get_opt' t Unattended_boot in
     Lwt_result.return
       {
         unlock_salt;

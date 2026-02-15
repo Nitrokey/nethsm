@@ -3557,7 +3557,7 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt_result.return true)
             else Lwt_result.return false
           in
-          let** () =
+          let** _remove_extra_keys =
             KV.batch t.kv (fun b ->
                 if is_operational then
                   (* we remove keys and users that not present in the backup.
@@ -3567,6 +3567,45 @@ module Make (KV : Kv_ext.Platform) = struct
                   remove_extra_keys ~kv:b !backup_keys
                 else Lwt_result.return ())
           in
+          let** _apply_config_domain_migrations =
+            let** stored_version =
+              internal_server_error Read "Get version" Config_store.pp_error
+                (Config_store.get_opt t.config_store Config_store.Version)
+            in
+            match stored_version with
+            | None -> Lwt_result.return ()
+            | Some stored_version ->
+                apply_config_and_domain_migrations t.kv
+                  ~device_id:t.system_info.deviceId ~device_key:t.device_key
+                  stored_version
+                |> Lwt_result.map_error (fun (`Msg msg) ->
+                    ( Bad_request,
+                      Fmt.str "could not apply migrations to old backup: %s" msg
+                    ))
+          in
+          let** _ensure_unlock_salt_readable =
+            (* for partial restore, check that if we copied over the unlock
+               salt, we can still read it. If not (i.e. device key has
+               changed), use the backed up one *)
+            if is_operational then
+              Lwt.bind
+                (Config_store.get t.config_store Config_store.Unlock_salt)
+                (function
+                | Ok _ -> Lwt_result.return ()
+                | Error _ when Option.is_none unlock_salt ->
+                    Lwt_result.return ()
+                | Error _ ->
+                    Log.info (fun f ->
+                        f
+                          "device key has changed, using unlock salt from \
+                           backup hader");
+                    let unlock_salt = Option.get unlock_salt in
+                    internal_server_error Write "Write unlock-salt"
+                      Config_store.pp_write_error
+                      (Config_store.set t.config_store Unlock_salt unlock_salt))
+            else Lwt_result.return ()
+          in
+
           let** () =
             if (not is_operational) || dk_rewritten then (
               (* If the restore was
@@ -3576,47 +3615,6 @@ module Make (KV : Kv_ext.Platform) = struct
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
               let** new_state =
-                let** stored_version =
-                  internal_server_error Read "Get version" Config_store.pp_error
-                    (Config_store.get_opt t.config_store Config_store.Version)
-                in
-                let** () =
-                  match stored_version with
-                  | None -> Lwt_result.return ()
-                  | Some stored_version ->
-                      apply_config_and_domain_migrations t.kv
-                        ~device_id:t.system_info.deviceId
-                        ~device_key:t.device_key stored_version
-                      |> Lwt_result.map_error (fun (`Msg msg) ->
-                          ( Bad_request,
-                            Fmt.str
-                              "could not apply migrations to old backup: %s" msg
-                          ))
-                in
-                let** () =
-                  (* for partial restore, check that if we copied over the unlock
-                   salt, we can still read it. If not (i.e. device key has
-                   changed), use the backed up one *)
-                  if is_operational then
-                    Lwt.bind
-                      (Config_store.get t.config_store Config_store.Unlock_salt)
-                      (function
-                      | Ok _ -> Lwt_result.return ()
-                      | Error _ when Option.is_none unlock_salt ->
-                          Lwt_result.return ()
-                      | Error _ ->
-                          Log.info (fun f ->
-                              f
-                                "device key has changed, using unlock salt \
-                                 from backup hader");
-                          let unlock_salt = Option.get unlock_salt in
-                          internal_server_error Write "Write unlock-salt"
-                            Config_store.pp_write_error
-                            (Config_store.set t.config_store Unlock_salt
-                               unlock_salt))
-                  else Lwt_result.return ()
-                in
-
                 let open Lwt_result.Infix in
                 (if not is_operational then (
                    (* if there is no unlock salt stored for us after a restore
