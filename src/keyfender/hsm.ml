@@ -3301,14 +3301,25 @@ module Make (KV : Kv_ext.Platform) = struct
 
     module KeySet = Set.Make (Mirage_kv.Key)
 
+    let device_id_of_key key =
+      match Mirage_kv.Key.segments key with
+      | "local" :: id :: _ -> Some id
+      | _ -> None
+
     let restore_key ~device_id ~is_operational ~backup_keys ~key ~kv stream =
       let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
+      (* ignore local key that's for another device id *)
+      let is_local_for_other =
+        match device_id_of_key key with
+        | None -> false
+        | Some id -> String.equal device_id id
+      in
       let should_restore_key =
-        (not is_operational)
+        ((not is_operational) && not is_local_for_other)
         || Option.is_some (Encrypted_store.slot_of_key key)
         || Mirage_kv.Key.equal key Config_store.(key_path device_id Unlock_salt)
       in
@@ -3570,6 +3581,26 @@ module Make (KV : Kv_ext.Platform) = struct
                               "could not apply migrations to old backup: %s" msg
                           ))
                 in
+                let** () =
+                  (* for partial restore, check that if we copied over the unlock
+                   salt, we can still read it. If not (i.e. device key has
+                   changed), use the backed up one *)
+                  if is_operational then
+                    Lwt.bind
+                      (Config_store.get t.config_store Config_store.Unlock_salt)
+                      (function
+                      | Ok _ -> Lwt_result.return ()
+                      | Error _ when Option.is_none unlock_salt ->
+                          Lwt_result.return ()
+                      | Error _ ->
+                          let unlock_salt = Option.get unlock_salt in
+                          internal_server_error Write "Write unlock-salt"
+                            Config_store.pp_write_error
+                            (Config_store.set t.config_store Unlock_salt
+                               unlock_salt))
+                  else Lwt_result.return ()
+                in
+
                 let open Lwt_result.Infix in
                 (if not is_operational then (
                    (* if there is no unlock salt stored for us after a restore
@@ -3581,6 +3612,9 @@ module Make (KV : Kv_ext.Platform) = struct
                        (Config_store.exists t.config_store
                           Config_store.Unlock_salt)
                    in
+                   (* TODO check that the key above is able to be decrypted.
+                      Otherwise, this is not a known machine + the config store
+                      must be cleared *)
                    (* if we are restoring on a fresh, unprovisioned machine (i.e. a
                    machine for which we do not have any local config backed up,
                    then we store the freshly generated private key and certificate *)

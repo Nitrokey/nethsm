@@ -5,7 +5,7 @@
 open Lwt.Infix
 
 module Make (KV : Kv_ext.RW) = struct
-  let dk_prefix device_id = device_id ^ "/domain-key"
+  let dk_prefix device_id = "local/" ^ device_id ^ "/domain-key"
 
   type slot = Attended | Unattended
 

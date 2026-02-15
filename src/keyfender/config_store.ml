@@ -7,7 +7,7 @@ open Lwt.Infix
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
 module Make (KV : Kv_ext.RW) = struct
-  let config_prefix device_id = device_id ^ "/config"
+  let config_prefix device_id = "local/" ^ device_id ^ "/config"
 
   type _ k =
     | Unlock_salt : string k
@@ -240,24 +240,14 @@ module Make (KV : Kv_ext.RW) = struct
     (module struct
       let adata k = config_prefix device_id ^ name k
 
-      let maybe_do : type a. a k -> (unit -> unit) -> unit = function
-        | Unlock_salt -> fun f -> f ()
-        | _ -> fun _ -> ()
-
       let encrypt k data =
         let adata = adata k in
         let key = Crypto.GCM.of_secret encryption_key in
-        maybe_do k (fun () ->
-            Logs.info (fun f ->
-                f "encrypting with k=%s" (Base64.encode_string encryption_key)));
         Crypto.encrypt Mirage_crypto_rng.generate ~key ~adata data
 
       let decrypt k data =
         let adata = adata k in
         let key = Crypto.GCM.of_secret encryption_key in
-        maybe_do k (fun () ->
-            Logs.info (fun f ->
-                f "decrypting with k=%s" (Base64.encode_string encryption_key)));
         Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
           (Crypto.decrypt ~key ~adata data)
     end : Codec)
@@ -321,8 +311,6 @@ module Make (KV : Kv_ext.RW) = struct
   let digest t key = KV.digest t.kv (key_path t.device_id key)
 
   let connect kv ~device_id ~device_key =
-    Logs.info (fun f ->
-        f "DEBUGDEBUG: devicekey=%s" (Base64.encode_string device_key));
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
     let config_device_key = extend device_key "early_config_store" in
     {
