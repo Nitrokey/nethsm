@@ -194,13 +194,6 @@ module Make (KV : Kv_ext.RW) = struct
     | Cluster_CA (* needed by etcd but cached on platform *) ->
         false
 
-  let key_path device_id key =
-    let prefix =
-      if is_global_config key then global_config_prefix
-      else local_config_prefix device_id
-    in
-    Mirage_kv.Key.(add (v prefix) (name key))
-
   let pp_error ppf = function
     | `Kv e -> KV.pp_error ppf e
     | `Kv_write e -> KV.pp_write_error ppf e
@@ -216,11 +209,18 @@ module Make (KV : Kv_ext.RW) = struct
     (* store extended version instead? *)
     config_device_key : string;
     mutable config_domain_key : string option;
-    force_disable_decryption : bool;
+    migration_in_progress : bool;
         (* used exclusively during migration from unencrypted to encrypted *)
     mutable post_migration_writes :
       (unit -> (unit, write_error) Lwt_result.t) list;
   }
+
+  let key_path ?(migration_in_progress = false) device_id key =
+    let prefix =
+      if is_global_config key || migration_in_progress then global_config_prefix
+      else local_config_prefix device_id
+    in
+    Mirage_kv.Key.(add (v prefix) (name key))
 
   module type Codec = sig
     val encrypt : _ k -> string -> string
@@ -270,11 +270,12 @@ module Make (KV : Kv_ext.RW) = struct
 
   let get t key =
     let ( let* ) = Result.bind in
-    KV.get t.kv (key_path t.device_id key) >|= function
+    (* if we're reading from a V0 store, read all as global *)
+    let migration_in_progress = t.migration_in_progress in
+    KV.get t.kv (key_path ~migration_in_progress t.device_id key) >|= function
     | Ok data ->
         let* c =
-          if t.force_disable_decryption then Ok noop_codec
-          else select_codec t key
+          if t.migration_in_progress then Ok noop_codec else select_codec t key
         in
         let module C = (val c) in
         let* decrypted = C.decrypt key data in
@@ -322,7 +323,7 @@ module Make (KV : Kv_ext.RW) = struct
       device_id;
       config_device_key;
       config_domain_key = None;
-      force_disable_decryption = false;
+      migration_in_progress = false;
       post_migration_writes = [];
     }
 
@@ -405,7 +406,7 @@ module Make (KV : Kv_ext.RW) = struct
     Lwt_result.return ()
 
   let migrate_v0_v1 t =
-    let old = { t with device_id = ""; force_disable_decryption = true } in
+    let old = { t with device_id = ""; migration_in_progress = true } in
     let set_or_delay t k data =
       let go () = set t k data in
       let wrap_write_error = function

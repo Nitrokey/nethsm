@@ -3336,7 +3336,6 @@ module Make (KV : Kv_ext.Platform) = struct
         || Mirage_kv.Key.equal key Config_store.(key_path device_id Unlock_salt)
       in
       if should_restore_key then
-        (* Log.info (fun f -> f "restoring key: %a" Mirage_kv.Key.pp key); *)
         let** () =
           internal_server_error Write "restoring backup (writing to KV)"
             KV.pp_write_error (KV.set kv key v)
