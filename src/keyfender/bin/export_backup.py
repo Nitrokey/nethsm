@@ -59,7 +59,8 @@ def export(passphrase, backup_image_filename, output):
     if not header.startswith(b"_NETHSM_BACKUP_"):
         raise Exception("Not a NetHSM backup file")
 
-    if version != 0:
+    handled_versions = [0, 1]
+    if version not in handled_versions:
         raise Exception(
             f"Version mismatch on export, provided backup version is {version}, this tool expects 0")
 
@@ -82,7 +83,14 @@ def export(passphrase, backup_image_filename, output):
     encrypted_domain_key, backup_data = get_field(backup_data)
     locked_domain_key = decrypt(key, adata, encrypted_domain_key)
 
+    unlock_salt = None
     kvs = []
+    if version == 1:
+        adata = b"unlock-salt"
+        encrypted_unlock_salt, backup_data = get_field(backup_data)
+        unlock_salt = decrypt(key, adata, encrypted_unlock_salt)
+        kvs.append((".unlock-salt", base64.b64encode(unlock_salt).decode()))
+
     while backup_data:
         item, backup_data = get_field(backup_data)
         adata = b"backup"
