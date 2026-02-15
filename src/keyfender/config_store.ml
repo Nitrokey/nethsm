@@ -341,12 +341,24 @@ module Make (KV : Kv_ext.RW) = struct
     certificate : (X509.Certificate.t * X509.Certificate.t list) option;
     private_key : X509.Private_key.t option;
     ip_config : Json.network option;
-    backup_salt : string option;
-    backup_key : string option;
     log_config : Json.log option;
     time_offset : Ptime.span option;
     unattended_boot : bool option;
   }
+
+  let clear_local_config t =
+    let ( let* ) = Lwt_result.bind in
+    let go () =
+      let* () = remove t Unlock_salt in
+      let* () = remove t Certificate in
+      let* () = remove t Private_key in
+      let* () = remove t Ip_config in
+      let* () = remove t Log_config in
+      let* () = remove t Time_offset in
+      let* () = remove t Unattended_boot in
+      Lwt_result.return ()
+    in
+    go () |> Lwt_result.map_error (fun e -> `Kv e)
 
   let backup_local_config t =
     let ( let* ) = Lwt_result.bind in
@@ -363,8 +375,6 @@ module Make (KV : Kv_ext.RW) = struct
     let* certificate = get_opt' t Certificate in
     let* private_key = get_opt' t Private_key in
     let* ip_config = get_opt' t Ip_config in
-    let* backup_salt = get_opt' t Backup_salt in
-    let* backup_key = get_opt' t Backup_key in
     let* log_config = get_opt' t Log_config in
     let* time_offset = get_opt' t Time_offset in
     let* unattended_boot = get_opt' t Unattended_boot in
@@ -374,8 +384,6 @@ module Make (KV : Kv_ext.RW) = struct
         certificate;
         private_key;
         ip_config;
-        backup_salt;
-        backup_key;
         log_config;
         time_offset;
         unattended_boot;
@@ -391,8 +399,6 @@ module Make (KV : Kv_ext.RW) = struct
     let* () = set_opt Certificate b.certificate in
     let* () = set_opt Private_key b.private_key in
     let* () = set_opt Ip_config b.ip_config in
-    let* () = set_opt Backup_salt b.backup_salt in
-    let* () = set_opt Backup_key b.backup_key in
     let* () = set_opt Log_config b.log_config in
     let* () = set_opt Time_offset b.time_offset in
     let* () = set_opt Unattended_boot b.unattended_boot in

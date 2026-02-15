@@ -3424,6 +3424,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let restore t json stream =
       let sb = sb_of_stream stream in
+      let ( let* ) = Lwt.bind in
       let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Hsm_clock.now_raw () in
       let initial_state = t.state in
@@ -3620,19 +3621,30 @@ module Make (KV : Kv_ext.Platform) = struct
                    (* if there is no unlock salt stored for us after a restore
                       on an unprovisioned machine, then this machine was
                       not in the backup *)
-                   let** is_known_machine =
-                     internal_server_error Read "Check unlock salt"
-                       Config_store.pp_error
-                       (Config_store.exists t.config_store
-                          Config_store.Unlock_salt)
+                   let** is_known_device =
+                     let* res =
+                       Config_store.get_opt t.config_store
+                         Config_store.Unlock_salt
+                     in
+                     match res with
+                     | Ok None -> Lwt_result.return false
+                     | Ok (Some _) -> Lwt_result.return true
+                     | Error _ ->
+                         (* the ID is known but the associated device key as
+                            changed. Clear all local configs and proceed as if
+                            the machine was not known *)
+                         let** () =
+                           internal_server_error Write "Delete local configs"
+                             Config_store.pp_write_error
+                             (Config_store.clear_local_config t.config_store)
+                         in
+                         Lwt_result.return false
                    in
-                   (* TODO check that the key above is able to be decrypted.
-                      Otherwise, this is not a known machine + the config store
-                      must be cleared *)
+
                    (* if we are restoring on a fresh, unprovisioned machine (i.e. a
                    machine for which we do not have any local config backed up,
                    then we store the freshly generated private key and certificate *)
-                   match (is_known_machine, unlock_salt) with
+                   match (is_known_device, unlock_salt) with
                    | true, _ ->
                        Log.info (fun f ->
                            f "local configs have been restored from the backup!");
