@@ -22,6 +22,7 @@ module Make (KV : Kv_ext.RW) = struct
     | Log_config : Json.log k
     | Time_offset : Ptime.span k
     | Unattended_boot : bool k
+    | Restore_in_progress : unit k (* if key exists, then restore in progress *)
 
   module K = struct
     type 'a t = 'a k
@@ -61,7 +62,10 @@ module Make (KV : Kv_ext.RW) = struct
       | Time_offset, _ -> Lt
       | _, Time_offset -> Gt
       | Unattended_boot, Unattended_boot -> Eq
-    (* | Unattended_boot, _ -> Lt | _, Unattended_boot -> Gt *)
+      | Unattended_boot, _ -> Lt
+      | _, Unattended_boot -> Gt
+      | Restore_in_progress, Restore_in_progress -> Eq
+    (* | Restore_in_progress, _ -> Lt | _, Restore_in_progress -> Gt *)
   end
 
   include Gmap.Make (K)
@@ -78,6 +82,7 @@ module Make (KV : Kv_ext.RW) = struct
     | Log_config -> "log-config"
     | Time_offset -> "time-offset"
     | Unattended_boot -> "unattended-boot"
+    | Restore_in_progress -> "restore-in-progress"
 
   let encode_one_cert crt =
     let data = X509.Certificate.encode_der crt in
@@ -110,6 +115,7 @@ module Make (KV : Kv_ext.RW) = struct
         | Some s -> string_of_int s
         | None -> "0")
     | Unattended_boot, b -> if b then "1" else "0"
+    | Restore_in_progress, () -> ""
 
   let guard p err = if p then Ok () else Error (`Msg err)
 
@@ -164,6 +170,7 @@ module Make (KV : Kv_ext.RW) = struct
         | "0" -> Ok false
         | "1" -> Ok true
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
+    | Restore_in_progress -> Ok ()
 
   (* global configs are shared by all nodes in a cluster
      - they are stored in /config/xxx while local ones are in /DEVICE-ID/config/xxx
@@ -171,7 +178,7 @@ module Make (KV : Kv_ext.RW) = struct
   let is_global_config : type a. a k -> bool = function
     | Version (* the store version is for the whole cluster *)
     | Cluster_CA (* the root CA must be shared to maintain communication *)
-    | Backup_key | Backup_salt ->
+    | Backup_key | Backup_salt | Restore_in_progress ->
         true
     | Time_offset (* offset might be different for different hardware *)
     | Unlock_salt | Certificate | Private_key | Ip_config | Log_config
@@ -188,7 +195,8 @@ module Make (KV : Kv_ext.RW) = struct
     | Log_config (* used at boot, though could be late if needed *)
     | Unattended_boot (* needed at boot *)
     | Time_offset (* needed by (at least) web server *)
-    | Version (* needed immediately at boot for migrations *) ->
+    | Version (* needed immediately at boot for migrations *)
+    | Restore_in_progress (* no associated value *) ->
         true
     | Backup_salt | Backup_key (* not used in Unprovisioned mode *)
     | Cluster_CA (* needed by etcd but cached on platform *) ->
@@ -232,10 +240,12 @@ module Make (KV : Kv_ext.RW) = struct
       let encrypt : type a. a k -> string -> string =
         (* safety check so we don't misuse this codec *)
         function
-        | Version -> fun x -> x
+        | Version | Restore_in_progress -> fun x -> x
         | _ ->
             fun _ ->
-              failwith "can never write unencrypted data other than Version"
+              failwith
+                "can never write unencrypted data other than Version or \
+                 Restore_in_progress"
 
       let decrypt _ x = Ok x
     end : Codec)
@@ -314,6 +324,7 @@ module Make (KV : Kv_ext.RW) = struct
 
   let remove t key = KV.remove t.kv (key_path t.device_id key)
   let digest t key = KV.digest t.kv (key_path t.device_id key)
+  let restore_in_progress t = exists t Restore_in_progress
 
   let connect kv ~device_id ~device_key =
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
@@ -392,101 +403,106 @@ module Make (KV : Kv_ext.RW) = struct
 
   let restore_local_config t (b : local_backup) =
     let ( let* ) = Lwt_result.bind in
-    let set_opt k = function
-      | None -> Lwt_result.return ()
-      | Some v -> set t k v
-    in
-    let* () = set_opt Unlock_salt b.unlock_salt in
-    let* () = set_opt Certificate b.certificate in
-    let* () = set_opt Private_key b.private_key in
-    let* () = set_opt Ip_config b.ip_config in
-    let* () = set_opt Log_config b.log_config in
-    let* () = set_opt Time_offset b.time_offset in
-    let* () = set_opt Unattended_boot b.unattended_boot in
-    Lwt_result.return ()
+    batch t (fun t ->
+        let set_opt k = function
+          | None -> Lwt_result.return ()
+          | Some v -> set t k v
+        in
+        let* () = set_opt Unlock_salt b.unlock_salt in
+        let* () = set_opt Certificate b.certificate in
+        let* () = set_opt Private_key b.private_key in
+        let* () = set_opt Ip_config b.ip_config in
+        let* () = set_opt Log_config b.log_config in
+        let* () = set_opt Time_offset b.time_offset in
+        let* () = set_opt Unattended_boot b.unattended_boot in
+        Lwt_result.return ())
 
   let migrate_v0_v1 t =
     let old = { t with device_id = ""; migration_in_progress = true } in
-    let set_or_delay t k data =
-      let go () = set t k data in
-      let wrap_write_error = function
-        | Error (`Kv e) -> Error (`Kv_write e)
-        | Error (`Msg m) -> Error (`Msg m)
-        | Error `Missing_domain_key ->
-            t.post_migration_writes <- go :: t.post_migration_writes;
-            Ok ()
-        | Ok () -> Ok ()
-      in
-      go () >|= wrap_write_error
-    in
-    let just_move (type a) (k : a k) =
-      if is_global_config k then Lwt.return (Ok ())
-      else
-        get_opt old k >>= function
-        | Error e -> Lwt.return (Error e)
-        | Ok None -> Lwt.return (Ok ())
-        | Ok (Some data) -> set_or_delay t k data
-    in
-    let migrate_log_config () =
-      KV.get t.kv (key_path "" Log_config) >>= function
-      | Error (`Not_found _) -> Lwt.return (Ok ())
-      | Error e -> Lwt.return (Error (`Kv e))
-      | Ok data -> (
-          let ip, port, level =
-            ( String.sub data 0 4,
-              String.sub data 4 2,
-              String.sub data 6 (String.length data - 6) )
+    batch t (fun t ->
+        let set_or_delay t k data =
+          let go () = set t k data in
+          let wrap_write_error = function
+            | Error (`Kv e) -> Error (`Kv_write e)
+            | Error (`Msg m) -> Error (`Msg m)
+            | Error `Missing_domain_key ->
+                t.post_migration_writes <- go :: t.post_migration_writes;
+                Ok ()
+            | Ok () -> Ok ()
           in
-          match Ipaddr.V4.of_octets ip with
-          | Error e -> Lwt.return (Error e)
-          | Ok ip -> (
-              let port = String.get_uint16_be port 0 in
-              match Logs.level_of_string level with
-              | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
-              | Ok None -> Lwt.return (Error (`Msg "invalid log level"))
-              | Ok (Some level) ->
-                  let new_config =
-                    {
-                      Json.ipAddress = Some (Ipaddr.V4 ip);
-                      logLevel = level;
-                      port;
-                    }
-                  in
-                  set_or_delay t Log_config new_config))
-    in
-    let migrate_ip_config () =
-      KV.get t.kv (key_path "" Ip_config) >>= function
-      | Error (`Not_found _) -> Lwt.return (Ok ())
-      | Error e -> Lwt.return (Error (`Kv e))
-      | Ok data -> (
-          let route_str, ip_str, netmask_str =
-            (String.sub data 0 4, String.sub data 4 4, String.sub data 8 4)
-          in
-          try
-            let route = Ipaddr.V4.of_octets_exn route_str in
-            let address = Ipaddr.V4.of_octets_exn ip_str in
-            let netmask = Ipaddr.V4.of_octets_exn netmask_str in
-            let prefix = Ipaddr.V4.Prefix.of_netmask_exn ~netmask ~address in
-            let new_config =
-              {
-                Json.ipv4 = { cidr = prefix; gateway = Some route };
-                ipv6 = None;
-              }
-            in
-            set_or_delay t Ip_config new_config
-          with Ipaddr.Parse_error (msg, _) -> Lwt.return (Error (`Msg msg)))
-    in
+          go () >|= wrap_write_error
+        in
+        let just_move (type a) (k : a k) =
+          if is_global_config k then Lwt.return (Ok ())
+          else
+            get_opt old k >>= function
+            | Error e -> Lwt.return (Error e)
+            | Ok None -> Lwt.return (Ok ())
+            | Ok (Some data) -> set_or_delay t k data
+        in
+        let migrate_log_config () =
+          KV.get t.kv (key_path "" Log_config) >>= function
+          | Error (`Not_found _) -> Lwt.return (Ok ())
+          | Error e -> Lwt.return (Error (`Kv e))
+          | Ok data -> (
+              let ip, port, level =
+                ( String.sub data 0 4,
+                  String.sub data 4 2,
+                  String.sub data 6 (String.length data - 6) )
+              in
+              match Ipaddr.V4.of_octets ip with
+              | Error e -> Lwt.return (Error e)
+              | Ok ip -> (
+                  let port = String.get_uint16_be port 0 in
+                  match Logs.level_of_string level with
+                  | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+                  | Ok None -> Lwt.return (Error (`Msg "invalid log level"))
+                  | Ok (Some level) ->
+                      let new_config =
+                        {
+                          Json.ipAddress = Some (Ipaddr.V4 ip);
+                          logLevel = level;
+                          port;
+                        }
+                      in
+                      set_or_delay t Log_config new_config))
+        in
+        let migrate_ip_config () =
+          KV.get t.kv (key_path "" Ip_config) >>= function
+          | Error (`Not_found _) -> Lwt.return (Ok ())
+          | Error e -> Lwt.return (Error (`Kv e))
+          | Ok data -> (
+              let route_str, ip_str, netmask_str =
+                (String.sub data 0 4, String.sub data 4 4, String.sub data 8 4)
+              in
+              try
+                let route = Ipaddr.V4.of_octets_exn route_str in
+                let address = Ipaddr.V4.of_octets_exn ip_str in
+                let netmask = Ipaddr.V4.of_octets_exn netmask_str in
+                let prefix =
+                  Ipaddr.V4.Prefix.of_netmask_exn ~netmask ~address
+                in
+                let new_config =
+                  {
+                    Json.ipv4 = { cidr = prefix; gateway = Some route };
+                    ipv6 = None;
+                  }
+                in
+                set_or_delay t Ip_config new_config
+              with Ipaddr.Parse_error (msg, _) ->
+                Lwt.return (Error (`Msg msg)))
+        in
 
-    let open Lwt_result.Infix in
-    just_move Ip_config >>= fun () ->
-    just_move Log_config >>= fun () ->
-    just_move Time_offset >>= fun () ->
-    just_move Unlock_salt >>= fun () ->
-    just_move Certificate >>= fun () ->
-    just_move Private_key >>= fun () ->
-    just_move Backup_salt >>= fun () ->
-    just_move Backup_key >>= fun () ->
-    just_move Unattended_boot >>= fun () ->
-    migrate_log_config () >>= fun () ->
-    migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1
+        let open Lwt_result.Infix in
+        just_move Ip_config >>= fun () ->
+        just_move Log_config >>= fun () ->
+        just_move Time_offset >>= fun () ->
+        just_move Unlock_salt >>= fun () ->
+        just_move Certificate >>= fun () ->
+        just_move Private_key >>= fun () ->
+        just_move Backup_salt >>= fun () ->
+        just_move Backup_key >>= fun () ->
+        just_move Unattended_boot >>= fun () ->
+        migrate_log_config () >>= fun () ->
+        migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1)
 end

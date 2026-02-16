@@ -3423,6 +3423,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let restore t json stream =
       let sb = sb_of_stream stream in
+      let open Lwt.Infix in
       let ( let* ) = Lwt.bind in
       let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Hsm_clock.now_raw () in
@@ -3510,6 +3511,19 @@ module Make (KV : Kv_ext.Platform) = struct
       (* when the mode is operational, we have to clear
          user and keys that are not in the backup. *)
       let backup_keys = ref KeySet.empty in
+      (* TODO make the two following operations an atomic read+set *)
+      let** already_restoring =
+        (internal_server_error Read "Read backup key" Config_store.pp_error)
+          (Config_store.restore_in_progress t.config_store)
+      in
+      let** _acquire_global_lock =
+        if already_restoring then
+          Lwt_result.fail (Bad_request, "Restore already in progress")
+        else
+          (internal_server_error Read "Read backup key"
+             Config_store.pp_write_error)
+            (Config_store.set t.config_store Restore_in_progress ())
+      in
       with_write_lock (fun () ->
           let** () =
             KV.batch t.kv (fun b ->
@@ -3708,6 +3722,14 @@ module Make (KV : Kv_ext.Platform) = struct
                   Lwt.return
                   @@ Error
                        (Bad_request, "Invalid system time in restore request")))
+      >>= fun restore_result ->
+      let** () =
+        internal_server_error Write "Unlock restore lock"
+          Config_store.pp_write_error
+          (Config_store.remove t.config_store Restore_in_progress
+          |> Lwt_result.map_error (fun e -> `Kv e))
+      in
+      Lwt.return restore_result
   end
   (* module System *)
 
