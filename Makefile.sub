@@ -418,7 +418,7 @@ test-keyfender-load: $(S_KEYFENDER) | $(ETCD_DIR)
 .PHONY: coverage-summary
 # Generate a summary coverage report. Runs all test-keyfender-* targets if not
 # previously run in this tree.
-coverage-summary: .stamp-test-keyfender-e2e .stamp-test-keyfender-lib .stamp-test-keyfender-api
+coverage-summary: .stamp-test-keyfender-e2e .stamp-test-keyfender-lib .stamp-test-keyfender-api .stamp-test-keyfender-load
 	mkdir -p $(TOP_DIR)/obj
 	bisect-ppx-report cobertura \
 		--coverage-path=src/tests \

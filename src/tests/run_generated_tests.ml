@@ -142,12 +142,12 @@ let in_dir directory fn =
   Unix.chdir directory;
   Fun.protect ~finally:(fun () -> Unix.chdir old) fn
 
-(* list the content of [dir], excluding dot files *)
+(* list the content of [dir], excluding dot files and files prefixed by _ *)
 let ls dir =
   let dir = Unix.opendir dir in
   let rec ls dirs =
     match Unix.readdir dir with
-    | dirname when dirname.[0] = '.' -> ls dirs
+    | dirname when dirname.[0] = '.' || dirname.[0] = '_' -> ls dirs
     | dirname -> ls (dirname :: dirs)
     | exception End_of_file ->
         Unix.closedir dir;
