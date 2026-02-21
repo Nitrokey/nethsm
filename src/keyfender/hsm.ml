@@ -3511,18 +3511,10 @@ module Make (KV : Kv_ext.Platform) = struct
       (* when the mode is operational, we have to clear
          user and keys that are not in the backup. *)
       let backup_keys = ref KeySet.empty in
-      (* TODO make the two following operations an atomic read+set *)
-      let** already_restoring =
-        (internal_server_error Read "Read backup key" Config_store.pp_error)
-          (Config_store.restore_in_progress t.config_store)
-      in
       let** _acquire_global_lock =
-        if already_restoring then
-          Lwt_result.fail (Bad_request, "Restore already in progress")
-        else
-          (internal_server_error Read "Read backup key"
-             Config_store.pp_write_error)
-            (Config_store.set t.config_store Restore_in_progress ())
+        (internal_server_error Read "Read backup key"
+           Config_store.pp_write_error)
+          (Config_store.set t.config_store Restore_in_progress ())
       in
       with_write_lock (fun () ->
           let** () =

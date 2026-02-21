@@ -825,6 +825,38 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
         etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
     | `Batch b -> Txn_batcher.add_op b (`Request_put request)
 
+  let atomic_set_if_no_restore t k v =
+    match t.mode with
+    | `Batch _ ->
+        Log.warn (fun f ->
+            f
+              "cannot have atomic operation within transaction, downgrading to \
+               normal set (key was %a)"
+              Mirage_kv.Key.pp k);
+        set t k v
+    | `Normal ->
+        let key = bytes_of_key k in
+        let value = Bytes.of_string v in
+        let put = PutRequest.make ~key ~value () in
+        let op = RequestOp.make ~request:(`Request_put put) () in
+        let restore_in_progress_k =
+          bytes_of_key (Mirage_kv.Key.v "config/restore-in-progress")
+        in
+        (* create revision = 0 ==> key does not exist *)
+        let restore_nonexistent =
+          Compare.make ~result:EQUAL ~target:CREATE ~key:restore_in_progress_k
+            ~target_union:(`Create_revision 0L) ()
+        in
+        (* transaction will apply the set operation if the guard succeeds, no-op
+           otherwise *)
+        let request =
+          TxnRequest.make ~compare:[ restore_nonexistent ] ~success:[ op ] ()
+        in
+        etcd_try (fun () ->
+            Etcd.txn t.stack ~request >|= fun resp ->
+            if resp.succeeded then Ok ()
+            else Error (`Etcd_error "restore is in progress"))
+
   let remove t k =
     (* We don't know if the key is meant to refer to a dictionary or a single
        entry in the Mirage abstraction. We could check by making a (potentially

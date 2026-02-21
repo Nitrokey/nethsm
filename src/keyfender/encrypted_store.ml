@@ -4,7 +4,7 @@
 
 open Lwt.Infix
 
-module Make (KV : Kv_ext.Ranged) = struct
+module Make (KV : Kv_ext.Platform) = struct
   type t = { kv : KV.t; prefix : Mirage_kv.Key.t; key : Crypto.GCM.key }
   type slot = Authentication | Key | Namespace
 
@@ -109,7 +109,9 @@ module Make (KV : Kv_ext.Ranged) = struct
 
   let raw_set t key value =
     let key', encrypted = prepare_set t key value in
-    KV.set t.kv key' encrypted
+    (* writes in the (global) encrypted store are prohibited if a restore is in
+       progress on the cluster *)
+    KV.atomic_set_if_no_restore t.kv key' encrypted
 
   let set_version t version =
     raw_set t Version.filename (Version.to_string version)

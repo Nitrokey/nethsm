@@ -11,7 +11,7 @@
     stored for key [b] unless [a] and [b] are equal. The IV is generated at
     random. The encrypted value stored is a concatenation of the IV, the
     authentication tag, and the encrypted data. *)
-module Make (KV : Kv_ext.Ranged) : sig
+module Make (KV : Kv_ext.Platform) : sig
   include
     Kv_ext.Ranged
       with type error =

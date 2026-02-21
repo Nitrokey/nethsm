@@ -135,6 +135,9 @@ module type Platform = sig
   module Cluster : Clustered with type t := t
 
   val clear_watches : t -> unit
+
+  val atomic_set_if_no_restore :
+    t -> key -> string -> (unit, write_error) result Lwt.t
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
@@ -149,6 +152,7 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
 
   let create_watch _ _ _ = ()
   let clear_watches _ = ()
+  let atomic_set_if_no_restore = set
 
   module Cluster = struct
     type member = { id : int64; name : string; urls : string list }

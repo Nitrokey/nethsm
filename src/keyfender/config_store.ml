@@ -6,7 +6,7 @@ open Lwt.Infix
 
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
-module Make (KV : Kv_ext.RW) = struct
+module Make (KV : Kv_ext.Platform) = struct
   let local_config_prefix device_id = "local/" ^ device_id ^ "/config"
   let global_config_prefix = "config"
 
@@ -307,12 +307,20 @@ module Make (KV : Kv_ext.RW) = struct
 
   let batch t f = KV.batch t.kv (fun b -> f { t with kv = b })
 
-  let set t key value =
+  let set : type a. t -> a k -> a -> (unit, write_error) Lwt_result.t =
+   fun t key value ->
     let ( let* ) = Lwt_result.bind in
+    (* if trying to acquire restore-in-progress lock,
+       force to atomically check that it is not set before *)
+    let set_f =
+      match key with
+      | Restore_in_progress -> KV.atomic_set_if_no_restore
+      | _ -> KV.set
+    in
     let* c = select_codec t key |> Lwt_result.lift in
     let module C = (val c) in
     let data = to_string key value |> C.encrypt key in
-    KV.set t.kv (key_path t.device_id key) data >|= function
+    set_f t.kv (key_path t.device_id key) data >|= function
     | Ok () -> Ok ()
     | Error e -> Error (`Kv e)
 
