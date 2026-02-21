@@ -267,8 +267,6 @@ Be also aware of the following, temporary limitations:
     might put the cluster in an inconsistent state ;
 - once a node is part of a cluster, changing its network configuration and/or
     its advertised peer URLs is not fully supported ;
-- users should manually ensure no write operation is performed on any member of
-    a cluster while a restore operation is ongoing ;
 - if a cluster is lost (quorum is lost), the only means of recovery is
     factory-reset + restore. Future releases will include means to recover from
     on-disk data ;

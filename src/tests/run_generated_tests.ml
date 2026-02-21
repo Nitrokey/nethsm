@@ -8,8 +8,8 @@ module type BACKEND = sig
 
   val start : unit -> t
   val stop : t -> unit
-  val init : unit -> ctx
-  val finish : ctx -> unit
+  val init : ?retry:bool -> unit -> unit
+  val finish : unit -> unit
 end
 
 module UnixApp = struct
@@ -64,7 +64,7 @@ end
 module KeyfenderApp : BACKEND = struct
   type ctx = unit
 
-  let init () = ()
+  let init ?retry:_ () = ()
   let finish () = ()
 
   type t = UnixApp.t
@@ -86,52 +86,90 @@ module KeyfenderUnikernel : BACKEND = struct
 
   type t = UnixApp.t
 
-  let init () =
-    let open Bos.OS in
-    let run_dir = Fpath.v "../../run" in
-    let etcd_dir = Fpath.(run_dir / "default.etcd") in
-    Dir.create etcd_dir |> Result.get_ok |> ignore;
+  let last_ctx = ref None
 
-    let etcd_process =
-      Unix.open_process_args_full "../../etcd-download/etcd"
-        [|
-          "etcd";
-          "--log-level=warn";
-          "--max-txn-ops";
-          "512";
-          "--data-dir";
-          Fpath.to_string etcd_dir;
-          "--force-new-cluster";
-        |]
-        (Unix.environment ())
+  let init =
+    let already_retried = ref false in
+    fun ?(retry = false) () ->
+      if retry then
+        if !already_retried then
+          Alcotest.fail "couldn't bring etcd up after two attempts"
+        else already_retried := true
+      else already_retried := false;
+      let open Bos.OS in
+      let run_dir = Fpath.v "../../run" in
+      let etcd_dir = Fpath.(run_dir / "default.etcd") in
+      Dir.delete ~must_exist:false ~recurse:true etcd_dir
+      |> Result.get_ok |> ignore;
+      Dir.create etcd_dir |> Result.get_ok |> ignore;
+
+      let process_name =
+        if retry then "../../../../etcd-download/etcd"
+        else "../../etcd-download/etcd"
+      in
+      let etcd_process =
+        Unix.open_process_args_full process_name
+          [|
+            "etcd";
+            "--log-level=warn";
+            "--max-txn-ops";
+            "512";
+            "--data-dir";
+            Fpath.to_string etcd_dir;
+            "--force-new-cluster";
+          |]
+          (Unix.environment ())
+      in
+      let etcd_pid = Unix.process_full_pid etcd_process in
+      let _, _, proc_stderr = etcd_process in
+      let th = Thread.create UnixApp.tail proc_stderr in
+      (* give some time to etcd to start *)
+      last_ctx := Some { etcd_pid; log_thread = th; etcd_process };
+      Unix.sleep 2
+
+  let finish () =
+    Option.iter
+      (fun { etcd_pid; etcd_process; log_thread } ->
+        Unix.kill etcd_pid Sys.sigterm;
+        Unix.close_process_full etcd_process |> ignore;
+        Thread.join log_thread)
+      !last_ctx
+
+  let is_etcd_up () =
+    let rec loop attempt =
+      let open Bos.OS in
+      match
+        Cmd.run
+        @@ Bos.Cmd.(
+             v "../../../../etcd-download/etcdctl"
+             % "del" % "" % "--from-key=true")
+      with
+      | Ok _ -> true
+      | Error _ when attempt < 5 ->
+          Printf.printf "etcd unavailable, retrying...\n%!";
+          Unix.sleep 1;
+          loop (attempt + 1)
+      | Error _ -> false
     in
-    let etcd_pid = Unix.process_full_pid etcd_process in
-    let _, _, proc_stderr = etcd_process in
-    let th = Thread.create UnixApp.tail proc_stderr in
-    { etcd_pid; log_thread = th; etcd_process }
+    loop 0
 
-  let finish { etcd_pid; etcd_process; log_thread } =
-    Unix.kill etcd_pid Sys.sigterm;
-    Unix.close_process_full etcd_process |> ignore;
-    Thread.join log_thread
-
-  let start () =
-    let open Bos.OS in
-    (Cmd.run
-    @@ Bos.Cmd.(
-         v "../../../../etcd-download/etcdctl" % "del" % "" % "--from-key=true")
-    )
-    |> Result.get_ok;
-    UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
-      ~args:
-        [|
-          "keyfender";
-          "--platform=127.0.0.1";
-          "--http=8080";
-          "--https=8443";
-          "--start";
-        |]
-      ~message:"listening on 8443/TCP for HTTPS" ()
+  let rec start () =
+    if not (is_etcd_up ()) then (
+      Printf.printf "etcd down! starting it again...\n%!";
+      finish ();
+      init ~retry:true ();
+      start ())
+    else
+      UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
+        ~args:
+          [|
+            "keyfender";
+            "--platform=127.0.0.1";
+            "--http=8080";
+            "--https=8443";
+            "--start";
+          |]
+        ~message:"listening on 8443/TCP for HTTPS" ()
 
   let stop t = UnixApp.stop t
 end

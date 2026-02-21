@@ -5,7 +5,7 @@ curl --insecure -X POST --user admin:Administrator \
     -F arguments='{"backupPassphrase": "backupPassphrase"}' \
     -F backup=@../_big_100k.bin "https://localhost:8443/api/v1/system/restore" &
 
-sleep 1 # ensure the restore has started
+sleep 2 # ensure the restore has started
 
 # try to add a key during restore, this should fail either
 # because etcd is unavailable (load too high) or
