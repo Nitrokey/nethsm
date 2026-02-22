@@ -209,7 +209,10 @@ module Make (KV : Kv_ext.Platform) = struct
     | `Missing_domain_key -> Fmt.string ppf "cannot read this key before unlock"
 
   type write_error =
-    [ `Kv of KV.write_error | `Msg of string | `Missing_domain_key ]
+    [ `Kv of KV.write_error
+    | `Msg of string
+    | `Missing_domain_key
+    | `Restore_in_progress ]
 
   type t = {
     kv : KV.t;
@@ -312,23 +315,29 @@ module Make (KV : Kv_ext.Platform) = struct
     let ( let* ) = Lwt_result.bind in
     (* if trying to acquire restore-in-progress lock,
        force to atomically check that it is not set before *)
-    let set_f =
+    let set_f t k v =
       match key with
-      | Restore_in_progress -> KV.atomic_set_if_no_restore
-      | _ -> KV.set
+      | Restore_in_progress ->
+          let* ok =
+            KV.atomic_set_if_no_restore t k v
+            |> Lwt_result.map_error (fun e -> `Kv e)
+          in
+          if ok then Lwt_result.return ()
+          else Lwt_result.fail `Restore_in_progress
+      | _ -> KV.set t k v |> Lwt_result.map_error (fun e -> `Kv e)
     in
     let* c = select_codec t key |> Lwt_result.lift in
     let module C = (val c) in
     let data = to_string key value |> C.encrypt key in
-    set_f t.kv (key_path t.device_id key) data >|= function
-    | Ok () -> Ok ()
-    | Error e -> Error (`Kv e)
+    set_f t.kv (key_path t.device_id key) data
 
   let pp_write_error ppf = function
     | `Kv e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
     | `Missing_domain_key ->
         Fmt.string ppf "cannot write this key before unlock"
+    | `Restore_in_progress ->
+        Fmt.string ppf "cannot restore while restore already in progress"
 
   let remove t key = KV.remove t.kv (key_path t.device_id key)
   let digest t key = KV.digest t.kv (key_path t.device_id key)
@@ -436,6 +445,7 @@ module Make (KV : Kv_ext.Platform) = struct
             | Error `Missing_domain_key ->
                 t.post_migration_writes <- go :: t.post_migration_writes;
                 Ok ()
+            | Error `Restore_in_progress -> Ok ()
             | Ok () -> Ok ()
           in
           go () >|= wrap_write_error

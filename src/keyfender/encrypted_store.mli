@@ -22,7 +22,8 @@ module Make (KV : Kv_ext.Platform) : sig
        and type write_error =
         [ Mirage_kv.write_error
         | `Kv of KV.write_error
-        | `Invalid_key of KV.key ]
+        | `Invalid_key of KV.key
+        | `Restore_in_progress ]
 
   type slot = Authentication | Key | Namespace
 
@@ -31,7 +32,7 @@ module Make (KV : Kv_ext.Platform) : sig
   val current_version : slot -> Version.t
 
   val initialize :
-    Version.t -> slot -> key:string -> KV.t -> (t, KV.write_error) result Lwt.t
+    Version.t -> slot -> key:string -> KV.t -> (t, write_error) result Lwt.t
   (** [initialize version typ ~key kv] initializes the store, using [kv] as
       persistent storage, [typ] is the prefix for all keys read and written to
       [kv], and [key] is the symmetric secret for encryption and decryption. The
@@ -71,7 +72,7 @@ module Make (KV : Kv_ext.Platform) : sig
   type version_error = [ error | `Msg of string ]
 
   val get_version : t -> (Version.t, version_error) Lwt_result.t
-  val set_version : t -> Version.t -> (unit, KV.write_error) Lwt_result.t
+  val set_version : t -> Version.t -> (unit, write_error) Lwt_result.t
 
   val slot_of_key : KV.key -> slot option
   (** [slot_of_key key] returns the slot in which the key resides, or None if

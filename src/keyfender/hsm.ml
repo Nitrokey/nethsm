@@ -928,7 +928,7 @@ module Make (KV : Kv_ext.Platform) = struct
               "This device has not been provisioned with a namespace store. \
                Initializing it on the fly with the provided key!");
         internal_server_error Write "provisioning namespace store"
-          KV.pp_write_error
+          Encrypted_store.pp_write_error
           (Encrypted_store.initialize current_version Namespace ~key kv)
     | Error e ->
         internal_server_error Unlock

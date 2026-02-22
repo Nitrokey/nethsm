@@ -833,7 +833,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
               "cannot have atomic operation within transaction, downgrading to \
                normal set (key was %a)"
               Mirage_kv.Key.pp k);
-        set t k v
+        set t k v |> Lwt_result.map (fun () -> true)
     | `Normal ->
         let key = bytes_of_key k in
         let value = Bytes.of_string v in
@@ -853,9 +853,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
           TxnRequest.make ~compare:[ restore_nonexistent ] ~success:[ op ] ()
         in
         etcd_try (fun () ->
-            Etcd.txn t.stack ~request >|= fun resp ->
-            if resp.succeeded then Ok ()
-            else Error (`Etcd_error "restore is in progress"))
+            Etcd.txn t.stack ~request >|= fun resp -> Ok resp.succeeded)
 
   let remove t k =
     (* We don't know if the key is meant to refer to a dictionary or a single
