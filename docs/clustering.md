@@ -167,14 +167,16 @@ example. In that case, give it some time and try again.
 ### What is shared between nodes
 
 Having a cluster of NetHSMs means that most of the data is shared between them.
-Any addition, modification or deletion of keys, users, or namespaces on one node are eventually reflected on all the others.
-In general, any operation that modifies state, will modify state for every node.
+Any addition, modification or deletion of keys, users, or namespaces on one node
+are eventually reflected on all the others. In general, any operation that
+modifies state, will modify state for every node.
 
-This include the backup **restore** operation, which works as before. Note that restoring a large backup may overwhelm the cluster for a while, while the node applying the restore forwards changes to the others.
-Note also that this operation remains compatible with backups made on previous
-versions of the NetHSM.
+This include the backup **restore** operation, which works as before. Note that
+restoring a large backup may overwhelm the cluster for a while, while the node
+applying the restore forwards changes to the others.
 
-The only exceptions to this (i.e. data which are not shared but instead node-specific) are config data and the domain store:
+The only exceptions to this (i.e. data which are not shared but instead
+node-specific) are config data and the domain store:
 - TLS certificates
 - clock configuration
 - network configuration
@@ -182,14 +184,41 @@ The only exceptions to this (i.e. data which are not shared but instead node-spe
 - unattended boot configuration
 - device key
 - unlock passphrase and backup passphrase
-- unlock salt and backup salt
 
 Configuration data that **are** shared are:
 - the software version (nodes must have a uniform version)
 - the cluster CA
+- unlock salt and backup salt
 
-Note that the backup operation, which works as before and can be requested from any node of the cluster, will back up data for the whole cluster, including device-specific fields.
-A backup done on a cluster can be restored on the same cluster, even if some nodes have been added or removed since. It will just not affect device-specific data of the new joiners.
+In terms of encryption, each node retains its own device key but they all share
+the same **domain key** to access their shared data (keys, users, namespaces).
+
+### Backup and restore
+
+The backup operation, which works as before and can be requested from any node
+of the cluster, will back up data for the whole cluster, including
+device-specific fields.
+
+A backup done on a cluster can be restored on the same cluster, even if some
+nodes have been added or removed since. Such restores will, as before, not
+affect configuration values (only keys, users, namespaces).
+
+Contrary to before, a backup done on a node (or cluster) and restored on
+another unprovisioned one will only restore configuration values if this is the
+same node. If not, the machine will be minimally provisioned (and the rest
+will get restored normally).
+
+This operation remains compatible with backups made on previous
+versions of the NetHSM.
+
+**NOTE**: restoring on a node A a backup made another node Z with a different
+domain key will correctly rewrite A's domain key, as before. However if A was in
+a cluster with node B, B will become inoperable as Z's domain key will not be
+restored on B.
+
+In other words, only perform a restore in a cluster with backups done in the
+same cluster. If you want to restore a foreign backup on a node, first safely
+remove it from its cluster.
 
 ### Operational redundancy
 
@@ -258,9 +287,7 @@ and render it inoperable.
 
 ## Limitations
 
-This is an experimental release that should not yet be used for production.
-
-Be also aware of the following, temporary limitations:
+Be aware of the following, temporary limitations:
 
 - once a CA has been set and a cluster has been formed, updating the CA without
     manually ensuring all nodes have had their TLS cert signed by the new CA,
