@@ -2181,6 +2181,11 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let member_list t = member_list t.kv >|= to_hsm_error
 
+    let is_clustered t =
+      let ( let* ) = Lwt_result.bind in
+      let* list = member_list t in
+      Lwt_result.return (List.length list >= 2)
+
     let member_exists ~id t =
       let open Lwt_result.Infix in
       member_list t >|= fun member_list ->
@@ -2407,6 +2412,16 @@ module Make (KV : Kv_ext.Platform) = struct
       let is_mock = t.system_info.hardwareVersion = "N/A" in
       let time = if is_mock then None else Some (now ()) in
       let open Lwt_result.Infix in
+      Cluster.is_clustered t >>= fun is_clustered ->
+      (if is_clustered then
+         Lwt_result.fail
+           ( Precondition_failed,
+             "cannot change the cluster CA in an active cluster. Dismantle the \
+              cluster first." )
+       else (
+         Log.info (fun f -> f "changing cluster CA allowedd");
+         Lwt_result.return ()))
+      >>= fun () ->
       match X509.Certificate.decode_pem cert_data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
       | Ok cert ->

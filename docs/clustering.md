@@ -285,13 +285,16 @@ Then it can be removed by calling `DELETE /cluster/members/<id>`. If the node in
 question was still healthy, this will isolate it from the rest of the cluster
 and render it inoperable.
 
+### Reconfiguring an existing cluster
+
+An existing cluster (with two or more nodes) **cannot** change its cluster CA
+while in operation. If you need to change this certificate: choose a node,
+remove all other nodes, update the CA, then have the other members re-join.
+
 ## Limitations
 
 Be aware of the following, temporary limitations:
 
-- once a CA has been set and a cluster has been formed, updating the CA without
-    manually ensuring all nodes have had their TLS cert signed by the new CA,
-    might put the cluster in an inconsistent state ;
 - once a node is part of a cluster, changing its network configuration and/or
     its advertised peer URLs is not fully supported ;
 - if a cluster is lost (quorum is lost), the only means of recovery is
