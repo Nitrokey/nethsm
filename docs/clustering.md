@@ -287,18 +287,25 @@ and render it inoperable.
 
 ### Reconfiguring an existing cluster
 
+#### Changing the cluster CA
+
 An existing cluster (with two or more nodes) **cannot** change its cluster CA
 while in operation. If you need to change this certificate: choose a node,
 remove all other nodes, update the CA, then have the other members re-join.
+
+### Changing the network configuration of nodes
+
+Modifying the network configuration of a node (e.g. changing its IP) will
+automatically tell the other nodes about the update. You should however ensure
+that do only perform such updates on a single node at a time, and in a cluster
+where losing that node would not lost quorum.
 
 ## Limitations
 
 Be aware of the following, temporary limitations:
 
-- once a node is part of a cluster, changing its network configuration and/or
-    its advertised peer URLs is not fully supported ;
 - if a cluster is lost (quorum is lost), the only means of recovery is
-    factory-reset + restore. Future releases will include means to recover from
-    on-disk data ;
+    factory-reset + restore. Make sure to back up often. Future releases will
+    include means to recover from on-disk data ;
 - system time between nodes must be manually synchronized for now. Future
     release may include automatic clock sync.

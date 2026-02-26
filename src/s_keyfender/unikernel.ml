@@ -381,6 +381,11 @@ struct
     in
     let reconfigure_network ?hsm_state ?store (network : Keyfender.Json.network)
         =
+      (* if this is a runtime reconfiguration, align peer URLs *)
+      (match store with
+        | None -> Lwt.return_unit
+        | Some store -> align_peer_urls store network)
+      >>= fun () ->
       let* () = Ext_reconfigurable_stack.setup ext_stack network in
       let stack = Ext_reconfigurable_stack.stack ext_stack in
       let http = Srv.listen stack in
@@ -399,9 +404,7 @@ struct
             Etcd_relay_outbound.listen
               (Internal_stack.tcp internal_stack)
               (S.tcp stack) None);
-      match store with
-      | None -> Lwt.return_unit
-      | Some store -> align_peer_urls store network)
+      Lwt.return_unit)
       >>= fun () ->
       Lwt.async (fun () -> setup_http_listener http);
       let certificates =
