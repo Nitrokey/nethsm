@@ -224,7 +224,7 @@ You should see it start, join the cluster and catch up with the data. After some
 time, you should see in its logs that "etcd is now serving clients".
 You can check that it is working with the `etcdctl` client:
 ```
-etcdl get /config/version
+etcdctl get /config/version
 ```
 This key should exist and contain "1".
 
@@ -233,6 +233,22 @@ cluster. If you need to decommission it, first properly remove it from the
 cluster (see the dedicated section). If its reachable IP change, update its URL
 from the cluster.
 
+### Security considerations
+
+The witness node (or anyone with access to it) has direct access to the storage
+backend of all nodes in the cluster (e.g. you can dump all entries and
+corresponding values with `etcdctl get "/" "0"`).
+
+However, with the exception of the config version
+(`/config/version`, which should always be "1"), strictly all of the values are
+encrypted (with either a device key for node-specific values or the domain keys
+for others), ensuring the confidentiality of sensitive data.
+
+Note however that a malicious node can:
+- write garbage as the value for any entry in the store, which will cause nodes
+  to fail decrypting it (which may lead to crashes for some system entries).
+- list entry names in the store, which will contain metadata you may consider
+  sensitive (e.g. the list of users, namespaces and keys will be accessible)
 
 ## Operating a cluster
 
