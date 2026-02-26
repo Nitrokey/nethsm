@@ -162,6 +162,78 @@ particular the new joiner) may be less responsive or unresponsive. The new
 joiner in particular may initially return errors when trying to unlock it for
 example. In that case, give it some time and try again.
 
+### Adding a witness node
+
+The nature of clustering with `etcd` makes it more reliable the more nodes there
+are in the cluster. As explained in the "Operational Redundancy" section,
+clusters should ideally have at least 3 nodes to have room to fail, since a
+2-node cluster will entirely fail if only one fails.
+
+However the design of the feature is such that you don't need to add a full,
+real NetHSM device to your cluster to reach a stable number of nodes. Instead,
+you can deploy and add a "witness" node yourself. Such a node is just an
+instance of `etcd` running on the machine of your choice (or in a container),
+and connected to the cluster. It will be recognized as a normal node from the
+real devices in the cluster, and receive all data and updates from devices (but
+of course you won't be able to perform any HSM operations with it, it's only
+storing data).
+
+### Prepare the witness
+
+You will need an environment with `etcd` v3.6 available, with an IPv4 (at least)
+reachable by the other members of your cluster. TCP traffic to and from port 2380
+needs to be allowed.
+
+Create an empty directory where `etcd` will store its data, and write down its
+path (we will use `/var/etcd/data`). Ensure the user that will launch the
+process has permission to read and write to the directory.
+
+Transfer to the machine the CA certificate that is being used to authenticate
+nodes in the cluster. You should have created one in the "Creating and
+Installing a CA" section. We'll store it in `/var/etc/CA.pem`.
+
+### Register it to the cluster
+
+Follow the normal instructions from the "Registering a node" section to signal
+the existing cluster the addition of a new member with the given URL(s).
+
+Write down the response from the cluster: it should contain the list of cluster
+members and a joiner kit (you won't need this part).
+
+### Configure etcd
+
+Create an `/var/etcd/env` file containing the following:
+
+```env
+```
+
+For example with a cluster containing two existing nodes, and our witness being
+reachable from `192.168.1.42`, this could look like:
+
+```env
+```
+
+### Start etcd
+
+Start `etcd` in your preferred way (manually, `systemd` service, container, etc.) with
+the following parameters:
+```
+```
+
+You should see it start, join the cluster and catch up with the data. After some
+time, you should see in its logs that "etcd is now serving clients".
+You can check that it is working with the `etcdctl` client:
+```
+etcdl get /config/version
+```
+This key should exist and contain "1".
+
+Make sure this process keeps running, as it is now a proper member of your
+cluster. If you need to decommission it, first properly remove it from the
+cluster (see the dedicated section). If its reachable IP change, update its URL
+from the cluster.
+
+
 ## Operating a cluster
 
 ### What is shared between nodes
