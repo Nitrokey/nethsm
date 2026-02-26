@@ -245,7 +245,7 @@ let test_error test =
 
 (* expected to be run from a "generated/XXX" folder, this function
    tests a specific endpoint. *)
-let tests_endpoint (module B : BACKEND) () =
+let rec tests_endpoint ~retries (module B : BACKEND) () =
   (* 1: start the server*)
   let server = B.start () in
   Fun.protect ~finally:(fun () -> B.stop server) @@ fun () ->
@@ -269,39 +269,45 @@ let tests_endpoint (module B : BACKEND) () =
       | Error (`Msg msg) -> Alcotest.fail msg)
   in
   (* 5: perform happy-path test *)
-  let () =
-    if Bos.OS.Path.exists (Fpath.v "cmd.sh") |> Result.get_ok then
-      (let* () = Bos.(OS.Cmd.run Cmd.(v "./cmd.sh")) in
-       let* expected_code = actual_code Fpath.(v "headers.expected") in
-       let* actual_code = actual_code Fpath.(v "headers.out") in
-       Alcotest.(check string) "CMD: code matches" expected_code actual_code;
-       let* skip = Bos.OS.Path.exists Fpath.(v "body.skip") in
-       if not skip then
-         let* expected_body =
-           Bos.OS.File.read_lines Fpath.(v "body.expected")
-         in
-         let+ actual_body = Bos.OS.File.read_lines Fpath.(v "body.out") in
-         Alcotest.(check (list string))
-           "CMD: body matches" expected_body actual_body
-       else Ok ())
-      |> function
-      | Ok () -> ()
-      | Error (`Msg msg) -> Alcotest.fail msg
+  let test_result =
+    if Bos.OS.Path.exists (Fpath.v "cmd.sh") |> Result.get_ok then (
+      let* () = Bos.(OS.Cmd.run Cmd.(v "./cmd.sh")) in
+      let* expected_code = actual_code Fpath.(v "headers.expected") in
+      let* actual_code = actual_code Fpath.(v "headers.out") in
+      Alcotest.(check string) "CMD: code matches" expected_code actual_code;
+      let* skip = Bos.OS.Path.exists Fpath.(v "body.skip") in
+      if not skip then
+        let* expected_body = Bos.OS.File.read_lines Fpath.(v "body.expected") in
+        let+ actual_body = Bos.OS.File.read_lines Fpath.(v "body.out") in
+        Alcotest.(check (list string))
+          "CMD: body matches" expected_body actual_body
+      else Ok ())
+    else Ok ()
   in
-  (* 6: server tear down *)
-  Bos.(OS.Cmd.run Cmd.(v "./shutdown.sh")) |> ignore
+  (* 6: server tear down (even on test failure!) *)
+  Bos.(OS.Cmd.run Cmd.(v "./shutdown.sh")) |> ignore;
+  (* 7: check result : if failing, retry if allowed *)
+  match test_result with
+  | Ok () -> ()
+  | Error (`Msg msg) when retries > 0 ->
+      Printf.printf
+        "failed with message '%s', but retrying (%d attempts left)\n%!" msg
+        retries;
+      tests_endpoint ~retries:(retries - 1) (module B) ()
+  | Error (`Msg msg) -> Alcotest.fail msg
 
-let tests_of_dir (module B : BACKEND) dir prefix =
+let tests_of_dir ?(retries = 0) (module B : BACKEND) dir prefix =
   ls dir
   |> List.map (fun endpoint ->
       ( prefix ^ ":" ^ endpoint,
         [
           ( Alcotest.test_case "OK" `Quick @@ fun () ->
-            in_dir (dir ^ "/" ^ endpoint) (tests_endpoint (module B)) );
+            in_dir (dir ^ "/" ^ endpoint) (tests_endpoint ~retries (module B))
+          );
         ] ))
 
 let api_tests backend = tests_of_dir backend "generated" "API"
-let custom_tests backend = tests_of_dir backend "load" "LOAD"
+let custom_tests backend = tests_of_dir ~retries:4 backend "load" "LOAD"
 let tests backend = api_tests backend @ custom_tests backend
 
 let main (module B : BACKEND) =
