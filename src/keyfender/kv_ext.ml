@@ -164,7 +164,10 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
 
     let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
     let my_id _ = 0xdeadbeefL
-    let member_list _ = not_etcd
+
+    let member_list _ =
+      Lwt_result.return [ { id = 0xdeadbeefL; name = "mock"; urls = [] } ]
+
     let member_remove ~id:_ _ = not_etcd
     let member_update ~id:_ ~urls:_ _ = not_etcd
     let member_add ~urls:_ _ = not_etcd

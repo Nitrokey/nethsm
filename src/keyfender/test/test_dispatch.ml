@@ -4441,8 +4441,9 @@ let cluster_member_ops_not_etcd =
         |> returns_empty' ~with_status:`No_content
       in
       request ~hsm_state ~headers:admin_headers "/cluster/members"
-      |> returns_string ~with_status:`Bad_request
-      |> check;
+      |> returns_string ~with_status:`OK
+      |> Alcotest.(check string)
+           "mock data" {|[{"id":"deadbeef","name":"mock","urls":[]}]|};
       (* even when not implemented, we still check the JSON payload is
          well-formed first *)
       request ~meth:`POST ~hsm_state ~headers:admin_headers "/cluster/members"

@@ -2418,9 +2418,7 @@ module Make (KV : Kv_ext.Platform) = struct
            ( Precondition_failed,
              "cannot change the cluster CA in an active cluster. Dismantle the \
               cluster first." )
-       else (
-         Log.info (fun f -> f "changing cluster CA allowedd");
-         Lwt_result.return ()))
+       else Lwt_result.return ())
       >>= fun () ->
       match X509.Certificate.decode_pem cert_data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
