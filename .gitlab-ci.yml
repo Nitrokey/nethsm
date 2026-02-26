@@ -389,6 +389,9 @@ test_muen_prodrive_hermes:
     SERIALPID: ${CI_PROJECT_DIR}/obj/serial_out.pid
     SERIALTXT: ${CI_PROJECT_DIR}/obj/serial_out.txt
   stage: test_hw
+  # Normally takes <15m and has a tendency to get stuck.
+  # This let us discover the timeout without waiting 1h to retry
+  timeout: 30m
   needs:
     - build_ci_installer_prodrive_hermes
   artifacts:
@@ -446,6 +449,9 @@ test_muen_msi_z790:
     SERIALPID: ${CI_PROJECT_DIR}/obj/serial_out.pid
     SERIALTXT: ${CI_PROJECT_DIR}/obj/serial_out.txt
   stage: test_hw
+  # Normally takes <10m and has a tendency to get stuck.
+  # This let us discover the timeout without waiting 1h to retry
+  timeout: 20m
   needs:
     - build_ci_installer_msi_z790
   artifacts:
