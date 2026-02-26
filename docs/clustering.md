@@ -130,7 +130,7 @@ Keep that response for the next step.
 **WARNING**: registering a node immediately introduces a new node in the
 cluster, modifying the quorum threshold, even if the node has not actually joined
 yet. This can render the existing nodes inoperable until the new node has
-actually joined. Refer to the endpoints' documentation and the "Operational
+actually joined. Refer to the API documentation and the "Operational
 Redundancy" section of this document.
 
 #### Actually join the cluster
@@ -153,7 +153,7 @@ operation is final and can only be reverted by a factory reset.
 If this join is successful, the node will end up in a `Locked` state, and has to
 be unlocked with the unlock passphrase of the node that was used for
 registration. Afterwards the passphrase can be changed (unlock passphrases
-remain device-specific, not shared across nodes).
+remain node-specific, not shared across nodes).
 
 **NOTE**: Even after the join has succeeded, if the cluster's database is large
 or if the cluster is busy, it may take some time for the new joiner to
@@ -176,28 +176,34 @@ restoring a large backup may overwhelm the cluster for a while, while the node
 applying the restore forwards changes to the others.
 
 The only exceptions to this (i.e. data which are not shared but instead
-node-specific) are config data and the domain store:
+node-specific) are the domain store (so each node has its own unlock passphrase)
+and some config data:
 - TLS certificates
 - clock configuration
 - network configuration
 - logging configuration
 - unattended boot configuration
-- device key
-- unlock passphrase and backup passphrase
+- unlock salt
 
-Configuration data that **are** shared are:
-- the software version (nodes must have a uniform version)
+Configuration data that **are** shared (and so must be uniform across nodes) are:
+- the config/domain store version
 - the cluster CA
-- unlock salt and backup salt
+- backup passphrase and backup salt
 
-In terms of encryption, each node retains its own device key but they all share
-the same **domain key** to access their shared data (keys, users, namespaces).
+In terms of encryption, each node retains its own device key (which remains
+private) but they all share the same **domain key** to access their shared data
+(keys, users, namespaces).
+
+Note that for now the config/domain store version can only be version 1 (if your
+software version supports clustering, then that is what you have). Refer to the
+"Upgrading software in a cluster" section for more details on the safety of
+installing software updates within a cluster.
 
 ### Backup and restore
 
 The backup operation, which works as before and can be requested from any node
 of the cluster, will back up data for the whole cluster, including
-device-specific fields.
+node-specific fields.
 
 A backup done on a cluster can be restored on the same cluster, even if some
 nodes have been added or removed since. Such restores will, as before, not
@@ -218,7 +224,7 @@ restored on B.
 
 In other words, only perform a restore in a cluster with backups done in the
 same cluster. If you want to restore a foreign backup on a node, first safely
-remove it from its cluster.
+remove it from its cluster, then factory reset it and restore the backup.
 
 ### Operational redundancy
 
@@ -284,6 +290,22 @@ nodes through `GET /cluster/members` and looking for the right one.
 Then it can be removed by calling `DELETE /cluster/members/<id>`. If the node in
 question was still healthy, this will isolate it from the rest of the cluster
 and render it inoperable.
+
+### Software updates in clusters
+
+Future updates will be marked as "cluster-safe" (this should be the majority) or
+"cluster-unsafe".
+
+Cluster-safe updates can be applied to nodes that are part of
+a cluster without removing them from the cluster first. However as with all
+operations, you should ensure to do this on one node at a time, and in a cluster
+where removing a node does not go below the quorum (e.g. if the update fails).
+
+Cluster-unsafe updates must be applied to isolated nodes. You should dismantle
+the cluster (removing nodes one by one), factory reset all nodes but one, apply
+the update to every node, then make all reset nodes join the remaining node.
+
+Make sure to backup before such operations.
 
 ### Reconfiguring an existing cluster
 
