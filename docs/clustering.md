@@ -1,7 +1,6 @@
 # Operating a NetHSM cluster
 
-We will call "node" a NetHSM that is expected to be part of a cluster. A "peer"
-of a node is another node within the same cluster.
+We will call "node" a NetHSM that is expected to be part of a cluster.
 
 [[_TOC_]]
 
@@ -16,7 +15,7 @@ Network traffic between nodes is encrypted and authenticated, using their TLS
 certificate.
 
 All nodes that are expected to be part of the same cluster must first install a
-common Certificate Authority (CA) that will allow them to check their peers are
+common Certificate Authority (CA) that will allow them to check that other nodes are
 legitimate.
 
 In the following, we assume all nodes are freshly provisioned and operational.
@@ -85,7 +84,8 @@ Adding a node to a cluster is done in two steps:
 
 #### Registering a new node
 
-Have at hand the IP of the node that will join. The full *peer URL* of that node
+Have at hand the IP of the node that will join. The full *URL* (also called
+*peer URL* in `etcd` terminology) of that node
 will be `https://<IP_of_node>:2380` (e.g. `https://192.168.1.1:2380`). The port
 **MUST** be 2380, so ensure any firewall between the nodes will allow TCP
 traffic on that port.
@@ -93,10 +93,10 @@ traffic on that port.
 You can double-check the URL is right by calling `GET /cluster/members` on the
 node that is expected to join. This should list just one member: itself.
 
-Then register that expected peer URL on any existing node of the cluster (if you
+Then register that expected URL on any existing node of the cluster (if you
 don't have a cluster yet, do this on the NetHSM that will serve as the initial
 node of the cluster). This is done using the `POST /cluster/members` endpoint
-(refer to its documentation), passing it a JSON body containing the peer URL.
+(refer to its documentation), passing it a JSON body containing the URL.
 
 If successful, this returns a JSON body of the form
 ```json
