@@ -392,6 +392,12 @@ test_muen_prodrive_hermes:
   # Normally takes <15m and has a tendency to get stuck.
   # This let us discover the timeout without waiting 1h to retry
   timeout: 30m
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout # allow retrying on exec timeout
   needs:
     - build_ci_installer_prodrive_hermes
   artifacts:
@@ -452,6 +458,12 @@ test_muen_msi_z790:
   # Normally takes <10m and has a tendency to get stuck.
   # This let us discover the timeout without waiting 1h to retry
   timeout: 20m
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout # allow retrying on exec timeout
   needs:
     - build_ci_installer_msi_z790
   artifacts:
