@@ -1,8 +1,138 @@
 # Operating a NetHSM cluster
 
-We will call "node" a NetHSM that is expected to be part of a cluster.
-
 [[_TOC_]]
+
+Several NetHSM can be synchronized by a simple script on a 3rd host which uses the [backup](https://docs.nitrokey.com/nethsm/administration#backup) and [restore](https://docs.nitrokey.com/nethsm/administration#restore) functions. This works well as long as the frequency of key generations is low. In this case the host would only have access to the encrypted backup and not to the cryptographic keys in clear text. 
+
+Alternatively it is possible to setup a cluster to synchronize data between several NetHSMs directly. This supports high frequency of key generations, realizes high-availability and load balancing. A NetHSM cluster is based on [etcd](etcd.io) which uses the [Raft consensus algorithm](https://raft.github.io/) for strong consistency. This ensures that the data (e.g. keys) is correct in all NetHSMs at all times.
+
+Before setting up a NetHSM cluster make yourself familiar with this technology and constrains to avoid accidential outage and data loss. In addition to this document you may want to refer to [etcd's documentation](https://etcd.io/docs/latest/learning/) too.
+
+## Operational redundancy
+
+We will call "node" a NetHSM that is expected to be part of a cluster.
+**A cluster of `N` nodes will continue to operate as long as at least `(N/2)+1`
+nodes are healthy and reachable.** That minimal amount of healthy, reachable
+nodes is called the **quorum**.
+
+This implies the following scenarios.
+
+### One node goes down and quorum is still reached
+
+In a 3-node cluster, if one node fails (crashes or becomes unreachable due to
+network conditions), the two other nodes will continue to work and serve
+requests.
+
+If the failed node is still healthy (e.g. it was just a network
+problem), it will be inoperable while isolated (not even read-only).
+
+However if the node recovers, it will cleanly resynchronize with the rest of the
+cluster and becomes operable again, without losing data.
+
+If it never recovers, it has to be removed from the cluster (see next section),
+factory reset, and go through the join process again from scratch.
+
+### A network partition happens and quorum is still reached
+
+This is just a generalization of the previous scenario. In a 5-nodes cluster
+where e.g. 3 nodes are in one physical location A and 2 nodes are in another
+location B, a network problem isolating A and B would mean the following:
+
+- The 3 nodes in location A are meeting the quorum (3 in this case), so they
+  continue to operate.
+- The 2 nodes in location B are **not** meeting the quorum (still 3), so they
+  will stop operating (even read-only).
+- If the network issue is resolved, the 2 nodes will cleanly join back the 3
+  others.
+
+### The quorum is durably lost
+
+A failure causing all subsets of the cluster to lose quorum will render the
+cluster and its data completely lost, unless the failure is resolved. In this
+case, nodes must be factory-reset and a backup must be restored.
+
+This can happen for example if a single node fails in a 2-node cluster (where
+the quorum is 2). In this situation, the failed node can not be
+cleanly removed from the cluster after the fact, because the remaining healthy
+node is already inoperable since it has lost quorum.
+
+Hence it is advised to always have an odd amount of nodes in a
+cluster, and to back up often. 
+
+For more information, see [etcd's FAQ](https://etcd.io/docs/v3.6/faq/#why-an-odd-number-of-cluster-members)
+
+## 2-Node Cluster
+
+We recommend introducing a 3rd node, either a 3rd NetHSM or an etcd "witness"
+which could be operated on any host. See next section "Witness". If you still
+want to operate a two-node cluster use a active/passive setup.
+
+## Witness
+
+The nature of clustering with `etcd` makes it more reliable the more nodes there
+are in the cluster. As explained in the "Operational Redundancy" section,
+clusters should ideally have at least 3 nodes to have room to fail, since a
+2-node cluster will entirely fail if only one fails.
+
+However the design of the feature is such that you don't need to add a full,
+real NetHSM device to your cluster to reach a stable number of nodes. Instead,
+you can deploy and add a "witness" node yourself. Such a node is just an
+instance of `etcd` running on the machine of your choice (or in a container),
+and connected to the cluster. It will be recognized as a normal node from the
+real devices in the cluster, and receive all data and updates from devices (but
+of course you won't be able to perform any HSM operations with it, it's only
+storing data).
+
+### Security considerations
+
+The witness node (or anyone with access to it) has direct access to the storage
+backend of all nodes in the cluster (e.g. you can dump all entries and
+corresponding values with `etcdctl get "/" "0"`).
+
+However, with the exception of the config version
+(`/config/version`, which should always be "1"), strictly all of the values are
+encrypted (with either a device key for node-specific values or the domain keys
+for others), ensuring the confidentiality of sensitive data.
+
+Note however that a malicious node can:
+- write garbage as the value for any entry in the store, which will cause nodes
+  to fail decrypting it (which may lead to crashes for some system entries).
+- list entry names such as users, namespaces and keys, which you may consider sensitive.
+
+## What is shared between nodes
+
+Having a cluster of NetHSMs means that most of the data is shared between them.
+Any addition, modification or deletion of keys, users, or namespaces on one node
+are eventually reflected on all the others. In general, any operation that
+modifies state, will modify state for every node. This include the backup **restore**
+operation which works as normal.
+
+Shared data:
+- keys
+- users
+- namespaces
+
+Configuration data that is shared (and so must be uniform across nodes):
+- config/domain store version
+- cluster CA
+- backup passphrase and backup salt
+
+Data which is not shared but instead node-specific is the domain store and some config data:
+- TLS certificates
+- clock configuration
+- network configuration
+- logging configuration
+- unattended boot configuration
+- unlock salt (so each node has its own unlock passphrase)
+
+In terms of encryption, each node retains its own device key (which remains
+private) but they all share the same **domain key** to access their shared data
+(keys, users, namespaces).
+
+Note that for now the config/domain store version can only be version 1 (if your
+software version supports clustering, then that is what you have). Refer to the
+"Upgrading software in a cluster" section for more details on the safety of
+installing software updates within a cluster.
 
 ## Creating a cluster
 
@@ -84,6 +214,12 @@ Adding a node to a cluster is done in two steps:
 
 #### Registering a new node
 
+**WARNING**: registering a node immediately introduces a new node in the
+cluster, modifying the quorum threshold, even if the node has not actually joined
+yet. This can render the existing nodes inoperable until the new node has
+actually joined. Refer to the [API documentation](https://nethsmdemo.nitrokey.com/api_docs/index.html)
+and the "Operational Redundancy" section of this document.
+
 Have at hand the IP of the node that will join. The full *URL* (also called
 *peer URL* in `etcd` terminology) of that node
 will be `https://<IP_of_node>:2380` (e.g. `https://192.168.1.1:2380`). The port
@@ -127,12 +263,6 @@ been configured before.
 
 Keep that response for the next step.
 
-**WARNING**: registering a node immediately introduces a new node in the
-cluster, modifying the quorum threshold, even if the node has not actually joined
-yet. This can render the existing nodes inoperable until the new node has
-actually joined. Refer to the API documentation and the "Operational
-Redundancy" section of this document.
-
 #### Actually join the cluster
 
 Take the response from last step and append to it a `backupPassphrase` field
@@ -152,7 +282,7 @@ operation is final and can only be reverted by a factory reset.
 
 If this join is successful, the node will end up in a `Locked` state, and has to
 be unlocked with the unlock passphrase of the node that was used for
-registration. Afterwards the passphrase can be changed (unlock passphrases
+registration. Afterwards the unlock passphrase can be changed (unlock passphrases
 remain node-specific, not shared across nodes).
 
 **NOTE**: Even after the join has succeeded, if the cluster's database is large
@@ -162,23 +292,9 @@ particular the new joiner) may be less responsive or unresponsive. The new
 joiner in particular may initially return errors when trying to unlock it for
 example. In that case, give it some time and try again.
 
-### Adding a witness node
+## Adding a witness node
 
-The nature of clustering with `etcd` makes it more reliable the more nodes there
-are in the cluster. As explained in the "Operational Redundancy" section,
-clusters should ideally have at least 3 nodes to have room to fail, since a
-2-node cluster will entirely fail if only one fails.
-
-However the design of the feature is such that you don't need to add a full,
-real NetHSM device to your cluster to reach a stable number of nodes. Instead,
-you can deploy and add a "witness" node yourself. Such a node is just an
-instance of `etcd` running on the machine of your choice (or in a container),
-and connected to the cluster. It will be recognized as a normal node from the
-real devices in the cluster, and receive all data and updates from devices (but
-of course you won't be able to perform any HSM operations with it, it's only
-storing data).
-
-### Prepare the witness
+### Prepare a witness
 
 You will need an environment with `etcd` v3.6 available, with an IPv4 (at least)
 reachable by the other members of your cluster. TCP traffic to and from port 2380
@@ -192,7 +308,7 @@ Transfer to the machine the CA certificate that is being used to authenticate
 nodes in the cluster. You should have created one in the "Creating and
 Installing a CA" section. We'll store it in `/var/etc/CA.pem`.
 
-### Register it to the cluster
+### Register witness to cluster
 
 Follow the normal instructions from the "Registering a node" section to signal
 the existing cluster the addition of a new member with the given URL(s).
@@ -233,74 +349,25 @@ cluster. If you need to decommission it, first properly remove it from the
 cluster (see the dedicated section). If its reachable IP change, update its URL
 from the cluster.
 
-### Security considerations
-
-The witness node (or anyone with access to it) has direct access to the storage
-backend of all nodes in the cluster (e.g. you can dump all entries and
-corresponding values with `etcdctl get "/" "0"`).
-
-However, with the exception of the config version
-(`/config/version`, which should always be "1"), strictly all of the values are
-encrypted (with either a device key for node-specific values or the domain keys
-for others), ensuring the confidentiality of sensitive data.
-
-Note however that a malicious node can:
-- write garbage as the value for any entry in the store, which will cause nodes
-  to fail decrypting it (which may lead to crashes for some system entries).
-- list entry names in the store, which will contain metadata you may consider
-  sensitive (e.g. the list of users, namespaces and keys will be accessible)
-
 ## Operating a cluster
-
-### What is shared between nodes
-
-Having a cluster of NetHSMs means that most of the data is shared between them.
-Any addition, modification or deletion of keys, users, or namespaces on one node
-are eventually reflected on all the others. In general, any operation that
-modifies state, will modify state for every node.
-
-This include the backup **restore** operation, which works as before. Note that
-restoring a large backup may overwhelm the cluster for a while, while the node
-applying the restore forwards changes to the others.
-
-The only exceptions to this (i.e. data which are not shared but instead
-node-specific) are the domain store (so each node has its own unlock passphrase)
-and some config data:
-- TLS certificates
-- clock configuration
-- network configuration
-- logging configuration
-- unattended boot configuration
-- unlock salt
-
-Configuration data that **are** shared (and so must be uniform across nodes) are:
-- the config/domain store version
-- the cluster CA
-- backup passphrase and backup salt
-
-In terms of encryption, each node retains its own device key (which remains
-private) but they all share the same **domain key** to access their shared data
-(keys, users, namespaces).
-
-Note that for now the config/domain store version can only be version 1 (if your
-software version supports clustering, then that is what you have). Refer to the
-"Upgrading software in a cluster" section for more details on the safety of
-installing software updates within a cluster.
 
 ### Backup and restore
 
-The backup operation, which works as before and can be requested from any node
-of the cluster, will back up data for the whole cluster, including
+The backup operation works the same as without a cluster and can be requested from
+any node of the cluster. It will back up data for the whole cluster, including
 node-specific fields.
 
 A backup done on a cluster can be restored on the same cluster, even if some
-nodes have been added or removed since. Such restores will, as before, not
+nodes have been added or removed since. Such restores will not
 affect configuration values (only keys, users, namespaces).
 
-Contrary to before, a backup done on a node (or cluster) and restored on
-another unprovisioned one will only restore configuration values if this is the
-same node. If not, the machine will be minimally provisioned (and the rest
-will get restored normally).
+Contrary to a setup without a cluster, a backup done on a node (or cluster) and
+restored on another unprovisioned node, it will be minimally provisioned (and the rest
+will get restored normally). Configuration values only gets restored on the
+same node.
+
+Restoring a large backup may overwhelm the cluster for some time, while the node
+applying the restore forwards changes to the others.
 
 This operation remains compatible with backups made on previous
 versions of the NetHSM.
@@ -313,58 +380,6 @@ restored on B.
 In other words, only perform a restore in a cluster with backups done in the
 same cluster. If you want to restore a foreign backup on a node, first safely
 remove it from its cluster, then factory reset it and restore the backup.
-
-### Operational redundancy
-
-**A cluster of `N` nodes will continue to operate as long as at least `(N/2)+1`
-nodes are healthy and reachable.** That minimal amount of healthy, reachable
-nodes is called the **quorum**.
-
-This implies the following scenarios.
-
-#### One node goes down and quorum is still reached
-
-In a 3-node cluster, if one node fails (crashes or becomes unreachable due to
-network conditions), the two other nodes will continue to work and serve
-requests.
-
-If the failed node is still healthy (e.g. it was just a network
-problem), it will be inoperable while isolated (not even read-only).
-
-However if the node recovers, it will cleanly resynchronize with the rest of the
-cluster and become operable again, without losing data.
-
-If it never recovers, it has to be removed from the cluster (see next section),
-factory reset, and go through the join process again from scratch.
-
-#### A network partition happens and quorum is still reached
-
-This is just a generalization of the previous scenario. In a 7-nodes cluster
-where e.g. 3 nodes are in one physical location A and 4 nodes are in another
-location B, a network problem isolating A and B would mean the following:
-
-- The 4 nodes in location A are meeting the quorum (4 in this case), so they
-  continue to operate.
-- The 3 nodes in location B are **not** meeting the quorum (still 4), so they
-  will stop operating (even read-only).
-- If the network issue is resolved, the 3 nodes will cleanly join back the 4
-  others.
-
-#### The quorum is durably lost
-
-A failure causing all subsets of the cluster to lose quorum will render the
-cluster and its data completely lost, unless the failure is resolved. In this
-case, nodes must be factory-reset and a backup must be restored.
-
-This can happen for example if a single node fails in a 2-node cluster (where
-the quorum is 2). In this situation, the failed node can not be
-cleanly removed from the cluster after the fact, because the remaining healthy
-node is already inoperable since it has lost quorum.
-
-Hence it is advised to always have an odd amount of nodes in a
-cluster, and to back up often. 
-
-For more information, see [etcd FAQ](https://etcd.io/docs/v3.6/faq/#why-an-odd-number-of-cluster-members)
 
 ### Removing a node cleanly
 
@@ -403,7 +418,7 @@ An existing cluster (with two or more nodes) **cannot** change its cluster CA
 while in operation. If you need to change this certificate: choose a node,
 remove all other nodes, update the CA, then have the other members re-join.
 
-### Changing the network configuration of nodes
+#### Changing the network configuration of nodes
 
 Modifying the network configuration of a node (e.g. changing its IP) will
 automatically tell the other nodes about the update. You should however ensure
