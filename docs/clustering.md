@@ -1,4 +1,4 @@
-# Operating a NetHSM cluster
+# Clustering
 
 [[_TOC_]]
 
@@ -63,9 +63,9 @@ For more information, see [etcd's FAQ](https://etcd.io/docs/v3.6/faq/#why-an-odd
 
 ## 2-Node Cluster
 
-We recommend introducing a 3rd node, either a 3rd NetHSM or an etcd "witness"
-which could be operated on any host. See next section "Witness". If you still
-want to operate a two-node cluster use a active/passive setup.
+A two-node active/passive cluster is not supported yet and will be added in a
+future version. We recommend introducing a 3rd node, either a 3rd NetHSM or an
+etcd "witness" which could be operated on any host. See next section "Witness".
 
 ## Witness
 
@@ -429,8 +429,10 @@ where losing that node would not lost quorum.
 
 Be aware of the following, temporary limitations:
 
-- if a cluster is lost (quorum is lost), the only means of recovery is
+- If a cluster is lost (quorum is lost), the only means of recovery is
     factory-reset + restore. Make sure to back up often. Future releases will
-    include means to recover from on-disk data ;
+    include means to recover from on-disk data.
+- Active/passive setup to support two-nodes cluster, either by utilizing etcd
+    Learner or Mirror.
 - system time between nodes must be manually synchronized for now. Future
     release may include automatic clock sync.
