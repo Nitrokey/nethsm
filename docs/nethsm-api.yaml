@@ -2966,7 +2966,7 @@ components:
         - name
         - urls
     PeerURL:
-      pattern: ^https://.+:2380$
+      pattern: ^https://.+
       minLength: 1
       maxLength: 1024
       type: string
