@@ -107,27 +107,50 @@ are eventually reflected on all the others. In general, any operation that
 modifies state, will modify state for every node. This include the backup **restore**
 operation which works as normal.
 
-Shared data:
-- keys
-- users
-- namespaces
+The following sections detail what data is fully local, what data is stored in
+the shared `etcd` store but remains node-specific, and what data is fully shared
+across nodes.
 
-Configuration data that is shared (and so must be uniform across nodes):
-- config/domain store version
-- cluster CA
-- backup passphrase and backup salt
+### Not stored in etcd
 
-Data which is not shared but instead node-specific is the domain store and some config data:
+The **device key** of each node remains only stored locally, and it never shared
+across nodes.
+
+### Stored in etcd but node-specific
+
+The following data is stored in `etcd` in different scopes for each node. It
+is hence *accessible* to every node but not *uniform* across nodes (each node
+can have a different value for this data).
+
+Configuration:
 - TLS certificates
 - clock configuration
 - network configuration
 - logging configuration
 - unattended boot configuration
 - unlock salt (so each node has its own unlock passphrase)
+- locked domain key
 
-In terms of encryption, each node retains its own device key (which remains
-private) but they all share the same **domain key** to access their shared data
-(keys, users, namespaces).
+Note than while each node has its own version of the locked domain key (because
+each node locks it with its own device key or unlock passphrase), the underlying
+domain key is **shared** across nodes (to access their shared HSM data, such as
+keys).
+
+
+### Stored in etcd and shared
+
+Finally, all the following data is stored in `etcd` in the global scope, so it
+is uniform across all nodes of a cluster:
+
+HSM data:
+- keys
+- users
+- namespaces
+
+Configuration:
+- config/domain store version
+- cluster CA (used to authentify nodes across cluster)
+- backup passphrase and backup salt
 
 Note that for now the config/domain store version can only be version 1 (if your
 software version supports clustering, then that is what you have). Refer to the
@@ -211,6 +234,12 @@ adjust their clocks with the `/config/time` endpoint.
 Adding a node to a cluster is done in two steps:
 - register the addition to the cluster (through any one of its members)
 - tell the new node to join
+
+#### Configure a backup passphrase
+
+First make sure a backup passphrase is configured on the node that will be used
+to register a new joiner (see the API documentation of the
+`/config/backup-passphrase` endpoint).
 
 #### Registering a new node
 
@@ -355,16 +384,19 @@ from the cluster.
 
 The backup operation works the same as without a cluster and can be requested from
 any node of the cluster. It will back up data for the whole cluster, including
-node-specific fields.
+node-specific fields (though these will be ignored unless restoring the backup
+on an unprovisioned node).
 
 A backup done on a cluster can be restored on the same cluster, even if some
-nodes have been added or removed since. Such restores will not
-affect configuration values (only keys, users, namespaces).
+nodes have been added or removed since. Such restores done on operational
+clusters will not affect configuration values (only keys, users, namespaces),
+like any other partial restore.
 
-Contrary to a setup without a cluster, a backup done on a node (or cluster) and
-restored on another unprovisioned node, it will be minimally provisioned (and the rest
-will get restored normally). Configuration values only gets restored on the
-same node.
+Restoring a backup on an unprovisioned node will restore node-specific fields
+(like network configuration, certificates, etc.) only if its device key is the
+same as when it was backed up (which won't be the case if it has been factory
+reset). Otherwise, it will be provisioned with a new minimal configuration (and
+the restore will continue normally).
 
 Restoring a large backup may overwhelm the cluster for some time, while the node
 applying the restore forwards changes to the others.
@@ -378,8 +410,9 @@ a cluster with node B, B will become inoperable as Z's domain key will not be
 restored on B.
 
 In other words, only perform a restore in a cluster with backups done in the
-same cluster. If you want to restore a foreign backup on a node, first safely
-remove it from its cluster, then factory reset it and restore the backup.
+same cluster (though again nodes may have been removed or added since). If you
+want to restore a foreign backup on a node, first safely remove it from its
+cluster, then factory reset it and restore the backup.
 
 ### Removing a node cleanly
 
