@@ -35,6 +35,24 @@ module Make (KV : Kv_ext.RW) = struct
   let remove t slot = KV.remove t.kv (key_path t.device_id slot)
   let connect kv device_id = { kv; device_id }
 
+  let move_id kv ~from_id ~to_id =
+    let ( let** ) = Lwt_result.bind in
+    let ( let* ) = Lwt.bind in
+    let move_slot ~mandatory s =
+      let from_key = key_path from_id s in
+      let* data_opt = KV.get kv from_key in
+      match data_opt with
+      | Error (`Not_found _) when not mandatory -> Lwt_result.return ()
+      | Error _ -> Lwt_result.fail (`Not_found from_key)
+      | Ok data ->
+          let** () = KV.set kv (key_path to_id s) data in
+          KV.remove kv from_key
+    in
+    if String.equal from_id to_id then Lwt_result.return ()
+    else
+      let** () = move_slot ~mandatory:true Attended in
+      move_slot ~mandatory:false Unattended
+
   let migrate_v0_v1 t =
     let just_move slot =
       KV.get t.kv (key_path "" slot) >>= function

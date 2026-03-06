@@ -217,7 +217,6 @@ module Make (KV : Kv_ext.Platform) = struct
   type t = {
     kv : KV.t;
     device_id : string;
-    (* store extended version instead? *)
     config_device_key : string;
     mutable config_domain_key : string option;
     migration_in_progress : bool;

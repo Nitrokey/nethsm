@@ -616,7 +616,7 @@ let system_backup_and_restore_ok =
       in
       let expect =
         multipart_log
-        ^ info "local configs have been restored from the backup!"
+        ^ info "no config re-encrypt needed"
         ^ debug "caching config to the platform"
       in
       let hsm_state' =
@@ -750,9 +750,7 @@ let system_backup_and_restore_changed_devkey =
           let expect =
             multipart_log ^ info "Device Key changed."
             ^ info "Rewriting stored Domain Key."
-            ^ info
-                "machine has no known local config in the backup, provisioning \
-                 minimally..."
+            ^ info "re-encrypting local configs from device 0000000000"
             ^ debug "caching config to the platform"
           in
           match
@@ -834,7 +832,7 @@ let system_backup_and_restore_unattended =
     in
     let expect =
       multipart_log
-      ^ info "local configs have been restored from the backup!"
+      ^ info "no config re-encrypt needed"
       ^ debug "caching config to the platform"
     in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
@@ -896,9 +894,8 @@ let system_backup_and_restore_unattended_changed_devkey =
     let expect =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
-      ^ info
-          "machine has no known local config in the backup, provisioning \
-           minimally..."
+      ^ info "re-encrypting local configs from device 0000000000"
+      ^ error "unattended boot failed with not authenticated"
       ^ debug "caching config to the platform"
     in
     let arguments =
@@ -961,7 +958,7 @@ let system_backup_and_restore_operational_without_backuppassphrase =
   in
   (* restore *)
   let* hsm_state =
-    let expect = multipart_log in
+    let expect = multipart_log ^ info "no config re-encrypt needed" in
     let content_type, body =
       create_multipart_request
         [ ("arguments", "{}"); ("backup_data", backup_data) ]
@@ -1041,6 +1038,7 @@ let system_backup_and_restore_operational =
       ^ info "Rewriting stored Domain Key."
       ^ info "removing: /key/newKeyID\n"
       ^ info "removing: /namespace/namespace3\n"
+      ^ info "no config re-encrypt needed"
       ^ debug "caching config to the platform"
     in
     let arguments =
@@ -1090,7 +1088,11 @@ let system_backup_and_restore_operational =
   in
   (* second restore *)
   let* hsm_state =
-    let expect = multipart_log ^ debug "caching config to the platform" in
+    let expect =
+      multipart_log
+      ^ info "no config re-encrypt needed"
+      ^ debug "caching config to the platform"
+    in
     let arguments =
       Yojson.Safe.to_string
         (Keyfender.Json.restore_req_to_yojson

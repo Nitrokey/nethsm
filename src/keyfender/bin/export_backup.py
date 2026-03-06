@@ -62,7 +62,7 @@ def export(passphrase, backup_image_filename, output):
     handled_versions = [0, 1]
     if version not in handled_versions:
         raise Exception(
-            f"Version mismatch on export, provided backup version is {version}, this tool expects 0")
+            f"Version mismatch on export, provided backup version is {version}, this tool expects 0 or 1")
 
     salt, backup_data = get_field(backup_data)
 
@@ -83,13 +83,16 @@ def export(passphrase, backup_image_filename, output):
     encrypted_domain_key, backup_data = get_field(backup_data)
     locked_domain_key = decrypt(key, adata, encrypted_domain_key)
 
-    unlock_salt = None
     kvs = []
     if version == 1:
-        adata = b"unlock-salt"
-        encrypted_unlock_salt, backup_data = get_field(backup_data)
-        unlock_salt = decrypt(key, adata, encrypted_unlock_salt)
-        kvs.append((".unlock-salt", base64.b64encode(unlock_salt).decode()))
+        adata = b"backup-device-id"
+        encrypted_backup_device_id, backup_data = get_field(backup_data)
+        backup_device_id = decrypt(key, adata, encrypted_backup_device_id)
+        kvs.append((".backup-device-id", base64.b64encode(backup_device_id).decode()))
+        adata = b"backup-config-store-key"
+        encrypted_backup_config_store_key, backup_data = get_field(backup_data)
+        backup_config_store_key = decrypt(key, adata, encrypted_backup_config_store_key)
+        kvs.append((".backup-config-store-key", base64.b64encode(backup_config_store_key).decode()))
 
     while backup_data:
         item, backup_data = get_field(backup_data)

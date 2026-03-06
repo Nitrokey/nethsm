@@ -3162,7 +3162,8 @@ module Make (KV : Kv_ext.Platform) = struct
        - length of salt (encoded in 3 bytes); salt
        - length of ...; AES-GCM encrypted version [adata = backup-version]
        - length of ...; passphrase encrypted domain key
-       - (IN VERSION 1 ONLY) length of ...; unlock salt used for the passphrase
+       - (IN VERSION 1 ONLY) length of ...; device ID of the HSM creating the backup
+       - (IN VERSION 1 ONLY) length of ...; config store key of the HSM creating the backup
        - indivial key, value entries of the store:
          - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
 
@@ -3243,31 +3244,31 @@ module Make (KV : Kv_ext.Platform) = struct
                         Config_store.pp_error e);
                   Lwt.return
                     (Error (Internal_server_error, "Corrupted database."))
-              | Ok locked_domkey -> (
+              | Ok locked_domkey ->
                   let encrypted_domkey =
                     let adata = "domain-key" in
                     Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
                       ~adata locked_domkey
                   in
                   push (Some (prefix_len encrypted_domkey));
-                  Config_store.get t.config_store Unlock_salt >>= function
-                  | Error e ->
-                      Log.err (fun m ->
-                          m "error %a while reading unlock salt"
-                            Config_store.pp_error e);
-                      Lwt.return
-                        (Error (Internal_server_error, "Corrupted database."))
-                  | Ok unlock_salt ->
-                      let encrypted_unlock_salt =
-                        let adata = "unlock-salt" in
-                        Crypto.encrypt Mirage_crypto_rng.generate
-                          ~key:backup_key' ~adata unlock_salt
-                      in
-                      push (Some (prefix_len encrypted_unlock_salt));
-                      backup_directory t.kv push backup_key' Mirage_kv.Key.empty
-                      >|= fun () ->
-                      push None;
-                      Ok ())))
+                  let device_id = t.system_info.deviceId in
+                  let encrypted_device_id =
+                    let adata = "backup-device-id" in
+                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                      ~adata device_id
+                  in
+                  push (Some (prefix_len encrypted_device_id));
+                  let config_store_key = t.config_store.config_device_key in
+                  let encrypted_store_key =
+                    let adata = "backup-config-store-key" in
+                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                      ~adata config_store_key
+                  in
+                  push (Some (prefix_len encrypted_store_key));
+                  backup_directory t.kv push backup_key' Mirage_kv.Key.empty
+                  >|= fun () ->
+                  push None;
+                  Ok ()))
 
     let decode_value = get_field
 
@@ -3326,27 +3327,52 @@ module Make (KV : Kv_ext.Platform) = struct
 
     module KeySet = Set.Make (Mirage_kv.Key)
 
-    let device_id_of_key key =
-      match Mirage_kv.Key.segments key with
-      | "local" :: id :: _ -> Some id
-      | _ -> None
+    (* this restores a key from an old backup where domain and config stores
+       were still global. Migrations will be applied later to conform to the new
+       store version *)
+    let restore_key_v0 ~device_id ~is_operational ~backup_keys ~key ~kv stream =
+      let ( let** ) = Lwt_result.bind in
+      (* decrypt KV data *)
+      let** k, v = read_and_decrypt stream key in
+      let key = Mirage_kv.Key.v k in
+      if is_operational then backup_keys := KeySet.add key !backup_keys;
+      let should_restore_key =
+        (not is_operational)
+        || Option.is_some (Encrypted_store.slot_of_key key)
+        || Mirage_kv.Key.equal key
+             Config_store.(
+               key_path ~migration_in_progress:true device_id Unlock_salt)
+      in
+      if should_restore_key then
+        let** () =
+          internal_server_error Write "restoring backup (writing to KV)"
+            KV.pp_write_error (KV.set kv key v)
+        in
+        Lwt_result.return ()
+      else Lwt_result.return ()
 
-    let restore_key ~device_id ~is_operational ~backup_keys ~key ~kv stream =
+    (* this restores a key from a modern backup, with the knowledge of which
+       device ID was used to create the backup *)
+    let restore_key_v1 ~backup_device_id ~is_operational ~backup_keys ~key ~kv
+        stream =
       let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
       (* ignore local key that's for another device id *)
-      let is_local_for_other =
-        match device_id_of_key key with
-        | None -> false
-        | Some id -> not (String.equal device_id id)
+      let is_global, is_from_backup_device =
+        match Mirage_kv.Key.segments key with
+        | "local" :: id :: _ when String.equal backup_device_id id ->
+            (false, true)
+        | "local" :: _ :: _ -> (false, false)
+        | _ -> (true, false)
       in
       let should_restore_key =
-        ((not is_operational) && not is_local_for_other)
+        ((not is_operational) && (is_global || is_from_backup_device))
         || Option.is_some (Encrypted_store.slot_of_key key)
-        || Mirage_kv.Key.equal key Config_store.(key_path device_id Unlock_salt)
+        || Mirage_kv.Key.equal key
+             Config_store.(key_path backup_device_id Unlock_salt)
       in
       if should_restore_key then
         let** () =
@@ -3437,7 +3463,6 @@ module Make (KV : Kv_ext.Platform) = struct
     let restore t json stream =
       let sb = sb_of_stream stream in
       let open Lwt.Infix in
-      let ( let* ) = Lwt.bind in
       let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Hsm_clock.now_raw () in
       let initial_state = t.state in
@@ -3510,15 +3535,20 @@ module Make (KV : Kv_ext.Platform) = struct
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
       in
-      (* if this is a V1 backup, extract the unlock-salt it contains *)
-      let** unlock_salt =
+      (* if this is a V1 backup, extract the backup device ID and store key it contains *)
+      let** v1_data =
         if version = backup_version_v1 then
-          let** encrypted_unlock_salt = decode_value sb in
-          let adata = "unlock-salt" in
-          let** unlock_salt =
-            decrypt_backup ~key ~adata encrypted_unlock_salt
+          let** encrypted_backup_device_id = decode_value sb in
+          let adata = "backup-device-id" in
+          let** backup_device_id =
+            decrypt_backup ~key ~adata encrypted_backup_device_id
           in
-          Lwt_result.return (Some unlock_salt)
+          let** encrypted_backup_config_key = decode_value sb in
+          let adata = "backup-config-store-key" in
+          let** backup_config_key =
+            decrypt_backup ~key ~adata encrypted_backup_config_key
+          in
+          Lwt_result.return (Some (backup_device_id, backup_config_key))
         else Lwt_result.return None
       in
       (* when the mode is operational, we have to clear
@@ -3532,11 +3562,28 @@ module Make (KV : Kv_ext.Platform) = struct
       with_write_lock (fun () ->
           let** () =
             KV.batch t.kv (fun b ->
+                let restore_f =
+                  match v1_data with
+                  | None ->
+                      restore_key_v0 ~device_id ~is_operational ~backup_keys
+                        ~key ~kv:b
+                  | Some (backup_device_id, _) ->
+                      restore_key_v1 ~backup_device_id ~is_operational
+                        ~backup_keys ~key ~kv:b
+                in
                 (* while the stream has content *)
-                stream_while sb
-                  (restore_key ~device_id ~is_operational ~backup_keys ~key
-                     ~kv:b))
+                stream_while sb restore_f)
           in
+
+          let** _move_domain_key =
+            match v1_data with
+            | Some (backup_device_id, _) when not is_operational ->
+                internal_server_error Write "Move domain key" KV.pp_write_error
+                  (Domain_key_store.move_id t.kv ~from_id:backup_device_id
+                     ~to_id:device_id)
+            | _ -> Lwt_result.return ()
+          in
+
           let** dk_rewritten =
             (* the domain key and/or device key might have changed if
                restored to a fresh or different device, so refresh the store
@@ -3576,6 +3623,7 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt_result.return true)
             else Lwt_result.return false
           in
+
           let** _remove_extra_keys =
             KV.batch t.kv (fun b ->
                 if is_operational then
@@ -3586,6 +3634,66 @@ module Make (KV : Kv_ext.Platform) = struct
                   remove_extra_keys ~kv:b !backup_keys
                 else Lwt_result.return ())
           in
+
+          (* after a full restore, (part of) the config store will be encrypted with
+             the config store of the backup device, we want to re-encrypt it
+             with our own *)
+          let** _reencrypt_configs =
+            match v1_data with
+            | None -> Lwt_result.return ()
+            | Some (backup_device_id, backup_config_key) ->
+                if
+                  String.equal backup_device_id device_id
+                  && String.equal backup_config_key
+                       t.config_store.config_device_key
+                then (
+                  Logs.info (fun f -> f "no config re-encrypt needed");
+                  Lwt_result.return ())
+                else (
+                  Logs.info (fun f ->
+                      f "re-encrypting local configs from device %s"
+                        backup_device_id);
+                  (* this store will read/write with the backed-up key *)
+                  let backup_config_store =
+                    {
+                      t.config_store with
+                      device_id = backup_device_id;
+                      config_device_key = backup_config_key;
+                    }
+                  in
+                  let** config_values =
+                    Config_store.backup_local_config backup_config_store
+                  in
+                  let config_values =
+                    if is_operational then (
+                      Logs.info (fun f ->
+                          f
+                            "partial restore: only keeping unlock salt from \
+                             backed-up config");
+                      {
+                        Config_store.unlock_salt = config_values.unlock_salt;
+                        certificate = None;
+                        private_key = None;
+                        ip_config = None;
+                        log_config = None;
+                        time_offset = None;
+                        unattended_boot = None;
+                      })
+                    else config_values
+                  in
+                  let** () =
+                    if not (String.equal backup_device_id device_id) then
+                      internal_server_error Write "Re-encrypt local configs"
+                        Config_store.pp_write_error
+                        (Config_store.clear_local_config backup_config_store)
+                    else Lwt_result.return ()
+                  in
+                  internal_server_error Write "Re-encrypt local configs"
+                    Config_store.pp_write_error
+                    (Config_store.restore_local_config t.config_store
+                       config_values))
+          in
+
           let** _apply_config_domain_migrations =
             let** stored_version =
               internal_server_error Read "Get version" Config_store.pp_error
@@ -3602,30 +3710,8 @@ module Make (KV : Kv_ext.Platform) = struct
                       Fmt.str "could not apply migrations to old backup: %s" msg
                     ))
           in
-          let** _ensure_unlock_salt_readable =
-            (* for partial restore, check that if we copied over the unlock
-               salt, we can still read it. If not (i.e. device key has
-               changed), use the backed up one *)
-            if is_operational then
-              Lwt.bind
-                (Config_store.get t.config_store Config_store.Unlock_salt)
-                (function
-                | Ok _ -> Lwt_result.return ()
-                | Error _ when Option.is_none unlock_salt ->
-                    Lwt_result.return ()
-                | Error _ ->
-                    Log.info (fun f ->
-                        f
-                          "device key has changed, using unlock salt from \
-                           backup hader");
-                    let unlock_salt = Option.get unlock_salt in
-                    internal_server_error Write "Write unlock-salt"
-                      Config_store.pp_write_error
-                      (Config_store.set t.config_store Unlock_salt unlock_salt))
-            else Lwt_result.return ()
-          in
 
-          let** () =
+          let** _boot_config_store =
             if (not is_operational) || dk_rewritten then (
               (* If the restore was
                   - unprovisioned, or
@@ -3634,72 +3720,6 @@ module Make (KV : Kv_ext.Platform) = struct
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
               let** new_state =
-                let open Lwt_result.Infix in
-                (if not is_operational then (
-                   (* if there is no unlock salt stored for us after a restore
-                      on an unprovisioned machine, then this machine was
-                      not in the backup *)
-                   let** is_known_device =
-                     let* res =
-                       Config_store.get_opt t.config_store
-                         Config_store.Unlock_salt
-                     in
-                     match res with
-                     | Ok None -> Lwt_result.return false
-                     | Ok (Some _) -> Lwt_result.return true
-                     | Error _ ->
-                         (* the ID is known but the associated device key as
-                            changed. Clear all local configs and proceed as if
-                            the machine was not known *)
-                         let** () =
-                           internal_server_error Write "Delete local configs"
-                             Config_store.pp_write_error
-                             (Config_store.clear_local_config t.config_store)
-                         in
-                         Lwt_result.return false
-                   in
-
-                   (* if we are restoring on a fresh, unprovisioned machine (i.e. a
-                   machine for which we do not have any local config backed up,
-                   then we store the freshly generated private key and certificate *)
-                   match (is_known_device, unlock_salt) with
-                   | true, _ ->
-                       Log.info (fun f ->
-                           f "local configs have been restored from the backup!");
-                       Lwt_result.return ()
-                   | false, None ->
-                       (* the unlock salt has already been restored from the
-                         plaintext v0 backup *)
-                       Log.info (fun f ->
-                           f
-                             "machine has no known local config in the backup, \
-                              using the global configs from v0 backup...");
-                       Lwt_result.return ()
-                   | false, Some unlock_salt ->
-                       Log.info (fun f ->
-                           f
-                             "machine has no known local config in the backup, \
-                              provisioning minimally...");
-                       (* note that we leave the following fields empty:
-                       - unattended_boot (default to attended)
-                       - log and ip configs (use default values)
-                       - time offset (same as fresh boot)
-                       *)
-                       Config_store.batch t.config_store (fun b ->
-                           internal_server_error Write "Writing private RSA key"
-                             Config_store.pp_write_error
-                             (Config_store.set b Private_key t.key)
-                           >>= fun () ->
-                           internal_server_error Write
-                             "Writing certificate chain key"
-                             Config_store.pp_write_error
-                             (Config_store.set b Certificate (t.cert, t.chain))
-                           >>= fun () ->
-                           internal_server_error Write "Write unlock-salt"
-                             Config_store.pp_write_error
-                             (Config_store.set b Unlock_salt unlock_salt)))
-                 else Lwt_result.return ())
-                >>= fun () ->
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
               in
@@ -3707,6 +3727,7 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt_result.return ())
             else Lwt_result.return ()
           in
+
           (match t.state with
           | Operational v ->
               User_store.clear_cache v.auth_store;

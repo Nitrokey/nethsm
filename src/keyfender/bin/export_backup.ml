@@ -141,12 +141,19 @@ let export passphrase backup_image_filename output =
   let encrypted_domain_key, backup_data = get_field backup_data in
   let adata = "domain-key" in
   let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
-  let* unlock_salt, backup_data =
+  let* v1_fields, backup_data =
     if version = backup_version_v1 then
-      let encrypted_unlock_salt, backup_data = get_field backup_data in
-      let adata = "unlock-salt" in
-      let* unlock_salt = decrypt ~key ~adata encrypted_unlock_salt in
-      Ok (Some unlock_salt, backup_data)
+      let encrypted_backup_device_id, backup_data = get_field backup_data in
+      let adata = "backup-device-id" in
+      let* backup_device_id = decrypt ~key ~adata encrypted_backup_device_id in
+      let encrypted_backup_config_store_key, backup_data =
+        get_field backup_data
+      in
+      let adata = "backup-config-store-key" in
+      let* backup_config_store_key =
+        decrypt ~key ~adata encrypted_backup_config_store_key
+      in
+      Ok (Some (backup_device_id, backup_config_store_key), backup_data)
     else Ok (None, backup_data)
   in
   let rec next acc rest =
@@ -160,9 +167,12 @@ let export passphrase backup_image_filename output =
   in
   let init = [ (".locked-domain-key", locked_domain_key) ] in
   let init =
-    match unlock_salt with
+    match v1_fields with
     | None -> init
-    | Some unlock_salt -> (".unlock-salt", unlock_salt) :: init
+    | Some (backup_device_id, backup_config_store_key) ->
+        (".backup-device-id", backup_device_id)
+        :: (".backup-config-store-key", backup_config_store_key)
+        :: init
   in
   match next init backup_data with
   | Error e -> Error e
