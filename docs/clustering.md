@@ -392,11 +392,9 @@ nodes have been added or removed since. Such restores done on operational
 clusters will not affect configuration values (only keys, users, namespaces),
 like any other partial restore.
 
-Restoring a backup on an unprovisioned node will restore node-specific fields
-(like network configuration, certificates, etc.) only if its device key is the
-same as when it was backed up (which won't be the case if it has been factory
-reset). Otherwise, it will be provisioned with a new minimal configuration (and
-the restore will continue normally).
+Restoring a backup on an unprovisioned node will restore the node-specific fields
+(like network configuration, certificates, etc.) of the node that was used to
+create the backup.
 
 Restoring a large backup may overwhelm the cluster for some time, while the node
 applying the restore forwards changes to the others.
