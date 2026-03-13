@@ -375,7 +375,8 @@ run: build $(RUN_DIR)/etcd.pid
 	solo5-hvt \
 	    --net:external=$(NET_EXTERNAL) \
 	    --net:internal=$(NET_INTERNAL) \
-	    $(S_KEYFENDER)
+	    $(S_KEYFENDER) \
+		--start
 
 .PHONY: clean
 clean: clean-keyfender
