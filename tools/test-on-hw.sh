@@ -23,4 +23,4 @@ flock /tmp/perftest.lock go run ./perftest.go -host ${NETHSM_IP}:443 -j 50 \
     p256k1-bip340 brainpoolp256 brainpoolp384 brainpoolp512 aes-cbc rnd-1024 \
     p256-gen rsa2048-gen rsa3072-gen rsa4096-gen
 
-NETHSM_URL="https://${NETHSM_IP}/api" ./hw_cluster_test.sh
+NETHSM_URL="https://${NETHSM_IP}/api" ./hw_tests.sh

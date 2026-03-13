@@ -21,6 +21,8 @@ if capsh --has-p=cap_net_admin 2>/dev/null ; then
   KEYFENDER_IP="192.168.1.1"
   PLATFORM_IP="169.254.169.2"
   KEYFENDER_INT_IP="169.254.169.1"
+  KEYFENDER_INT_NET_IP="169.254.100.3"
+  SNET_IP="169.254.100.1"
   if [ -e /sys/class/net/eth1 ] ; then
     echo "Using eth1 as internal network."
     INT_IF="eth1"
@@ -54,17 +56,20 @@ if [ $USE_TAP ] ; then
     ip link set dev br_int up
   else
     echo "Configuring tap_int for platform."
-    ip addr add 169.254.169.2/16 dev tap_int
-    ip -6 addr add fc00:1:1::2/48 dev tap_int
+    ip addr add 169.254.169.2/24 dev tap_int
+    ip addr add 169.254.100.1/24 dev tap_ext
+    #ip -6 addr add fc00:1:1::2/48 dev tap_int
   fi
   ip link set dev tap_int up
-  ip route add default via 169.254.169.1 dev tap_int
-  ip -6 route add default via fc00:1:1::1 dev tap_int
+  ip route replace default via 169.254.100.1 dev tap_int
+  #ip -6 route add default via fc00:1:1::1 dev tap_int
 fi
 
 if [ ! $INT_IF ]; then
   if [ $USE_TAP ] ; then
-    echo "Starting uinit on $PLATFORM_IP."
+    echo "Starting uint S-Net on $SNET_IP."
+    /uinit net_external 2>&1 &
+    echo "Starting uinit S-Platform on $PLATFORM_IP."
     /uinit platform 2>&1 &
   else
     echo "Starting etcd on $PLATFORM_IP."
@@ -100,7 +105,7 @@ if [ $USE_TAP ] ; then
   echo "Starting keyfender.tap"
   /keyfender.tap $KEYFENDER_DEBUG_LOG --default-net=$IP --platform=169.254.169.2 \
     --external-interface=tap_ext --internal-interface=tap_int \
-    --internal-ipv4=169.254.169.1/16 --start &
+    --internal-ipv4=169.254.169.1/24 --start &
   KEYFENDER_PID=$!
 else
   echo "Starting keyfender.unix"

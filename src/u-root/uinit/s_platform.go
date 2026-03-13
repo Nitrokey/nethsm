@@ -32,14 +32,14 @@ import (
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
 func platformListener(result chan string) {
-	listener, err := net.Listen(G.listenerProtocol, G.listenerAddress)
+	listener, err := net.Listen(G.listenerProtocol, G.platListenerAddress)
 	if err != nil {
 		log.Fatalf("Unable to launch listener on %s:%s: %v", G.listenerProtocol,
-			G.listenerAddress, err)
+			G.platListenerAddress, err)
 	}
 	defer listener.Close()
 	log.Printf("platformListener: Listening on %s:%s.", G.listenerProtocol,
-		G.listenerAddress)
+		G.platListenerAddress)
 
 	// haveUpdate is set to true if an UPDATE command was successfully
 	// processed in a previous connection and COMMIT-UPDATE should be enabled.
@@ -441,10 +441,10 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			cmd += " --peer-client-cert-auth=true"
 			cmd += " --name=" + conf.DeviceID
 			// cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
-			cmd += " --listen-peer-urls=https://169.254.169.2:2380"
+			cmd += " --listen-peer-urls=https://169.254.200.2:2380"
 		} else {
 			// cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
-			cmd += " --listen-peer-urls=http://169.254.169.2:2380"
+			cmd += " --listen-peer-urls=http://169.254.200.2:2380"
 		}
 
 		if conf.TimeOffsetS != 0 {
@@ -551,14 +551,15 @@ func setupPlatform() error {
 
 	loadUnikernelNets()
 
-	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0")
-	G.s.Execf("/bbin/ip -6 addr add fc00:1:1::2/48 dev net0")
+	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0") // comm with keyfender
+	G.s.Execf("/bbin/ip -6 addr add fc00:1:169::2/120 dev net0")
+	G.s.Execf("/bbin/ip addr add 169.254.200.2/24 dev net1") // comm with router
+	G.s.Execf("/bbin/ip -6 addr add fc00:1:200::2/120 dev net1")
 	G.s.Execf("/bbin/ip link set dev net0 up")
-	// route etcd peer connections through keyfender
-	G.s.Execf("/bbin/ip route add default via %s dev net0", G.keyfenderIP)
-	//G.s.Execf("/bbin/ip -6 route add default via fc00:1:1::1 dev net0")
-	// TODO remove
-	G.s.Execf("/bbin/ip -6 route show match fc00:22:1::100/48")
+	G.s.Execf("/bbin/ip link set dev net1 up")
+	// route etcd peer connections through router
+	G.s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
+	G.s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
 
 	dumpNetworkStatus()
 

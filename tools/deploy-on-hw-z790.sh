@@ -22,6 +22,7 @@ insert ()
 {
     local file=$1
     curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/remove?image=ci-installer.iso"
+    sleep 2
     curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} --data-binary @${file} "https://${BMC_IP}/api/msd/write?image=ci-installer.iso"
     curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/set_params?image=ci-installer.iso"
     curl -s -X POST -k -u ${BMC_USER}:${BMC_PASS} "https://${BMC_IP}/api/msd/set_connected?connected=1"

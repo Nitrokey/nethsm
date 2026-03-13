@@ -1104,12 +1104,6 @@ module Make (KV : Kv_ext.Platform) = struct
       | [ net; gw ] -> (net, Some (Ipaddr.V4.of_string_exn gw))
       | _ -> failwith "Invalid default net config format"
     in
-    let net =
-      match String.split_on_char '/' net with
-      | [ ip ] -> ip ^ "/24"
-      | [ _; _ ] -> net
-      | _ -> failwith "Invalid CIDR format"
-    in
     let cidr = Ipaddr.V4.Prefix.of_string_exn net in
     { Json.ipv4 = { cidr; gateway }; ipv6 = None }
 
@@ -3767,7 +3761,7 @@ module Make (KV : Kv_ext.Platform) = struct
     }
 
   let boot ?(cache_settings = default_cache_settings)
-      ?(default_net = "192.168.1.1") ~platform software_update_key kv =
+      ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with

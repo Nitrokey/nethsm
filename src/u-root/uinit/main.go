@@ -41,7 +41,8 @@ type globalState struct {
 	sysInactivePartition string
 	dataPartition        string
 	listenerProtocol     string
-	listenerAddress      string
+	platListenerAddress  string
+	netListenerAddress	 string
 	keyfenderIP          string
 	entropyPort          string
 	deviceID             string
@@ -61,7 +62,8 @@ var G = &globalState{
 	sysInactivePartition: hw.DiskPrefix + "2",
 	dataPartition:        hw.DiskPrefix + "3",
 	listenerProtocol:     "tcp4",
-	listenerAddress:      "169.254.169.2:1023",
+	platListenerAddress:  "169.254.169.2:1023",
+	netListenerAddress:   "169.254.100.1:1023",
 	keyfenderIP:          "169.254.169.1",
 	entropyPort:          "4444",
 	deviceID:             "",

@@ -44,9 +44,8 @@ let device_key =
 
 let default_net =
   let doc =
-    Arg.info ~docs ~docv:"NET-CONFIG"
-      ~doc:
-        "Set the default network configuration. (Format: <ip>[/<mask>[,<gw>]])"
+    Arg.info ~docs ~docv:"DEFAULT-NET"
+      ~doc:"Set the default network configuration. (Format: <ip>/<mask>[,<gw>])"
       [ "default-net" ]
   in
   Mirage_runtime.register_arg Arg.(value & opt (some string) None doc)

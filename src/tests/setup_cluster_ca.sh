@@ -2,10 +2,15 @@
 
 source "$(dirname $0)/common_functions.sh"
 
-STATE=$(GET /v1/health/state)
-echo "- state: $STATE" # should be Operational
+echo
+echo "=== Setup cluster CA ==="
+echo
 
-echo "- get cert csr"
+STATE=$(GET /v1/health/state)
+if [[ "$STATE" != *Operational* ]] ; then
+  echo "State $STATE != Operational"
+  exit 1
+fi
 
 csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
 { "countryName": "DE",
@@ -20,23 +25,23 @@ csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
 EOM
 )
   
-
-echo "- creating CA and signing csr"
+echo "- create CA and sign CSR with it"
 make -f cert.make clean
 echo "$csr" > nethsm.csr
 make -f cert.make new_cert.pem
 
-echo -n "- installing new cert... "
-curl -fsS -w "%{http_code}" -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./new_cert.pem -k "${NETHSM_URL}/v1/config/tls/cert.pem"
-echo
+echo "- install new cert"
+${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/config/tls/cert.pem" \
+    || exit 1
 
 sleep 3
 
-echo -n "- installing cluster CA... "
-curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem"
+echo "- install cluster CA"
+${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+    -X PUT --data-binary @./CA.pem "${NETHSM_URL}/v1/config/tls/cluster-ca.pem" \
+    || exit 1
 echo
 
-echo -n "- HSM still healthy after etcd restart: "
+# check if etcd still healthy after restart
 GET_admin /v1/cluster/members

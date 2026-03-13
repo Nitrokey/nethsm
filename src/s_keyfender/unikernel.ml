@@ -43,19 +43,12 @@ module Main
     (Update_key : Mirage_kv.RO)
     (Static_assets : Mirage_kv.RO)
     (Internal_stack : Tcpip.Stack.V4V6)
-    (Ext_reconfigurable_stack : Reconfigurable_stack.S)
+    (Ext_stack : Tcpip.Stack.V4V6)
     (Conf_args : Args.Conf.S) =
 struct
-  module Ext_stack = Ext_reconfigurable_stack.Stack
   module Conduit = Conduit_mirage.TCP (Stack_nodelay (Ext_stack))
   module Conduit_tls = Conduit_mirage.TLS (Conduit)
   module Srv = Cohttp_mirage.Server.Make (Conduit_tls)
-
-  module Etcd_relay_inbound =
-    Etcd_store.Peer_relay (Ext_stack.TCP) (Internal_stack.TCP)
-
-  module Etcd_relay_outbound =
-    Etcd_store.Peer_relay (Internal_stack.TCP) (Ext_stack.TCP)
 
   (* module Int_conduit = Conduit_mirage.TCP(Internal_stack) *)
   (* module Resolver = Resolver_mirage.Make(Rng)(Time)(Mclock)(Pclock)(Internal_stack) *)
@@ -152,6 +145,67 @@ struct
                     | Ok () -> read Cstruct.empty
                     | Error e -> Lwt.return (Error (`Additional e)))) );
         ])
+
+  let s_net_ip = Ipaddr.(V4 (V4.of_string_exn "169.254.100.1"))
+
+  type s_net_data = Network of Keyfender.Json.network
+
+  let json_of_s_net_data (data : s_net_data list) : Yojson.Safe.t =
+    let f = function
+      | Network network ->
+          let nc = Keyfender.Json.network_to_yojson network in
+          ("network", nc)
+    in
+    `Assoc (List.map f data)
+
+  let write_network_subj stack (data : s_net_data list) =
+    let module T = Ext_stack.TCP in
+    let ( let* ) = Lwt.bind in
+    let ( let** ) = Lwt_result.bind in
+    let** () =
+      if Conf_args.no_platform then Lwt_result.fail (`Create "no S-Net")
+      else Lwt_result.return ()
+    in
+    let data = json_of_s_net_data data |> Yojson.Safe.to_string in
+    Log.debug (fun m -> m "sending %s to S-Net" data);
+    let send =
+      let conn =
+        T.create_connection (Ext_stack.tcp stack)
+          (s_net_ip, Args.platform_port ())
+      in
+      let** flow =
+        Lwt_result.map_error
+          (fun e -> `Create (Fmt.to_to_string T.pp_error e))
+          conn
+      in
+      let* res = T.write flow (Cstruct.of_string (data ^ "\n")) in
+      let** () =
+        match res with
+        | Error we ->
+            let* () = T.close flow in
+            Lwt.return_error (`Write (Fmt.to_to_string T.pp_write_error we))
+        | Ok x -> Lwt.return_ok ()
+      in
+      let rec read data =
+        T.read flow >>= function
+        | Ok `Eof -> T.close flow >|= fun () -> Ok data
+        | Ok (`Data d) ->
+            let data = String.cat data (Cstruct.to_string d) in
+            (read [@tailcall]) data
+        | Error e ->
+            T.close flow >|= fun () ->
+            Error (`Read (Fmt.to_to_string T.pp_error e))
+      in
+      read String.empty
+    in
+    Lwt.pick
+      [
+        ( Mirage_sleep.ns (Duration.of_sec 10) >|= fun () ->
+          Log.err (fun m ->
+              m "couldn't connect to S-Net (while sending %s)" data);
+          Error `Timeout );
+        send;
+      ]
 
   let startTrngListener stack port =
     if Conf_args.no_platform then Lwt.return_unit
@@ -382,30 +436,21 @@ struct
     let reconfigure_network ?hsm_state ?store (network : Keyfender.Json.network)
         =
       (* if this is a runtime reconfiguration, align peer URLs *)
-      (match store with
+      let* () =
+        match store with
         | None -> Lwt.return_unit
-        | Some store -> align_peer_urls store network)
-      >>= fun () ->
-      let* () = Ext_reconfigurable_stack.setup ext_stack network in
-      let stack = Ext_reconfigurable_stack.stack ext_stack in
-      let http = Srv.listen stack in
-      (let module S = Ext_reconfigurable_stack.Stack in
-      (* relay incoming etcd peer traffic to internal stack *)
-      (* but only if there are actually two different stacks *)
-      if not Conf_args.single_interface then
-        Lwt.async (fun () ->
-            Etcd_relay_inbound.listen (S.tcp stack)
-              (Internal_stack.tcp internal_stack)
-              (Some (Ipaddr.V4 (Args.platform ()))));
-      (* relay internal etcd peer traffic to its original destination *)
-      (* but only if etcd cannot route the outside by itself *)
-      if not Conf_args.no_platform then
-        Lwt.async (fun () ->
-            Etcd_relay_outbound.listen
-              (Internal_stack.tcp internal_stack)
-              (S.tcp stack) None);
-      Lwt.return_unit)
-      >>= fun () ->
+        | Some store -> align_peer_urls store network
+      in
+      let data = [ Network network ] in
+      let* response = write_network_subj ext_stack data in
+      let () =
+        match response with
+        | Error e ->
+            Log.err (fun m ->
+                m "reconfigure_network: %s" (Fmt.to_to_string pp_platform_err e))
+        | Ok s -> Log.info (fun m -> m "reconfigure_network: response: %s" s)
+      in
+      let http = Srv.listen ext_stack in
       Lwt.async (fun () -> setup_http_listener http);
       let certificates =
         match hsm_state with
@@ -418,20 +463,10 @@ struct
         | None -> Lwt.return_unit
         | Some hsm_state ->
             let* log = Hsm.Config.log hsm_state in
-            setup_log stack log;
+            setup_log ext_stack log;
             Lwt.return_unit
       in
       Lwt.return http
-    in
-    let default_net = Args.default_net () in
-    let* () =
-      if not Conf_args.no_platform then (
-        (* wait for S-Net to startup *)
-        let delay = 4 in
-        Log.info (fun m ->
-            m "Waiting %n seconds to make sure S-Net is up" delay);
-        Mirage_sleep.ns (Duration.of_sec delay))
-      else Lwt.return_unit
     in
     let* () =
       match platform.networkConfig with
@@ -472,16 +507,16 @@ struct
           Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
           Lwt.fail_with "store not readable"
     in
+    let default_net = Args.default_net () in
     let* hsm_state, mvar, res_mvar =
       Hsm.boot ~cache_settings ?default_net ~platform update_key store
     in
     let rec handle_cb http =
       Lwt_mvar.take mvar >>= function
       | Hsm.Log log ->
-          setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
+          setup_log ext_stack log;
           (handle_cb [@tailcall]) http
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
-          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           write_to_platform cmd
       | Hsm.Join_cluster initial_cluster as cmd ->
           let write () =
@@ -526,7 +561,6 @@ struct
               setup_https_listener ~hsm_state http certificates);
           (handle_cb [@tailcall]) http
       | Hsm.Network network ->
-          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           let* http = reconfigure_network ~store ~hsm_state network in
           (handle_cb [@tailcall]) http
       | Hsm.Update (blocks, stream) as cmd ->
@@ -564,22 +598,19 @@ struct
     (match conf_args.memtrace_port with
     | None -> ()
     | Some port ->
-        Ext_reconfigurable_stack.Stack.TCP.listen
-          Ext_reconfigurable_stack.(Stack.tcp (stack ext_stack))
-          ~port
-          (fun f ->
+        Ext_stack.TCP.listen (Ext_stack.tcp ext_stack) ~port (fun f ->
             (* only allow a single tracing client *)
             match Memtrace.Memprof_tracer.active_tracer () with
             | Some _ ->
                 Logs.warn (fun m -> m "tracing already active");
-                Ext_reconfigurable_stack.Stack.TCP.close f
+                Ext_stack.TCP.close f
             | None ->
                 Logs.info (fun m -> m "starting tracing");
                 let tracer =
                   Memtrace.start_tracing ~context:None ~sampling_rate:1e-4 f
                 in
                 Lwt.async (fun () ->
-                    Ext_reconfigurable_stack.Stack.TCP.read f >|= fun _ ->
+                    Ext_stack.TCP.read f >|= fun _ ->
                     Logs.warn (fun m -> m "tracing read returned, closing");
                     Memtrace.stop_tracing tracer);
                 Lwt.return_unit));

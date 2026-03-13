@@ -74,7 +74,7 @@ EOF
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
-  opam exec -- mirage configure --no-depext -t unix --internal-net=direct
+  opam exec -- mirage configure --no-depext -t unix --internal-net=direct --external-net=direct
   opam exec -- make -j$(nproc)
   cp dist/keyfender dist/keyfender.tap
 EOF

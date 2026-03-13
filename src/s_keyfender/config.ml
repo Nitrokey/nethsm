@@ -4,51 +4,28 @@
 
 open Mirage
 
-let internal_net = netif ~group:"internal" "internal"
-let internal_eth = ethif internal_net
-let internal_arp = arp internal_eth
-
-let make_relay_stack ?group ~cidr_v4 ?gateway_v4 ?cidr_v6 ?gateway_v6 () =
-  let cidr_v4 = Runtime_arg.V4.network ?group cidr_v4 in
-  let gateway_v4 = Runtime_arg.V4.gateway ?group gateway_v4 in
-  let cidr_v6 = Runtime_arg.V6.network ?group cidr_v6 in
-  let gateway_v6 = Runtime_arg.V6.gateway ?group gateway_v6 in
-  let runtime_args =
-    Runtime_arg.[ v cidr_v4; v gateway_v4; v cidr_v6; v gateway_v6 ]
-  in
-  let connect _ modname = function
-    | [ network; ethernet; arpv4; cidr_v4; gateway_v4; cidr_v6; gateway_v6 ] ->
-        code ~pos:__POS__
-          "%s.connect ~cidr_v4:%s ?gateway_v4:%s ?cidr_v6:%s ?gateway_v6:%s %s \
-           %s %s"
-          modname cidr_v4 gateway_v4 cidr_v6 gateway_v6 network ethernet arpv4
-    | _ -> assert false
-  in
-  impl ~connect "Relay_stack.Make" ~runtime_args
-    (network @-> ethernet @-> arpv4 @-> stackv4v6)
-
-let default_internal_v4 : ipv4_config =
-  let ip = Ipaddr.V4.of_string_exn "169.254.169.1" in
+let default_net ?gw ip : ipv4_config =
+  let ip = Ipaddr.V4.of_string_exn ip in
+  let gateway = Option.map (fun x -> Ipaddr.V4.of_string_exn x) gw in
   let network = Ipaddr.V4.Prefix.make 24 ip in
-  { network; gateway = None }
+  { network; gateway }
 
-let default_internal_v6 : ipv6_config =
-  let ip = Ipaddr.V6.of_string_exn "fc00:1:1::1" in
-  let network = Ipaddr.V6.Prefix.make 48 ip in
-  { network; gateway = None }
+let default_net_v6 ?gw ip : ipv6_config =
+  let ip = Ipaddr.V6.of_string_exn ip in
+  let gateway = Option.map (fun x -> Ipaddr.V6.of_string_exn x) gw in
+  let network = Ipaddr.V6.Prefix.make 120 ip in
+  { network; gateway }
 
-let internal_stack_relay =
-  let cidr_v4 = default_internal_v4.network in
-  let gateway_v4 = default_internal_v4.gateway in
-  let cidr_v6 = default_internal_v6.network in
-  let gateway_v6 = default_internal_v6.gateway in
-  make_relay_stack ~group:"internal" ~cidr_v4 ?gateway_v4 ~cidr_v6 ?gateway_v6
-    ()
-  $ internal_net $ internal_eth $ internal_arp
+let external_stack =
+  let ipv4_config = default_net ~gw:"169.254.100.1" "169.254.100.2" in
+  let ipv6_config = default_net_v6 ~gw:"fc00:1:100::1" "fc00:1:100::2" in
+  generic_stackv4v6 ~group:"external" ~ipv4_config ~ipv6_config
+    (netif ~group:"external" "external")
 
-let internal_stack_single =
-  generic_stackv4v6 ~group:"internal" ~ipv4_config:default_internal_v4
-    ~ipv6_config:default_internal_v6
+let internal_stack =
+  let ipv4_config = default_net "169.254.169.1" in
+  let ipv6_config = default_net_v6 "fc00:1:169::1" in
+  generic_stackv4v6 ~group:"internal" ~ipv4_config ~ipv6_config
     (netif ~group:"internal" "internal")
 
 let htdocs_key = Key.(value @@ kv_ro ~group:"htdocs" ())
@@ -58,40 +35,6 @@ let update_key_store_key = Key.(value @@ kv_ro ~group:"update_key_store" ())
 let update_key_store =
   generic_kv_ro ~key:update_key_store_key "update_key_store"
 
-(* the IP configuration for the external/public network interface is in
-   the KV store above -- i.e. only available at runtime. this implies we
-   cannot yet connect the ip stack, but have to manually do that in the
-   unikernel (after reading the key from store)
-*)
-type reconfigurable_stack = Reconfigurable_stack
-
-let reconfigurable_stack = typ Reconfigurable_stack
-
-let reconfigurable_stack_direct =
-  let connect _ modname = function
-    | [ network; ethernet; arpv4 ] ->
-        code ~pos:__POS__ "%s.connect %s %s %s" modname network ethernet arpv4
-    | _ -> assert false
-  in
-  impl ~connect "Reconfigurable_stack.Direct"
-    (network @-> ethernet @-> arpv4 @-> reconfigurable_stack)
-
-let pre_configured_stack =
-  let connect _ modname = function
-    | [ stack ] -> code ~pos:__POS__ "%s.connect %s" modname stack
-    | _ -> assert false
-  in
-  impl ~connect "Reconfigurable_stack.Fixed" (stackv4v6 @-> reconfigurable_stack)
-
-let external_netif =
-  Key.(
-    if_impl is_solo5
-      (netif ~group:"external" "external")
-      (netif ~group:"external" "tap1"))
-
-let external_eth = ethif external_netif
-let external_arp = arp external_eth
-
 let single_interface =
   let doc =
     Key.Arg.info
@@ -100,16 +43,8 @@ let single_interface =
   in
   Key.(create "single-interface" Arg.(flag doc))
 
-let internal_stack =
-  if_impl
-    (Key.value single_interface)
-    internal_stack_single internal_stack_relay
-
-let external_reconfigurable_stack =
-  if_impl
-    (Key.value single_interface)
-    (pre_configured_stack $ internal_stack)
-    (reconfigurable_stack_direct $ external_netif $ external_eth $ external_arp)
+let external_stack =
+  if_impl (Key.value single_interface) internal_stack external_stack
 
 let malloc_metrics_conf =
   let connect info _ _ =
@@ -213,12 +148,11 @@ let main =
   main ~pos:__POS__ ~packages
     ~deps:[ bisect_ppx_conf; malloc_metrics_conf ]
     "Unikernel.Main"
-    (kv_ro @-> kv_ro @-> stackv4v6 @-> reconfigurable_stack @-> build_args
-   @-> job)
+    (kv_ro @-> kv_ro @-> stackv4v6 @-> stackv4v6 @-> build_args @-> job)
 
 let () =
   register "keyfender"
     [
-      main $ update_key_store $ htdocs $ internal_stack
-      $ external_reconfigurable_stack $ build_conf;
+      main $ update_key_store $ htdocs $ internal_stack $ external_stack
+      $ build_conf;
     ]

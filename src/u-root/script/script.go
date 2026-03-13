@@ -196,3 +196,14 @@ func (s *Script) FileExists(filename string) bool {
 	}
 	return true
 }
+
+// WriteFile writes some data into a file
+func (s *Script) WriteFile(path string, value string) {
+	if s.err != nil {
+		return
+	}
+	err := os.WriteFile(path, []byte(value), 0o644)
+	if err != nil {
+		s.err = err
+	}
+}

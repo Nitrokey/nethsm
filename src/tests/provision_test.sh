@@ -2,8 +2,10 @@
 
 source "$(dirname $0)/common_functions.sh"
 
-# provision hsm
-echo "Provisioning."
+echo
+echo "=== Provisioning ==="
+echo
+
 SYSTEM_TIME="$(date -u +%FT%TZ)"
 POST /v1/provision <<EOM
 {
