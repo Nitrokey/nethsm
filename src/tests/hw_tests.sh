@@ -53,6 +53,94 @@ echo "- check that keyfender answers over IPv6"
 GET /v1/health/state
 
 echo
+echo "=== Hardware tests - Adding a witness ==="
+echo
+
+# we are going to run a local etcd and make it join our HSM
+cat <<EOM > add_req.json
+{
+    "urls": ["https://192.168.1.100:2380", "https://[fc00:22:1::100]:2380"]
+}
+EOM
+
+echo "- add a new member to the cluster without a backup passphrase (should fail)"
+(POST_admin /v1/cluster/members < add_req.json)
+
+echo "- configure backup passphrase"
+PUT_admin /v1/config/backup-passphrase <<EOM
+{
+  "newPassphrase": "backupPassphrase",
+  "currentPassphrase": ""
+}
+EOM
+
+
+make -f cert.make own.pem
+
+# ensure no clock drift
+SYSTEM_TIME="$(date -u +%FT%TZ)"
+PUT_admin /v1/config/time << EOM
+{"time": "$SYSTEM_TIME"}
+EOM
+
+sleep 2
+
+echo "- add a new member to the cluster (should succeed)"
+POST_admin /v1/cluster/members < add_req.json
+
+echo "- start an etcd witness in join mode"
+
+etcd_name="etcd-v3.6.5-linux-arm64"
+tar xf "$etcd_name.tar.gz"
+
+cleanup_etcd() {
+    pkill -9 etcd
+    rm -rf witness.etcd
+}
+
+trap cleanup_etcd EXIT # stop etcd no matter what at the end
+
+"$etcd_name/etcd" \
+    --log-format console \
+    --log-level warn \
+    --peer-client-cert-auth=true \
+    --peer-trusted-ca-file=CA.pem \
+    --peer-cert-file=own.pem \
+    --peer-key-file=own.key \
+    --peer-skip-client-san-verification=true \
+    --data-dir=witness.etcd --name witness \
+    --initial-cluster-state "existing" \
+    --initial-cluster "SN3BVNXQFQ=https://192.168.1.1:2380,SN3BVNXQFQ=https://[fc00:22:1::2]:2380,witness=https://192.168.1.100:2380,witness=https://[fc00:22:1::100]:2380," \
+    --initial-advertise-peer-urls "https://192.168.1.1:2380,https://[fc00:22:1::100]:2380" \
+    --listen-peer-urls "https://0.0.0.0:2380" \
+    --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
+
+sleep 20 # wait for join to complete
+
+echo "- check witness is healthy"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+
+echo "- check we have synced with HSM"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+    get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
+
+echo "- check HSM is still healthy again"
+GET_admin /v1/cluster/members
+MEMBERS=$(GET_admin /v1/cluster/members)
+WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
+
+echo "- remove witness cleanly"
+DELETE_admin "/v1/cluster/members/$WITNESS_ID"
+
+pkill -9 etcd
+rm -rf witness.etcd
+
+sleep 10
+
+echo "- check HSM is still healthy"
+GET_admin /v1/cluster/members
+
+echo
 echo "=== Hardware tests - Cluster join (failure recovery) ==="
 echo
 
@@ -81,17 +169,6 @@ GET_admin /v1/cluster/members
 
 echo "- launch fresh local etcd"
 
-etcd_name="etcd-v3.6.5-linux-arm64"
-tar xf "$etcd_name.tar.gz"
-
-make -f cert.make own.pem
-
-cleanup_etcd() {
-    pkill -9 etcd
-    rm -rf witness.etcd
-}
-
-trap cleanup_etcd EXIT # stop etcd no matter what at the end
 
 # purposefully, this etcd instance is only available over IPv6
 "$etcd_name/etcd" \
