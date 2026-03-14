@@ -435,22 +435,22 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	if conf, _ := localConfig.Get(); conf != nil {
 		if conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
 			G.s.Logf("Using local cache to start etcd with TLS")
-			fn := "/tmp/ectd_tls_cert.pem"
+			fn := "/tmp/etcd_tls_cert.pem"
 			os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
 			cmd += " --peer-cert-file=" + fn
-			fn = "/tmp/ectd_tls_key.pem"
+			fn = "/tmp/etcd_tls_key.pem"
 			os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
 			cmd += " --peer-key-file=" + fn
-			fn = "/tmp/ectd_tls_trusted_ca.pem"
+			fn = "/tmp/etcd_tls_trusted_ca.pem"
 			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
 			cmd += " --peer-trusted-ca-file=" + fn
 			cmd += " --peer-client-cert-auth=true"
 			cmd += " --name=" + conf.DeviceID
-			// cmd += " --listen-peer-urls=https://169.254.169.2:2380,https://[::ffff:169.254.169.2]:2380"
-			cmd += " --listen-peer-urls=https://169.254.200.2:2380"
+			// Listen over https
+			cmd += " --listen-peer-urls=https://169.254.200.2:2380,https://[fc00:1:200::2]:2380"
 		} else {
-			// cmd += " --listen-peer-urls=http://169.254.169.2:2380,http://[::ffff:169.254.169.2]:2380"
-			cmd += " --listen-peer-urls=http://169.254.200.2:2380"
+			// Listen over http (no TLS)
+			cmd += " --listen-peer-urls=http://169.254.200.2:2380,http://[fc00:1:200::2]:2380"
 		}
 
 		if conf.TimeOffsetS != 0 {
@@ -486,7 +486,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			log.Printf("etcd: %s", line)
 			if strings.Contains(line, "ready to serve client requests") {
 				close(aliveCh)
-				return
 			}
 			if strings.Contains(line, "fatal") || strings.Contains(line, "error") {
 				lastEtcdError = line
