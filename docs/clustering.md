@@ -337,6 +337,22 @@ Transfer to the machine the CA certificate that is being used to authenticate
 nodes in the cluster. You should have created one in the "Creating and
 Installing a CA" section. We'll store it in `/var/etc/CA.pem`.
 
+You will then need to create a certificate for the witness, and sign it with the
+CA so it can talk to its peers. This can be done for example through `openssl`:
+
+```bash
+# Create a key
+$ openssl genrsa -out witness.key 2048
+# Create a CSR with a SAN that corresponds to the witness's IP or hostname
+$ openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" \
+    -addext "subjectAltName=IP:172.22.1.3" --out witness.csr
+# Sign it
+$ openssl x509 -req -days 1825 -in witness.csr -CA CA.pem -copy_extensions copy \
+    -CAkey CA.key -out witness.pem -set_serial 01 -sha256
+```
+
+Store the resulting `witness.key` and `witness.pem` in `/var/etcd` as well.
+
 ### Register witness to cluster
 
 Follow the normal instructions from the "Registering a node" section to signal
@@ -347,22 +363,77 @@ members and a joiner kit (you won't need this part).
 
 ### Configure etcd
 
-Create an `/var/etcd/env` file containing the following:
+Unlike NetHSMs which automatically choose a node name for themselves (using the
+device ID), you must choose a name for each witness you add, *making sure the
+names are unique*. We will use "witness1" in the following examples.
 
-```env
+With the NetHSM's response to registering the witness, prepare variables of the form:
+
+```bash
+export ETCD_NAME="witness1"
+export ETCD_DATA_DIR="/var/etcd/data"
+export ETCD_INITIAL_CLUSTER="peer1=url1,peer1=url2,peer2=url1,peer2=url2,..."
+export ETCD_INITIAL_ADVERTISE_PEER_URLS="my_url1,my_url2,..."
+
+```
+Assuming the NetHSM response is stored in a `response.json` file, you can
+generate these last two variables automatically with the following `jq` expressions:
+
+```bash
+export ETCD_INITIAL_CLUSTER=$(jq --raw-output '[.members[] | ["\(if .name == "" then "witness1" else .name end)=\(.urls[])"]] | flatten | join(",")' < response.json)
+export ETCD_INITIAL_ADVERTISE_PEER_URLS=$(jq --raw-output '.members[] | select(.name=="") | .urls | join(",")' < response.json)
 ```
 
-For example with a cluster containing two existing nodes, and our witness being
-reachable from `192.168.1.42`, this could look like:
+For example with the example response provided in the "Registering a new node"
+section, you will have:
 
-```env
+```bash
+ETCD_NAME="witness1"
+ETCD_DATA_DIR="/var/etcd/data"
+ETCD_INITIAL_CLUSTER="witness1=https://172.22.1.3:2380,9ZVNM2MNWP=https://172.22.1.2:2380"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="https://172.22.1.3:2380"
+```
+
+Finally, create a `etcd.conf.yml` file by using the template file provided in
+`docs/etc_witness.conf.template`:
+
+```bash
+$ envsubst < NETHSM_ROOT/docs/etcd_witness.conf.template > /var/etcd/witness.conf.yml
+$ cat witness.conf.yml
+```
+
+This should give you a field of the form
+
+```yaml
+name: witness1
+data-dir: /var/etcd/data
+log-level: warn
+log-format: console
+
+listen-peer-urls: https://0.0.0.0:2380
+listen-client-urls: http://localhost:2379
+
+initial-advertise-peer-urls: https://172.22.1.3:2380
+advertise-client-urls: http://localhost:2379
+initial-cluster: witness1=https://172.22.1.3:2380,9ZVNM2MNWP=https://172.22.1.2:2380
+initial-cluster-state: 'existing'
+
+peer-transport-security:
+  cert-file: witness.pem
+  key-file: witness.key
+  client-cert-auth: true
+  trusted-ca-file: CA.pem
+  skip-client-san-verification: true
 ```
 
 ### Start etcd
 
-Start `etcd` in your preferred way (manually, `systemd` service, container, etc.) with
-the following parameters:
-```
+Start `etcd` in your preferred way (manually, `systemd` service, container,
+etc.), pointing it to the configuration file created in the previous step:
+
+```bash
+$ cd /var/etcd
+$ etcd --config-file witness.conf.yml
 ```
 
 You should see it start, join the cluster and catch up with the data. After some

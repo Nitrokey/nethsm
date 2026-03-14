@@ -1,0 +1,19 @@
+name: ${ETCD_NAME}
+data-dir: ${ETCD_DATA_DIR}
+log-level: warn
+log-format: console
+
+listen-peer-urls: https://0.0.0.0:2380
+listen-client-urls: http://localhost:2379
+
+initial-advertise-peer-urls: ${ETCD_INITIAL_ADVERTISE_PEER_URLS}
+advertise-client-urls: http://localhost:2379
+initial-cluster: ${ETCD_INITIAL_CLUSTER}
+initial-cluster-state: 'existing'
+
+peer-transport-security:
+  cert-file: witness.pem
+  key-file: witness.key
+  client-cert-auth: true
+  trusted-ca-file: CA.pem
+  skip-client-san-verification: true
