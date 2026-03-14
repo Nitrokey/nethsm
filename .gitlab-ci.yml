@@ -481,6 +481,7 @@ test_muen_msi_z790:
     - cat <$TTY >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
+    - exit_code=0
     - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
