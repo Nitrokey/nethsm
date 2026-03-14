@@ -255,16 +255,22 @@ func platformListener(result chan string) {
 				err := fmt.Errorf("couldn't parse: '%s'", configJSON)
 				return errorResponse(err), err, false
 			}
-			err = setLocalConfig(&config)
-			if err != nil {
-				return errorResponse(err), err, false
-			}
-			// kill previously running etcd and wait until it exits
-			G.killEtcd()
-			<-G.etcdStoppedCh
-			err = startEtcd(EtcdNormal)
-			if err != nil {
-				return errorResponse(err), err, false
+			oldConf, _ := localConfig.Get()
+			if oldConf == nil || *oldConf != config {
+				log.Printf("Local config has changed, storing and restarting etcd")
+				err = setLocalConfig(&config)
+				if err != nil {
+					return errorResponse(err), err, false
+				}
+				// kill previously running etcd and wait until it exits
+				G.killEtcd()
+				<-G.etcdStoppedCh
+				err = startEtcd(EtcdNormal)
+				if err != nil {
+					return errorResponse(err), err, false
+				}
+			} else {
+				log.Printf("No change in local config")
 			}
 			return okResponse(""), nil, false
 		}
