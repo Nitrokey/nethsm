@@ -9,23 +9,23 @@ new_cert.pem: nethsm.csr CA.pem
 	openssl x509 -req -days 1825 -in nethsm.csr -CA CA.pem -copy_extensions copy \
 		-CAkey CA.key -out new_cert.pem -set_serial 01 -sha256
 
-own.key:
-	openssl genrsa -out own.key 2048
+witness.key:
+	openssl genrsa -out witness.key 2048
 
-own.pem: own.key CA.pem
-	rm -rf own.csr
-	openssl req -new -sha256 -key own.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" \
+witness.pem: witness.key CA.pem
+	rm -rf witness.csr
+	openssl req -new -sha256 -key witness.key -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=witness" \
 		-addext "subjectAltName=IP:192.168.1.100,IP:169.254.169.1,IP:172.22.1.2,IP:172.22.1.3,IP:172.22.1.4,IP:fc00:22:1::100" \
-		--out own.csr
-	openssl x509 -req -days 1825 -in own.csr -CA CA.pem -copy_extensions copy \
-		-CAkey CA.key -out own.pem -set_serial 01 -sha256
+		--out witness.csr
+	openssl x509 -req -days 1825 -in witness.csr -CA CA.pem -copy_extensions copy \
+		-CAkey CA.key -out witness.pem -set_serial 01 -sha256
 
 .PHONY: clean
 clean:
-	rm -rf new_cert.pem nethsm.csr own.key own.pem
+	rm -rf new_cert.pem nethsm.csr witness.key witness.pem
 
 .PHONY: clean-all
 clean-all:
-	rm -rf CA.key CA.pem new_cert.pem nethsm.csr own.key own.pem
+	rm -rf CA.key CA.pem new_cert.pem nethsm.csr witness.key witness.pem
 
 # vi: ft=make

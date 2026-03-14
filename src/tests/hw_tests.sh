@@ -75,7 +75,7 @@ PUT_admin /v1/config/backup-passphrase <<EOM
 EOM
 
 
-make -f cert.make own.pem
+make -f cert.make witness.pem
 
 # ensure no clock drift
 SYSTEM_TIME="$(date -u +%FT%TZ)"
@@ -86,12 +86,28 @@ EOM
 sleep 2
 
 echo "- add a new member to the cluster (should succeed)"
-POST_admin /v1/cluster/members < add_req.json
+ADD_RESP=$(POST_admin /v1/cluster/members < add_req.json) || exit 1
+echo $ADD_RESP > response.json
 
-echo "- start an etcd witness in join mode"
+echo "- configure an etcd witness in join mode"
 
 etcd_name="etcd-v3.6.5-linux-arm64"
 tar xf "$etcd_name.tar.gz"
+
+# follow the documentation in docs/clustering.md to create a witness
+export ETCD_NAME="witness"
+export ETCD_DATA_DIR="witness.etcd"
+export ETCD_INITIAL_CLUSTER=$(jq --raw-output '[.members[] | ["\(if .name == "" then "witness" else .name end)=\(.urls[])"]] | flatten | join(",")' < response.json)
+export ETCD_INITIAL_ADVERTISE_PEER_URLS=$(jq --raw-output '.members[] | select(.name=="") | .urls | join(",")' < response.json)
+echo "ETCD_INITIAL_CLUSTER=$ETCD_INITIAL_CLUSTER"
+echo "ETCD_INITIAL_ADVERTISE_PEER_URLS=$ETCD_INITIAL_ADVERTISE_PEER_URLS"
+envsubst < ../../docs/etcd_witness.conf.template > witness.conf.yml
+echo "- generated witness.conf.yml:"
+cat witness.conf.yml
+unset ETCD_NAME
+unset ETCD_DATA_DIR
+unset ETCD_INITIAL_CLUSTER
+unset ETCD_INITIAL_ADVERTISE_PEER_URLS
 
 cleanup_etcd() {
     pkill -9 etcd
@@ -100,20 +116,8 @@ cleanup_etcd() {
 
 trap cleanup_etcd EXIT # stop etcd no matter what at the end
 
-"$etcd_name/etcd" \
-    --log-format console \
-    --log-level warn \
-    --peer-client-cert-auth=true \
-    --peer-trusted-ca-file=CA.pem \
-    --peer-cert-file=own.pem \
-    --peer-key-file=own.key \
-    --peer-skip-client-san-verification=true \
-    --data-dir=witness.etcd --name witness \
-    --initial-cluster-state "existing" \
-    --initial-cluster "SN3BVNXQFQ=https://192.168.1.1:2380,SN3BVNXQFQ=https://[fc00:22:1::2]:2380,witness=https://192.168.1.100:2380,witness=https://[fc00:22:1::100]:2380," \
-    --initial-advertise-peer-urls "https://192.168.1.1:2380,https://[fc00:22:1::100]:2380" \
-    --listen-peer-urls "https://0.0.0.0:2380" \
-    --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
+echo "- start etcd"
+"$etcd_name/etcd" --config-file witness.conf.yml &
 
 sleep 20 # wait for join to complete
 
@@ -169,15 +173,14 @@ GET_admin /v1/cluster/members
 
 echo "- launch fresh local etcd"
 
-
 # purposefully, this etcd instance is only available over IPv6
 "$etcd_name/etcd" \
     --log-format console \
     --log-level error \
     --peer-client-cert-auth=true \
     --peer-trusted-ca-file=CA.pem \
-    --peer-cert-file=own.pem \
-    --peer-key-file=own.key \
+    --peer-cert-file=witness.pem \
+    --peer-key-file=witness.key \
     --peer-skip-client-san-verification=true \
     --data-dir=witness.etcd --name witness \
     --initial-advertise-peer-urls "https://[fc00:22:1::100]:2380" \

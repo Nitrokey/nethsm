@@ -402,7 +402,7 @@ $ envsubst < NETHSM_ROOT/docs/etcd_witness.conf.template > /var/etcd/witness.con
 $ cat witness.conf.yml
 ```
 
-This should give you a field of the form
+This should give you a file of the form
 
 ```yaml
 name: witness1
@@ -437,8 +437,7 @@ $ etcd --config-file witness.conf.yml
 ```
 
 You should see it start, join the cluster and catch up with the data. After some
-time, you should see in its logs that "etcd is now serving clients".
-You can check that it is working with the `etcdctl` client:
+time, you should be able to check that it is healthy with the `etcdctl` client:
 ```
 etcdctl get /config/version
 ```
