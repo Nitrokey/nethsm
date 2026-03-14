@@ -103,6 +103,10 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 	cmd := exec.CommandContext(context, cmdSplit[0], cmdSplit[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
+	// Cancel will kill with a SIGINT instead of a SIGKILL
+	cmd.Cancel = func() error {
+		return cmd.Process.Signal(os.Interrupt)
+	}
 	// Does go have an option type? Could use that instead of -1.
 	if uidgid != -1 {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}

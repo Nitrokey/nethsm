@@ -132,7 +132,7 @@ WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw
 echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
-pkill -9 etcd
+pkill etcd
 rm -rf witness.etcd
 
 sleep 10
