@@ -59,7 +59,7 @@ func configNet(conf Network) error {
 		return nil
 	}
 
-	var cidrV4 = conf.V4.Cidr
+	cidrV4 := conf.V4.Cidr
 	if cidrV4 == "" {
 		cidrV4 = "192.168.1.1/24"
 	}
@@ -303,7 +303,7 @@ func setupNFTables() {
 
 	// DNAT port 443 to keyfender (IPv6)
 	conn.AddRule(makeDnat(443,
-		net.ParseIP(keyfenderIPv6).To16(),
+		net.ParseIP(keyfenderIPv6),
 		unix.NFPROTO_IPV6))
 
 	// DNAT port 2380 to platform (IPv4)
@@ -313,22 +313,20 @@ func setupNFTables() {
 
 	// DNAT port 2380 to platform (IPv6)
 	conn.AddRule(makeDnat(2380,
-		net.ParseIP(platformIPv6).To16(),
+		net.ParseIP(platformIPv6),
 		unix.NFPROTO_IPV6))
 
 	// Utility function to make a SNAT rule: masquerading traffic
 	// from source IP (v4 or v6) going out on external interface
-	makeSnat := func(srcIp net.IP, isIPv6 bool) *nftables.Rule {
+	makeSnat := func(srcIp net.IP) *nftables.Rule {
 		var ipOffset uint32
-		var ipLen uint32
 		var proto byte
-		if (isIPv6) {
+		ipLen := len(srcIp)
+		if ipLen == 16 {
 			ipOffset = 8
-			ipLen = 16
 			proto = unix.NFPROTO_IPV6
 		} else {
 			ipOffset = 12
-			ipLen = 4
 			proto = unix.NFPROTO_IPV4
 		}
 		return &nftables.Rule{
@@ -360,7 +358,7 @@ func setupNFTables() {
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
 					Offset:       ipOffset,
-					Len:          ipLen,
+					Len:          uint32(ipLen),
 				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
@@ -374,20 +372,16 @@ func setupNFTables() {
 	}
 
 	// Masquerade keyfender to external (IPv4)
-	conn.AddRule(makeSnat(
-		net.ParseIP(keyfenderIP).To4(), false))
+	conn.AddRule(makeSnat(net.ParseIP(keyfenderIP).To4()))
 
 	// Masquerade keyfender to external (IPv6)
-	conn.AddRule(makeSnat(
-		net.ParseIP(keyfenderIPv6).To16(), true))
+	conn.AddRule(makeSnat(net.ParseIP(keyfenderIPv6)))
 
 	// Masquerade platform to external (IPv4)
-	conn.AddRule(makeSnat(
-		net.ParseIP(platformIP).To4(), false))
+	conn.AddRule(makeSnat(net.ParseIP(platformIP).To4()))
 
 	// Masquerade platform to external (IPv6)
-	conn.AddRule(makeSnat(
-		net.ParseIP(platformIPv6).To16(), true))
+	conn.AddRule(makeSnat(net.ParseIP(platformIPv6)))
 
 	// Commit the changes
 	if err := conn.Flush(); err != nil {

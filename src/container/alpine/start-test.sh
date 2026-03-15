@@ -21,69 +21,42 @@ if capsh --has-p=cap_net_admin 2>/dev/null ; then
   KEYFENDER_IP="192.168.1.1"
   PLATFORM_IP="169.254.169.2"
   KEYFENDER_INT_IP="169.254.169.1"
-  KEYFENDER_INT_NET_IP="169.254.100.3"
-  SNET_IP="169.254.100.1"
-  if [ -e /sys/class/net/eth1 ] ; then
-    echo "Using eth1 as internal network."
-    INT_IF="eth1"
-  fi
 fi
 
 if [ $USE_TAP ] ; then
-  echo "Setting up bridge with eth0 and tap_ext."
+  echo "Setting up tap devices"
   ip -o -f inet address show eth0
   IP=$(ip -o -f inet address show eth0 | awk '{print $4}' | head -1)
   echo "Detected IP: $IP"
   GW=$(ip -o -f inet route list | grep "^default via" | head -1 | awk '{print $3}')
   echo "Detected gateway: $GW"
-  ip addr flush dev eth0
-  ip tuntap add dev tap_ext mode tap
-  ip link add name br_ext type bridge
-  ip link set dev eth0 master br_ext
-  ip link set dev tap_ext master br_ext
-  ip link set dev eth0 type bridge_slave learning off
-  ip link set dev br_ext up
-  ip link set dev tap_ext up
 
   ip tuntap add dev tap_int mode tap
-  if [ $INT_IF ] ; then
-    echo "Setting up bridge with eth1 and tap_int."
-    ip addr flush dev eth1
-    ip link add name br_int type bridge
-    ip link set dev $INT_IF master br_int
-    ip link set dev tap_int master br_int
-    ip link set dev eth1 type bridge_slave learning off
-    ip link set dev br_int up
-  else
-    echo "Configuring tap_int for platform."
-    ip addr add 169.254.169.2/24 dev tap_int
-    ip addr add 169.254.100.1/24 dev tap_ext
-    #ip -6 addr add fc00:1:1::2/48 dev tap_int
-  fi
+  ip tuntap add dev tap_ext mode tap
+  ip addr add 169.254.169.2/24 dev tap_int
+  ip addr add 169.254.100.1/24 dev tap_ext
   ip link set dev tap_int up
-  ip route replace default via 169.254.100.1 dev tap_int
-  #ip -6 route add default via fc00:1:1::1 dev tap_int
-fi
+  ip link set dev tap_ext up
 
-if [ ! $INT_IF ]; then
-  if [ $USE_TAP ] ; then
-    echo "Starting uint S-Net on $SNET_IP."
-    /uinit net_external 2>&1 &
-    echo "Starting uinit S-Platform on $PLATFORM_IP."
-    /uinit platform 2>&1 &
-  else
-    echo "Starting etcd on $PLATFORM_IP."
-    etcd \
-      --listen-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
-      --advertise-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
-      --data-dir /data \
-      --host-whitelist "$KEYFENDER_INT_IP" \
-      --max-txn-ops 512 \
-      $ETCD_DEBUG_LOG \
-      2>&1 | sed "s/^/[etcd] /" \
-      &
-    ETCD_PID=$!
-  fi
+  ip addr add 169.254.200.2/24 dev lo
+  ip -6 addr add fc00:1:200::2/120 dev lo
+
+  echo "Starting mock S-Net"
+  /uinit net_external 2>&1 &
+  echo "Starting mock S-Platform"
+  /uinit platform 2>&1 &
+else
+  echo "Starting etcd on $PLATFORM_IP."
+  etcd \
+    --listen-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
+    --advertise-client-urls "http://$PLATFORM_IP:$ETCD_PORT" \
+    --data-dir /data \
+    --host-whitelist "$KEYFENDER_INT_IP" \
+    --max-txn-ops 512 \
+    $ETCD_DEBUG_LOG \
+    2>&1 | sed "s/^/[etcd] /" \
+    &
+  ETCD_PID=$!
 fi
 
 if [ $ADMINPW ] ; then
