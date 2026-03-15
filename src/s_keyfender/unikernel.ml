@@ -357,16 +357,37 @@ struct
     in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
+      let logs_reporter = Log_reporter.create () in
       match log.Keyfender.Json.ipAddress with
       | Some ip ->
-          let reporter =
+          let syslog_reporter =
             let port = log.Keyfender.Json.port in
             Syslog.create stack ~hostname:"keyfender" ip ~port ()
           in
-          Logs.set_reporter (Keyfender.Logs_sequence_number.reporter reporter)
+          let udp_ignore_sources = [ "icmpv4"; "udp"; "ipv4" ] in
+          let combined_reporter =
+            let report =
+             fun src level ~over k msgf ->
+              let v =
+                logs_reporter.Logs.report src level ~over:(fun () -> ()) k msgf
+              in
+              (* When reporting to UDP, do not report any ICMP, IPv4 or UDP
+               messages that could cause an infinite loop of log lines *)
+              if
+                List.exists
+                  (String.equal (Logs.Src.name src))
+                  udp_ignore_sources
+              then v
+              else
+                syslog_reporter.Logs.report src level ~over (fun () -> v) msgf
+            in
+            { Logs.report }
+          in
+          Logs.set_reporter
+            (Keyfender.Logs_sequence_number.reporter combined_reporter)
       | None ->
-          let logs = Log_reporter.create () in
-          Logs.set_reporter (Keyfender.Logs_sequence_number.reporter logs)
+          Logs.set_reporter
+            (Keyfender.Logs_sequence_number.reporter logs_reporter)
     and setup_http_listener http =
       let http_port = Args.http_port () in
       let tcp = `TCP http_port in
