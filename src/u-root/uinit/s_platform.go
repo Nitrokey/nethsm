@@ -386,6 +386,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	cmd := "/bin/etcd" +
 		" --listen-client-urls=http://169.254.169.2:2379" +
+		" --listen-client-http-urls=http://127.0.0.1:2382" + // disables HTTP on client port
 		" --advertise-client-urls=" +
 		" --data-dir=/data/etcd" +
 		" --peer-skip-client-san-verification=true" +
@@ -462,7 +463,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	G.etcdStoppedCh = make(chan bool)
 	aliveCh := make(chan struct{})
-	timeoutCh := make(chan struct{})
 
 	G.s.Logf("now launching: %s", cmd)
 	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
@@ -476,24 +476,21 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	go func() {
 		logs := bufio.NewReader(logPipe)
+		alive := false
 		for {
 			line, err := logs.ReadString('\n')
 			if err != nil {
 				return
 			}
 			log.Printf("etcd: %s", line)
-			if strings.Contains(line, "ready to serve client requests") {
+			if !alive && strings.Contains(line, "ready to serve client requests") {
 				close(aliveCh)
+				alive = true
 			}
 			if strings.Contains(line, "fatal") || strings.Contains(line, "error") {
 				lastEtcdError = line
 			}
 		}
-	}()
-	go func() {
-		// timeout for etcd starting up
-		time.Sleep(30 * time.Second)
-		close(timeoutCh)
 	}()
 	select {
 	case <-G.etcdStoppedCh:
@@ -521,7 +518,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			}
 		}
 		return G.s.Err()
-	case <-timeoutCh:
+	case <-time.After(30 * time.Second):
 		log.Printf("etcd took too long to start: %s", lastEtcdError)
 		return fmt.Errorf("etcd took too long to start: %s", lastEtcdError)
 	}
