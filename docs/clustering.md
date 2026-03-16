@@ -59,6 +59,13 @@ node is already inoperable since it has lost quorum.
 Hence it is advised to always have an odd amount of nodes in a
 cluster, and to back up often. 
 
+To be clear, *temporarily* losing quorum (for example, if you are restarting all
+nodes of a cluster together, or a temporary network failure isolates nodes) is
+not a problem: once enough nodes are reconnected (without having to manually
+re-join) to reach quorum, the cluster will resume its normal operation. Only
+permanent failures such as network partitions, network misconfigurations,
+authentication issues or hardware failures, will require manual action.
+
 For more information, see [etcd's FAQ](https://etcd.io/docs/v3.6/faq/#why-an-odd-number-of-cluster-members)
 
 ## 2-Node Cluster
