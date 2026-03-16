@@ -388,13 +388,11 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		" --listen-client-urls=http://169.254.169.2:2379" +
 		" --advertise-client-urls=" +
 		" --data-dir=/data/etcd" +
-		" --snapshot-count=5000" +
 		" --peer-skip-client-san-verification=true" +
 		" --auto-compaction-retention=1h" +
 		" --quota-backend-bytes=5694816256" + // should not be more than RAM
 		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
 		// --initial-cluster <- just ourself, expanded at runtime
-		" --v2-deprecation=gone" +
 		" --max-txn-ops=512" +
 		// " --log-level debug"+
 		""
@@ -432,6 +430,8 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		}
 	}
 
+	name := "nethsm"
+
 	if conf, _ := localConfig.Get(); conf != nil {
 		if conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
 			G.s.Logf("Using local cache to start etcd with TLS")
@@ -445,12 +445,9 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
 			cmd += " --peer-trusted-ca-file=" + fn
 			cmd += " --peer-client-cert-auth=true"
-			cmd += " --name=" + conf.DeviceID
+			name = conf.DeviceID
 			// Listen over https
 			cmd += " --listen-peer-urls=https://169.254.200.2:2380,https://[fc00:1:200::2]:2380"
-		} else {
-			// Listen over http (no TLS)
-			cmd += " --listen-peer-urls=http://169.254.200.2:2380,http://[fc00:1:200::2]:2380"
 		}
 
 		if conf.TimeOffsetS != 0 {
@@ -461,6 +458,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			}
 		}
 	}
+	cmd += " --name=" + name
 
 	G.etcdStoppedCh = make(chan bool)
 	aliveCh := make(chan struct{})
