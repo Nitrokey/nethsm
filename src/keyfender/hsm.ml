@@ -2955,7 +2955,7 @@ module Make (KV : Kv_ext.Platform) = struct
               (Domain_key_store.set domain_store Attended ~encryption_key
                  locked_domain_key)
           in
-          Log.warn (fun m -> m "joining cluster OK! locking now");
+          Log.info (fun m -> m "joining cluster OK! locking now");
           KV.clear_watches t.kv;
           let* new_state =
             boot_config_store ~cache_settings:t.cache_settings t.config_store
