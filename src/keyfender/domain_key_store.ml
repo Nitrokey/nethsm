@@ -5,7 +5,7 @@
 open Lwt.Infix
 
 module Make (KV : Kv_ext.RW) = struct
-  let dk_prefix_v0 = "/domain-key"
+  let dk_prefix_v0 = "domain-key"
   let dk_prefix device_id = "local/" ^ device_id ^ "/domain-key"
 
   type slot = Attended | Unattended
@@ -17,16 +17,26 @@ module Make (KV : Kv_ext.RW) = struct
 
   let key_path_v0 slot = Mirage_kv.Key.(add (v dk_prefix_v0) (name slot))
   let adata device_id slot = dk_prefix device_id ^ name slot
+  let adata_v0 slot = dk_prefix_v0 ^ name slot
 
   type t = { kv : KV.t; device_id : string }
 
   let get t slot ~encryption_key =
-    KV.get t.kv (key_path t.device_id slot) >|= function
-    | Error _ -> Error (`Msg "domain key not found")
-    | Ok data ->
+    KV.get t.kv (key_path t.device_id slot) >>= function
+    | Error _ -> Lwt_result.fail (`Msg "domain key not found")
+    | Ok data -> (
         let key = Crypto.GCM.of_secret encryption_key in
-        Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
-          (Crypto.decrypt ~key ~adata:(adata t.device_id slot) data)
+        match Crypto.decrypt ~key ~adata:(adata t.device_id slot) data with
+        | Ok x -> Lwt_result.return x
+        | Error `Not_authenticated ->
+            (* if decryption failed, try with v0 adata
+               in case this domain key was migrated *)
+            Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error
+              (Crypto.decrypt ~key ~adata:(adata_v0 slot) data)
+            |> Lwt.return
+        | x ->
+            Lwt.return
+              (Rresult.R.error_to_msg ~pp_error:Crypto.pp_decryption_error x))
 
   let set t slot ~encryption_key data =
     let adata = adata t.device_id slot in
