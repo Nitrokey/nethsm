@@ -458,7 +458,8 @@ module Make (KV : Kv_ext.Platform) = struct
             | Ok (Some data) -> set_or_delay t k data
         in
         let migrate_log_config () =
-          KV.get t.kv (key_path "" Log_config) >>= function
+          KV.get t.kv (key_path ~migration_in_progress:true "" Log_config)
+          >>= function
           | Error (`Not_found _) -> Lwt.return (Ok ())
           | Error e -> Lwt.return (Error (`Kv e))
           | Ok data -> (
@@ -485,7 +486,8 @@ module Make (KV : Kv_ext.Platform) = struct
                       set_or_delay t Log_config new_config))
         in
         let migrate_ip_config () =
-          KV.get t.kv (key_path "" Ip_config) >>= function
+          KV.get t.kv (key_path ~migration_in_progress:true "" Ip_config)
+          >>= function
           | Error (`Not_found _) -> Lwt.return (Ok ())
           | Error e -> Lwt.return (Error (`Kv e))
           | Ok data -> (

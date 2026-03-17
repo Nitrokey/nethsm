@@ -5,6 +5,7 @@
 open Lwt.Infix
 
 module Make (KV : Kv_ext.RW) = struct
+  let dk_prefix_v0 = "/domain-key"
   let dk_prefix device_id = "local/" ^ device_id ^ "/domain-key"
 
   type slot = Attended | Unattended
@@ -14,6 +15,7 @@ module Make (KV : Kv_ext.RW) = struct
   let key_path device_id slot =
     Mirage_kv.Key.(add (v (dk_prefix device_id)) (name slot))
 
+  let key_path_v0 slot = Mirage_kv.Key.(add (v dk_prefix_v0) (name slot))
   let adata device_id slot = dk_prefix device_id ^ name slot
 
   type t = { kv : KV.t; device_id : string }
@@ -54,13 +56,16 @@ module Make (KV : Kv_ext.RW) = struct
       move_slot ~mandatory:false Unattended
 
   let migrate_v0_v1 t =
-    let just_move slot =
-      KV.get t.kv (key_path "" slot) >>= function
+    let just_move ?(required = true) slot =
+      KV.get t.kv (key_path_v0 slot) >>= function
+      | Error e when required ->
+          Logs.err (fun f -> f "failed to migrate domain key: %a" KV.pp_error e);
+          Lwt_result.fail (`Kv e)
       | Error _ -> Lwt.return (Ok ()) (* slot may not be filled *)
       | Ok data ->
           KV.set t.kv (key_path t.device_id slot) data >|= fun r ->
           Result.map_error (fun e -> `Kv_write e) r
     in
     let open Lwt_result.Infix in
-    just_move Attended >>= fun () -> just_move Unattended
+    just_move Attended >>= fun () -> just_move ~required:false Unattended
 end
