@@ -4535,7 +4535,7 @@ let cluster_join =
         ^ info
             "join-cluster \
              (0000000000=https://192.168.1.1:2380,node2=https://192.168.1.2:2380,node2=https://[::1]:2380)"
-        ^ warning "joining cluster OK! locking now"
+        ^ info "joining cluster OK! locking now"
       in
       (* finally, join *)
       admin_post_request ~expect ~hsm_state ~body:(`String join_req)
