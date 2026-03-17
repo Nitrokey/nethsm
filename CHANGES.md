@@ -1,3 +1,7 @@
+# 4.0 (2026-04-17)
+
+* This is a release candidate. DON'T USE.
+
 # 3.1 (2025-10-13)
 
 * Revert back to old PKCS1 signing format
