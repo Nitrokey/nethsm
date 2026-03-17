@@ -173,7 +173,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Restore_in_progress -> Ok ()
 
   (* global configs are shared by all nodes in a cluster
-     - they are stored in /config/xxx while local ones are in /DEVICE-ID/config/xxx
+     - they are stored in /config/xxx while local ones are in /local/DEVICE-ID/config/xxx
      - they cannot be encrypted with device-specific keys *)
   let is_global_config : type a. a k -> bool = function
     | Version (* the store version is for the whole cluster *)
