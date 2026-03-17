@@ -15,6 +15,7 @@
   (pps ppx_blob))
  (deps
   update.bin
+  big_100k.bin
   ../bin/sign_update.exe
   key.pem
   changes

@@ -19,7 +19,10 @@ module Test_logs = struct
     Logs.set_reporter reporter;
     let result = fn () in
     Format.pp_print_flush fmt ();
-    Alcotest.(check string) "logs" expect (sanitize (Buffer.contents buffer));
+    let received = sanitize (Buffer.contents buffer) in
+    let expect = String.split_on_char '\n' expect in
+    let received = String.split_on_char '\n' received in
+    Alcotest.(check (list string) "logs" expect received);
     result
 end
 

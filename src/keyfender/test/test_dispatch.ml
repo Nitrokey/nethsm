@@ -646,6 +646,105 @@ let system_backup_and_restore_ok =
       in
       Lwt_main.run (Hsm.assert_equal ~except_key_values hsm_state hsm_state''))
 
+let readfile filename =
+  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
+  let filesize = (Unix.stat filename).Unix.st_size in
+  let buf = Bytes.create filesize in
+  let rec read off =
+    if off = filesize then ()
+    else
+      let bytes_read = Unix.read fd buf off (filesize - off) in
+      read (bytes_read + off)
+  in
+  read 0;
+  Unix.close fd;
+  `String (Bytes.to_string buf)
+
+[@@@warning "-21"]
+
+let system_restore_v0_backup ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "big_100k.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Migrating config and domain key stores from older version"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info
+        "migrating /config/certificate to /local/0000000000/config/certificate"
+    ^ info
+        "migrating /config/private-key to /local/0000000000/config/private-key"
+    ^ info "migrating /config/version to /config/version"
+    ^ info
+        "migrating /domain-key/attended to \
+         /local/0000000000/domain-key/attended"
+    ^ info "Migration done."
+  in
+  let expect =
+    if changed_devkey then
+      expect ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ debug "caching config to the platform"
+    else expect ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      Lwt_main.run
+        ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+        >>= fun (y, o, m) ->
+          happy_mbox o m >|= fun () -> y )
+    else booted_mock ()
+  in
+  let hsm_state' =
+    request ~hsm_state ~expect ~meth:`POST ~content_type ~body:(`String body)
+      "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state'' =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+      "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state'' = `Operational))
+
+let system_restore_v0_backup_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds on a device \
+     with a different device key"
+    `Quick (fun () -> system_restore_v0_backup ~changed_devkey:true)
+
+let system_restore_v0_backup =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds" `Quick
+    (fun () -> system_restore_v0_backup ~changed_devkey:false)
+
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
   let backup_passphrase = "backup passphrase" in
@@ -1146,20 +1245,6 @@ let system_backup_post_accept_header =
       | _hsm_state, Some (`OK, _, `Stream _, _) -> true
       | _ -> false)
   | _ -> false
-
-let readfile filename =
-  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
-  let filesize = (Unix.stat filename).Unix.st_size in
-  let buf = Bytes.create filesize in
-  let rec read off =
-    if off = filesize then ()
-    else
-      let bytes_read = Unix.read fd buf off (filesize - off) in
-      read (bytes_read + off)
-  in
-  read 0;
-  Unix.close fd;
-  `String (Bytes.to_string buf)
 
 let system_update_from_file_ok =
   "a request for /system/update with authenticated user and update read from \
@@ -5166,6 +5251,8 @@ let () =
           system_backup_and_restore_operational;
           system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
+          system_restore_v0_backup;
+          system_restore_v0_backup_changed_devkey;
         ] );
       ("/unlock", [ unlock_ok; unlock_failed; unlock_failed_two; unlock_twice ]);
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
