@@ -701,9 +701,7 @@ let system_backup_and_restore_no_backuppassphrase_fails =
       | _ -> false)
   | _ -> false
 
-let system_backup_and_restore_changed_devkey =
-  "/system/restore with changed device key and unlock -> operational"
-  @? fun () ->
+let system_backup_and_restore_changed_devkey ~also_change_devid =
   let backup_passphrase = "backup passphrase" in
   let passphrase =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
@@ -737,9 +735,12 @@ let system_backup_and_restore_changed_devkey =
           let platform =
             {
               platform with
-              deviceId = "0000000001";
               deviceKey = "//////////////////////////////////////////8=";
             }
+          in
+          let platform =
+            if also_change_devid then { platform with deviceId = "0000000001" }
+            else platform
           in
           let hsm_state_2 =
             Lwt_main.run
@@ -783,6 +784,15 @@ let system_backup_and_restore_changed_devkey =
           | _ -> false)
       | _ -> false)
   | _ -> false
+
+let system_backup_and_restore_changed_all =
+  "/system/restore with changed device key and changed device ID + unlock -> \
+   operational"
+  @? fun () -> system_backup_and_restore_changed_devkey ~also_change_devid:true
+
+let system_backup_and_restore_changed_devkey =
+  "/system/restore with changed device key + unlock -> operational" @? fun () ->
+  system_backup_and_restore_changed_devkey ~also_change_devid:false
 
 let system_backup_and_restore_unattended =
   Alcotest.test_case "/system/restore with unattended mode -> operational"
@@ -5152,6 +5162,7 @@ let () =
           system_backup_and_restore_unattended;
           system_backup_and_restore_unattended_changed_devkey;
           system_backup_and_restore_changed_devkey;
+          system_backup_and_restore_changed_all;
           system_backup_and_restore_operational;
           system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
