@@ -437,7 +437,13 @@ module Make (KV : Kv_ext.Platform) = struct
     let old = { t with device_id = ""; migration_in_progress = true } in
     batch t (fun t ->
         let set_or_delay t k data =
-          let go () = set t k data in
+          let go () =
+            let src = key_path ~migration_in_progress:true t.device_id k in
+            let dst = key_path t.device_id k in
+            Logs.info (fun f ->
+                f "migrating %a to %a" Mirage_kv.Key.pp src Mirage_kv.Key.pp dst);
+            set t k data
+          in
           let wrap_write_error = function
             | Error (`Kv e) -> Error (`Kv_write e)
             | Error (`Msg m) -> Error (`Msg m)

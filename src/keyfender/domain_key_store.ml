@@ -65,15 +65,23 @@ module Make (KV : Kv_ext.RW) = struct
       let** () = move_slot ~mandatory:true Attended in
       move_slot ~mandatory:false Unattended
 
+  (* this does *NOT* handle the case where the device key has changed. This is
+     not a problem for migrations following an update, but if this is a
+     migration following a restore, the restore operation must be careful to
+     re-encrypt with the correct device key afterwards. *)
   let migrate_v0_v1 t =
     let just_move ?(required = true) slot =
-      KV.get t.kv (key_path_v0 slot) >>= function
+      let src = key_path_v0 slot in
+      let dst = key_path t.device_id slot in
+      KV.get t.kv src >>= function
       | Error e when required ->
           Logs.err (fun f -> f "failed to migrate domain key: %a" KV.pp_error e);
           Lwt_result.fail (`Kv e)
       | Error _ -> Lwt.return (Ok ()) (* slot may not be filled *)
       | Ok data ->
-          KV.set t.kv (key_path t.device_id slot) data >|= fun r ->
+          Logs.info (fun f ->
+              f "migrating %a to %a" Mirage_kv.Key.pp src Mirage_kv.Key.pp dst);
+          KV.set t.kv dst data >|= fun r ->
           Result.map_error (fun e -> `Kv_write e) r
     in
     let open Lwt_result.Infix in

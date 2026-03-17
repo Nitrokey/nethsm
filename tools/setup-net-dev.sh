@@ -3,7 +3,7 @@
 case $(uname -s) in
     Linux)
 	ip tuntap add tap200 mode tap
-	ip addr add 192.168.1.100/24 dev tap200
+	ip addr add 169.254.100.1/24 dev tap200
 	ip link set dev tap200 up
 
 	ip tuntap add tap201 mode tap

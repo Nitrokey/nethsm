@@ -3578,6 +3578,29 @@ module Make (KV : Kv_ext.Platform) = struct
             | _ -> Lwt_result.return ()
           in
 
+          (* - domain migrations must be applied *BEFORE* potentially rewriting
+               the domain key
+             - config migrations can be applied any time before booting the
+               config store, since migrating configs is mutually exclusive with
+               re-encrypting configs
+          *)
+          let** _apply_config_domain_migrations =
+            let** stored_version =
+              internal_server_error Read "Get version" Config_store.pp_error
+                (Config_store.get_opt t.config_store Config_store.Version)
+            in
+            match stored_version with
+            | None -> Lwt_result.return ()
+            | Some stored_version ->
+                apply_config_and_domain_migrations t.kv
+                  ~device_id:t.system_info.deviceId ~device_key:t.device_key
+                  stored_version
+                |> Lwt_result.map_error (fun (`Msg msg) ->
+                    ( Bad_request,
+                      Fmt.str "could not apply migrations to old backup: %s" msg
+                    ))
+          in
+
           let** dk_rewritten =
             (* the domain key and/or device key might have changed if
                restored to a fresh or different device, so refresh the store
@@ -3686,23 +3709,6 @@ module Make (KV : Kv_ext.Platform) = struct
                     Config_store.pp_write_error
                     (Config_store.restore_local_config t.config_store
                        config_values))
-          in
-
-          let** _apply_config_domain_migrations =
-            let** stored_version =
-              internal_server_error Read "Get version" Config_store.pp_error
-                (Config_store.get_opt t.config_store Config_store.Version)
-            in
-            match stored_version with
-            | None -> Lwt_result.return ()
-            | Some stored_version ->
-                apply_config_and_domain_migrations t.kv
-                  ~device_id:t.system_info.deviceId ~device_key:t.device_key
-                  stored_version
-                |> Lwt_result.map_error (fun (`Msg msg) ->
-                    ( Bad_request,
-                      Fmt.str "could not apply migrations to old backup: %s" msg
-                    ))
           in
 
           let** _boot_config_store =
