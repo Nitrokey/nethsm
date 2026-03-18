@@ -3158,10 +3158,14 @@ module Make (KV : Kv_ext.Platform) = struct
        - length of ...; passphrase encrypted domain key
        - (IN VERSION 1 ONLY) length of ...; device ID of the HSM creating the backup
        - (IN VERSION 1 ONLY) length of ...; config store key of the HSM creating the backup
-       - indivial key, value entries of the store:
-         - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
+       - list of K-V entries in the store, each being:
+         - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup]
+       - (IN VERSION 1 ONLY) end delimiter of the above list: 0x000000 (to be parsed as the length)
+       - (IN VERSION 1 ONLY) "_NETHSM_BACKUP_END_" (cleartext)
+         *)
 
     let backup_header = "_NETHSM_BACKUP_"
+    let backup_trailer = "_NETHSM_BACKUP_END_"
     let backup_version_v0 = Char.chr 0
     let backup_version_v1 = Char.chr 1
 
@@ -3261,6 +3265,9 @@ module Make (KV : Kv_ext.Platform) = struct
                   push (Some (prefix_len encrypted_store_key));
                   backup_directory t.kv push backup_key' Mirage_kv.Key.empty
                   >|= fun () ->
+                  (* end delimiter for the KV list *)
+                  push (Some "\x00\x00\x00");
+                  push (Some backup_trailer);
                   push None;
                   Ok ()))
 
@@ -3298,13 +3305,19 @@ module Make (KV : Kv_ext.Platform) = struct
               ^ ", authentication failed. Is the passphrase correct?" )
       | Ok x -> Ok x
 
+    exception End_of_kv_entries
+
     let read_and_decrypt stream key =
       let ( let** ) = Lwt_result.bind in
-      let** encrypted_data = decode_value stream in
-      let adata = "backup" in
-      let** kv = decrypt_backup ~key ~adata encrypted_data in
-      let** kv = Lwt.return @@ split_kv kv in
-      Lwt.return_ok kv
+      let** len = get_length stream in
+      (* should only happen in V1 *)
+      if len = 0 then raise End_of_kv_entries
+      else
+        let** encrypted_data = sb_read_n stream len in
+        let adata = "backup" in
+        let** kv = decrypt_backup ~key ~adata encrypted_data in
+        let** kv = Lwt.return @@ split_kv kv in
+        Lwt.return_ok kv
 
     (* runs the function while the stream has items *)
     let stream_while stream fn =
@@ -3554,7 +3567,7 @@ module Make (KV : Kv_ext.Platform) = struct
           (Config_store.set t.config_store Restore_in_progress ())
       in
       with_write_lock (fun () ->
-          let** () =
+          let** _read_kv_entries =
             KV.batch t.kv (fun b ->
                 let restore_f =
                   match v1_data with
@@ -3565,9 +3578,27 @@ module Make (KV : Kv_ext.Platform) = struct
                       restore_key_v1 ~backup_device_id ~is_operational
                         ~backup_keys ~key ~kv:b
                 in
-                (* while the stream has content *)
-                stream_while sb restore_f)
+                (* while the stream has content (V0)
+                   or until we meet the end of list marker (V1) *)
+                Lwt.catch
+                  (fun () -> stream_while sb restore_f)
+                  (function
+                    | End_of_kv_entries -> Lwt_result.return ()
+                    | exn -> Lwt.reraise exn))
           in
+
+          let** is_backup_truncated =
+            if Option.is_some v1_data then
+              let** trailer = sb_read_n sb (String.length backup_trailer) in
+              Lwt_result.return (not (String.equal trailer backup_trailer))
+            else Lwt_result.return false
+          in
+
+          if is_backup_truncated then
+            Logs.err (fun f ->
+                f
+                  "Backup file is truncated! Finishing the restore anyway with \
+                   the keys we have to avoid a fully corrupted state");
 
           let** _move_domain_key =
             match v1_data with
@@ -3643,7 +3674,7 @@ module Make (KV : Kv_ext.Platform) = struct
 
           let** _remove_extra_keys =
             KV.batch t.kv (fun b ->
-                if is_operational then
+                if is_operational && not is_backup_truncated then
                   (* we remove keys and users that not present in the backup.
                      if namespace store is not present in backup, the current
                      one will be emptied (all namespaces deleted) but will stay
@@ -3728,26 +3759,35 @@ module Make (KV : Kv_ext.Platform) = struct
             else Lwt_result.return ()
           in
 
-          (match t.state with
-          | Operational v ->
-              User_store.clear_cache v.auth_store;
-              Key_store.clear_cache v.key_store;
-              Namespace_store.clear_cache v.namespace_store
-          | _ -> ());
-          let (`Raw stop_ts) = Hsm_clock.now_raw () in
-          match new_time with
-          | None -> Lwt.return_ok ()
-          | Some new_time -> (
-              let elapsed = Ptime.diff stop_ts start_ts in
-              match Ptime.add_span new_time elapsed with
-              | Some ts ->
-                  let** () = set_time_offset t.config_store ts in
-                  Config.set_local_config t
-              | None ->
-                  t.state <- initial_state;
-                  Lwt.return
-                  @@ Error
-                       (Bad_request, "Invalid system time in restore request")))
+          let** _set_state =
+            (match t.state with
+            | Operational v ->
+                User_store.clear_cache v.auth_store;
+                Key_store.clear_cache v.key_store;
+                Namespace_store.clear_cache v.namespace_store
+            | _ -> ());
+            let (`Raw stop_ts) = Hsm_clock.now_raw () in
+            match new_time with
+            | None -> Lwt.return_ok ()
+            | Some new_time -> (
+                let elapsed = Ptime.diff stop_ts start_ts in
+                match Ptime.add_span new_time elapsed with
+                | Some ts ->
+                    let** () = set_time_offset t.config_store ts in
+                    Config.set_local_config t
+                | None ->
+                    t.state <- initial_state;
+                    Lwt.return
+                    @@ Error
+                         (Bad_request, "Invalid system time in restore request")
+                )
+          in
+          if is_backup_truncated then
+            Lwt_result.fail
+              ( Bad_request,
+                "The backup file was truncated. Present keys were still \
+                 restored." )
+          else Lwt_result.return ())
       >>= fun restore_result ->
       let** () =
         internal_server_error Write "Unlock restore lock"

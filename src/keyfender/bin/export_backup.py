@@ -23,8 +23,10 @@ def decode_length(data):
 
 def get_field(data):
     len = decode_length(data)
-    field = data[3:3+len]
     rest = data[3+len:]
+    if len == 0:
+        return None, rest
+    field = data[3:3+len]
     return field, rest
 
 
@@ -96,10 +98,21 @@ def export(passphrase, backup_image_filename, output):
 
     while backup_data:
         item, backup_data = get_field(backup_data)
+        if item is None:
+            if version == 1:
+                break
+            raise Exception("entry with 0 length in V0 backup")
+
         adata = b"backup"
         key_value_pair = decrypt(key, adata, item)
         k, v = get_field(key_value_pair)
         kvs.append((k.decode(), base64.b64encode(v).decode()))
+
+    if version == 1:
+        expected_trailer = b"_NETHSM_BACKUP_END_"
+        trailer = backup_data[:len(expected_trailer)]
+        if not trailer.startswith(expected_trailer):
+            raise Exception("Backup file is truncated (trailer absent)")
 
     data = {
         ".locked-domain-key": base64.b64encode(locked_domain_key).decode(), **dict(kvs)}

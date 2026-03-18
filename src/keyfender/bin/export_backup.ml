@@ -74,10 +74,14 @@ let get_length stream =
 let get_data (l, s) = read_n s l
 *)
 
+exception End_of_kv_entries
+
 let get_field s =
   let len = decode_length s in
-  let offset = 3 + len in
-  (String.sub s 3 len, String.sub s offset (String.length s - offset))
+  if len = 0 then raise End_of_kv_entries
+  else
+    let offset = 3 + len in
+    (String.sub s 3 len, String.sub s offset (String.length s - offset))
 
 let version = "0"
 let err_to_msg = function Error e -> Error (`Msg e) | Ok a -> Ok a
@@ -93,6 +97,7 @@ let decrypt ~key ~adata data =
   | Ok x -> Ok x
 
 let backup_header = "_NETHSM_BACKUP_"
+let backup_trailer = "_NETHSM_BACKUP_END_"
 let backup_version_v0 = Char.chr 0
 let backup_version_v1 = Char.chr 1
 
@@ -128,6 +133,20 @@ let export passphrase backup_image_filename output =
         in
         Error msg
   in
+  let* backup_data =
+    if version = backup_version_v1 then
+      let trailer_len = String.length backup_trailer in
+      let total_len = String.length backup_data in
+      try
+        let trailer =
+          String.sub backup_data (total_len - trailer_len) trailer_len
+        in
+        if String.equal trailer backup_trailer then
+          Ok (String.sub backup_data 0 (total_len - trailer_len))
+        else Error "Backup file is incomplete: wrong trailer"
+      with Invalid_argument _ -> Error "Backup file is incomplete: too small"
+    else Ok backup_data
+  in
   let salt, backup_data = get_field backup_data in
   let backup_key = Crypto.key_of_passphrase ~salt passphrase in
   let key = Crypto.GCM.of_secret backup_key in
@@ -157,13 +176,15 @@ let export passphrase backup_image_filename output =
     else Ok (None, backup_data)
   in
   let rec next acc rest =
-    if rest = "" then Ok acc
+    if rest = "" && version = backup_version_v0 then Ok acc
     else
-      let item, rest = get_field rest in
-      let adata = "backup" in
-      let* key_value_pair = decrypt ~key ~adata item in
-      let key, value = get_field key_value_pair in
-      next ((key, value) :: acc) rest
+      try
+        let item, rest = get_field rest in
+        let adata = "backup" in
+        let* key_value_pair = decrypt ~key ~adata item in
+        let key, value = get_field key_value_pair in
+        next ((key, value) :: acc) rest
+      with End_of_kv_entries -> Ok acc
   in
   let init = [ (".locked-domain-key", locked_domain_key) ] in
   let init =
