@@ -6,6 +6,8 @@
   (pps ppx_blob ppx_deriving_yojson ppx_deriving.std))
  (instrumentation
   (backend bisect_ppx --bisect-sigterm))
+ (foreign_stubs (language c) (names pqc_stubs))
+ (c_library_flags (-loqs))
  (libraries
   astring
   logs
