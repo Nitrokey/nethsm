@@ -434,6 +434,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt_result.return ())
 
   let migrate_v0_v1 t =
+    Logs.info (fun m -> m "Migrating config store from V0 to V1");
     let old = { t with device_id = ""; migration_in_progress = true } in
     batch t (fun t ->
         let set_or_delay t k data =

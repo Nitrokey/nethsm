@@ -70,6 +70,7 @@ module Make (KV : Kv_ext.RW) = struct
      migration following a restore, the restore operation must be careful to
      re-encrypt with the correct device key afterwards. *)
   let migrate_v0_v1 t =
+    Logs.info (fun f -> f "Migrating domain key store from V0 to V1");
     let just_move ?(required = true) slot =
       let src = key_path_v0 slot in
       let dst = key_path t.device_id slot in

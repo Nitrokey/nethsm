@@ -3441,8 +3441,8 @@ module Make (KV : Kv_ext.Platform) = struct
                    (KV.remove kv k))
            (Ok ())
 
-    let apply_config_and_domain_migrations kv ~device_id ~device_key
-        stored_version =
+    let apply_config_and_domain_migrations ?(partial = false) kv ~device_id
+        ~device_key stored_version =
       let config_store = Config_store.connect kv ~device_id ~device_key in
       let open Lwt_result.Infix in
       match
@@ -3457,14 +3457,15 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (`Msg msg))
       | `Greater ->
           (* here's the place to embed migration code, at least for the
-                configuration and domain stores *)
-          Log.info (fun m ->
-              m "Migrating config and domain key stores from older version");
+             configuration and domain stores *)
+          Logs.info (fun f -> f "Applying migrations.");
           lwt_error_to_msg ~pp_error:Config_store.pp_error
             (Config_store.migrate_v0_v1 config_store)
           >>= fun () ->
-          lwt_error_to_msg ~pp_error:Config_store.pp_error
-            Domain_key_store.(migrate_v0_v1 (connect kv device_id))
+          (if not partial then
+             lwt_error_to_msg ~pp_error:Config_store.pp_error
+               Domain_key_store.(migrate_v0_v1 (connect kv device_id))
+           else Lwt_result.return ())
           >|= fun () -> Log.info (fun m -> m "Migration done.")
 
     let restore t json stream =
@@ -3616,20 +3617,30 @@ module Make (KV : Kv_ext.Platform) = struct
                re-encrypting configs
           *)
           let** _apply_config_domain_migrations =
-            let** stored_version =
-              internal_server_error Read "Get version" Config_store.pp_error
-                (Config_store.get_opt t.config_store Config_store.Version)
+            let** migrate_from_version, partial =
+              if is_operational then
+                (* partial restore: by definition the stored version is the most
+                   current one, but we must apply partial migrations if
+                   restoring from a V0 backup. In particular, the unlock salt
+                   must be migrated. *)
+                let version =
+                  match v1_data with Some _ -> Version.V1 | None -> Version.V0
+                in
+                Lwt_result.return (version, true)
+              else
+                (* full restore: we must have restored a /config/version key just now *)
+                let** stored_version =
+                  internal_server_error Read "Get version" Config_store.pp_error
+                    (Config_store.get t.config_store Config_store.Version)
+                in
+                Lwt_result.return (stored_version, false)
             in
-            match stored_version with
-            | None -> Lwt_result.return ()
-            | Some stored_version ->
-                apply_config_and_domain_migrations t.kv
-                  ~device_id:t.system_info.deviceId ~device_key:t.device_key
-                  stored_version
-                |> Lwt_result.map_error (fun (`Msg msg) ->
-                    ( Bad_request,
-                      Fmt.str "could not apply migrations to old backup: %s" msg
-                    ))
+            apply_config_and_domain_migrations t.kv ~partial
+              ~device_id:t.system_info.deviceId ~device_key:t.device_key
+              migrate_from_version
+            |> Lwt_result.map_error (fun (`Msg msg) ->
+                ( Bad_request,
+                  Fmt.str "could not apply migrations to old backup: %s" msg ))
           in
 
           let** dk_rewritten =

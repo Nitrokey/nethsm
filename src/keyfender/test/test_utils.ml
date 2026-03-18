@@ -117,7 +117,7 @@ let booted_mock () =
     >>= fun (y, o, m) ->
       happy_mbox o m >|= fun () -> y )
 
-let create_operational_mock mbox =
+let create_operational_mock ?(platform = platform) mbox =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
     >>= fun (state, o, m) ->
@@ -153,10 +153,11 @@ let create_operational_mock mbox =
 
 let operational_mock = lazy (create_operational_mock good_platform)
 
-let operational_mock ?(mbox = good_platform) () =
+let operational_mock ?platform ?(mbox = good_platform) () =
   let t =
-    if mbox == good_platform then copy (Lazy.force operational_mock)
-    else create_operational_mock mbox
+    if mbox == good_platform && platform = None then
+      copy (Lazy.force operational_mock)
+    else create_operational_mock ?platform mbox
   in
   Hsm.reset_rate_limit ();
   t

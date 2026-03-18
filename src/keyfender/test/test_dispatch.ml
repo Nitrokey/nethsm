@@ -127,7 +127,7 @@ let random_error_bad_length =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let operational_mock_with_mbox' f =
+let operational_mock_with_mbox' ?(platform = platform) f =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
     >>= fun (state, o, m) ->
@@ -152,7 +152,8 @@ let operational_mock_with_mbox' f =
         ~passphrase:"backupUserPassphrase" ~name:"backup"
       >|= fun _ -> state )
 
-let operational_mock_with_mbox () = operational_mock_with_mbox' (fun _ -> ())
+let operational_mock_with_mbox ?platform () =
+  operational_mock_with_mbox' ?platform (fun _ -> ())
 
 let provision_json =
   {| {
@@ -681,7 +682,8 @@ let system_restore_v0_backup ~changed_devkey =
   in
   let expect =
     multipart_log
-    ^ info "Migrating config and domain key stores from older version"
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
     ^ info
         "migrating /config/time-offset to /local/0000000000/config/time-offset"
     ^ info
@@ -691,6 +693,7 @@ let system_restore_v0_backup ~changed_devkey =
     ^ info
         "migrating /config/private-key to /local/0000000000/config/private-key"
     ^ info "migrating /config/version to /config/version"
+    ^ info "Migrating domain key store from V0 to V1"
     ^ info
         "migrating /domain-key/attended to \
          /local/0000000000/domain-key/attended"
@@ -744,6 +747,75 @@ let system_restore_v0_backup =
   Alcotest.test_case
     "a request for /system/restore with a large v0 backup succeeds" `Quick
     (fun () -> system_restore_v0_backup ~changed_devkey:false)
+
+let system_restore_v0_backup_operational ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "big_100k.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/version to /config/version"
+    ^ info "Migration done." ^ info "Domain Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      operational_mock_with_mbox ~platform ()
+    else operational_mock_with_mbox ()
+  in
+  let hsm_state' =
+    request ~hsm_state ~headers:admin_headers ~expect ~meth:`POST ~content_type
+      ~body:(`String body) "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state'' =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+      "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state'' = `Operational))
+
+let system_restore_v0_backup_operational_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds on a device \
+     with a different device key in an operational state"
+    `Quick (fun () -> system_restore_v0_backup_operational ~changed_devkey:true)
+
+let system_restore_v0_backup_operational =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds in an \
+     operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational ~changed_devkey:false)
 
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
@@ -5253,6 +5325,8 @@ let () =
           system_backup_post_accept_header;
           system_restore_v0_backup;
           system_restore_v0_backup_changed_devkey;
+          system_restore_v0_backup_operational;
+          system_restore_v0_backup_operational_changed_devkey;
         ] );
       ("/unlock", [ unlock_ok; unlock_failed; unlock_failed_two; unlock_twice ]);
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
