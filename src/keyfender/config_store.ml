@@ -221,15 +221,19 @@ module Make (KV : Kv_ext.Platform) = struct
     config_domain_key : string option ref;
     migration_in_progress : bool;
         (* used exclusively during migration from unencrypted to encrypted *)
-    post_migration_writes : (unit -> (unit, write_error) Lwt_result.t) list ref;
+    post_migration_writes : (t -> (unit, write_error) Lwt_result.t) list ref;
   }
 
-  let key_path ?(migration_in_progress = false) device_id key =
+  let key_path' ~migration_in_progress ~device_id key =
     let prefix =
       if is_global_config key || migration_in_progress then global_config_prefix
       else local_config_prefix device_id
     in
     Mirage_kv.Key.(add (v prefix) (name key))
+
+  let key_path t key =
+    key_path' ~migration_in_progress:t.migration_in_progress
+      ~device_id:t.device_id key
 
   module type Codec = sig
     val encrypt : _ k -> string -> string
@@ -251,9 +255,9 @@ module Make (KV : Kv_ext.Platform) = struct
       let decrypt _ x = Ok x
     end : Codec)
 
-  let single_codec ?(device_id = "") encryption_key =
+  let single_codec t encryption_key =
     (module struct
-      let adata k = key_path device_id k |> Mirage_kv.Key.to_string
+      let adata k = key_path t k |> Mirage_kv.Key.to_string
 
       let encrypt k data =
         let adata = adata k in
@@ -273,17 +277,15 @@ module Make (KV : Kv_ext.Platform) = struct
     match (locality, timing, !(t.config_domain_key)) with
     | `Global, `Early, _ -> Ok noop_codec
     | _, `Late, None -> Error `Missing_domain_key
-    | `Local, `Early, _ ->
-        Ok (single_codec ~device_id:t.device_id t.config_device_key)
-    | `Global, `Late, Some dom_key -> Ok (single_codec dom_key)
-    | `Local, `Late, Some dom_key ->
-        Ok (single_codec ~device_id:t.device_id dom_key)
+    | `Local, `Early, _ -> Ok (single_codec t t.config_device_key)
+    | `Global, `Late, Some dom_key ->
+        Ok (single_codec { t with device_id = "" } dom_key)
+    | `Local, `Late, Some dom_key -> Ok (single_codec t dom_key)
 
   let get t key =
     let ( let* ) = Result.bind in
     (* if we're reading from a V0 store, read all as global *)
-    let migration_in_progress = t.migration_in_progress in
-    KV.get t.kv (key_path ~migration_in_progress t.device_id key) >|= function
+    KV.get t.kv (key_path t key) >|= function
     | Ok data ->
         let* c =
           if t.migration_in_progress then Ok noop_codec else select_codec t key
@@ -300,7 +302,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Error e -> Error e
 
   let exists t key =
-    let key = key_path t.device_id key in
+    let key = key_path t key in
     KV.exists t.kv key >|= function
     | Ok (Some _) -> Ok true
     | Ok None -> Ok false
@@ -327,7 +329,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let* c = select_codec t key |> Lwt_result.lift in
     let module C = (val c) in
     let data = to_string key value |> C.encrypt key in
-    set_f t.kv (key_path t.device_id key) data
+    set_f t.kv (key_path t key) data
 
   let pp_write_error ppf = function
     | `Kv e -> KV.pp_write_error ppf e
@@ -337,8 +339,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | `Restore_in_progress ->
         Fmt.string ppf "cannot restore while restore already in progress"
 
-  let remove t key = KV.remove t.kv (key_path t.device_id key)
-  let digest t key = KV.digest t.kv (key_path t.device_id key)
+  let remove t key = KV.remove t.kv (key_path t key)
+  let digest t key = KV.digest t.kv (key_path t key)
   let restore_in_progress t = exists t Restore_in_progress
 
   let connect kv ~device_id ~device_key =
@@ -361,7 +363,7 @@ module Make (KV : Kv_ext.Platform) = struct
       Lwt_list.fold_left_s
         (fun acc op ->
           let open Lwt_result.Infix in
-          Lwt.return acc >>= fun () -> op ())
+          Lwt.return acc >>= fun () -> op t)
         (Ok ()) !(t.post_migration_writes)
       >|= fun () -> t.post_migration_writes := [])
     else Lwt_result.return ()
@@ -440,7 +442,7 @@ module Make (KV : Kv_ext.Platform) = struct
         let set_opt k = function
           | None -> Lwt_result.return ()
           | Some v ->
-              let dst = key_path t.device_id k in
+              let dst = key_path t k in
               Logs.debug (fun f -> f "restoring %a" Mirage_kv.Key.pp dst);
               set t k v
         in
@@ -470,9 +472,9 @@ module Make (KV : Kv_ext.Platform) = struct
     let old = { t with device_id = ""; migration_in_progress = true } in
     batch t (fun t ->
         let set_or_delay t k data =
-          let go () =
-            let src = key_path ~migration_in_progress:true t.device_id k in
-            let dst = key_path t.device_id k in
+          let src = key_path old k in
+          let go t =
+            let dst = key_path t k in
             Logs.info (fun f ->
                 f "migrating %a to %a" Mirage_kv.Key.pp src Mirage_kv.Key.pp dst);
             set t k data
@@ -481,7 +483,6 @@ module Make (KV : Kv_ext.Platform) = struct
             | Error (`Kv e) -> Error (`Kv_write e)
             | Error (`Msg m) -> Error (`Msg m)
             | Error `Missing_domain_key ->
-                let src = key_path ~migration_in_progress:true t.device_id k in
                 Logs.info (fun f ->
                     f "need domain key to migrate %a! deferring to after unlock"
                       Mirage_kv.Key.pp src);
@@ -490,20 +491,19 @@ module Make (KV : Kv_ext.Platform) = struct
             | Error `Restore_in_progress -> Ok ()
             | Ok () -> Ok ()
           in
-          go () >|= wrap_write_error
+          go t >|= wrap_write_error
         in
         let just_move (type a) (k : a k) =
           get_opt old k >>= function
           | Error e -> Lwt.return (Error e)
           | Ok None -> Lwt.return (Ok ())
           | Ok (Some data) -> (
-              Lwt_result.return () >>= function
+              remove old k >>= function
               | Ok () -> set_or_delay t k data
               | Error e -> Lwt_result.fail (`Kv_write e))
         in
         let migrate_log_config () =
-          KV.get t.kv (key_path ~migration_in_progress:true "" Log_config)
-          >>= function
+          KV.get t.kv (key_path old Log_config) >>= function
           | Error (`Not_found _) -> Lwt.return (Ok ())
           | Error e -> Lwt.return (Error (`Kv e))
           | Ok data -> (
@@ -530,8 +530,7 @@ module Make (KV : Kv_ext.Platform) = struct
                       set_or_delay t Log_config new_config))
         in
         let migrate_ip_config () =
-          KV.get t.kv (key_path ~migration_in_progress:true "" Ip_config)
-          >>= function
+          KV.get t.kv (key_path old Ip_config) >>= function
           | Error (`Not_found _) -> Lwt.return (Ok ())
           | Error e -> Lwt.return (Error (`Kv e))
           | Ok data -> (

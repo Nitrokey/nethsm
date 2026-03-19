@@ -3348,7 +3348,7 @@ module Make (KV : Kv_ext.Platform) = struct
         || Option.is_some (Encrypted_store.slot_of_key key)
         || Mirage_kv.Key.equal key
              Config_store.(
-               key_path ~migration_in_progress:true device_id Unlock_salt)
+               key_path' ~migration_in_progress:true ~device_id Unlock_salt)
       in
       if should_restore_key then
         let** () =
@@ -3379,7 +3379,9 @@ module Make (KV : Kv_ext.Platform) = struct
         ((not is_operational) && (is_global || is_from_backup_device))
         || Option.is_some (Encrypted_store.slot_of_key key)
         || Mirage_kv.Key.equal key
-             Config_store.(key_path backup_device_id Unlock_salt)
+             Config_store.(
+               key_path' ~migration_in_progress:false
+                 ~device_id:backup_device_id Unlock_salt)
       in
       if should_restore_key then
         let** () =
