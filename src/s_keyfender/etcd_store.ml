@@ -159,7 +159,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let make_unary_handler ~request ~decode =
    fun write_body read_body ->
     let read_body_with_timeout =
-      Lwt.pick [ read_body; timeout 10 "gRPC request timeout" >>= etcd_err ]
+      Lwt.pick [ read_body; timeout 20 "gRPC request timeout" >>= etcd_err ]
     in
     let f s =
       Lwt.pick
