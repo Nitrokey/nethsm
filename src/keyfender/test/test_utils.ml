@@ -211,9 +211,9 @@ let test_key =
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
 
-let hsm_with_key ?mbox ?and_namespace
+let hsm_with_key ?platform ?mbox ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
-  let state = operational_mock ?mbox () in
+  let state = operational_mock ?platform ?mbox () in
   Lwt_main.run
     ( Hsm.Key.add_pem state mechanisms ~namespace:None ~id:"keyID" test_key_pem
         no_restrictions

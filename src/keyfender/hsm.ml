@@ -3702,17 +3702,24 @@ module Make (KV : Kv_ext.Platform) = struct
             match v1_data with
             | None -> Lwt_result.return ()
             | Some (backup_device_id, backup_config_key) ->
-                if
-                  String.equal backup_device_id device_id
-                  && String.equal backup_config_key
-                       t.config_store.config_device_key
-                then (
+                let is_same_device = String.equal backup_device_id device_id in
+                let is_same_devkey =
+                  String.equal backup_config_key
+                    t.config_store.config_device_key
+                in
+                if is_same_device && is_same_devkey then (
                   Logs.info (fun f -> f "no config re-encrypt needed");
                   Lwt_result.return ())
                 else (
-                  Logs.info (fun f ->
-                      f "re-encrypting local configs from device %s"
-                        backup_device_id);
+                  if not is_same_device then
+                    Logs.info (fun f ->
+                        f
+                          "different device: importing + re-encrypting local \
+                           configs from device %s"
+                          backup_device_id)
+                  else
+                    Logs.info (fun f ->
+                        f "device has been reset: re-encrypting local configs");
                   (* this store will read/write with the backed-up key *)
                   let backup_config_store =
                     {
@@ -3722,30 +3729,19 @@ module Make (KV : Kv_ext.Platform) = struct
                     }
                   in
                   let** config_values =
-                    Config_store.backup_local_config backup_config_store
-                  in
-                  let config_values =
-                    if is_operational then (
-                      Logs.info (fun f ->
-                          f
-                            "partial restore: only keeping unlock salt from \
-                             backed-up config");
-                      {
-                        Config_store.unlock_salt = config_values.unlock_salt;
-                        certificate = None;
-                        private_key = None;
-                        ip_config = None;
-                        log_config = None;
-                        time_offset = None;
-                        unattended_boot = None;
-                      })
-                    else config_values
+                    Config_store.backup_local_config ~partial:is_operational
+                      backup_config_store
                   in
                   let** () =
-                    if not (String.equal backup_device_id device_id) then
-                      internal_server_error Write "Re-encrypt local configs"
+                    if not (String.equal backup_device_id device_id) then (
+                      Logs.info (fun f ->
+                          f
+                            "different device: removing all /local/%s/config \
+                             keys before writing in /local/%s/config"
+                            backup_device_id device_id);
+                      internal_server_error Write "Clear unrelated configs"
                         Config_store.pp_write_error
-                        (Config_store.clear_local_config backup_config_store)
+                        (Config_store.clear_local_config backup_config_store))
                     else Lwt_result.return ()
                   in
                   internal_server_error Write "Re-encrypt local configs"

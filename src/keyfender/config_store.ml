@@ -392,7 +392,8 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     go () |> Lwt_result.map_error (fun e -> `Kv e)
 
-  let backup_local_config t =
+  (* partial = only backup unlock salt *)
+  let backup_local_config ?(partial = false) t =
     let ( let* ) = Lwt_result.bind in
     let get_opt' t k =
       let open Lwt.Infix in
@@ -404,29 +405,44 @@ module Make (KV : Kv_ext.Platform) = struct
     in
 
     let* unlock_salt = get_opt' t Unlock_salt in
-    let* certificate = get_opt' t Certificate in
-    let* private_key = get_opt' t Private_key in
-    let* ip_config = get_opt' t Ip_config in
-    let* log_config = get_opt' t Log_config in
-    let* time_offset = get_opt' t Time_offset in
-    let* unattended_boot = get_opt' t Unattended_boot in
-    Lwt_result.return
-      {
-        unlock_salt;
-        certificate;
-        private_key;
-        ip_config;
-        log_config;
-        time_offset;
-        unattended_boot;
-      }
+    if partial then
+      Lwt_result.return
+        {
+          unlock_salt;
+          certificate = None;
+          private_key = None;
+          ip_config = None;
+          log_config = None;
+          time_offset = None;
+          unattended_boot = None;
+        }
+    else
+      let* certificate = get_opt' t Certificate in
+      let* private_key = get_opt' t Private_key in
+      let* ip_config = get_opt' t Ip_config in
+      let* log_config = get_opt' t Log_config in
+      let* time_offset = get_opt' t Time_offset in
+      let* unattended_boot = get_opt' t Unattended_boot in
+      Lwt_result.return
+        {
+          unlock_salt;
+          certificate;
+          private_key;
+          ip_config;
+          log_config;
+          time_offset;
+          unattended_boot;
+        }
 
   let restore_local_config t (b : local_backup) =
     let ( let* ) = Lwt_result.bind in
     batch t (fun t ->
         let set_opt k = function
           | None -> Lwt_result.return ()
-          | Some v -> set t k v
+          | Some v ->
+              let dst = key_path t.device_id k in
+              Logs.debug (fun f -> f "restoring %a" Mirage_kv.Key.pp dst);
+              set t k v
         in
         let* () = set_opt Unlock_salt b.unlock_salt in
         let* () = set_opt Certificate b.certificate in
