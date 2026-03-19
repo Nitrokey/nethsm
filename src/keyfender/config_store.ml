@@ -360,11 +360,12 @@ module Make (KV : Kv_ext.Platform) = struct
     t.config_domain_key := Some k;
     if !(t.post_migration_writes) <> [] then (
       Logs.info (fun f -> f "Applying post unlock migrations");
-      Lwt_list.fold_left_s
-        (fun acc op ->
-          let open Lwt_result.Infix in
-          Lwt.return acc >>= fun () -> op t)
-        (Ok ()) !(t.post_migration_writes)
+      batch t (fun t ->
+          Lwt_list.fold_left_s
+            (fun acc op ->
+              let open Lwt_result.Infix in
+              Lwt.return acc >>= fun () -> op t)
+            (Ok ()) !(t.post_migration_writes))
       >|= fun () -> t.post_migration_writes := [])
     else Lwt_result.return ()
 
@@ -378,6 +379,12 @@ module Make (KV : Kv_ext.Platform) = struct
     log_config : Json.log option;
     time_offset : Ptime.span option;
     unattended_boot : bool option;
+  }
+
+  (* all keys that are domain-encrypted (global+late) *)
+  type domain_encrypted_backup = {
+    backup_key : string option;
+    backup_salt : string option;
   }
 
   let clear_local_config t =
@@ -394,17 +401,18 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     go () |> Lwt_result.map_error (fun e -> `Kv e)
 
+  (* lenient: does not fail on error *)
+  let get_opt' t k =
+    let open Lwt.Infix in
+    get_opt t k >|= function
+    | Ok x -> Ok x
+    | Error e ->
+        Logs.warn (fun f -> f "could not read key %s: %a" (name k) pp_error e);
+        Ok None
+
   (* partial = only backup unlock salt *)
   let backup_local_config ?(partial = false) t =
     let ( let* ) = Lwt_result.bind in
-    let get_opt' t k =
-      let open Lwt.Infix in
-      get_opt t k >|= function
-      | Ok x -> Ok x
-      | Error e ->
-          Logs.warn (fun f -> f "could not read key %s: %a" (name k) pp_error e);
-          Ok None
-    in
 
     let* unlock_salt = get_opt' t Unlock_salt in
     if partial then
@@ -436,24 +444,39 @@ module Make (KV : Kv_ext.Platform) = struct
           unattended_boot;
         }
 
+  let backup_domain_encrypted_config t =
+    let ( let* ) = Lwt_result.bind in
+    let* backup_key = get_opt' t Backup_key in
+    let* backup_salt = get_opt' t Backup_salt in
+    Lwt_result.return { backup_salt; backup_key }
+
+  let set_opt t k = function
+    | None -> Lwt_result.return ()
+    | Some v ->
+        let dst = key_path t k in
+        Logs.debug (fun f -> f "restoring %a" Mirage_kv.Key.pp dst);
+        set t k v
+
   let restore_local_config t (b : local_backup) =
     let ( let* ) = Lwt_result.bind in
     batch t (fun t ->
-        let set_opt k = function
-          | None -> Lwt_result.return ()
-          | Some v ->
-              let dst = key_path t k in
-              Logs.debug (fun f -> f "restoring %a" Mirage_kv.Key.pp dst);
-              set t k v
-        in
-        let* () = set_opt Unlock_salt b.unlock_salt in
-        let* () = set_opt Certificate b.certificate in
-        let* () = set_opt Private_key b.private_key in
-        let* () = set_opt Ip_config b.ip_config in
-        let* () = set_opt Log_config b.log_config in
-        let* () = set_opt Time_offset b.time_offset in
-        let* () = set_opt Unattended_boot b.unattended_boot in
+        let* () = set_opt t Unlock_salt b.unlock_salt in
+        let* () = set_opt t Certificate b.certificate in
+        let* () = set_opt t Private_key b.private_key in
+        let* () = set_opt t Ip_config b.ip_config in
+        let* () = set_opt t Log_config b.log_config in
+        let* () = set_opt t Time_offset b.time_offset in
+        let* () = set_opt t Unattended_boot b.unattended_boot in
         Lwt_result.return ())
+
+  let defer_restore_domain_encrypted_config t (b : domain_encrypted_backup) =
+    let ( let* ) = Lwt_result.bind in
+    t.post_migration_writes :=
+      (fun t ->
+        let* () = set_opt t Backup_key b.backup_key in
+        let* () = set_opt t Backup_salt b.backup_salt in
+        Lwt_result.return ())
+      :: !(t.post_migration_writes)
 
   (* Migrate stored v0 configs from:
       - v0 format (unencrypted, all global)

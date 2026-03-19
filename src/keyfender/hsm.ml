@@ -3646,6 +3646,16 @@ module Make (KV : Kv_ext.Platform) = struct
                   Fmt.str "could not apply migrations to old backup: %s" msg ))
           in
 
+          (* if this is a partial restore, backup the configs that are domain-key encrypted,
+             in case the domain key changes (not just its passphrase) and we have
+             to restore them *)
+          let** domain_encrypted_configs_backup =
+            if is_operational then
+              Config_store.backup_domain_encrypted_config t.config_store
+              |> Lwt_result.map Option.some
+            else Lwt_result.return None
+          in
+
           let** dk_rewritten =
             (* the domain key and/or device key might have changed if
                restored to a fresh or different device, so refresh the store
@@ -3697,10 +3707,25 @@ module Make (KV : Kv_ext.Platform) = struct
                 else Lwt_result.return ())
           in
 
+          (* if the domain key has changed (we don't know if it's just the
+             passphrase or the actual key), schedule to restore the configs that
+             were encrypted with it after unlock *)
+          let _reencrypt_domain_encrypted_configs =
+            match (dk_rewritten, domain_encrypted_configs_backup) with
+            | true, Some to_restore ->
+                Logs.info (fun f ->
+                    f
+                      "deferring restoration of previous domain-encrypted \
+                       configs");
+                Config_store.defer_restore_domain_encrypted_config
+                  t.config_store to_restore
+            | _ -> ()
+          in
+
           (* after a full restore, (part of) the config store will be encrypted with
              the config store of the backup device, we want to re-encrypt it
              with our own *)
-          let** _reencrypt_configs =
+          let** _reencrypt_local_configs =
             match v1_data with
             | None -> Lwt_result.return ()
             | Some (backup_device_id, backup_config_key) ->

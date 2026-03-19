@@ -791,6 +791,7 @@ let system_restore_v0_backup_operational ~changed_devkey =
     ^ info "Migration done (0 deferred)"
     ^ info "Domain Key changed."
     ^ info "Rewriting stored Domain Key."
+    ^ info "deferring restoration of previous domain-encrypted configs"
     ^ debug "caching config to the platform"
   in
   let hsm_state =
@@ -804,6 +805,17 @@ let system_restore_v0_backup_operational ~changed_devkey =
       operational_mock_with_mbox ~platform ()
     else operational_mock_with_mbox ()
   in
+  (* configure a backup passphrase before the restore. It should still be usable
+     afterwards *)
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      "backupUserPassphrase"
+  in
+  let hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
   let hsm_state' =
     request ~hsm_state ~headers:admin_headers ~expect ~meth:`POST ~content_type
       ~body:(`String body) "/system/restore"
@@ -812,25 +824,22 @@ let system_restore_v0_backup_operational ~changed_devkey =
   Alcotest.(
     check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-  let hsm_state'' =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
-      "/unlock"
+  let expect =
+    info "Applying post unlock migrations"
+    ^ debug "restoring /config/backup-key"
+    ^ debug "restoring /config/backup-salt"
+  in
+  let hsm_state =
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
     |> returns_empty' ~with_status:`No_content
   in
   Alcotest.(
     check bool "post unlock is operational" true
-      (Hsm.state hsm_state'' = `Operational));
-
-  let passphrase =
-    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
-      "backupUserPassphrase"
-  in
-  let hsm_state =
-    admin_put_request ~hsm_state:hsm_state'' ~body:(`String passphrase)
-      "/config/backup-passphrase"
-    |> returns_empty' ~with_status:`No_content
-  in
+      (Hsm.state hsm_state = `Operational));
   let headers = auth_header "backup" "backupUserPassphrase" in
+  (* old backup key/salt should still be readable, even though we have changed
+     domain key *)
   request ~meth:`POST ~hsm_state ~headers "/system/backup"
   |> returns_stream ~with_status:`OK
   |> ignore
@@ -1288,7 +1297,12 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
         if changed_devid then { platform with deviceId = "0000000001" }
         else platform
       in
-      hsm_with_key ~platform ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      let hsm_state =
+        hsm_with_key ~platform ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      in
+      admin_put_request ~hsm_state ~body:(`String passphrase)
+        "/config/backup-passphrase"
+      |> returns_empty' ~with_status:`No_content
       |> post_backup_operations
     else Some hsm_state
   in
@@ -1312,6 +1326,7 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
       ^ info "Rewriting stored Domain Key."
       ^ info "removing: /key/newKeyID\n"
       ^ info "removing: /namespace/namespace3\n"
+      ^ info "deferring restoration of previous domain-encrypted configs"
       ^ changed_log
       ^ debug "caching config to the platform"
     in
@@ -1335,8 +1350,13 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
   (* after first restore it should be locked *)
   assert (Hsm.state hsm_state = `Locked);
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ debug "restoring /config/backup-key"
+    ^ debug "restoring /config/backup-salt"
+  in
   let* hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    request ~meth:`POST ~expect ~body:(`String unlock_json) ~hsm_state "/unlock"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Operational);
@@ -1384,7 +1404,11 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
   in
   (* after second restore it should be operational *)
   assert (Hsm.state hsm_state = `Operational);
-  ()
+  (* same backup passphrase should continue to work *)
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
 let system_backup_and_restore_operational_changed_devkey =
   Alcotest.test_case
