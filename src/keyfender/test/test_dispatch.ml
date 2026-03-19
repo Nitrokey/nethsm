@@ -748,7 +748,11 @@ let system_restore_v0_backup ~changed_devkey =
   in
   Alcotest.(
     check bool "post unlock is operational" true
-      (Hsm.state hsm_state'' = `Operational))
+      (Hsm.state hsm_state'' = `Operational));
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state:hsm_state'' ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
 let system_restore_v0_backup_changed_devkey =
   Alcotest.test_case
@@ -815,7 +819,21 @@ let system_restore_v0_backup_operational ~changed_devkey =
   in
   Alcotest.(
     check bool "post unlock is operational" true
-      (Hsm.state hsm_state'' = `Operational))
+      (Hsm.state hsm_state'' = `Operational));
+
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      "backupUserPassphrase"
+  in
+  let hsm_state =
+    admin_put_request ~hsm_state:hsm_state'' ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
 let system_restore_v0_backup_operational_changed_devkey =
   Alcotest.test_case
