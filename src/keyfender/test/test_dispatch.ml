@@ -685,19 +685,27 @@ let system_restore_v0_backup ~changed_devkey =
     ^ info "Applying migrations."
     ^ info "Migrating config store from V0 to V1"
     ^ info
-        "migrating /config/time-offset to /local/0000000000/config/time-offset"
-    ^ info
         "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
     ^ info
         "migrating /config/certificate to /local/0000000000/config/certificate"
     ^ info
         "migrating /config/private-key to /local/0000000000/config/private-key"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
     ^ info "migrating /config/version to /config/version"
     ^ info "Migrating domain key store from V0 to V1"
     ^ info
         "migrating /domain-key/attended to \
          /local/0000000000/domain-key/attended"
-    ^ info "Migration done."
+    ^ info "Migration done (2 deferred)"
   in
   let expect =
     if changed_devkey then
@@ -728,9 +736,14 @@ let system_restore_v0_backup ~changed_devkey =
   Alcotest.(
     check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+  in
   let hsm_state'' =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
-      "/unlock"
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
     |> returns_empty' ~with_status:`No_content
   in
   Alcotest.(
@@ -771,8 +784,8 @@ let system_restore_v0_backup_operational ~changed_devkey =
     ^ info "Migrating config store from V0 to V1"
     ^ info
         "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
-    ^ info "migrating /config/version to /config/version"
-    ^ info "Migration done." ^ info "Domain Key changed."
+    ^ info "Migration done (0 deferred)"
+    ^ info "Domain Key changed."
     ^ info "Rewriting stored Domain Key."
     ^ debug "caching config to the platform"
   in

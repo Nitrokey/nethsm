@@ -218,11 +218,10 @@ module Make (KV : Kv_ext.Platform) = struct
     kv : KV.t;
     device_id : string;
     config_device_key : string;
-    mutable config_domain_key : string option;
+    config_domain_key : string option ref;
     migration_in_progress : bool;
         (* used exclusively during migration from unencrypted to encrypted *)
-    mutable post_migration_writes :
-      (unit -> (unit, write_error) Lwt_result.t) list;
+    post_migration_writes : (unit -> (unit, write_error) Lwt_result.t) list ref;
   }
 
   let key_path ?(migration_in_progress = false) device_id key =
@@ -271,7 +270,7 @@ module Make (KV : Kv_ext.Platform) = struct
   let select_codec t key =
     let locality = if is_global_config key then `Global else `Local in
     let timing = if is_needed_before_unlock key then `Early else `Late in
-    match (locality, timing, t.config_domain_key) with
+    match (locality, timing, !(t.config_domain_key)) with
     | `Global, `Early, _ -> Ok noop_codec
     | _, `Late, None -> Error `Missing_domain_key
     | `Local, `Early, _ ->
@@ -349,20 +348,25 @@ module Make (KV : Kv_ext.Platform) = struct
       kv;
       device_id;
       config_device_key;
-      config_domain_key = None;
+      config_domain_key = ref None;
       migration_in_progress = false;
-      post_migration_writes = [];
+      post_migration_writes = ref [];
     }
 
   let provide_config_domain_key t k =
-    t.config_domain_key <- Some k;
-    Lwt_list.fold_left_s
-      (fun acc op ->
-        let open Lwt_result.Infix in
-        Lwt.return acc >>= fun () -> op ())
-      (Ok ()) t.post_migration_writes
+    let open Lwt_result.Infix in
+    t.config_domain_key := Some k;
+    if !(t.post_migration_writes) <> [] then (
+      Logs.info (fun f -> f "Applying post unlock migrations");
+      Lwt_list.fold_left_s
+        (fun acc op ->
+          let open Lwt_result.Infix in
+          Lwt.return acc >>= fun () -> op ())
+        (Ok ()) !(t.post_migration_writes)
+      >|= fun () -> t.post_migration_writes := [])
+    else Lwt_result.return ()
 
-  let forget_config_domain_key t = t.config_domain_key <- None
+  let forget_config_domain_key t = t.config_domain_key := None
 
   type local_backup = {
     unlock_salt : string option;
@@ -433,7 +437,19 @@ module Make (KV : Kv_ext.Platform) = struct
         let* () = set_opt Unattended_boot b.unattended_boot in
         Lwt_result.return ())
 
-  let migrate_v0_v1 t =
+  (* Migrate stored v0 configs from:
+      - v0 format (unencrypted, all global)
+      to:
+      - v1 format (encrypted, global or local)
+      If partial: unlock move unlock salt.
+
+      All keys are rewritten even if their path do not change, since we must
+      encrypt the previously cleartext data.
+
+      All keys that need domain key for encryption (backup salt, key, cluster
+      CA) are only migrated later when the domain key is provided (at unlock)
+  *)
+  let migrate_v0_v1 ~partial t =
     Logs.info (fun m -> m "Migrating config store from V0 to V1");
     let old = { t with device_id = ""; migration_in_progress = true } in
     batch t (fun t ->
@@ -449,7 +465,11 @@ module Make (KV : Kv_ext.Platform) = struct
             | Error (`Kv e) -> Error (`Kv_write e)
             | Error (`Msg m) -> Error (`Msg m)
             | Error `Missing_domain_key ->
-                t.post_migration_writes <- go :: t.post_migration_writes;
+                let src = key_path ~migration_in_progress:true t.device_id k in
+                Logs.info (fun f ->
+                    f "need domain key to migrate %a! deferring to after unlock"
+                      Mirage_kv.Key.pp src);
+                t.post_migration_writes := go :: !(t.post_migration_writes);
                 Ok ()
             | Error `Restore_in_progress -> Ok ()
             | Ok () -> Ok ()
@@ -457,12 +477,13 @@ module Make (KV : Kv_ext.Platform) = struct
           go () >|= wrap_write_error
         in
         let just_move (type a) (k : a k) =
-          if is_global_config k then Lwt.return (Ok ())
-          else
-            get_opt old k >>= function
-            | Error e -> Lwt.return (Error e)
-            | Ok None -> Lwt.return (Ok ())
-            | Ok (Some data) -> set_or_delay t k data
+          get_opt old k >>= function
+          | Error e -> Lwt.return (Error e)
+          | Ok None -> Lwt.return (Ok ())
+          | Ok (Some data) -> (
+              Lwt_result.return () >>= function
+              | Ok () -> set_or_delay t k data
+              | Error e -> Lwt_result.fail (`Kv_write e))
         in
         let migrate_log_config () =
           KV.get t.kv (key_path ~migration_in_progress:true "" Log_config)
@@ -520,15 +541,17 @@ module Make (KV : Kv_ext.Platform) = struct
         in
 
         let open Lwt_result.Infix in
-        just_move Ip_config >>= fun () ->
-        just_move Log_config >>= fun () ->
-        just_move Time_offset >>= fun () ->
         just_move Unlock_salt >>= fun () ->
-        just_move Certificate >>= fun () ->
-        just_move Private_key >>= fun () ->
-        just_move Backup_salt >>= fun () ->
-        just_move Backup_key >>= fun () ->
-        just_move Unattended_boot >>= fun () ->
-        migrate_log_config () >>= fun () ->
-        migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1)
+        if not partial then
+          just_move Ip_config >>= fun () ->
+          just_move Log_config >>= fun () ->
+          just_move Time_offset >>= fun () ->
+          just_move Certificate >>= fun () ->
+          just_move Private_key >>= fun () ->
+          just_move Backup_salt >>= fun () ->
+          just_move Backup_key >>= fun () ->
+          just_move Unattended_boot >>= fun () ->
+          migrate_log_config () >>= fun () ->
+          migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1
+        else Lwt_result.return ())
 end

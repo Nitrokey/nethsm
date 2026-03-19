@@ -3441,9 +3441,8 @@ module Make (KV : Kv_ext.Platform) = struct
                    (KV.remove kv k))
            (Ok ())
 
-    let apply_config_and_domain_migrations ?(partial = false) kv ~device_id
-        ~device_key stored_version =
-      let config_store = Config_store.connect kv ~device_id ~device_key in
+    let apply_config_and_domain_migrations ?(partial = false) ~config_store kv
+        ~device_id stored_version =
       let open Lwt_result.Infix in
       match
         Version.(compare Current.config_and_domain_store stored_version)
@@ -3460,13 +3459,16 @@ module Make (KV : Kv_ext.Platform) = struct
              configuration and domain stores *)
           Logs.info (fun f -> f "Applying migrations.");
           lwt_error_to_msg ~pp_error:Config_store.pp_error
-            (Config_store.migrate_v0_v1 config_store)
+            (Config_store.migrate_v0_v1 ~partial config_store)
           >>= fun () ->
           (if not partial then
              lwt_error_to_msg ~pp_error:Config_store.pp_error
                Domain_key_store.(migrate_v0_v1 (connect kv device_id))
            else Lwt_result.return ())
-          >|= fun () -> Log.info (fun m -> m "Migration done.")
+          >|= fun () ->
+          Log.info (fun m ->
+              m "Migration done (%d deferred)"
+                (List.length !(config_store.post_migration_writes)))
 
     let restore t json stream =
       let sb = sb_of_stream stream in
@@ -3635,9 +3637,8 @@ module Make (KV : Kv_ext.Platform) = struct
                 in
                 Lwt_result.return (stored_version, false)
             in
-            apply_config_and_domain_migrations t.kv ~partial
-              ~device_id:t.system_info.deviceId ~device_key:t.device_key
-              migrate_from_version
+            apply_config_and_domain_migrations ~config_store:t.config_store t.kv
+              ~partial ~device_id:t.system_info.deviceId migrate_from_version
             |> Lwt_result.map_error (fun (`Msg msg) ->
                 ( Bad_request,
                   Fmt.str "could not apply migrations to old backup: %s" msg ))
@@ -3898,8 +3899,8 @@ module Make (KV : Kv_ext.Platform) = struct
              default_net;
            }
          in
-         System.apply_config_and_domain_migrations kv
-           ~device_id:system_info.deviceId ~device_key version
+         System.apply_config_and_domain_migrations ~config_store kv
+           ~device_id:system_info.deviceId version
          >>= boot)
     >|= function
     | Ok t ->
