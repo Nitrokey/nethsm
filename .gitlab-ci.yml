@@ -422,7 +422,7 @@ test_muen_prodrive_hermes:
     - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
-      while true ; do
+      for _ in $(seq 60) ; do # do not wait more than 1 minute for serial log
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
@@ -485,7 +485,7 @@ test_muen_msi_z790:
     - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
-      while true ; do
+      for _ in $(seq 60) ; do # do not wait more than 1 minute for serial log
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
