@@ -560,6 +560,7 @@ func setupPlatform() error {
 	// route etcd peer connections through router
 	G.s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
 	G.s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
+	time.Sleep(5 * time.Second)
 
 	dumpNetworkStatus()
 
@@ -606,8 +607,16 @@ func sPlatformActions() {
 		log.Printf("Loading local config cache failed: %v", err)
 	}
 
-	if err := startEtcd(EtcdNormal); err != nil {
-		log.Printf("Couldn't start etcd: %v", err)
+	etcdStartRetries := 5
+	err := startEtcd(EtcdNormal)
+	for etcdStartRetries > 0 && err != nil {
+		log.Printf("Couldn't start etcd, retrying in 5 seconds: %v", err)
+		etcdStartRetries--
+		time.Sleep(5 * time.Second)
+		err = startEtcd(EtcdNormal)
+	}
+	if err != nil {
+		log.Printf("Couldn't start etcd at all: %v", err)
 		return
 	}
 
