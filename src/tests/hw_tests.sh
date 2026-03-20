@@ -133,6 +133,23 @@ GET_admin /v1/cluster/members
 MEMBERS=$(GET_admin /v1/cluster/members)
 WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
 
+echo "- rebooting HSM to check it comes back up healthy"
+POST_admin /v1/system/reboot
+
+echo -n "- waiting for NetHSM"
+x=0
+while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
+  printf "."
+  ((x++>25)) && echo "time out!" && exit 1
+  sleep 2
+done
+echo
+
+echo "- unlock"
+POST /v1/unlock <<EOM
+{ "passphrase": "UnlockPassphrase" }
+EOM
+
 echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
