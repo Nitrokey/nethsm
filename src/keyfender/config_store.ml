@@ -516,14 +516,16 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           go t >|= wrap_write_error
         in
-        let just_move (type a) (k : a k) =
+        let move k data =
+          remove old k >>= function
+          | Ok () -> set_or_delay t k data
+          | Error e -> Lwt_result.fail (`Kv_write e)
+        in
+        let migrate_generic (type a) (k : a k) =
           get_opt old k >>= function
           | Error e -> Lwt.return (Error e)
           | Ok None -> Lwt.return (Ok ())
-          | Ok (Some data) -> (
-              remove old k >>= function
-              | Ok () -> set_or_delay t k data
-              | Error e -> Lwt_result.fail (`Kv_write e))
+          | Ok (Some data) -> move k data
         in
         let migrate_log_config () =
           KV.get t.kv (key_path old Log_config) >>= function
@@ -550,7 +552,7 @@ module Make (KV : Kv_ext.Platform) = struct
                           port;
                         }
                       in
-                      set_or_delay t Log_config new_config))
+                      move Log_config new_config))
         in
         let migrate_ip_config () =
           KV.get t.kv (key_path old Ip_config) >>= function
@@ -573,21 +575,21 @@ module Make (KV : Kv_ext.Platform) = struct
                     ipv6 = None;
                   }
                 in
-                set_or_delay t Ip_config new_config
+                move Ip_config new_config
               with Ipaddr.Parse_error (msg, _) ->
                 Lwt.return (Error (`Msg msg)))
         in
 
         let open Lwt_result.Infix in
-        just_move Unlock_salt >>= fun () ->
+        migrate_generic Unlock_salt >>= fun () ->
         if not partial then
           (* Ip_config and Log_config are migrated and moved at the same time *)
-          just_move Time_offset >>= fun () ->
-          just_move Certificate >>= fun () ->
-          just_move Private_key >>= fun () ->
-          just_move Backup_salt >>= fun () ->
-          just_move Backup_key >>= fun () ->
-          just_move Unattended_boot >>= fun () ->
+          migrate_generic Time_offset >>= fun () ->
+          migrate_generic Certificate >>= fun () ->
+          migrate_generic Private_key >>= fun () ->
+          migrate_generic Backup_salt >>= fun () ->
+          migrate_generic Backup_key >>= fun () ->
+          migrate_generic Unattended_boot >>= fun () ->
           migrate_log_config () >>= fun () ->
           migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1
         else Lwt_result.return ())

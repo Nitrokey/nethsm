@@ -560,7 +560,16 @@ func setupPlatform() error {
 	// route etcd peer connections through router
 	G.s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
 	G.s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
+
+
 	time.Sleep(5 * time.Second)
+	var net1
+	if net1, err = net.InterfaceByName("net1"); err != nil { return err }
+	if err != nil {
+		return fmt.Errorf("net1 interface doesn't exist")
+	}
+	if net1.Flags & net.FlagUp == 0 {
+	}
 
 	dumpNetworkStatus()
 
