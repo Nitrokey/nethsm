@@ -2314,7 +2314,6 @@ module Make (KV : Kv_ext.Platform) = struct
             (Domain_key_store.remove domain_store Unattended)
 
     let set_unattended_boot t status =
-      let open Lwt_result.Infix in
       (* (a) change setting in configuration store *)
       (* (b) add or remove to domain_key store *)
       match t.state with
