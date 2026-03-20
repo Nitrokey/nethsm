@@ -1004,7 +1004,11 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
   let except_keys = [ (Mirage_kv.Key.v "/local/0000000000", `Dictionary) ] in
   Lwt_main.run
     (Hsm.assert_equal ~except_system_info:true ~except_keys
-       ~allow_more_keys:true hsm_state hsm_state')
+       ~allow_more_keys:true hsm_state hsm_state');
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
 let system_backup_and_restore_changed_all =
   Alcotest.test_case
@@ -1083,12 +1087,12 @@ let system_backup_and_restore_unattended =
   in
   Alcotest.(check string)
     "state" "operational"
-    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
-let system_backup_and_restore_unattended_changed_devkey =
-  Alcotest.test_case
-    "/system/restore with unattended mode and new device key -> locked" `Quick
-  @@ fun () ->
+let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
   let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
     admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
@@ -1113,7 +1117,7 @@ let system_backup_and_restore_unattended_changed_devkey =
   let platform =
     {
       platform with
-      deviceId = "0000000001";
+      deviceId = (if also_change_devid then "0000000001" else platform.deviceId);
       deviceKey = "//////////////////////////////////////////8=";
     }
   in
@@ -1123,15 +1127,11 @@ let system_backup_and_restore_unattended_changed_devkey =
         Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
         happy_mbox o m >|= fun () -> (y, store) )
   in
-  (* unattended boot flag is forgotten since we're restoring to a new, fresh
-     machine. So it is not even attempted *)
-  let* hsm_state =
-    let expect =
-      multipart_log ^ info "Device Key changed."
-      ^ info "Rewriting stored Domain Key."
-      ^ info
-          "different device: importing + re-encrypting local configs from \
-           device 0000000000"
+  let changed_log =
+    if also_change_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
       ^ info
           "different device: removing all /local/0000000000/config keys before \
            writing in /local/0000000001/config"
@@ -1140,6 +1140,19 @@ let system_backup_and_restore_unattended_changed_devkey =
       ^ debug "restoring /local/0000000001/config/private-key"
       ^ debug "restoring /local/0000000001/config/time-offset"
       ^ debug "restoring /local/0000000001/config/unattended-boot"
+    else
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+      ^ debug "restoring /local/0000000000/config/certificate"
+      ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/time-offset"
+      ^ debug "restoring /local/0000000000/config/unattended-boot"
+  in
+  let* hsm_state =
+    let expect =
+      multipart_log ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ changed_log (* unat. boot fails as expected *)
       ^ error "unattended boot failed with not authenticated"
       ^ debug "caching config to the platform"
     in
@@ -1171,6 +1184,19 @@ let system_backup_and_restore_unattended_changed_devkey =
   Alcotest.(check string)
     "state" "locked"
     (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
+let system_backup_and_restore_unattended_changed_all =
+  Alcotest.test_case
+    "/system/restore with unattended mode and new device key AND id -> locked"
+    `Quick
+  @@ fun () ->
+  system_backup_and_restore_unattended_changed_devkey ~also_change_devid:true
+
+let system_backup_and_restore_unattended_changed_devkey =
+  Alcotest.test_case
+    "/system/restore with unattended mode and new device key -> locked" `Quick
+  @@ fun () ->
+  system_backup_and_restore_unattended_changed_devkey ~also_change_devid:false
 
 let system_backup_and_restore_operational_without_backuppassphrase =
   Alcotest.test_case
@@ -1219,7 +1245,8 @@ let system_backup_and_restore_operational_without_backuppassphrase =
   in
   ()
 
-let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
+let system_backup_and_restore_operational ~unattended ~changed_devkey
+    ~changed_devid =
   let backup_passphrase = "backup passphrase" in
   let passphrase =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
@@ -1241,6 +1268,14 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
   let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
   let post_backup_operations hsm_state =
     let ( let* ) = Option.bind in
+
+    let* hsm_state =
+      if unattended then
+        admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
+          "/config/unattended-boot"
+        |> Expect.no_content
+      else Some hsm_state
+    in
     (* backup is done, let's remove a key and try to restore it *)
     let* hsm_state =
       let expect = info "removed (keyID)" in
@@ -1315,10 +1350,16 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
       ^ debug "restoring /local/0000000000/config/unlock-salt"
     else info "no config re-encrypt needed"
   in
+  let unattended_log =
+    if unattended then
+      info "Disabling unattended boot since domain key might have changed"
+    else ""
+  in
   let* hsm_state =
     let expect =
       multipart_log ^ info "Domain Key changed."
       ^ info "Rewriting stored Domain Key."
+      ^ unattended_log
       ^ info "removing: /key/newKeyID\n"
       ^ info "removing: /namespace/namespace3\n"
       ^ info "deferring restoration of previous domain-encrypted configs"
@@ -1405,12 +1446,35 @@ let system_backup_and_restore_operational ~changed_devkey ~changed_devid =
   |> returns_stream ~with_status:`OK
   |> ignore
 
+let system_backup_and_restore_operational_changed_devkey_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:true)
+
+let system_backup_and_restore_operational_changed_all_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a different  \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:true ~unattended:true)
+
+let system_backup_and_restore_operational_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:true)
+
 let system_backup_and_restore_operational_changed_devkey =
   Alcotest.test_case
     "a request for /system/restore succeeds while operational on a reset device"
     `Quick (fun () ->
       system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:false)
+        ~changed_devid:false ~unattended:false)
 
 let system_backup_and_restore_operational_changed_all =
   Alcotest.test_case
@@ -1418,13 +1482,13 @@ let system_backup_and_restore_operational_changed_all =
      device"
     `Quick (fun () ->
       system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:true)
+        ~changed_devid:true ~unattended:false)
 
 let system_backup_and_restore_operational =
   Alcotest.test_case "a request for /system/restore succeeds while operational"
     `Quick (fun () ->
       system_backup_and_restore_operational ~changed_devkey:false
-        ~changed_devid:false)
+        ~changed_devid:false ~unattended:false)
 
 let system_backup_post_accept_header =
   "a request for /system/backup using 'Accept: application/octet-stream' \
@@ -5453,11 +5517,15 @@ let () =
           system_backup_and_restore_no_backuppassphrase_fails;
           system_backup_and_restore_unattended;
           system_backup_and_restore_unattended_changed_devkey;
+          system_backup_and_restore_unattended_changed_all;
           system_backup_and_restore_changed_devkey;
           system_backup_and_restore_changed_all;
           system_backup_and_restore_operational;
           system_backup_and_restore_operational_changed_devkey;
           system_backup_and_restore_operational_changed_all;
+          system_backup_and_restore_operational_unattended;
+          system_backup_and_restore_operational_changed_devkey_unattended;
+          system_backup_and_restore_operational_changed_all_unattended;
           system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
           system_restore_v0_backup;

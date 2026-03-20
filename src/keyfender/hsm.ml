@@ -2292,6 +2292,27 @@ module Make (KV : Kv_ext.Platform) = struct
           | None -> false
           | Some v -> v )
 
+    (* must only be called within a write lock *)
+    let set_unattended_boot' t status =
+      let open Lwt_result.Infix in
+      let status_b = Option.is_some status in
+      internal_server_error Write "Write unattended boot"
+        Config_store.pp_write_error
+        (Config_store.set t.config_store Unattended_boot status_b)
+      >>= fun () ->
+      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+      match status with
+      | Some keys ->
+          let encryption_key = t.device_key in
+          internal_server_error Write "Write unattended Domain Key"
+            KV.pp_write_error
+            (Domain_key_store.set domain_store Unattended ~encryption_key
+               keys.domain_key)
+      | None ->
+          internal_server_error Write "Remove unattended Domain Key"
+            KV.pp_write_error
+            (Domain_key_store.remove domain_store Unattended)
+
     let set_unattended_boot t status =
       let open Lwt_result.Infix in
       (* (a) change setting in configuration store *)
@@ -2299,23 +2320,8 @@ module Make (KV : Kv_ext.Platform) = struct
       match t.state with
       | Operational keys ->
           with_write_lock (fun () ->
-              internal_server_error Write "Write unattended boot"
-                Config_store.pp_write_error
-                (Config_store.set t.config_store Unattended_boot status)
-              >>= fun () ->
-              let domain_store =
-                Domain_key_store.connect t.kv t.system_info.deviceId
-              in
-              if status then
-                let encryption_key = t.device_key in
-                internal_server_error Write "Write unattended Domain Key"
-                  KV.pp_write_error
-                  (Domain_key_store.set domain_store Unattended ~encryption_key
-                     keys.domain_key)
-              else
-                internal_server_error Write "Remove unattended Domain Key"
-                  KV.pp_write_error
-                  (Domain_key_store.remove domain_store Unattended))
+              let status = if status then Some keys else None in
+              set_unattended_boot' t status)
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
@@ -3691,6 +3697,18 @@ module Make (KV : Kv_ext.Platform) = struct
                   KV.pp_write_error
                   (Domain_key_store.set domain_store Attended ~encryption_key
                      locked_domain_key)
+              in
+              let** () =
+                if is_operational then
+                  let** unattended_on = Config.unattended_boot t in
+                  if unattended_on then (
+                    Log.info (fun m ->
+                        m
+                          "Disabling unattended boot since domain key might \
+                           have changed");
+                    Config.set_unattended_boot' t None)
+                  else Lwt_result.return ()
+                else Lwt_result.return ()
               in
               Lwt_result.return true)
             else Lwt_result.return false
