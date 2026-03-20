@@ -2125,10 +2125,25 @@ let config_network_set_ok =
       let old_network =
         {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
       in
-      let hsm_state = operational_mock_with_mbox () in
+
+      let print_set_local = function
+        | Hsm.Set_local_config local_conf ->
+            Logs.info (fun f ->
+                f "sent to platform: %s"
+                  (Keyfender.Json.network_config_to_string
+                     local_conf.network_config
+                  |> Yojson.Safe.to_string))
+        | _ -> ()
+      in
+      let hsm_state = operational_mock_with_mbox' print_set_local in
       let hsm_state' =
         admin_put_request
-          ~expect:(debug "caching config to the platform")
+          ~expect:
+            (debug "caching config to the platform"
+            ^ info
+                "sent to platform: \
+                 \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null}}\""
+            )
           ~hsm_state ~body:(`String new_network) "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
@@ -2141,7 +2156,12 @@ let config_network_set_ok =
       (* still accept old config format *)
       let hsm_state' =
         admin_put_request
-          ~expect:(debug "caching config to the platform")
+          ~expect:
+            (debug "caching config to the platform"
+            ^ info
+                "sent to platform: \
+                 \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null}}\""
+            )
           ~hsm_state ~body:(`String old_network) "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
@@ -2155,14 +2175,29 @@ let config_network_set_ok =
 let config_network_set_ipv6_ok =
   Alcotest.test_case "PUT on /config/network succeeds with ipv6" `Quick
     (fun () ->
+      let print_set_local = function
+        | Hsm.Set_local_config local_conf ->
+            Logs.info (fun f ->
+                f "sent to platform: %s"
+                  (Keyfender.Json.network_config_to_string
+                     local_conf.network_config
+                  |> Yojson.Safe.to_string))
+        | _ -> ()
+      in
       let new_network =
         {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":{"cidr":"::1/8","gateway":"::1"}}|}
       in
-      let hsm_state = operational_mock_with_mbox () in
+      let hsm_state = operational_mock_with_mbox' print_set_local in
+      let expect =
+        debug "caching config to the platform"
+        ^ info
+            "sent to platform: \
+             \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null},\\\"ipv6\\\":{\\\"cidr\\\":\\\"::1/8\\\",\\\"gateway\\\":\\\"::1\\\"}}\""
+      in
+
       let hsm_state =
-        admin_put_request
-          ~expect:(debug "caching config to the platform")
-          ~hsm_state ~body:(`String new_network) "/config/network"
+        admin_put_request ~expect ~hsm_state ~body:(`String new_network)
+          "/config/network"
         |> returns_empty' ~with_status:`No_content
       in
       let body =
