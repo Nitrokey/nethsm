@@ -248,6 +248,10 @@ func tpmCreatePlatformData() error {
 		data.DeviceKey = deviceKey
 
 		setLocalConfigKey(deviceKey)
+		if err := loadLocalConfigFromCache(); err != nil {
+			log.Printf("Loading local config cache failed: %v", err)
+		}
+
 		if conf, _ := localConfig.Get(); conf != nil && conf.NetworkConfig != "" {
 			// return stored network config as part of platform data
 			data.NetworkConfig = conf.NetworkConfig

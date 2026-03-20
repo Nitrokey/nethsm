@@ -563,13 +563,6 @@ func setupPlatform() error {
 
 
 	time.Sleep(5 * time.Second)
-	var net1
-	if net1, err = net.InterfaceByName("net1"); err != nil { return err }
-	if err != nil {
-		return fmt.Errorf("net1 interface doesn't exist")
-	}
-	if net1.Flags & net.FlagUp == 0 {
-	}
 
 	dumpNetworkStatus()
 
@@ -610,10 +603,6 @@ func sPlatformActions() {
 		}
 	} else {
 		mockCreatePlatformData()
-	}
-
-	if err := loadLocalConfigFromCache(); err != nil {
-		log.Printf("Loading local config cache failed: %v", err)
 	}
 
 	etcdStartRetries := 5
