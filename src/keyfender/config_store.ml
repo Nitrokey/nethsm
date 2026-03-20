@@ -581,8 +581,7 @@ module Make (KV : Kv_ext.Platform) = struct
         let open Lwt_result.Infix in
         just_move Unlock_salt >>= fun () ->
         if not partial then
-          just_move Ip_config >>= fun () ->
-          just_move Log_config >>= fun () ->
+          (* Ip_config and Log_config are migrated and moved at the same time *)
           just_move Time_offset >>= fun () ->
           just_move Certificate >>= fun () ->
           just_move Private_key >>= fun () ->
