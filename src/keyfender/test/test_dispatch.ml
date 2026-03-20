@@ -645,7 +645,11 @@ let system_backup_and_restore_ok =
             empty / "local" / platform.deviceId / "config" / "time-offset");
         ]
       in
-      Lwt_main.run (Hsm.assert_equal ~except_key_values hsm_state hsm_state''))
+      Lwt_main.run (Hsm.assert_equal ~except_key_values hsm_state hsm_state'');
+      let headers = auth_header "backup" "backupUserPassphrase" in
+      request ~meth:`POST ~hsm_state ~headers "/system/backup"
+      |> returns_stream ~with_status:`OK
+      |> ignore)
 
 let readfile filename =
   let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
@@ -919,110 +923,101 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
       backup_passphrase
   in
   let hsm_state = operational_mock_with_mbox () in
-  match
+  let hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
-  with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      let headers = auth_header "backup" "backupUserPassphrase" in
-      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let arguments =
-            Yojson.Safe.to_string
-              (Keyfender.Json.restore_req_to_yojson
-                 ({
-                    backupPassphrase = Some backup_passphrase;
-                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-                  }
-                   : Keyfender.Json.restore_req))
-          in
-          let backup_data =
-            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
-          in
-          let content_type, body =
-            create_multipart_request
-              [ ("arguments", arguments); ("backup_data", backup_data) ]
-          in
-          let platform =
-            {
-              platform with
-              deviceKey = "//////////////////////////////////////////8=";
-            }
-          in
-          let platform =
-            if also_change_devid then { platform with deviceId = "0000000001" }
-            else platform
-          in
-          let hsm_state_2 =
-            Lwt_main.run
-              ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-              >>= fun (y, o, m) ->
-                happy_mbox o m >|= fun () -> y )
-          in
-          let expect_change =
-            if also_change_devid then
-              info
-                "different device: importing + re-encrypting local configs \
-                 from device 0000000000"
-              ^ info
-                  "different device: removing all /local/0000000000/config \
-                   keys before writing in /local/0000000001/config"
-              ^ debug "restoring /local/0000000001/config/unlock-salt"
-              ^ debug "restoring /local/0000000001/config/certificate"
-              ^ debug "restoring /local/0000000001/config/private-key"
-              ^ debug "restoring /local/0000000001/config/time-offset"
-            else
-              info "device has been reset: re-encrypting local configs"
-              ^ debug "restoring /local/0000000000/config/unlock-salt"
-              ^ debug "restoring /local/0000000000/config/certificate"
-              ^ debug "restoring /local/0000000000/config/private-key"
-              ^ debug "restoring /local/0000000000/config/time-offset"
-          in
-          let expect =
-            multipart_log ^ info "Device Key changed."
-            ^ info "Rewriting stored Domain Key."
-            ^ expect_change
-            ^ debug "caching config to the platform"
-          in
-          match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              ~hsm_state:hsm_state_2 "/system/restore"
-          with
-          | hsm_state', Some (`No_content, _, _, _) -> (
-              assert (Hsm.state hsm_state' = `Locked);
-              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-              match
-                request ~meth:`POST ~body:(`String unlock_json)
-                  ~hsm_state:hsm_state' "/unlock"
-              with
-              | _, Some (`No_content, _, _, _) -> (
-                  Hsm.state hsm_state' = `Operational
-                  &&
-                    try
-                      (* the new machine will have more keys correspondign to
-                         its own config values. The old config values will not
-                         be copied over *)
-                      let except_keys =
-                        [ (Mirage_kv.Key.v "/local/0000000000", `Dictionary) ]
-                      in
-                      Lwt_main.run
-                        (Hsm.assert_equal ~except_system_info:true ~except_keys
-                           ~allow_more_keys:true hsm_state hsm_state');
-                      true
-                    with _ -> false)
-              | _ -> false)
-          | _ -> false)
-      | _ -> false)
-  | _ -> false
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  let s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup"
+    |> returns_stream ~with_status:`OK
+  in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let platform =
+    { platform with deviceKey = "//////////////////////////////////////////8=" }
+  in
+  let platform =
+    if also_change_devid then { platform with deviceId = "0000000001" }
+    else platform
+  in
+  let hsm_state_2 =
+    Lwt_main.run
+      ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+      >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> y )
+  in
+  let expect_change =
+    if also_change_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
+      ^ info
+          "different device: removing all /local/0000000000/config keys before \
+           writing in /local/0000000001/config"
+      ^ debug "restoring /local/0000000001/config/unlock-salt"
+      ^ debug "restoring /local/0000000001/config/certificate"
+      ^ debug "restoring /local/0000000001/config/private-key"
+      ^ debug "restoring /local/0000000001/config/time-offset"
+    else
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+      ^ debug "restoring /local/0000000000/config/certificate"
+      ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/time-offset"
+  in
+  let expect =
+    multipart_log ^ info "Device Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ expect_change
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state' =
+    request ~expect ~meth:`POST ~content_type ~body:(`String body)
+      ~hsm_state:hsm_state_2 "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  assert (Hsm.state hsm_state' = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state' =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+      "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  assert (Hsm.state hsm_state' = `Operational);
+  (* the new machine will have more keys correspondign to
+     its own config values. The old config values will not
+     be copied over *)
+  let except_keys = [ (Mirage_kv.Key.v "/local/0000000000", `Dictionary) ] in
+  Lwt_main.run
+    (Hsm.assert_equal ~except_system_info:true ~except_keys
+       ~allow_more_keys:true hsm_state hsm_state')
 
 let system_backup_and_restore_changed_all =
-  "/system/restore with changed device key and changed device ID + unlock -> \
-   operational"
-  @? fun () -> system_backup_and_restore_changed_devkey ~also_change_devid:true
+  Alcotest.test_case
+    "/system/restore with changed device key and changed device ID + unlock -> \
+     operational"
+    `Quick (fun () ->
+      system_backup_and_restore_changed_devkey ~also_change_devid:true)
 
 let system_backup_and_restore_changed_devkey =
-  "/system/restore with changed device key + unlock -> operational" @? fun () ->
-  system_backup_and_restore_changed_devkey ~also_change_devid:false
+  Alcotest.test_case
+    "/system/restore with changed device key + unlock -> operational" `Quick
+    (fun () ->
+      system_backup_and_restore_changed_devkey ~also_change_devid:false)
 
 let system_backup_and_restore_unattended =
   Alcotest.test_case "/system/restore with unattended mode -> operational"
