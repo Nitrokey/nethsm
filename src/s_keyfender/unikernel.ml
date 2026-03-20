@@ -394,15 +394,15 @@ struct
       let open Webserver in
       Log.info (fun f -> f "listening on %d/TCP for HTTP" http_port);
       http tcp @@ serve (redirect (Args.https_port ()))
-    and setup_https_listener ?hsm_state http certificates =
+    and setup_https_listener hsm_state http certificates =
       match Tls.Config.server ~certificates () with
-      | Error e -> assert false
+      | Error e -> failwith "invalid HTTPs configuration"
       | Ok tls_cfg ->
           let https_port = Args.https_port () in
           let tls = `TLS (tls_cfg, `TCP https_port) in
           let open Webserver in
           Log.info (fun f -> f "listening on %d/TCP for HTTPS" https_port);
-          http tls @@ serve @@ opt_static_file assets @@ dispatch ?hsm_state
+          http tls @@ serve @@ opt_static_file assets @@ dispatch hsm_state
     and write_to_platform cmd =
       write_platform internal_stack (Hsm.cb_to_string cmd) >|= function
       | Ok _ -> ()
@@ -454,38 +454,30 @@ struct
                 | Error (`Cluster_error s) ->
                     Logs.err (fun m -> m "couldn't update peer url: %s" s)))
     in
-    let reconfigure_network ?hsm_state ?store (network : Keyfender.Json.network)
-        =
-      (* if this is a runtime reconfiguration, align peer URLs *)
-      let* () =
-        match store with
-        | None -> Lwt.return_unit
-        | Some store -> align_peer_urls store network
-      in
+    let reconfigure_external_network (network : Keyfender.Json.network) =
+      (* just tell S-Net to change our external network configuration *)
       let data = [ Network network ] in
       let* response = write_network_subj ext_stack data in
-      let () =
-        match response with
-        | Error e ->
-            Log.err (fun m ->
-                m "reconfigure_network: %s" (Fmt.to_to_string pp_platform_err e))
-        | Ok s -> Log.info (fun m -> m "reconfigure_network: response: %s" s)
-      in
+      (match response with
+      | Error e ->
+          Log.err (fun m ->
+              m "reconfigure_network: %s" (Fmt.to_to_string pp_platform_err e))
+      | Ok s -> Log.info (fun m -> m "reconfigure_network: response: %s" s));
+      Lwt.return_unit
+    in
+    let reconfigure_network ~hsm_state ~store (network : Keyfender.Json.network)
+        =
+      (* if this is a runtime reconfiguration, align peer URLs *)
+      let* () = align_peer_urls store network in
+      let* () = reconfigure_external_network network in
       let http = Srv.listen ext_stack in
       Lwt.async (fun () -> setup_http_listener http);
-      let certificates =
-        match hsm_state with
-        | None -> `None
-        | Some hsm_state -> Hsm.own_cert hsm_state
-      in
-      Lwt.async (fun () -> setup_https_listener ?hsm_state http certificates);
+      let certificates = Hsm.own_cert hsm_state in
+      Lwt.async (fun () -> setup_https_listener hsm_state http certificates);
       let* () =
-        match hsm_state with
-        | None -> Lwt.return_unit
-        | Some hsm_state ->
-            let* log = Hsm.Config.log hsm_state in
-            setup_log ext_stack log;
-            Lwt.return_unit
+        let* log = Hsm.Config.log hsm_state in
+        setup_log ext_stack log;
+        Lwt.return_unit
       in
       Lwt.return http
     in
@@ -495,12 +487,12 @@ struct
       | Some network ->
           (* if the platform has stored a network config, use it to
              initially configure the network, so that etcd can connect to a
-             potential cluster *)
+             potential cluster. http/https is not yet activated *)
           Log.warn (fun f ->
               f
                 "platform has stored network config: setting up initial \
                  network with it");
-          let* _ = reconfigure_network network in
+          let* _ = reconfigure_external_network network in
           Lwt.return_unit
     in
     let rec store_connect () =
@@ -578,8 +570,7 @@ struct
           in
           write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
-          Lwt.async (fun () ->
-              setup_https_listener ~hsm_state http certificates);
+          Lwt.async (fun () -> setup_https_listener hsm_state http certificates);
           (handle_cb [@tailcall]) http
       | Hsm.Network network ->
           let* http = reconfigure_network ~store ~hsm_state network in

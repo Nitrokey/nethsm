@@ -105,7 +105,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
   let cid conn = Cohttp.Connection.to_string conn [@@alert "-deprecated"]
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
-  let dispatch ?hsm_state (ip : Ipaddr.t) request body =
+  let dispatch hsm_state (ip : Ipaddr.t) request body =
     let start = Hsm.now () in
     Access_log.info (fun m ->
         m "request %s %s"
@@ -116,11 +116,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
           (Cohttp.Header.to_string (Cohttp.Request.headers request)));
     ( Lwt.catch
         (fun () ->
-          let routes =
-            match hsm_state with
-            | None -> []
-            | Some hsm_state -> Handlers.routes hsm_state ip
-          in
+          let routes = Handlers.routes hsm_state ip in
           Handlers.Wm.dispatch' routes ~body ~request)
         (fun e ->
           if e = Out_of_memory then Gc.compact ();
