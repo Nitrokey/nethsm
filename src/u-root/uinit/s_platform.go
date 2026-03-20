@@ -561,8 +561,24 @@ func setupPlatform() error {
 	G.s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
 	G.s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
 
-
-	time.Sleep(5 * time.Second)
+	for retry := range 20 {
+		net0, err := net.InterfaceByName("net0")
+		if err != nil {
+			return err
+		}
+		net1, err := net.InterfaceByName("net1")
+		if err != nil {
+			return err
+		}
+		if (net0.Flags&net.FlagUp != 0) && (net1.Flags&net.FlagUp != 0) {
+			G.s.Logf("interfaces are UP")
+			break
+		}
+		if retry >= 19 {
+			return fmt.Errorf("timeout waiting for net0 and net1 to be UP")
+		}
+		time.Sleep(1 * time.Second)
+	}
 
 	dumpNetworkStatus()
 
