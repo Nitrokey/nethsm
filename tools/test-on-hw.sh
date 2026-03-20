@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-echo "waiting for NetHSM"
+echo "- waiting for NetHSM"
 x=0
 while ! curl -m 1 -s -k -f https://192.168.1.1/api/v1/health/state ; do
     printf "."
@@ -13,12 +13,15 @@ cd src/tests
 
 SYSTEM_TIME="$(date -u +%FT%TZ)"
 
+echo "- restoring V0 backup"
 curl -s -k -X POST -F arguments='{"backupPassphrase":"backupPassphrase","systemTime":"'${SYSTEM_TIME}'"}' \
     -F backup=@backup_v0_201.bin \
     https://192.168.1.1/api/v1/system/restore
 
+echo "- unlocking"
 curl -s -k -d '{"passphrase": "UnlockPassphrase"}' https://192.168.1.1/api/v1/unlock
 
+echo "- reboot to enable new network config"
 curl -s -k -X POST https://admin:Administrator@192.168.1.1/api/v1/system/reboot
 
 echo "waiting for NetHSM"
@@ -30,6 +33,7 @@ while ! curl -m 1 -s -k -f https://192.168.1.201/api/v1/health/state ; do
 done
 echo "done."
 
+echo "- unlocking"
 curl -s -k -d '{"passphrase": "UnlockPassphrase"}' https://192.168.1.201/api/v1/unlock
 
 NETHSM_URL="https://192.168.1.201/api" ./backup_restore.sh
