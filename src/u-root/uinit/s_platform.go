@@ -570,7 +570,7 @@ func setupPlatform() error {
 		if err != nil {
 			return err
 		}
-		if (net0.Flags&net.FlagUp != 0) && (net1.Flags&net.FlagUp != 0) {
+		if (net0.Flags&net.FlagRunning != 0) && (net1.Flags&net.FlagRunning != 0) {
 			G.s.Logf("interfaces are UP")
 			break
 		}
