@@ -31,25 +31,30 @@ insert ()
 is_on ()
 {
     local state
-    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} https://${BMC_IP}/redfish/v1/Systems/0 \
-      | jq -r .PowerState)
-    [ "$state" = "On" ]
+    state=$(curl -s -k -u ${BMC_USER}:${BMC_PASS} https://${BMC_IP}/api/atx \
+      | jq -r .result.leds.power)
+    [ "$state" = "true" ]
 }
 
 power_on ()
 {
-    local state=$1
-    curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
-      -d '{"ResetType": "On"}' \
-      https://${BMC_IP}/redfish/v1/Systems/0/Actions/ComputerSystem.Reset
+    curl -sS -k -u ${BMC_USER}:${BMC_PASS} \
+      -X POST "https://${BMC_IP}/api/atx/power?action=on&wait=true"
+    echo
 }
 
 power_off ()
 {
-    local state=$1
-    curl -s -k -u ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" \
-      -d '{"ResetType": "ForceOff"}' \
-      https://${BMC_IP}/redfish/v1/Systems/0/Actions/ComputerSystem.Reset
+    curl -sS -k -u ${BMC_USER}:${BMC_PASS} \
+      -X POST "https://${BMC_IP}/api/atx/power?action=off_hard&wait=true"
+    echo
+}
+
+power_long ()
+{
+    curl -sS -k -u ${BMC_USER}:${BMC_PASS} \
+      -X POST "https://${BMC_IP}/api/atx/click?button=power_long&wait=true"
+    echo
 }
 
 if is_on; then
@@ -78,8 +83,16 @@ echo
 echo "starting installer"
 power_on
 
-while ! is_on; do printf "." ; sleep 1; done
-echo
+sleep 2
+
+if ! is_on; then
+    power_long ()
+    sleep 5
+    if ! is_on; then
+        echo "ERROR: can't power on HIL"
+        false
+    fi
+fi
 
 echo "waiting for installer to finish (power off)"
 while is_on; do printf "." ; sleep 2; done

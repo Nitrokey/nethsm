@@ -406,16 +406,12 @@ test_muen_prodrive_hermes:
     expire_in: 1 week
     paths:
       - obj/serial_out.txt
-  before_script:
-    - TTY=/dev/$(basename /sys/bus/usb/devices/1-2:1.0/ttyUSB?)
-    - lsof -t $TTY | xargs -r kill || true
-    - stty -F $TTY raw pass8 -echo 115200
   script:
     - rm -f /tmp/gitlab-runner/installer-hermes-*.img
     - cp obj/${CI_INSTALLER_IMG} /tmp/gitlab-runner/installer-hermes-${CI_JOB_ID}.img
     - tools/deploy-on-hw.sh "http://${HTTP_SERVER}/gitlab-runner/installer-hermes-${CI_JOB_ID}.img"
     - rm /tmp/gitlab-runner/installer-hermes-${CI_JOB_ID}.img
-    - cat <$TTY >$SERIALTXT 2>&1 &
+    - nc -U /run/serial_hil2.sock >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - exit_code=0
@@ -472,13 +468,9 @@ test_muen_msi_z790:
     expire_in: 1 week
     paths:
       - obj/serial_out.txt
-  before_script:
-    - TTY=/dev/$(basename /sys/bus/usb/devices/3-2:1.0/ttyUSB?)
-    - lsof -t $TTY | xargs -r kill || true
-    - stty -F $TTY raw pass8 -echo 115200
   script:
     - tools/deploy-on-hw-z790.sh obj/${CI_INSTALLER_IMG}
-    - cat <$TTY >$SERIALTXT 2>&1 &
+    - nc -U /run/serial_hil1.sock >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - exit_code=0
@@ -496,11 +488,7 @@ test_muen_msi_z790:
     - if [ $exit_code -ne 0 ]; then exit 1; fi # but still report failure
     - if grep -a -v '^\[ERROR\]' $SERIALTXT | grep -a ' ERR\(OR:\)\? ' ; then exit 1 ; fi
   after_script:
-    - >-
-      curl -k -s
-      https://${BMC_IP}/redfish/v1/Systems/0/Actions/ComputerSystem.Reset -u
-      ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
-      '{"ResetType": "ForceOff"}'
+    - curl -s -k -u ${BMC_USER}:${BMC_PASS} -X POST "https://${BMC_IP}/api/atx/power?action=off_hard"
   coverage: "/(^Performance Score: )(.*)%/"
 
 create_artifact_packages:
