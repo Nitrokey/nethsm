@@ -444,12 +444,6 @@ module Make (KV : Kv_ext.Platform) = struct
           unattended_boot;
         }
 
-  let backup_domain_encrypted_config t =
-    let ( let* ) = Lwt_result.bind in
-    let* backup_key = get_opt' t Backup_key in
-    let* backup_salt = get_opt' t Backup_salt in
-    Lwt_result.return { backup_salt; backup_key }
-
   let set_opt t k = function
     | None -> Lwt_result.return ()
     | Some v ->
@@ -469,15 +463,6 @@ module Make (KV : Kv_ext.Platform) = struct
         let* () = set_opt t Unattended_boot b.unattended_boot in
         Lwt_result.return ())
 
-  let defer_restore_domain_encrypted_config t (b : domain_encrypted_backup) =
-    let ( let* ) = Lwt_result.bind in
-    t.post_migration_writes :=
-      (fun t ->
-        let* () = set_opt t Backup_key b.backup_key in
-        let* () = set_opt t Backup_salt b.backup_salt in
-        Lwt_result.return ())
-      :: !(t.post_migration_writes)
-
   (* Migrate stored v0 configs from:
       - v0 format (unencrypted, all global)
       to:
@@ -492,6 +477,8 @@ module Make (KV : Kv_ext.Platform) = struct
   *)
   let migrate_v0_v1 ~partial t =
     Logs.info (fun m -> m "Migrating config store from V0 to V1");
+    forget_config_domain_key t;
+    (* assume the domain key is unavailable *)
     let old = { t with device_id = ""; migration_in_progress = true } in
     batch t (fun t ->
         let set_or_delay t k data =
@@ -582,13 +569,13 @@ module Make (KV : Kv_ext.Platform) = struct
 
         let open Lwt_result.Infix in
         migrate_generic Unlock_salt >>= fun () ->
+        migrate_generic Backup_salt >>= fun () ->
+        migrate_generic Backup_key >>= fun () ->
         if not partial then
           (* Ip_config and Log_config are migrated and moved at the same time *)
           migrate_generic Time_offset >>= fun () ->
           migrate_generic Certificate >>= fun () ->
           migrate_generic Private_key >>= fun () ->
-          migrate_generic Backup_salt >>= fun () ->
-          migrate_generic Backup_key >>= fun () ->
           migrate_generic Unattended_boot >>= fun () ->
           migrate_log_config () >>= fun () ->
           migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1

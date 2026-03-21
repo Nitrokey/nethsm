@@ -690,12 +690,6 @@ let system_restore_v0_backup ~changed_devkey =
     ^ info "Migrating config store from V0 to V1"
     ^ info
         "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
-    ^ info
-        "migrating /config/time-offset to /local/0000000000/config/time-offset"
-    ^ info
-        "migrating /config/certificate to /local/0000000000/config/certificate"
-    ^ info
-        "migrating /config/private-key to /local/0000000000/config/private-key"
     ^ info "migrating /config/backup-salt to /config/backup-salt"
     ^ info
         "need domain key to migrate /config/backup-salt! deferring to after \
@@ -704,6 +698,12 @@ let system_restore_v0_backup ~changed_devkey =
     ^ info
         "need domain key to migrate /config/backup-key! deferring to after \
          unlock"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
+    ^ info
+        "migrating /config/certificate to /local/0000000000/config/certificate"
+    ^ info
+        "migrating /config/private-key to /local/0000000000/config/private-key"
     ^ info "migrating /config/version to /config/version"
     ^ info "Migrating domain key store from V0 to V1"
     ^ info
@@ -792,10 +792,17 @@ let system_restore_v0_backup_operational ~changed_devkey =
     ^ info "Migrating config store from V0 to V1"
     ^ info
         "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
-    ^ info "Migration done (0 deferred)"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info "Migration done (2 deferred)"
     ^ info "Domain Key changed."
     ^ info "Rewriting stored Domain Key."
-    ^ info "deferring restoration of previous domain-encrypted configs"
     ^ debug "caching config to the platform"
   in
   let hsm_state =
@@ -830,8 +837,8 @@ let system_restore_v0_backup_operational ~changed_devkey =
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
   let expect =
     info "Applying post unlock migrations"
-    ^ debug "restoring /config/backup-key"
-    ^ debug "restoring /config/backup-salt"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
   in
   let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
@@ -1244,251 +1251,6 @@ let system_backup_and_restore_operational_without_backuppassphrase =
     request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
   in
   ()
-
-let system_backup_and_restore_operational ~unattended ~changed_devkey
-    ~changed_devid =
-  let backup_passphrase = "backup passphrase" in
-  let passphrase =
-    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
-      backup_passphrase
-  in
-  let hsm_state =
-    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
-  in
-  let* hsm_state =
-    admin_put_request ~hsm_state ~body:(`String passphrase)
-      "/config/backup-passphrase"
-    |> Expect.no_content
-  in
-  let headers = auth_header "backup" "backupUserPassphrase" in
-  let* _hsm_state, s =
-    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
-  in
-  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
-  let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
-  let post_backup_operations hsm_state =
-    let ( let* ) = Option.bind in
-
-    let* hsm_state =
-      if unattended then
-        admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
-          "/config/unattended-boot"
-        |> Expect.no_content
-      else Some hsm_state
-    in
-    (* backup is done, let's remove a key and try to restore it *)
-    let* hsm_state =
-      let expect = info "removed (keyID)" in
-      request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
-        "/keys/keyID"
-      |> Expect.no_content
-    in
-    (* add key, we'll check that it's removed after restore *)
-    Lwt_main.run
-      (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
-       Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
-         test_key_pem no_restrictions)
-    |> Result.get_ok;
-    (* do the same with namespaces *)
-    let* hsm_state =
-      request ~expect:expect_ns ~meth:`DELETE ~hsm_state ~headers:admin_headers
-        "/namespaces/namespace1"
-      |> Expect.no_content
-    in
-    let expect = info "created (namespace3)" in
-    let* hsm_state =
-      request ~expect ~meth:`PUT ~hsm_state ~headers:admin_headers
-        "/namespaces/namespace3"
-      |> Expect.no_content
-    in
-    (* the unlock passphrase is changed, must be restored *)
-    Lwt_main.run
-      (Hsm.Config.change_unlock_passphrase hsm_state
-         ~new_passphrase:"i am secure" ~current_passphrase:"unlockPassphrase")
-    |> Result.get_ok;
-    (* the removed key is indeed removed *)
-    let* _ =
-      request ~headers:admin_headers ~hsm_state "/keys/keyID"
-      |> Expect.not_found
-    in
-    Some hsm_state
-  in
-  let* hsm_state = post_backup_operations hsm_state in
-  (* restore *)
-  let* hsm_state =
-    if changed_devid || changed_devkey then
-      let platform =
-        {
-          platform with
-          deviceKey = "//////////////////////////////////////////8=";
-        }
-      in
-      let platform =
-        if changed_devid then { platform with deviceId = "0000000001" }
-        else platform
-      in
-      let hsm_state =
-        hsm_with_key ~platform ~mbox:happy_mbox ~and_namespace:"namespace1" ()
-      in
-      admin_put_request ~hsm_state ~body:(`String passphrase)
-        "/config/backup-passphrase"
-      |> returns_empty' ~with_status:`No_content
-      |> post_backup_operations
-    else Some hsm_state
-  in
-  let changed_log =
-    if changed_devid then
-      info
-        "different device: importing + re-encrypting local configs from device \
-         0000000000"
-      ^ info
-          "different device: removing all /local/0000000000/config keys before \
-           writing in /local/0000000001/config"
-      ^ debug "restoring /local/0000000001/config/unlock-salt"
-    else if changed_devkey then
-      info "device has been reset: re-encrypting local configs"
-      ^ debug "restoring /local/0000000000/config/unlock-salt"
-    else info "no config re-encrypt needed"
-  in
-  let unattended_log =
-    if unattended then
-      info "Disabling unattended boot since domain key might have changed"
-    else ""
-  in
-  let* hsm_state =
-    let expect =
-      multipart_log ^ info "Domain Key changed."
-      ^ info "Rewriting stored Domain Key."
-      ^ unattended_log
-      ^ info "removing: /key/newKeyID\n"
-      ^ info "removing: /namespace/namespace3\n"
-      ^ info "deferring restoration of previous domain-encrypted configs"
-      ^ changed_log
-      ^ debug "caching config to the platform"
-    in
-    let arguments =
-      Yojson.Safe.to_string
-        (Keyfender.Json.restore_req_to_yojson
-           ({
-              backupPassphrase = Some backup_passphrase;
-              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-            }
-             : Keyfender.Json.restore_req))
-    in
-    let content_type, body =
-      create_multipart_request
-        [ ("arguments", arguments); ("backup_data", backup_data) ]
-    in
-    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
-      ~body:(`String body) "/system/restore"
-    |> Expect.no_content
-  in
-  (* after first restore it should be locked *)
-  assert (Hsm.state hsm_state = `Locked);
-  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-  let expect =
-    info "Applying post unlock migrations"
-    ^ debug "restoring /config/backup-key"
-    ^ debug "restoring /config/backup-salt"
-  in
-  let* hsm_state =
-    request ~meth:`POST ~expect ~body:(`String unlock_json) ~hsm_state "/unlock"
-    |> Expect.no_content
-  in
-  assert (Hsm.state hsm_state = `Operational);
-  (* check that deleted keys are restored *)
-  let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
-  in
-  (* check that new keys are deleted *)
-  let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
-    |> Expect.not_found
-  in
-  (* same for namespaces and related keys *)
-  let* _ =
-    request ~expect:expect_ns ~headers:admin_headers ~meth:`DELETE ~hsm_state
-      "/namespaces/namespace1"
-    |> Expect.no_content
-  in
-  let* _ =
-    request ~headers:admin_headers ~meth:`DELETE ~hsm_state
-      "/namespaces/namespace3"
-    |> Expect.not_found
-  in
-  (* second restore *)
-  let* hsm_state =
-    let expect =
-      multipart_log ^ changed_log ^ debug "caching config to the platform"
-    in
-    let arguments =
-      Yojson.Safe.to_string
-        (Keyfender.Json.restore_req_to_yojson
-           ({
-              backupPassphrase = Some backup_passphrase;
-              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-            }
-             : Keyfender.Json.restore_req))
-    in
-    let content_type, body =
-      create_multipart_request
-        [ ("arguments", arguments); ("backup_data", backup_data) ]
-    in
-    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
-      ~body:(`String body) "/system/restore"
-    |> Expect.no_content
-  in
-  (* after second restore it should be operational *)
-  assert (Hsm.state hsm_state = `Operational);
-  (* same backup passphrase should continue to work *)
-  let headers = auth_header "backup" "backupUserPassphrase" in
-  request ~meth:`POST ~hsm_state ~headers "/system/backup"
-  |> returns_stream ~with_status:`OK
-  |> ignore
-
-let system_backup_and_restore_operational_changed_devkey_unattended =
-  Alcotest.test_case
-    "a request for /system/restore succeeds while operational on a reset \
-     device. Unattended boot"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:false ~unattended:true)
-
-let system_backup_and_restore_operational_changed_all_unattended =
-  Alcotest.test_case
-    "a request for /system/restore succeeds while operational on a different  \
-     device. Unattended boot"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:true ~unattended:true)
-
-let system_backup_and_restore_operational_unattended =
-  Alcotest.test_case
-    "a request for /system/restore succeeds while operational. Unattended boot"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:false
-        ~changed_devid:false ~unattended:true)
-
-let system_backup_and_restore_operational_changed_devkey =
-  Alcotest.test_case
-    "a request for /system/restore succeeds while operational on a reset device"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:false ~unattended:false)
-
-let system_backup_and_restore_operational_changed_all =
-  Alcotest.test_case
-    "a request for /system/restore succeeds while operational on a different \
-     device"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:true
-        ~changed_devid:true ~unattended:false)
-
-let system_backup_and_restore_operational =
-  Alcotest.test_case "a request for /system/restore succeeds while operational"
-    `Quick (fun () ->
-      system_backup_and_restore_operational ~changed_devkey:false
-        ~changed_devid:false ~unattended:false)
 
 let system_backup_post_accept_header =
   "a request for /system/backup using 'Accept: application/octet-stream' \
@@ -1968,6 +1730,41 @@ let post_config_tls_csr_pem_custom_san =
       | Error _ -> false)
   | _ -> false
 
+let setup_cluster_ca hsm_state =
+  let headers = admin_headers in
+  (* create a self-signed CA and get the NetHSM CSR *)
+  let hsm_state, csr_pem =
+    admin_post_request ~hsm_state ~body:(`String subject) "/config/tls/csr.pem"
+    |> returns_string' ~with_status:`OK
+  in
+  (* sign the CSR with our CA *)
+  let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+  let ca_sub, ca_key, ca = gen_ca () in
+  let ca_pem = X509.Certificate.encode_pem ca in
+  let valid_from = Ptime.of_year 2025 |> Option.get in
+  let valid_until = Ptime.of_year 2030 |> Option.get in
+  let new_cert =
+    X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
+    |> Result.get_ok
+  in
+  let content_type = "application/x-pem-file" in
+  let new_cert_pem = X509.Certificate.encode_pem new_cert in
+  (* replace the NetHSM with that newly signed cert *)
+  let hsm_state =
+    request ~hsm_state ~meth:`PUT ~headers ~content_type
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+    |> returns_empty' ~with_status:`Created
+  in
+  (* now set the NetHSM CA *)
+  let hsm_state =
+    request ~hsm_state ~meth:`PUT ~headers ~content_type
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+    |> returns_empty' ~with_status:`Created
+  in
+  (hsm_state, ca_pem)
+
 let put_config_tls_cluster_ca_pem =
   Alcotest.test_case "put tls cluster CA succeeds when cert is signed by it"
     `Quick (fun () ->
@@ -1979,38 +1776,8 @@ let put_config_tls_cluster_ca_pem =
           "/config/tls/cert.pem"
         |> returns_string' ~with_status:`OK
       in
-      (* create a self-signed CA and get the NetHSM CSR *)
-      let hsm_state, csr_pem =
-        admin_post_request ~hsm_state ~body:(`String subject)
-          "/config/tls/csr.pem"
-        |> returns_string' ~with_status:`OK
-      in
-      (* sign the CSR with our CA *)
-      let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
-      let ca_sub, ca_key, ca = gen_ca () in
-      let ca_pem = X509.Certificate.encode_pem ca in
-      let valid_from = Ptime.of_year 2025 |> Option.get in
-      let valid_until = Ptime.of_year 2030 |> Option.get in
-      let new_cert =
-        X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
-        |> Result.get_ok
-      in
-      let content_type = "application/x-pem-file" in
-      let new_cert_pem = X509.Certificate.encode_pem new_cert in
-      (* replace the NetHSM with that newly signed cert *)
-      let hsm_state =
-        request ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~expect:(debug "caching config to the platform")
-          ~body:(`String new_cert_pem) "/config/tls/cert.pem"
-        |> returns_empty' ~with_status:`Created
-      in
-      (* now set the NetHSM CA *)
-      let hsm_state =
-        request ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~expect:(debug "caching config to the platform")
-          ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
-        |> returns_empty' ~with_status:`Created
-      in
+      let hsm_state, ca_pem = setup_cluster_ca hsm_state in
+
       (* we should now be able to query the CA, which should match *)
       let hsm_state, ca_pem' =
         request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
@@ -2019,6 +1786,7 @@ let put_config_tls_cluster_ca_pem =
       Alcotest.(check string "cert matches" ca_pem ca_pem');
       (* Check that we cannot put the old cert again, as it's not signed by the
          CA *)
+      let content_type = "application/x-pem-file" in
       let err_msg =
         request ~hsm_state ~meth:`PUT ~headers ~content_type
           ~body:(`String old_cert_pem) "/config/tls/cert.pem"
@@ -2037,6 +1805,279 @@ let put_config_tls_cluster_ca_pem =
       |> Alcotest.(
            check string "error msg"
              "{\"message\":\"cannot generate cert if cluster CA has been set\"}"))
+
+let system_backup_and_restore_operational ~unattended ~changed_devkey
+    ~changed_devid ~cluster_ca_before =
+  let backup_passphrase = "backup passphrase" in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
+  let* hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let hsm_state =
+    if cluster_ca_before then
+      (* create a Cluster CA, it should get restored if deleted *)
+      let hsm_state, _ = setup_cluster_ca hsm_state in
+      hsm_state
+    else hsm_state
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
+  let post_backup_operations hsm_state =
+    let ( let* ) = Option.bind in
+
+    let* hsm_state =
+      if unattended then
+        admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
+          "/config/unattended-boot"
+        |> Expect.no_content
+      else Some hsm_state
+    in
+    (* backup is done, let's remove a key and try to restore it *)
+    let* hsm_state =
+      let expect = info "removed (keyID)" in
+      request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
+        "/keys/keyID"
+      |> Expect.no_content
+    in
+    (* add key, we'll check that it's removed after restore *)
+    Lwt_main.run
+      (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
+       Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
+         test_key_pem no_restrictions)
+    |> Result.get_ok;
+    (* do the same with namespaces *)
+    let* hsm_state =
+      request ~expect:expect_ns ~meth:`DELETE ~hsm_state ~headers:admin_headers
+        "/namespaces/namespace1"
+      |> Expect.no_content
+    in
+    let expect = info "created (namespace3)" in
+    let* hsm_state =
+      request ~expect ~meth:`PUT ~hsm_state ~headers:admin_headers
+        "/namespaces/namespace3"
+      |> Expect.no_content
+    in
+    (* the unlock passphrase is changed, must be restored *)
+    Lwt_main.run
+      (Hsm.Config.change_unlock_passphrase hsm_state
+         ~new_passphrase:"i am secure" ~current_passphrase:"unlockPassphrase")
+    |> Result.get_ok;
+    (* the removed key is indeed removed *)
+    let* _ =
+      request ~headers:admin_headers ~hsm_state "/keys/keyID"
+      |> Expect.not_found
+    in
+    if cluster_ca_before then Some hsm_state
+    else
+      (* create a Cluster CA, it should get removed afterwards *)
+      let hsm_state, _ = setup_cluster_ca hsm_state in
+      Some hsm_state
+  in
+  let* hsm_state = post_backup_operations hsm_state in
+  (* restore *)
+  let* hsm_state =
+    if changed_devid || changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      let platform =
+        if changed_devid then { platform with deviceId = "0000000001" }
+        else platform
+      in
+      let hsm_state =
+        hsm_with_key ~platform ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      in
+      admin_put_request ~hsm_state ~body:(`String passphrase)
+        "/config/backup-passphrase"
+      |> returns_empty' ~with_status:`No_content
+      |> post_backup_operations
+    else Some hsm_state
+  in
+  let changed_log =
+    if changed_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
+      ^ info
+          "different device: removing all /local/0000000000/config keys before \
+           writing in /local/0000000001/config"
+      ^ debug "restoring /local/0000000001/config/unlock-salt"
+    else if changed_devkey then
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+    else info "no config re-encrypt needed"
+  in
+  let unattended_log =
+    if unattended then
+      info "Disabling unattended boot since domain key might have changed"
+    else ""
+  in
+  let* hsm_state =
+    let expect =
+      multipart_log ^ info "Domain Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ unattended_log
+      ^ info "removing: /key/newKeyID\n"
+      ^ info "removing: /namespace/namespace3\n"
+      ^ (if cluster_ca_before then "" else info "removing: /config/cluster-ca\n")
+      ^ changed_log
+      ^ debug "caching config to the platform"
+    in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = Some backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after first restore it should be locked *)
+  assert (Hsm.state hsm_state = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let* hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> Expect.no_content
+  in
+  assert (Hsm.state hsm_state = `Operational);
+  (* check that deleted keys are restored *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
+  in
+  (* check that new keys are deleted *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
+    |> Expect.not_found
+  in
+  (* same for namespaces and related keys *)
+  let* _ =
+    request ~expect:expect_ns ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace1"
+    |> Expect.no_content
+  in
+  let* _ =
+    request ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace3"
+    |> Expect.not_found
+  in
+  (* check that cluster CA deleted or still present, depending when it was set *)
+  request ~headers:admin_headers ~meth:`GET ~hsm_state
+    "/config/tls/cluster-ca.pem"
+  |> returns_string ~with_status:(if cluster_ca_before then `OK else `Not_found)
+  |> ignore;
+
+  (* second restore *)
+  let* hsm_state =
+    let expect =
+      multipart_log ^ changed_log ^ debug "caching config to the platform"
+    in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = Some backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after second restore it should be operational *)
+  assert (Hsm.state hsm_state = `Operational);
+  (* same backup passphrase should continue to work *)
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_backup_and_restore_operational_changed_devkey_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_all_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a different  \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:true ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset device"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_all =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a different \
+     device"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:true ~unattended:false ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_devkey_ca_before =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset \
+     device, with cluster CA preconfigured"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:true)
+
+let system_backup_and_restore_operational_ca_before =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational with cluster CA \
+     preconfigured"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:true)
+
+let system_backup_and_restore_operational =
+  Alcotest.test_case "a request for /system/restore succeeds while operational"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:false)
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
@@ -5559,6 +5600,8 @@ let () =
           system_backup_and_restore_operational_changed_devkey;
           system_backup_and_restore_operational_changed_all;
           system_backup_and_restore_operational_unattended;
+          system_backup_and_restore_operational_ca_before;
+          system_backup_and_restore_operational_changed_devkey_ca_before;
           system_backup_and_restore_operational_changed_devkey_unattended;
           system_backup_and_restore_operational_changed_all_unattended;
           system_backup_and_restore_operational_without_backuppassphrase;

@@ -3348,12 +3348,15 @@ module Make (KV : Kv_ext.Platform) = struct
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
+      let is_config_key k =
+        Mirage_kv.Key.equal key
+          Config_store.(key_path' ~migration_in_progress:true ~device_id k)
+      in
       let should_restore_key =
         (not is_operational)
         || Option.is_some (Encrypted_store.slot_of_key key)
-        || Mirage_kv.Key.equal key
-             Config_store.(
-               key_path' ~migration_in_progress:true ~device_id Unlock_salt)
+        || is_config_key Unlock_salt || is_config_key Backup_key
+        || is_config_key Backup_salt
       in
       if should_restore_key then
         let** () =
@@ -3372,6 +3375,11 @@ module Make (KV : Kv_ext.Platform) = struct
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
+      let is_config_key k =
+        Mirage_kv.Key.equal key
+          Config_store.(
+            key_path' ~migration_in_progress:false ~device_id:backup_device_id k)
+      in
       (* ignore local key that's for another device id *)
       let is_global, is_from_backup_device =
         match Mirage_kv.Key.segments key with
@@ -3383,10 +3391,10 @@ module Make (KV : Kv_ext.Platform) = struct
       let should_restore_key =
         ((not is_operational) && (is_global || is_from_backup_device))
         || Option.is_some (Encrypted_store.slot_of_key key)
-        || Mirage_kv.Key.equal key
-             Config_store.(
-               key_path' ~migration_in_progress:false
-                 ~device_id:backup_device_id Unlock_salt)
+        || is_config_key Config_store.Unlock_salt
+        || is_config_key Config_store.Backup_key
+        || is_config_key Config_store.Backup_salt
+        || is_config_key Config_store.Cluster_CA
       in
       if should_restore_key then
         let** () =
@@ -3410,7 +3418,7 @@ module Make (KV : Kv_ext.Platform) = struct
                   Lwt_result.return (subkeys @ acc)))
         (Ok []) entries
 
-    let remove_extra_keys ~kv backup_keys =
+    let remove_extra_keys ~config_store ~kv backup_keys =
       let ( let** ) = Lwt_result.bind in
       let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
       let** auth_keys =
@@ -3427,13 +3435,24 @@ module Make (KV : Kv_ext.Platform) = struct
         internal_server_error Read "restoring backup (listing keys)" KV.pp_error
           (list_keys_rec ~kv ns_prefix)
       in
-      let keys = auth_keys @ key_keys @ ns_keys in
+      let exists_config k =
+        internal_server_error Read "restoring backup (looking for config)"
+          Config_store.pp_error
+          (Config_store.exists config_store k)
+      in
+      let** exists_bk = exists_config Backup_key in
+      let** exists_bs = exists_config Backup_salt in
+      let** exists_ca = exists_config Cluster_CA in
+      let path k = Config_store.key_path config_store k in
+      let keys =
+        auth_keys @ key_keys @ ns_keys
+        @ (if exists_bk then [ path Backup_key ] else [])
+        @ (if exists_bs then [ path Backup_salt ] else [])
+        @ if exists_ca then [ path Cluster_CA ] else []
+      in
       List.filter_map
         (fun key ->
-          if
-            Option.is_some (Encrypted_store.slot_of_key key)
-            && not (KeySet.mem key backup_keys)
-          then (
+          if not (KeySet.mem key backup_keys) then (
             Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
             Some key)
           else None)
@@ -3651,16 +3670,6 @@ module Make (KV : Kv_ext.Platform) = struct
                   Fmt.str "could not apply migrations to old backup: %s" msg ))
           in
 
-          (* if this is a partial restore, backup the configs that are domain-key encrypted,
-             in case the domain key changes (not just its passphrase) and we have
-             to restore them *)
-          let** domain_encrypted_configs_backup =
-            if is_operational then
-              Config_store.backup_domain_encrypted_config t.config_store
-              |> Lwt_result.map Option.some
-            else Lwt_result.return None
-          in
-
           let** dk_rewritten =
             (* the domain key and/or device key might have changed if
                restored to a fresh or different device, so refresh the store
@@ -3720,23 +3729,9 @@ module Make (KV : Kv_ext.Platform) = struct
                      if namespace store is not present in backup, the current
                      one will be emptied (all namespaces deleted) but will stay
                      provisioned. *)
-                  remove_extra_keys ~kv:b !backup_keys
+                  remove_extra_keys ~config_store:t.config_store ~kv:b
+                    !backup_keys
                 else Lwt_result.return ())
-          in
-
-          (* if the domain key has changed (we don't know if it's just the
-             passphrase or the actual key), schedule to restore the configs that
-             were encrypted with it after unlock *)
-          let _reencrypt_domain_encrypted_configs =
-            match (dk_rewritten, domain_encrypted_configs_backup) with
-            | true, Some to_restore ->
-                Logs.info (fun f ->
-                    f
-                      "deferring restoration of previous domain-encrypted \
-                       configs");
-                Config_store.defer_restore_domain_encrypted_config
-                  t.config_store to_restore
-            | _ -> ()
           in
 
           (* after a full restore, (part of) the config store will be encrypted with
