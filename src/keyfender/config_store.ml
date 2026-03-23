@@ -10,6 +10,11 @@ module Make (KV : Kv_ext.Platform) = struct
   let local_config_prefix device_id = "local/" ^ device_id ^ "/config"
   let global_config_prefix = "config"
 
+  type migration = Migration of (string * string) [@@deriving yojson]
+  type migrations = migration list [@@deriving yojson]
+  (* list of string representations of K-V to write on unlock. we don't use k
+     recursively to avoid GADT issues and unwated recursion *)
+
   type _ k =
     | Unlock_salt : string k
     | Certificate : (X509.Certificate.t * X509.Certificate.t list) k
@@ -22,6 +27,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Log_config : Json.log k
     | Time_offset : Ptime.span k
     | Unattended_boot : bool k
+    | Pending_unlock_migrations : migrations k
     | Restore_in_progress : unit k (* if key exists, then restore in progress *)
 
   module K = struct
@@ -64,6 +70,9 @@ module Make (KV : Kv_ext.Platform) = struct
       | Unattended_boot, Unattended_boot -> Eq
       | Unattended_boot, _ -> Lt
       | _, Unattended_boot -> Gt
+      | Pending_unlock_migrations, Pending_unlock_migrations -> Eq
+      | Pending_unlock_migrations, _ -> Lt
+      | _, Pending_unlock_migrations -> Gt
       | Restore_in_progress, Restore_in_progress -> Eq
     (* | Restore_in_progress, _ -> Lt | _, Restore_in_progress -> Gt *)
   end
@@ -82,7 +91,26 @@ module Make (KV : Kv_ext.Platform) = struct
     | Log_config -> "log-config"
     | Time_offset -> "time-offset"
     | Unattended_boot -> "unattended-boot"
+    | Pending_unlock_migrations -> "pending-unlock-migrations"
     | Restore_in_progress -> "restore-in-progress"
+
+  type packed_k = P : _ k -> packed_k
+
+  let of_name : string -> packed_k option = function
+    | "unlock-salt" -> Some (P Unlock_salt)
+    | "certificate" -> Some (P Certificate)
+    | "cluster-ca" -> Some (P Cluster_CA)
+    | "private-key" -> Some (P Private_key)
+    | "version" -> Some (P Version)
+    | "ip-config" -> Some (P Ip_config)
+    | "backup-salt" -> Some (P Backup_salt)
+    | "backup-key" -> Some (P Backup_key)
+    | "log-config" -> Some (P Log_config)
+    | "time-offset" -> Some (P Time_offset)
+    | "unattended-boot" -> Some (P Unattended_boot)
+    | "pending-unlock-migrations" -> Some (P Pending_unlock_migrations)
+    | "restore-in-progress" -> Some (P Restore_in_progress)
+    | _ -> None
 
   let encode_one_cert crt =
     let data = X509.Certificate.encode_der crt in
@@ -115,6 +143,8 @@ module Make (KV : Kv_ext.Platform) = struct
         | Some s -> string_of_int s
         | None -> "0")
     | Unattended_boot, b -> if b then "1" else "0"
+    | Pending_unlock_migrations, l ->
+        migrations_to_yojson l |> Yojson.Safe.to_string
     | Restore_in_progress, () -> ""
 
   let guard p err = if p then Ok () else Error (`Msg err)
@@ -170,6 +200,9 @@ module Make (KV : Kv_ext.Platform) = struct
         | "0" -> Ok false
         | "1" -> Ok true
         | x -> Rresult.R.error_msgf "unexpected unattended boot value: %s" x)
+    | Pending_unlock_migrations ->
+        Json.decode migrations_of_yojson data
+        |> Result.map_error (fun s -> `Msg s)
     | Restore_in_progress -> Ok ()
 
   (* global configs are shared by all nodes in a cluster
@@ -182,7 +215,7 @@ module Make (KV : Kv_ext.Platform) = struct
         true
     | Time_offset (* offset might be different for different hardware *)
     | Unlock_salt | Certificate | Private_key | Ip_config | Log_config
-    | Unattended_boot ->
+    | Unattended_boot | Pending_unlock_migrations ->
         false
 
   (* "early" configs cannot be encrypted with the domain key, as they are
@@ -196,23 +229,32 @@ module Make (KV : Kv_ext.Platform) = struct
     | Unattended_boot (* needed at boot *)
     | Time_offset (* needed by (at least) web server *)
     | Version (* needed immediately at boot for migrations *)
-    | Restore_in_progress (* no associated value *) ->
+    | Restore_in_progress (* no associated value *)
+    | Pending_unlock_migrations
+      (* needed at unlock, could be "late" but makes sense to be device-encrypted *)
+      ->
         true
     | Backup_salt | Backup_key (* not used in Unprovisioned mode *)
     | Cluster_CA (* needed by etcd but cached on platform *) ->
         false
 
+  type error = [ `Kv of KV.error | `Msg of string | `Missing_domain_key ]
+
   let pp_error ppf = function
     | `Kv e -> KV.pp_error ppf e
     | `Kv_write e -> KV.pp_write_error ppf e
     | `Msg msg -> Fmt.string ppf msg
-    | `Missing_domain_key -> Fmt.string ppf "cannot read this key before unlock"
+    | `Missing_domain_key ->
+        Fmt.string ppf "cannot access this key before unlock"
 
   type write_error =
-    [ `Kv of KV.write_error
-    | `Msg of string
-    | `Missing_domain_key
-    | `Restore_in_progress ]
+    [ error | `Kv_write of KV.write_error | `Restore_in_progress ]
+
+  let pp_write_error ppf = function
+    | #error as e -> pp_error ppf e
+    | `Kv_write e -> KV.pp_write_error ppf e
+    | `Restore_in_progress ->
+        Fmt.string ppf "cannot restore while restore already in progress"
 
   type t = {
     kv : KV.t;
@@ -221,7 +263,6 @@ module Make (KV : Kv_ext.Platform) = struct
     config_domain_key : string option ref;
     migration_in_progress : bool;
         (* used exclusively during migration from unencrypted to encrypted *)
-    post_migration_writes : (t -> (unit, write_error) Lwt_result.t) list ref;
   }
 
   let key_path' ~migration_in_progress ~device_id key =
@@ -320,28 +361,67 @@ module Make (KV : Kv_ext.Platform) = struct
       | Restore_in_progress ->
           let* ok =
             KV.atomic_set_if_no_restore t k v
-            |> Lwt_result.map_error (fun e -> `Kv e)
+            |> Lwt_result.map_error (fun e -> `Kv_write e)
           in
           if ok then Lwt_result.return ()
           else Lwt_result.fail `Restore_in_progress
-      | _ -> KV.set t k v |> Lwt_result.map_error (fun e -> `Kv e)
+      | _ -> KV.set t k v |> Lwt_result.map_error (fun e -> `Kv_write e)
     in
     let* c = select_codec t key |> Lwt_result.lift in
     let module C = (val c) in
     let data = to_string key value |> C.encrypt key in
     set_f t.kv (key_path t key) data
 
-  let pp_write_error ppf = function
-    | `Kv e -> KV.pp_write_error ppf e
-    | `Msg msg -> Fmt.string ppf msg
-    | `Missing_domain_key ->
-        Fmt.string ppf "cannot write this key before unlock"
-    | `Restore_in_progress ->
-        Fmt.string ppf "cannot restore while restore already in progress"
+  let remove t key =
+    KV.remove t.kv (key_path t key)
+    |> Lwt_result.map_error (fun e -> `Kv_write e)
 
-  let remove t key = KV.remove t.kv (key_path t key)
   let digest t key = KV.digest t.kv (key_path t key)
   let restore_in_progress t = exists t Restore_in_progress
+
+  let apply_pending_unlock_migrations t =
+    let ( let** ) = Lwt_result.bind in
+    let** migrations_opt = get_opt t Pending_unlock_migrations in
+    let apply_one t (Migration (k, v)) =
+      match of_name k with
+      | Some (P key) ->
+          let** data = of_string key v |> Lwt_result.lift in
+          let path = key_path t key in
+          Logs.info (fun f -> f "migrating %a" Mirage_kv.Key.pp path);
+          set t key data
+      | None ->
+          Lwt.return (Fmt.error_msg "invalid stored migration key: '%s'" k)
+    in
+    match migrations_opt with
+    | None | Some [] -> Lwt_result.return ()
+    | Some migrations ->
+        Logs.info (fun f -> f "Applying post unlock migrations");
+        batch t (fun t ->
+            let** () =
+              Lwt_list.fold_left_s
+                (fun acc m ->
+                  match acc with
+                  | Ok () -> apply_one t m
+                  | Error e -> Lwt.return (Error e))
+                (Ok ()) migrations
+            in
+            remove t Pending_unlock_migrations)
+
+  let make_migration k data =
+    let data_string = to_string k data in
+    let key_string = name k in
+    Migration (key_string, data_string)
+
+  let append_pending_unlock_migrations t k data =
+    let ( let** ) = Lwt_result.bind in
+    let new_migration = make_migration k data in
+    let** migrations_opt = get_opt t Pending_unlock_migrations in
+    let to_set =
+      match migrations_opt with
+      | None -> [ new_migration ]
+      | Some existing_migrations -> new_migration :: existing_migrations
+    in
+    set t Pending_unlock_migrations to_set
 
   let connect kv ~device_id ~device_key =
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
@@ -352,22 +432,11 @@ module Make (KV : Kv_ext.Platform) = struct
       config_device_key;
       config_domain_key = ref None;
       migration_in_progress = false;
-      post_migration_writes = ref [];
     }
 
   let provide_config_domain_key t k =
-    let open Lwt_result.Infix in
     t.config_domain_key := Some k;
-    if !(t.post_migration_writes) <> [] then (
-      Logs.info (fun f -> f "Applying post unlock migrations");
-      batch t (fun t ->
-          Lwt_list.fold_left_s
-            (fun acc op ->
-              let open Lwt_result.Infix in
-              Lwt.return acc >>= fun () -> op t)
-            (Ok ()) !(t.post_migration_writes))
-      >|= fun () -> t.post_migration_writes := [])
-    else Lwt_result.return ()
+    apply_pending_unlock_migrations t
 
   let forget_config_domain_key t = t.config_domain_key := None
 
@@ -379,6 +448,7 @@ module Make (KV : Kv_ext.Platform) = struct
     log_config : Json.log option;
     time_offset : Ptime.span option;
     unattended_boot : bool option;
+        (* pending_unlock_migrations has never a reason to be backed up itself *)
   }
 
   (* all keys that are domain-encrypted (global+late) *)
@@ -389,17 +459,15 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let clear_local_config t =
     let ( let* ) = Lwt_result.bind in
-    let go () =
-      let* () = remove t Unlock_salt in
-      let* () = remove t Certificate in
-      let* () = remove t Private_key in
-      let* () = remove t Ip_config in
-      let* () = remove t Log_config in
-      let* () = remove t Time_offset in
-      let* () = remove t Unattended_boot in
-      Lwt_result.return ()
-    in
-    go () |> Lwt_result.map_error (fun e -> `Kv e)
+    let* () = remove t Unlock_salt in
+    let* () = remove t Certificate in
+    let* () = remove t Private_key in
+    let* () = remove t Ip_config in
+    let* () = remove t Log_config in
+    let* () = remove t Time_offset in
+    let* () = remove t Unattended_boot in
+    let* () = remove t Pending_unlock_migrations in
+    Lwt_result.return ()
 
   (* lenient: does not fail on error *)
   let get_opt' t k =
@@ -474,39 +542,35 @@ module Make (KV : Kv_ext.Platform) = struct
 
       All keys that need domain key for encryption (backup salt, key, cluster
       CA) are only migrated later when the domain key is provided (at unlock)
+
+      Returns the number of migrations that were deferred
   *)
   let migrate_v0_v1 ~partial t =
     Logs.info (fun m -> m "Migrating config store from V0 to V1");
     forget_config_domain_key t;
     (* assume the domain key is unavailable *)
     let old = { t with device_id = ""; migration_in_progress = true } in
+    let deferred_nb = ref 0 in
     batch t (fun t ->
         let set_or_delay t k data =
           let src = key_path old k in
-          let go t =
-            let dst = key_path t k in
-            Logs.info (fun f ->
-                f "migrating %a to %a" Mirage_kv.Key.pp src Mirage_kv.Key.pp dst);
-            set t k data
-          in
-          let wrap_write_error = function
-            | Error (`Kv e) -> Error (`Kv_write e)
-            | Error (`Msg m) -> Error (`Msg m)
-            | Error `Missing_domain_key ->
-                Logs.info (fun f ->
-                    f "need domain key to migrate %a! deferring to after unlock"
-                      Mirage_kv.Key.pp src);
-                t.post_migration_writes := go :: !(t.post_migration_writes);
-                Ok ()
-            | Error `Restore_in_progress -> Ok ()
-            | Ok () -> Ok ()
-          in
-          go t >|= wrap_write_error
+          let dst = key_path t k in
+          Logs.info (fun f ->
+              f "migrating %a to %a" Mirage_kv.Key.pp src Mirage_kv.Key.pp dst);
+          set t k data >>= function
+          | Error `Restore_in_progress -> Lwt_result.return ()
+          | Error `Missing_domain_key ->
+              Logs.info (fun f ->
+                  f "need domain key to migrate %a! deferring to after unlock"
+                    Mirage_kv.Key.pp src);
+              incr deferred_nb;
+              append_pending_unlock_migrations t k data
+          | x -> Lwt.return x
         in
         let move k data =
           remove old k >>= function
           | Ok () -> set_or_delay t k data
-          | Error e -> Lwt_result.fail (`Kv_write e)
+          | Error e -> Lwt.return (Error e)
         in
         let migrate_generic (type a) (k : a k) =
           get_opt old k >>= function
@@ -578,6 +642,7 @@ module Make (KV : Kv_ext.Platform) = struct
           migrate_generic Private_key >>= fun () ->
           migrate_generic Unattended_boot >>= fun () ->
           migrate_log_config () >>= fun () ->
-          migrate_ip_config () >>= fun () -> set_or_delay t Version Version.V1
-        else Lwt_result.return ())
+          migrate_ip_config () >>= fun () ->
+          set_or_delay t Version Version.V1 >|= fun () -> !deferred_nb
+        else Lwt_result.return !deferred_nb)
 end

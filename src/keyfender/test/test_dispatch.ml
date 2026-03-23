@@ -742,8 +742,8 @@ let system_restore_v0_backup ~changed_devkey =
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
   let expect =
     info "Applying post unlock migrations"
-    ^ info "migrating /config/backup-key to /config/backup-key"
-    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
   in
   let hsm_state'' =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
@@ -837,8 +837,8 @@ let system_restore_v0_backup_operational ~changed_devkey =
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
   let expect =
     info "Applying post unlock migrations"
-    ^ info "migrating /config/backup-key to /config/backup-key"
-    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
   in
   let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)

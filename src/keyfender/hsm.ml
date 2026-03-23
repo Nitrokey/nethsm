@@ -3484,17 +3484,15 @@ module Make (KV : Kv_ext.Platform) = struct
           (* here's the place to embed migration code, at least for the
              configuration and domain stores *)
           Logs.info (fun f -> f "Applying migrations.");
-          lwt_error_to_msg ~pp_error:Config_store.pp_error
+          lwt_error_to_msg ~pp_error:Config_store.pp_write_error
             (Config_store.migrate_v0_v1 ~partial config_store)
-          >>= fun () ->
+          >>= fun deferred ->
           (if not partial then
              lwt_error_to_msg ~pp_error:Config_store.pp_error
                Domain_key_store.(migrate_v0_v1 (connect kv device_id))
            else Lwt_result.return ())
           >|= fun () ->
-          Log.info (fun m ->
-              m "Migration done (%d deferred)"
-                (List.length !(config_store.post_migration_writes)))
+          Log.info (fun m -> m "Migration done (%d deferred)" deferred)
 
     let restore t json stream =
       let sb = sb_of_stream stream in
@@ -3839,8 +3837,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let** () =
         internal_server_error Write "Unlock restore lock"
           Config_store.pp_write_error
-          (Config_store.remove t.config_store Restore_in_progress
-          |> Lwt_result.map_error (fun e -> `Kv e))
+          (Config_store.remove t.config_store Restore_in_progress)
       in
       Lwt.return restore_result
   end
