@@ -63,18 +63,6 @@ cat <<EOM > add_req.json
 }
 EOM
 
-echo "- add a new member to the cluster without a backup passphrase (should fail)"
-(POST_admin /v1/cluster/members < add_req.json)
-
-echo "- configure backup passphrase"
-PUT_admin /v1/config/backup-passphrase <<EOM
-{
-  "newPassphrase": "backupPassphrase",
-  "currentPassphrase": ""
-}
-EOM
-
-
 make -f cert.make witness.pem
 
 # ensure no clock drift
@@ -85,6 +73,7 @@ EOM
 
 sleep 2
 
+# a backup passphrase is already configured from a previous restore
 echo "- add a new member to the cluster (should succeed)"
 ADD_RESP=$(POST_admin /v1/cluster/members < add_req.json) || exit 1
 echo $ADD_RESP > response.json
@@ -182,7 +171,7 @@ EOM
 
 echo "- join non-existent cluster (should fail)"
 
-(POST_admin /v1/cluster/join < join_req.json) # in subshell because should fail
+! (POST_admin /v1/cluster/join < join_req.json) || exit 1 # in subshell because should fail
 echo
 
 # should still be healthy afterward
@@ -216,7 +205,7 @@ echo "- check local etcd is healthy"
 # appropriate error)
 
 echo "- HSM joins local etcd (should fail: etcd not expecting new member)"
-(POST_admin /v1/cluster/join < join_req.json) # in subshell because should fail
+! (POST_admin /v1/cluster/join < join_req.json) || exit 1 # in subshell because should fail
 
 # still healthy after failed join
 
@@ -250,7 +239,7 @@ echo "- check that NetHSM has written a domain key"
 
 echo "- unlock HSM (should fail, store was never provisioned)"
 #in subshell because will fail
-(POST /v1/unlock <<EOM)
+! (POST /v1/unlock <<EOM) || exit 1
 { "passphrase": "UnlockPassphrase" }
 EOM
 
