@@ -1010,6 +1010,115 @@ let system_restore_v0_backup_operational =
     `Quick (fun () ->
       system_restore_v0_backup_operational ~changed_devkey:false)
 
+let system_restore_v0_backup_operational_unattended ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "v3.1_backup_full.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info "Migration done (2 deferred)"
+    ^ info "Domain Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ info "Disabling unattended boot since domain key might have changed"
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      operational_mock_with_mbox ~platform ()
+    else operational_mock_with_mbox ()
+  in
+  (* configure unattended boot before the restore, to see how the restore
+     behaves afterwards *)
+  let hsm_state =
+    admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
+      "/config/unattended-boot"
+    |> returns_empty' ~with_status:`No_content
+  in
+  (* configure a backup passphrase before the restore. It should still be usable
+     afterwards *)
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      "backupUserPassphrase"
+  in
+  let hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state' =
+    request ~hsm_state ~headers:admin_headers ~expect ~meth:`POST ~content_type
+      ~body:(`String body) "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
+  in
+  let hsm_state =
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  (* old backup key/salt should still be readable, even though we have changed
+     domain key *)
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_operational_unattended_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended mode \
+     configured succeeds on a device with a different device key in an \
+     operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational_unattended ~changed_devkey:true)
+
+let system_restore_v0_backup_operational_unattended =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended mode \
+     configured succeeds in an operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational_unattended ~changed_devkey:false)
+
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
   let backup_passphrase = "backup passphrase" in
@@ -5754,6 +5863,8 @@ let () =
           system_restore_v0_backup_unattended_changed_devkey;
           system_restore_v0_backup_operational;
           system_restore_v0_backup_operational_changed_devkey;
+          system_restore_v0_backup_operational_unattended;
+          system_restore_v0_backup_operational_unattended_changed_devkey;
         ] );
       ("/unlock", [ unlock_ok; unlock_failed; unlock_failed_two; unlock_twice ]);
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
