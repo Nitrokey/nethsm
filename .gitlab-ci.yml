@@ -568,7 +568,7 @@ integration_test_sdk_py:
   variables:
     FLIT_ROOT_INSTALL: 1
   script:
-    - apk add python3 git make
+    - apk add python3 git make poetry
     - git clone https://github.com/Nitrokey/nethsm-sdk-py.git
     - cd nethsm-sdk-py && make install && TEST_MODE=ci make test
 
