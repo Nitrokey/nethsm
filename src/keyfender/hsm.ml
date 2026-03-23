@@ -653,16 +653,32 @@ module Make (KV : Kv_ext.Ranged) = struct
          to avoid these issues, we use PKCS8 encoding as PEM (embedding DER in
          json is not safe as well)!
       *)
-      type priv = X509 of X509.Private_key.t | Generic of string
+      type priv =
+        | X509 of X509.Private_key.t
+        | Generic of string
+        | PQC_DSA of { public_key : string; secret_key : string }
+        | PQC_KEM of { public_key : string; secret_key : string }
 
       let pem_tag = "PEM"
       let raw_tag = "raw"
+      let pqc_dsa_tag = "PQC_DSA"
+      let pqc_kem_tag = "PQC_KEM"
 
       let priv_to_yojson p =
         match p with
         | Generic s -> `Assoc [ (raw_tag, `String (Base64.encode_string s)) ]
         | X509 p ->
             `Assoc [ (pem_tag, `String (X509.Private_key.encode_pem p)) ]
+        | PQC_DSA { public_key; secret_key } ->
+            `Assoc [ (pqc_dsa_tag, `Assoc [
+              ("public_key", `String (Base64.encode_string public_key));
+              ("secret_key", `String (Base64.encode_string secret_key));
+            ])]
+        | PQC_KEM { public_key; secret_key } ->
+            `Assoc [ (pqc_kem_tag, `Assoc [
+              ("public_key", `String (Base64.encode_string public_key));
+              ("secret_key", `String (Base64.encode_string secret_key));
+            ])]
 
       let priv_of_yojson = function
         | `Assoc [ (tag, `String data) ] when tag = raw_tag -> (
@@ -673,6 +689,20 @@ module Make (KV : Kv_ext.Ranged) = struct
             match X509.Private_key.decode_pem data with
             | Ok priv -> Ok (X509 priv)
             | Error (`Msg m) -> Error m)
+        | `Assoc [ (tag, `Assoc [
+            ("public_key", `String pk_b64);
+            ("secret_key", `String sk_b64)
+          ])] when tag = pqc_dsa_tag -> (
+            match Base64.decode pk_b64, Base64.decode sk_b64 with
+            | Ok pk, Ok sk -> Ok (PQC_DSA { public_key = pk; secret_key = sk })
+            | _ -> Error "Invalid base64 in PQC_DSA key")
+        | `Assoc [ (tag, `Assoc [
+            ("public_key", `String pk_b64);
+            ("secret_key", `String sk_b64)
+          ])] when tag = pqc_kem_tag -> (
+            match Base64.decode pk_b64, Base64.decode sk_b64 with
+            | Ok pk, Ok sk -> Ok (PQC_KEM { public_key = pk; secret_key = sk })
+            | _ -> Error "Invalid base64 in PQC_KEM key")
         | _ -> Error "Expected { <format>: <data> } as private key"
 
       type t = {
@@ -1556,6 +1586,25 @@ module Make (KV : Kv_ext.Ranged) = struct
         | BrainpoolP256 -> prv `BrainpoolP256
         | BrainpoolP384 -> prv `BrainpoolP384
         | BrainpoolP512 -> prv `BrainpoolP512
+        | ML_DSA_87 ->
+            b64_data key.data >>= fun raw ->
+            if String.length raw = Pqc.ML_DSA_87.secret_key_size + Pqc.ML_DSA_87.public_key_size then
+              let secret_key = String.sub raw 0 Pqc.ML_DSA_87.secret_key_size in
+              let public_key = String.sub raw Pqc.ML_DSA_87.secret_key_size Pqc.ML_DSA_87.public_key_size in
+              Ok (PQC_DSA { public_key; secret_key })
+            else
+              Error (`Msg "ML-DSA-87: import requires both secret and public key")
+        | ML_KEM_768 ->
+            b64_data key.data >>= fun raw ->
+            if String.length raw = Pqc.ML_KEM_768.secret_key_size + Pqc.ML_KEM_768.public_key_size then
+              let secret_key = String.sub raw 0 Pqc.ML_KEM_768.secret_key_size in
+              let public_key = String.sub raw Pqc.ML_KEM_768.secret_key_size Pqc.ML_KEM_768.public_key_size in
+              Ok (PQC_KEM { public_key; secret_key })
+            else if String.length raw = Pqc.ML_KEM_768.secret_key_size then
+              let public_key = String.sub raw (Pqc.ML_KEM_768.secret_key_size - Pqc.ML_KEM_768.public_key_size - 64) Pqc.ML_KEM_768.public_key_size in
+              Ok (PQC_KEM { public_key; secret_key = raw })
+            else
+              Error (`Msg "ML-KEM-768: invalid key data length")
       with
       | Error (`Msg e) -> Lwt.return (Error (Bad_request, e))
       | Ok priv -> add ~namespace ~id t mechanisms priv restrictions
@@ -1593,6 +1642,12 @@ module Make (KV : Kv_ext.Ranged) = struct
       | BrainpoolP256 -> gen `BrainpoolP256
       | BrainpoolP384 -> gen `BrainpoolP384
       | BrainpoolP512 -> gen `BrainpoolP512
+      | ML_DSA_87 ->
+          let public_key, secret_key = Pqc.ML_DSA_87.keypair () in
+          Ok (PQC_DSA { public_key; secret_key })
+      | ML_KEM_768 ->
+          let public_key, secret_key = Pqc.ML_KEM_768.keypair () in
+          Ok (PQC_KEM { public_key; secret_key })
 
     let generate ~namespace ~id t typ mechanisms ~length restrictions =
       let open Lwt_result.Infix in
@@ -1729,6 +1784,12 @@ module Make (KV : Kv_ext.Ranged) = struct
               |> Base64.encode_string
             in
             (Json.ec_public_key_to_yojson { Json.data }, Json.BrainpoolP512)
+        | PQC_DSA { public_key; _ } ->
+            let data = Base64.encode_string public_key in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.ML_DSA_87)
+        | PQC_KEM { public_key; _ } ->
+            let data = Base64.encode_string public_key in
+            (Json.ec_public_key_to_yojson { Json.data }, Json.ML_KEM_768)
         | Generic _ -> (`Null, Json.Generic)
       in
       Json.public_key_to_yojson
@@ -1749,6 +1810,8 @@ module Make (KV : Kv_ext.Ranged) = struct
       | X509 p ->
           let pub = X509.Private_key.public p in
           Ok (X509.Public_key.encode_pem pub)
+      | PQC_DSA _ -> Error (Bad_request, "ML-DSA keys have no PEM representation")
+      | PQC_KEM _ -> Error (Bad_request, "ML-KEM keys have no PEM representation")
       | Generic _ -> Error (Bad_request, "Generic keys have no public key")
 
     let csr_pem t ~namespace ~id subject =
@@ -1764,6 +1827,10 @@ module Make (KV : Kv_ext.Ranged) = struct
           | Error (`Msg e) ->
               Error (Bad_request, "creating signing request: " ^ e)
           | Ok c -> Ok (X509.Signing_request.encode_pem c))
+      | PQC_DSA _ ->
+          Error (Bad_request, "ML-DSA keys can't create X.509 certificates")
+      | PQC_KEM _ ->
+          Error (Bad_request, "ML-KEM keys can't create X.509 certificates")
       | Generic _ ->
           Error (Bad_request, "Generic keys can't create certificates")
 
@@ -1874,12 +1941,14 @@ module Make (KV : Kv_ext.Ranged) = struct
                        | OAEP_SHA384 -> Oaep_sha384.decrypt ~key encrypted_data
                        | OAEP_SHA512 -> Oaep_sha512.decrypt ~key encrypted_data
                        | AES_CBC -> None
+                       | MLKEM -> None
                      in
                      match dec_cs with
                      | None -> Error (Bad_request, "Decryption failure")
                      | Some cs -> Ok cs)
                  | Generic key -> (
                      match decrypt_mode with
+                     | Json.MLKEM -> Error (Bad_request, "Generic keys can't decapsulate.")
                      | Json.AES_CBC -> (
                          match iv with
                          | None ->
@@ -1898,10 +1967,22 @@ module Make (KV : Kv_ext.Ranged) = struct
                          Error
                            ( Bad_request,
                              "decrypt mode not supported by Generic key" ))
+                 | PQC_KEM { secret_key; _ } -> (
+                     match decrypt_mode with
+                     | Json.MLKEM -> (
+                         try
+                           let shared_secret = Pqc.ML_KEM_768.decaps secret_key encrypted_data in
+                           Ok shared_secret
+                         with Failure msg ->
+                           Error (Bad_request, "Decapsulation failed: " ^ msg))
+                     | _ ->
+                         Error (Bad_request, "ML-KEM keys can only decapsulate."))
+                 | PQC_DSA _ ->
+                     Error (Bad_request, "ML-DSA keys can't decrypt.")
                  | _ ->
                      Error
                        ( Bad_request,
-                         "Decryption only supported for RSA and Generic keys."
+                         "Decryption only supported for RSA, Generic, and ML-KEM keys."
                        ))
                >>= fun data ->
                Metrics.key_op `Decrypt;
@@ -1933,6 +2014,7 @@ module Make (KV : Kv_ext.Ranged) = struct
                (match key_data.priv with
                  | Generic key -> (
                      match encrypt_mode with
+                     | Json.MLKEM_Encaps -> Error (Bad_request, "Generic keys can't encapsulate.")
                      | Json.AES_CBC -> (
                          try
                            let iv =
@@ -1950,10 +2032,25 @@ module Make (KV : Kv_ext.Ranged) = struct
                                Some (Base64.encode_string iv) )
                          with Invalid_argument err ->
                            Error (Bad_request, "Encryption failed: " ^ err)))
+                 | PQC_KEM { public_key; _ } -> (
+                     match encrypt_mode with
+                     | Json.MLKEM_Encaps -> (
+                         try
+                           let ciphertext, shared_secret =
+                             Pqc.ML_KEM_768.encaps public_key
+                           in
+                           Ok (Base64.encode_string ciphertext,
+                               Some (Base64.encode_string shared_secret))
+                         with Failure msg ->
+                           Error (Bad_request, "Encapsulation failed: " ^ msg))
+                     | _ ->
+                         Error (Bad_request, "ML-KEM keys can only encapsulate."))
+                 | PQC_DSA _ ->
+                     Error (Bad_request, "ML-DSA keys can't encrypt.")
                  | _ ->
                      Error
                        ( Bad_request,
-                         "Encryption only supported for Generic keys." ))
+                         "Encryption only supported for Generic and ML-KEM keys." ))
                >>= fun (cs, iv) ->
                Metrics.key_op `Encrypt;
                Hashtbl.replace cached_operations (namespace, id)
@@ -2001,6 +2098,15 @@ module Make (KV : Kv_ext.Ranged) = struct
                         Ok (r ^ s)
                       with Invalid_argument x ->
                         Error (Bad_request, "Signing failure: " ^ x))
+                  | PQC_DSA { secret_key; _ }, Json.MLDSA -> (
+                      try
+                        Ok (Pqc.ML_DSA_87.sign secret_key to_sign)
+                      with Failure msg ->
+                        Error (Bad_request, "Signing failed: " ^ msg))
+                  | PQC_DSA _, _ ->
+                      Error (Bad_request, "ML-DSA keys can only sign with MLDSA mode.")
+                  | PQC_KEM _, _ ->
+                      Error (Bad_request, "ML-KEM keys can't sign.")
                   | Generic _, _ ->
                       Error (Bad_request, "Generic keys can't sign.")
                   | X509 priv, _ ->

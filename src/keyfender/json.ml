@@ -211,6 +211,9 @@ type mechanism =
   | BIP340_Signature
   | AES_Encryption_CBC
   | AES_Decryption_CBC
+  | MLDSA_Signature
+  | MLKEM_Encapsulation
+  | MLKEM_Decapsulation
 [@@deriving yojson, ord]
 
 let mechanism_of_yojson = function
@@ -283,6 +286,8 @@ type key_type =
   | BrainpoolP256
   | BrainpoolP384
   | BrainpoolP512
+  | ML_DSA_87
+  | ML_KEM_768
   | Generic
 [@@deriving yojson]
 
@@ -322,12 +327,16 @@ let type_matches_mechanism typ m =
   | BrainpoolP256 -> m = ECDSA_Signature
   | BrainpoolP384 -> m = ECDSA_Signature
   | BrainpoolP512 -> m = ECDSA_Signature
+  | ML_DSA_87 -> m = MLDSA_Signature
+  | ML_KEM_768 -> List.mem m [ MLKEM_Encapsulation; MLKEM_Decapsulation ]
   | Generic -> List.mem m [ AES_Encryption_CBC; AES_Decryption_CBC ]
 
 type rsa_public_key = { modulus : string; publicExponent : string }
 [@@deriving to_yojson]
 
 type ec_public_key = { data : string } [@@deriving to_yojson]
+
+type pqc_public_key = { data : string } [@@deriving to_yojson]
 
 type restrictions = { tags : (TagSet.t[@default TagSet.empty]) }
 [@@deriving yojson]
@@ -365,6 +374,7 @@ type decrypt_mode =
   | OAEP_SHA384
   | OAEP_SHA512
   | AES_CBC
+  | MLKEM
 [@@deriving yojson]
 
 let mechanism_of_decrypt_mode = function
@@ -377,6 +387,7 @@ let mechanism_of_decrypt_mode = function
   | OAEP_SHA384 -> RSA_Decryption_OAEP_SHA384
   | OAEP_SHA512 -> RSA_Decryption_OAEP_SHA512
   | AES_CBC -> AES_Decryption_CBC
+  | MLKEM -> MLKEM_Decapsulation
 
 let decrypt_mode_of_yojson = function
   | `String _ as s -> decrypt_mode_of_yojson (`List [ s ])
@@ -389,9 +400,14 @@ type decrypt_req = {
 }
 [@@deriving yojson]
 
-type encrypt_mode = AES_CBC [@@deriving yojson]
+type encrypt_mode =
+  | AES_CBC
+  | MLKEM_Encaps
+[@@deriving yojson]
 
-let mechanism_of_encrypt_mode = function AES_CBC -> AES_Encryption_CBC
+let mechanism_of_encrypt_mode = function
+  | AES_CBC -> AES_Encryption_CBC
+  | MLKEM_Encaps -> MLKEM_Encapsulation
 
 let encrypt_mode_of_yojson = function
   | `String _ as s -> encrypt_mode_of_yojson (`List [ s ])
@@ -415,6 +431,7 @@ type sign_mode =
   | EdDSA
   | ECDSA
   | BIP340
+  | MLDSA
 [@@deriving yojson]
 
 let mechanism_of_sign_mode = function
@@ -428,6 +445,7 @@ let mechanism_of_sign_mode = function
   | EdDSA -> EdDSA_Signature
   | ECDSA -> ECDSA_Signature
   | BIP340 -> BIP340_Signature
+  | MLDSA -> MLDSA_Signature
 
 let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [ s ])
