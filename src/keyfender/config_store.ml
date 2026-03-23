@@ -412,14 +412,13 @@ module Make (KV : Kv_ext.Platform) = struct
     let key_string = name k in
     Migration (key_string, data_string)
 
-  let append_pending_unlock_migrations t k data =
+  let append_pending_unlock_migrations t new_migrations =
     let ( let** ) = Lwt_result.bind in
-    let new_migration = make_migration k data in
     let** migrations_opt = get_opt t Pending_unlock_migrations in
     let to_set =
       match migrations_opt with
-      | None -> [ new_migration ]
-      | Some existing_migrations -> new_migration :: existing_migrations
+      | None -> new_migrations
+      | Some existing_migrations -> existing_migrations @ new_migrations
     in
     set t Pending_unlock_migrations to_set
 
@@ -546,12 +545,25 @@ module Make (KV : Kv_ext.Platform) = struct
       Returns the number of migrations that were deferred
   *)
   let migrate_v0_v1 ~partial t =
+    let ( let** ) = Lwt_result.bind in
     Logs.info (fun m -> m "Migrating config store from V0 to V1");
     forget_config_domain_key t;
     (* assume the domain key is unavailable *)
     let old = { t with device_id = ""; migration_in_progress = true } in
-    let deferred_nb = ref 0 in
+    let deferred_migrations = ref [] in
+    let after () =
+      (* only actually persist the migrations at the end, so we don't write the
+         same key multiple times *)
+      append_pending_unlock_migrations t !deferred_migrations >|= function
+      | Ok () -> Ok (List.length !deferred_migrations)
+      | Error e -> Error e
+    in
     batch t (fun t ->
+        (* - if we can, set the key to the value
+           - if we cannot because we need the domain key:
+               - delete the key now
+               - remember we need to write it after unlock
+        *)
         let set_or_remove_and_delay ~remove t k data =
           let src = key_path old k in
           let dst = key_path t k in
@@ -563,15 +575,32 @@ module Make (KV : Kv_ext.Platform) = struct
               Logs.info (fun f ->
                   f "need domain key to migrate %a! deferring to after unlock"
                     Mirage_kv.Key.pp src);
-              remove () >>= function
+              remove () >|= function
               | Ok () ->
-                  incr deferred_nb;
-                  append_pending_unlock_migrations t k data
-              | Error e -> Lwt.return (Error e))
+                  let new_migration = make_migration k data in
+                  deferred_migrations := new_migration :: !deferred_migrations;
+                  Ok ()
+              | Error e -> Error e)
           | x -> Lwt.return x
         in
         let move k data =
-          set_or_remove_and_delay ~remove:(fun () -> remove old k) t k data
+          (* we are not allowed to delete and set the same key in the same
+             transaction, so:
+             - if the migration does not change the key, do not delete if now,
+               and only delete it later if we have to defer the migration
+            - if the migration changes the key, we can safely delete it now,
+              and pass a no-op
+          *)
+          let do_remove () = remove old k in
+          let src = key_path old k in
+          let dst = key_path t k in
+          let** remove =
+            if Mirage_kv.Key.equal src dst then Lwt_result.return do_remove
+            else
+              let** () = do_remove () in
+              Lwt_result.return (fun () -> Lwt_result.return ())
+          in
+          set_or_remove_and_delay ~remove t k data
         in
         let migrate_generic (type a) (k : a k) =
           get_opt old k >>= function
@@ -644,6 +673,6 @@ module Make (KV : Kv_ext.Platform) = struct
           migrate_generic Unattended_boot >>= fun () ->
           migrate_log_config () >>= fun () ->
           migrate_ip_config () >>= fun () ->
-          move Version Version.V1 >|= fun () -> !deferred_nb
-        else Lwt_result.return !deferred_nb)
+          move Version Version.V1 >>= fun () -> after ()
+        else after ())
 end
