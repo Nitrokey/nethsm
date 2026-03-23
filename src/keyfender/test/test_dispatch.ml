@@ -745,16 +745,25 @@ let system_restore_v0_backup ~changed_devkey =
     ^ info "migrating /config/backup-key"
     ^ info "migrating /config/backup-salt"
   in
-  let hsm_state'' =
+  let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
       ~hsm_state:hsm_state' "/unlock"
     |> returns_empty' ~with_status:`No_content
   in
   Alcotest.(
     check bool "post unlock is operational" true
-      (Hsm.state hsm_state'' = `Operational));
+      (Hsm.state hsm_state = `Operational));
+  (* locking and unlocking again does not re-apply migrations *)
+  let hsm_state =
+    request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
   let headers = auth_header "backup" "backupUserPassphrase" in
-  request ~meth:`POST ~hsm_state:hsm_state'' ~headers "/system/backup"
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
   |> returns_stream ~with_status:`OK
   |> ignore
 
