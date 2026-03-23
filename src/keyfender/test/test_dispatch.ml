@@ -667,6 +667,139 @@ let readfile filename =
 
 [@@@warning "-21"]
 
+let system_restore_v0_backup_unattended ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "v3.1_backup_full.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
+    ^ info
+        "migrating /config/certificate to /local/0000000000/config/certificate"
+    ^ info
+        "migrating /config/private-key to /local/0000000000/config/private-key"
+    ^ info
+        "migrating /config/unattended-boot to \
+         /local/0000000000/config/unattended-boot"
+    ^ info "migrating /config/log-config to /local/0000000000/config/log-config"
+    ^ info "migrating /config/ip-config to /local/0000000000/config/ip-config"
+    ^ info "migrating /config/version to /config/version"
+    ^ info "Migrating domain key store from V0 to V1"
+    ^ info
+        "migrating /domain-key/attended to \
+         /local/0000000000/domain-key/attended"
+    ^ info
+        "migrating /domain-key/unattended to \
+         /local/0000000000/domain-key/unattended"
+    ^ info "Migration done (2 deferred)"
+  in
+  let expect =
+    if changed_devkey then
+      expect ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ error "unattended boot failed with not authenticated"
+      ^ debug "caching config to the platform"
+    else
+      expect
+      ^ info "Applying post unlock migrations"
+      ^ info "migrating /config/backup-key"
+      ^ info "migrating /config/backup-salt"
+      ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      Lwt_main.run
+        ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+        >>= fun (y, o, m) ->
+          happy_mbox o m >|= fun () -> y )
+    else booted_mock ()
+  in
+  let hsm_state' =
+    request ~hsm_state ~expect ~meth:`POST ~content_type ~body:(`String body)
+      "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state =
+    let expect =
+      info "Applying post unlock migrations"
+      ^ info "migrating /config/backup-key"
+      ^ info "migrating /config/backup-salt"
+    in
+    if changed_devkey then (
+      Alcotest.(
+        check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+      request ~meth:`POST ~expect ~body:(`String unlock_json)
+        ~hsm_state:hsm_state' "/unlock"
+      |> returns_empty' ~with_status:`No_content)
+    else (
+      Alcotest.(
+        check bool "post restore is locked" true
+          (Hsm.state hsm_state' = `Operational));
+      hsm_state')
+  in
+
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  (* locking and unlocking again does not re-apply migrations *)
+  let hsm_state =
+    request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_unattended_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended boot \
+     configured succeeds on a differente device"
+    `Quick (fun () -> system_restore_v0_backup_unattended ~changed_devkey:true)
+
+let system_restore_v0_backup_unattended =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended boot \
+     configured succeeds on the same device"
+    `Quick (fun () -> system_restore_v0_backup_unattended ~changed_devkey:false)
+
 let system_restore_v0_backup ~changed_devkey =
   let backup_passphrase = "backupPassphrase" in
   let arguments =
@@ -5617,6 +5750,8 @@ let () =
           system_backup_post_accept_header;
           system_restore_v0_backup;
           system_restore_v0_backup_changed_devkey;
+          system_restore_v0_backup_unattended;
+          system_restore_v0_backup_unattended_changed_devkey;
           system_restore_v0_backup_operational;
           system_restore_v0_backup_operational_changed_devkey;
         ] );

@@ -16,6 +16,7 @@
  (deps
   update.bin
   big_100k.bin
+  v3.1_backup_full.bin
   ../bin/sign_update.exe
   key.pem
   changes
