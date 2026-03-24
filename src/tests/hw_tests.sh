@@ -139,6 +139,37 @@ POST /v1/unlock <<EOM
 { "passphrase": "UnlockPassphrase" }
 EOM
 
+echo "- creating backup"
+POST /v1/system/backup --user backup:BackupBackup -o cluster_backup.bin <<EOF
+EOF
+
+echo "- generate a key (should get removed by later restore)"
+POST_admin /v1/keys/generate <<EOF
+{
+  "mechanisms": [
+    "RSA_Signature_PSS_SHA256"
+  ],
+  "type": "RSA",
+  "length": 2048,
+  "id": "extraKey"
+}
+EOF
+
+sleep 0.5 # give some time for the key to be transferred
+
+echo "- check witness can see the new key"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+    get "/key/extraKey" || exit 1
+
+echo "- restoring backup"
+${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "backupPassphrase"}' -F backup=@cluster_backup.bin \
+  ${NETHSM_URL}/v1/system/restore || exit 1
+
+sleep 5
+
+echo "- check witness cannot see the key anymore"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey"
+
 echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
