@@ -2183,9 +2183,10 @@ let system_backup_and_restore_operational ~unattended ~changed_devkey
       multipart_log ^ info "Domain Key changed."
       ^ info "Rewriting stored Domain Key."
       ^ unattended_log
-      ^ info "removing: /key/newKeyID\n"
-      ^ info "removing: /namespace/namespace3\n"
-      ^ (if cluster_ca_before then "" else info "removing: /config/cluster-ca\n")
+      ^ debug "removing: /key/newKeyID\n"
+      ^ debug "removing: /namespace/namespace3\n"
+      ^ (if cluster_ca_before then ""
+         else debug "removing: /config/cluster-ca\n")
       ^ changed_log
       ^ debug "caching config to the platform"
     in

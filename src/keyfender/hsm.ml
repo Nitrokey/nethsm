@@ -3453,7 +3453,7 @@ module Make (KV : Kv_ext.Platform) = struct
       List.filter_map
         (fun key ->
           if not (KeySet.mem key backup_keys) then (
-            Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
+            Log.debug (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
             Some key)
           else None)
         keys
