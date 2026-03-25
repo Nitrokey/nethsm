@@ -145,7 +145,7 @@ ifneq ($(CCACHE_DIR),)
 endif
 	opam pin add -y -n keyfender $(TOP_DIR)/src/keyfender#HEAD
 ifeq ($(XMODE),muen)
-	opam pin -y -n solo5.0.9.3 'https://github.com/Nitrokey/nethsm-solo5.git#4560f69ca2f9b75752b41c37d5b6266deecc73d7'
+	opam pin -y -n solo5.0.9.3 'https://github.com/Nitrokey/nethsm-solo5.git#3e542dc9a14c3202b206e482fbf5fe72005d6976'
 endif
 ifeq ($(XMODE),test)
 # Additional dependencies required for coverage testing and building
@@ -357,9 +357,10 @@ $(RUN_DIR)/etcd.pid:
 	mkdir -p $(RUN_DIR)
 	etcd \
 	    --listen-client-urls 'http://169.254.169.2:2379' \
+	    --listen-peer-urls 'http://169.254.169.2:2380' \
 		--advertise-client-urls 'http://169.254.169.2:2379' \
 		--data-dir $(RUN_DIR)/etcd \
-		--log-level debug \
+		--log-level info \
 		--max-txn-ops 512 \
         --log-outputs $(RUN_DIR)/etcd.log \
 	    & echo $$! > $@
@@ -417,7 +418,7 @@ test-keyfender-load: $(S_KEYFENDER) | $(ETCD_DIR)
 .PHONY: coverage-summary
 # Generate a summary coverage report. Runs all test-keyfender-* targets if not
 # previously run in this tree.
-coverage-summary: .stamp-test-keyfender-e2e .stamp-test-keyfender-lib .stamp-test-keyfender-api
+coverage-summary: .stamp-test-keyfender-e2e .stamp-test-keyfender-lib .stamp-test-keyfender-api .stamp-test-keyfender-load
 	mkdir -p $(TOP_DIR)/obj
 	bisect-ppx-report cobertura \
 		--coverage-path=src/tests \

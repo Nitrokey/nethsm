@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+
+N1=https://172.22.1.2
+N2=https://172.22.1.3
+N3=https://172.22.1.4
+N4=https://172.22.1.5
+EW=https://172.22.1.10
+
+# Provision and install cert with same CA in N1, N2, N3, N4
+NETHSM_URL="$N1/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N2/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N3/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N4/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+# Register N2 in N1
+NETHSM_URL="$N1/api"
+source ./common_functions.sh
+
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N2:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+echo "join req: $join_req"
+
+# N2 join N1 with the info from last request
+NETHSM_URL="$N2/api"
+source ./common_functions.sh
+
+echo "attempt to join, this may take some time"
+POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+
+GET /v1/health/state # should be Locked
+
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
+EOF
+); do echo "retry.."; sleep 1; done
+
+GET /v1/health/state # should be Operational
+
+# should be able to see a key from N1
+GET_admin /v1/keys/myKey1 # should not 404
+
+# let's create a key here, it should be visible on the other side afterwards
+POST_admin /v1/keys/generate <<EOF
+{
+  "mechanisms": [
+    "RSA_Signature_PSS_SHA256"
+  ],
+  "type": "RSA",
+  "length": 2048,
+  "id": "keyAcrossCluster"
+}
+EOF
+
+# let's check N1 is still alive and can see the newly created key
+NETHSM_URL="$N1/api"
+source ./common_functions.sh
+
+GET_admin /v1/health/state # should be Operational
+
+GET_admin /v1/cluster/members
+
+GET_admin /v1/keys/keyAcrossCluster # should not 404
+
+# let's add a third node, from N1
+
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N3:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+
+# N3 join N1 with the info from last request
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+echo "attempt to join again, this may take some time"
+POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
+EOF
+); do echo "retry.."; sleep 1; done
+
+# let's create yet another key
+POST_admin /v1/keys/generate <<EOF
+{
+  "mechanisms": [
+    "RSA_Signature_PSS_SHA256"
+  ],
+  "type": "RSA",
+  "length": 2048,
+  "id": "keyN3"
+}
+EOF
+
+# N2 should have automatically joined with N3 as well, should see the key
+NETHSM_URL="$N2/api"
+source ./common_functions.sh
+
+GET_admin /v1/keys/keyN3 # should not 404
+
+GET_admin /v1/cluster/members
+
+echo "creating backup"
+POST /v1/system/backup --user backup:BackupBackup -o backup.bin <<EOF
+EOF
+
+# now let's delete this key, and check the deletion propagates to other nodes
+DELETE_admin /v1/keys/keyN3
+
+! (GET_admin /v1/keys/keyN3) || exit 1
+
+# back to N3, which had keyN3 in cache
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+sleep 0.5 # allow etcd to forward watch event
+# the cache should have been invalidated, so this should fail
+! (GET_admin /v1/keys/keyN3) || exit 1
+
+# then let's delete a key that N1, which has never gotten re-unlocked, has seen
+DELETE_admin /v1/keys/keyAcrossCluster
+
+NETHSM_URL="$N1/api"
+source ./common_functions.sh
+
+sleep 0.5 # allow etcd to forward watch event
+
+# N1 (the original node) should see the deletion
+! (GET_admin /v1/keys/keyAcrossCluster) || exit 1
+
+# let's simulate N1 crashing without warning, we want the other nodes
+# to keep going
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
+sleep 1
+
+NETHSM_URL="$N2/api"
+source ./common_functions.sh
+
+# N2 still operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1 > /dev/null
+
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+# N3 still operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1 > /dev/null
+
+N1_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.2")))[0].id')
+echo "N1 etcd ID is: $N1_id"
+
+# seeing N1 has failed, we can safely remove it from the cluster
+DELETE_admin "/v1/cluster/members/$N1_id"
+
+GET_admin /v1/cluster/members
+
+# finally let's remove N2 before it crashes, because we don't want to be left
+# with a 2-node cluster. This will in effect crash N2
+N2_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.3")))[0].id')
+echo "N2 etcd ID is: $N2_id"
+
+DELETE_admin "/v1/cluster/members/$N2_id"
+
+# N3 remains operational
+GET_admin /v1/cluster/members
+GET_admin /v1/keys/myKey1 > /dev/null
+
+# Now add N4 to form a 2-node cluster again
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N4:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+
+NETHSM_URL="$N4/api"
+source ./common_functions.sh
+
+echo "attempt to join, this may take some time"
+POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+
+GET /v1/health/state # should be Locked
+
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
+EOF
+); do echo "retry.."; sleep 1; done
+
+echo "restoring backup done previously"
+${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "backupPassphrase"}' \
+    -F backup=@backup.bin \
+    $N4/api/v1/system/restore || exit 1
+
+# N4 still alive and can see old key
+GET_admin /v1/keys/keyN3 > /dev/null
+
+
+NETHSM_URL="$N3/api"
+source ./common_functions.sh
+
+# N3 still alive and can see old key
+GET_admin /v1/keys/keyN3 > /dev/null
+
+echo "check the cluster CA cannot be changed during operation, this should fail"
+! (curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+    -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem") || exit 1
+echo 
+
+make -f cert.make clean-all
+echo "Clustering tests OK!"

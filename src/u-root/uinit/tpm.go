@@ -7,7 +7,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base32"
 	"encoding/hex"
@@ -48,6 +50,7 @@ type platformData struct {
 	AKPub           map[string][]byte `json:"akPub"`
 	HardwareVersion string            `json:"hardwareVersion"`
 	FirmwareVersion string            `json:"firmwareVersion"`
+	NetworkConfig   string            `json:"networkConfig,omitempty"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -67,6 +70,12 @@ func withTPMContext(f func(*tpm2.TPMContext) error) error {
 }
 
 func tpmRand() (buf []byte, err error) {
+	if hw.IsTesting() {
+		buf = make([]byte, tpmRandSize)
+		rand.Read(buf)
+		return
+	}
+
 	_ = withTPMContext(func(tpm *tpm2.TPMContext) error {
 		buf, err = tpm.GetRandom(tpmRandSize)
 		return nil
@@ -119,16 +128,25 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	return deviceID, akPub, nil
 }
 
-// tpmGetPlatformData returns TPM derived data of the NetHSM.
+var platformDataCh = make(chan platformData, 1)
+
+// tpmCreatePlatformData returns TPM derived data of the NetHSM.
 //
 // The Device Key is sealed against PCR-0 and PCR-2 with an SRK on the TPM and
 // stored on the harddisk. If the Device Key does not exist, a new one is
 // created.
-func tpmGetPlatformData() (platformData, error) {
-	var data platformData
+func tpmCreatePlatformData() error {
+	log.Printf("Initializing platform data")
 	var pcrIdxs tpm2.PCRSelect = hw.MeasuredPCRs()
 
+	// this must be called before withTPMContext(), because seeding also uses a
+	// TPMContext
+	if !randIsFullySeeded() {
+		return fmt.Errorf("waiting for TRNG seeding timed out")
+	}
+
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
+		var data platformData
 		resetDA := func() {
 			err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
 			if err != nil {
@@ -168,9 +186,6 @@ func tpmGetPlatformData() (platformData, error) {
 			return fmt.Errorf("unsealing Device Key failed: %w", err)
 		}
 		if len(deviceKey) == 0 {
-			if !randIsFullySeeded() {
-				return fmt.Errorf("waiting for TRNG seeding timed out")
-			}
 			deviceKey = make([]byte, 32)
 			_, err = crand.Read(deviceKey)
 			if err != nil {
@@ -232,9 +247,54 @@ func tpmGetPlatformData() (platformData, error) {
 
 		data.DeviceKey = deviceKey
 
+		setLocalConfigKey(deviceKey)
+		if err := loadLocalConfigFromCache(); err != nil {
+			log.Printf("Loading local config cache failed: %v", err)
+		}
+
+		if conf, _ := localConfig.Get(); conf != nil && conf.NetworkConfig != "" {
+			// return stored network config as part of platform data
+			data.NetworkConfig = conf.NetworkConfig
+		}
+
+		platformDataCh <- data
+		close(platformDataCh)
+
 		return nil
 	})
-	return data, err
+	return err
+}
+
+// mockCreatePlatformData returns fake data
+func mockCreatePlatformData() {
+	log.Printf("Creating mock platform data")
+
+	// this must be called before withTPMContext(), because seeding also uses a
+	// TPMContext
+	if !randIsFullySeeded() {
+		log.Panic("waiting for TRNG seeding timed out")
+	}
+
+	var data platformData
+
+	hostname, _ := os.Hostname()
+	log.Printf("using hostname for device key/id: %s", hostname)
+	hash := sha256.Sum256([]byte(hostname))
+	data.DeviceKey = hash[:]
+	data.DeviceID = base32.NewEncoding(base32Chars).EncodeToString(data.DeviceKey[:7])[:10]
+
+	data.FirmwareVersion = "n/a"
+	data.HardwareVersion = hw.Version
+
+	data.AKPub = make(map[string][]byte)
+	data.PCR = make(map[int]string)
+
+	platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
+	log.Printf("Fake Platform Data: %v\n", string(platformDataJSON))
+
+	setLocalConfigKey(data.DeviceKey)
+	platformDataCh <- data
+	close(platformDataCh)
 }
 
 // sealDeviceKey seals the supplied secret to a sealed object in the storage hierarchy

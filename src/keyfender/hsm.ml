@@ -28,26 +28,34 @@ module type S = sig
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   val cb_to_string : cb -> string
 
   type t
 
-  val equal : t -> t -> bool Lwt.t
+  val assert_equal :
+    ?except_system_info:bool ->
+    ?except_key_values:Mirage_kv.Key.t list ->
+    ?except_keys:(Mirage_kv.Key.t * [ `Dictionary | `Value ]) list ->
+    ?allow_more_keys:bool ->
+    t ->
+    t ->
+    unit Lwt.t
+
   val info : t -> Json.info
   val state : t -> Json.state
   val lock : t -> unit
   val own_cert : t -> Tls.Config.own_cert
-
-  val network_configuration :
-    t -> (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+  val network_configuration : t -> Json.network Lwt.t
 
   val provision :
     t -> unlock:string -> admin:string -> Ptime.t -> (unit, error) result Lwt.t
@@ -83,6 +91,8 @@ module type S = sig
     val tls_public_pem_digest : t -> string option Lwt.t
     val tls_cert_pem : t -> string Lwt.t
     val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_cluster_ca : t -> string option Lwt.t
+    val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
     val tls_cert_digest : t -> string option Lwt.t
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
@@ -115,6 +125,7 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
+    val join_cluster : t -> Json.join_req -> (unit, error) result Lwt.t
 
     val restore :
       t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
@@ -310,6 +321,20 @@ module type S = sig
     val list : t -> (string list, error) result Lwt.t
     val remove : t -> id -> (unit, error) result Lwt.t
   end
+
+  module Cluster : sig
+    type member = { id : int64; name : string; urls : string list }
+
+    val member_list : t -> (member list, error) result Lwt.t
+    val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
+    val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
+
+    val member_update :
+      id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
+
+    val member_add :
+      urls:string list -> t -> (Json.join_req, error) result Lwt.t
+  end
 end
 
 let to_hex str =
@@ -327,7 +352,7 @@ module Log = (val Logs.src_log hsm_src : Logs.LOG)
 let build_tag = String.trim [%blob "buildTag"]
 let software_version = String.trim [%blob "softwareVersion"]
 
-module Make (KV : Kv_ext.Ranged) = struct
+module Make (KV : Kv_ext.Platform) = struct
   module Metrics = struct
     let db = Hashtbl.create 13
     let retrieve () = Hashtbl.fold (fun k v acc -> (k, v) :: acc) db []
@@ -491,7 +516,7 @@ module Make (KV : Kv_ext.Ranged) = struct
      hardware.. *)
   let fatal prefix ~pp_error e =
     Log.err (fun m -> m "fatal in %s %a" prefix pp_error e);
-    invalid_arg "fatal!"
+    invalid_arg (Fmt.str "fatal in %s %a" prefix pp_error e)
 
   let lwt_error_fatal prefix ~pp_error thing =
     let open Lwt.Infix in
@@ -555,27 +580,33 @@ module Make (KV : Kv_ext.Ranged) = struct
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
-    | Network (prefix, gw) ->
+    | Network { ipv4; _ } ->
         let gw =
-          match gw with None -> "no" | Some ip -> Ipaddr.V4.to_string ip
+          match ipv4.gateway with
+          | None -> "no"
+          | Some ip -> Ipaddr.V4.to_string ip
         in
-        "NETWORK " ^ Ipaddr.V4.Prefix.to_string prefix ^ ", gateway: " ^ gw
+        "NETWORK " ^ Ipaddr.V4.Prefix.to_string ipv4.cidr ^ ", gateway: " ^ gw
     | Tls _ -> "TLS_CERTIFICATE"
     | Shutdown -> "SHUTDOWN"
     | Reboot -> "REBOOT"
     | Factory_reset -> "FACTORY-RESET"
     | Update _ -> "UPDATE"
     | Commit_update -> "COMMIT-UPDATE"
+    | Join_cluster _ -> "JOIN-CLUSTER"
+    | Set_local_config _ -> "SET-LOCAL-CONFIG"
 
   let version_of_string s =
     match Astring.String.cut ~sep:"." s with
@@ -727,6 +758,7 @@ module Make (KV : Kv_ext.Ranged) = struct
     kv : KV.t;
     info : Json.info;
     system_info : Json.system_info;
+    config_store : Config_store.t;
     mbox : cb Lwt_mvar.t;
     res_mbox : (unit, string) result Lwt_mvar.t;
     device_key : string;
@@ -735,43 +767,85 @@ module Make (KV : Kv_ext.Ranged) = struct
   }
 
   let state t = to_external_state t.state
-  let lock t = t.state <- Locked
 
-  let kv_equal a b =
+  let lock t =
+    KV.clear_watches t.kv;
+    t.state <- Locked
+
+  let assert_kv_equal ?(allow_more_keys = false) ?(except_key_values = [])
+      ?(except_keys = []) a b =
     let open Lwt_result.Infix in
+    let open Alcotest_engine.V1.Test in
+    let module ChildSet = Set.Make (struct
+      type t = Mirage_kv.Key.t * [ `Value | `Dictionary ]
+
+      let compare = Stdlib.compare
+    end) in
     let rec traverse root =
-      let for_all acc path =
-        Lwt.return acc >>= fun acc' ->
-        traverse path >|= fun v -> acc' && v
+      let for_all (path, _) acc =
+        acc >>= fun acc' ->
+        traverse path >|= fun _ -> acc'
       in
       KV.exists a root >>= fun a_typ ->
       KV.exists b root >>= fun b_typ ->
       match (a_typ, b_typ) with
+      | Some `Value, Some `Value
+        when List.exists (Mirage_kv.Key.equal root) except_key_values ->
+          Lwt_result.return ()
       | Some `Value, Some `Value ->
           KV.get a root >>= fun v ->
-          KV.get b root >>= fun v' -> Lwt_result.return (String.equal v v')
+          KV.get b root >>= fun v' ->
+          let s =
+            Fmt.str "values for %a is the same in both stores" Mirage_kv.Key.pp
+              root
+          in
+          Lwt_result.return (check string s v v')
       | Some `Dictionary, Some `Dictionary ->
           KV.list a root >>= fun l ->
           KV.list b root >>= fun l' ->
-          if List.length l = List.length l' && List.for_all2 ( = ) l l' then
-            Lwt_list.fold_left_s for_all (Ok true) (fst (List.split l))
-          else Lwt_result.return false
-      | _ -> Lwt_result.return false
+          let sl = ChildSet.of_list l in
+          let sl' = ChildSet.of_list l' in
+          let sl = ChildSet.(diff sl (of_list except_keys)) in
+          let sl' = ChildSet.(diff sl' (of_list except_keys)) in
+          (if allow_more_keys then (
+             if not (ChildSet.subset sl sl') then
+               let counter_example = ChildSet.(diff sl sl' |> choose) |> fst in
+               failf
+                 "children of key %a: lhs is not a subset of rhs (e.g. %a is \
+                  only in lhs)"
+                 Mirage_kv.Key.pp root Mirage_kv.Key.pp counter_example)
+           else if not (ChildSet.equal sl sl') then
+             let counter_example =
+               ChildSet.(diff (union sl sl') (inter sl sl') |> choose) |> fst
+             in
+             failf "children of key %a are different (e.g. %a is not in both)"
+               Mirage_kv.Key.pp root Mirage_kv.Key.pp counter_example);
+          ChildSet.fold for_all sl (Lwt_result.return ())
+      | _ ->
+          Lwt_result.return
+          @@ failf "key %a has different type in both stores" Mirage_kv.Key.pp
+               root
     in
     let get_ok v =
       let open Lwt.Infix in
-      v >|= function Ok v -> v | Error _ -> false
+      v >|= function
+      | Ok () -> ()
+      | Error err -> failf "equality test has failed with: %a" KV.pp_error err
     in
     traverse Mirage_kv.Key.empty |> get_ok
 
-  let equal a b =
+  let assert_equal ?(except_system_info = false) ?except_key_values ?except_keys
+      ?allow_more_keys a b =
     let open Lwt.Infix in
-    kv_equal a.kv b.kv >|= fun equal_kv ->
-    equal_internal_state a.state b.state
-    && a.has_changes = b.has_changes
-    && a.info = b.info
-    && a.system_info = b.system_info
-    && equal_kv
+    let open Alcotest_engine.V1.Test in
+    assert_kv_equal ?except_key_values ?except_keys ?allow_more_keys a.kv b.kv
+    >|= fun () ->
+    if not @@ equal_internal_state a.state b.state then
+      fail "internal states differ";
+    check (option string) "check has_changes" a.has_changes b.has_changes;
+    if not (a.info = b.info) then fail "info differs";
+    if not (a.system_info = b.system_info || except_system_info) then
+      fail "system_info differs"
 
   let now () = Hsm_clock.now ()
   let write_lock = Lwt_mutex.create ()
@@ -790,7 +864,7 @@ module Make (KV : Kv_ext.Ranged) = struct
   let set_time_offset kv timestamp =
     Hsm_clock.set timestamp;
     let span = Hsm_clock.get_offset () in
-    internal_server_error Write "Write time offset" KV.pp_write_error
+    internal_server_error Write "Write time offset" Config_store.pp_write_error
       (Config_store.set kv Time_offset span)
 
   let decrypt_with_pass_key encrypted ~pass_key =
@@ -807,7 +881,10 @@ module Make (KV : Kv_ext.Ranged) = struct
 
   let make_store_keys dk =
     let extend k t = Digestif.SHA256.(digest_string (k ^ t) |> to_raw_string) in
-    (extend dk "auth_store", extend dk "key_store", extend dk "namespace_store")
+    ( extend dk "auth_store",
+      extend dk "key_store",
+      extend dk "namespace_store",
+      extend dk "config_store" )
 
   let load_keys kv device_key pass_key =
     let open Lwt_result.Infix in
@@ -823,15 +900,20 @@ module Make (KV : Kv_ext.Ranged) = struct
       | None -> Lwt.return_ok data
       | Some k -> decrypt_with_pass_key data ~pass_key:k)
     >|= fun domain_key ->
-    let auth_store_key, key_store_key, namespace_store_key =
+    let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
     in
-    (domain_key, auth_store_key, key_store_key, namespace_store_key)
+    ( domain_key,
+      auth_store_key,
+      key_store_key,
+      namespace_store_key,
+      config_store_key )
 
   let unlock_store kv slot key =
     let open Lwt.Infix in
     let slot_str = Encrypted_store.slot_to_string slot in
-    Encrypted_store.unlock Version.current slot ~key kv >>= function
+    let current_version = Encrypted_store.current_version slot in
+    Encrypted_store.unlock current_version slot ~key kv >>= function
     | Ok (`Version_greater (stored, _t)) ->
         (* upgrade code for authentication store *)
         Lwt.return
@@ -846,19 +928,25 @@ module Make (KV : Kv_ext.Ranged) = struct
               "This device has not been provisioned with a namespace store. \
                Initializing it on the fly with the provided key!");
         internal_server_error Write "provisioning namespace store"
-          KV.pp_write_error
-          (Encrypted_store.initialize Version.current Namespace ~key kv)
+          Encrypted_store.pp_write_error
+          (Encrypted_store.initialize current_version Namespace ~key kv)
     | Error e ->
         internal_server_error Unlock
           ("connecting to " ^ slot_str ^ " store")
           Encrypted_store.pp_connect_error (Lwt_result.fail e)
 
   (* credential is device key with or without pass_key, depending on boot mode *)
-  let unlock ?pass_key kv ~cache_settings ~device_key =
+  let unlock ?pass_key ~domain_store ~config_store ~cache_settings ~device_key
+      () =
     let open Lwt_result.Infix in
     (* state is already checked in Handler_unlock.service_available *)
-    load_keys kv device_key pass_key
-    >>= fun (domain_key, as_key, ks_key, ns_key) ->
+    load_keys domain_store device_key pass_key
+    >>= fun (domain_key, as_key, ks_key, ns_key, config_key) ->
+    let kv = domain_store.kv in
+    internal_server_error Write "Unlock config store"
+      Config_store.pp_write_error
+      (Config_store.provide_config_domain_key config_store config_key)
+    >>= fun () ->
     unlock_store kv Authentication as_key >>= fun auth_store ->
     unlock_store kv Key ks_key >>= fun key_store ->
     unlock_store kv Namespace ns_key >|= fun namespace_store ->
@@ -875,11 +963,13 @@ module Make (KV : Kv_ext.Ranged) = struct
   let unlock_with_passphrase t ~passphrase =
     let open Lwt_result.Infix in
     internal_server_error Read "Get passphrase salt" Config_store.pp_error
-      (Config_store.get t.kv Config_store.Unlock_salt)
+      (Config_store.get t.config_store Config_store.Unlock_salt)
     >>= fun salt ->
     let pass_key = Crypto.key_of_passphrase ~salt passphrase in
     let device_key = t.device_key in
-    unlock t.kv ~cache_settings:t.cache_settings ~device_key ~pass_key
+    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+    unlock ~domain_store ~config_store:t.config_store
+      ~cache_settings:t.cache_settings ~device_key ~pass_key ()
     >|= fun state' -> t.state <- state'
 
   let check_unlock_passphrase t passphrase =
@@ -887,13 +977,14 @@ module Make (KV : Kv_ext.Ranged) = struct
     let ( let** ) = Lwt_result.bind in
     let** salt =
       internal_server_error Read "Get passphrase salt" Config_store.pp_error
-        (Config_store.get t.kv Config_store.Unlock_salt)
+        (Config_store.get t.config_store Config_store.Unlock_salt)
     in
     let pass_key = Crypto.key_of_passphrase ~salt passphrase in
     let device_key = t.device_key in
-    let* keys = load_keys t.kv device_key (Some pass_key) in
+    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+    let* keys = load_keys domain_store device_key (Some pass_key) in
     match (keys, t.state) with
-    | Ok (dk, _, _, _), Operational { domain_key = dk'; _ }
+    | Ok (dk, _, _, _, _), Operational { domain_key = dk'; _ }
       when String.equal dk dk' ->
         Lwt.return_ok ()
     | _ -> Lwt.return_error (Forbidden, "unlock passphrase is incorrect.")
@@ -924,7 +1015,26 @@ module Make (KV : Kv_ext.Ranged) = struct
     match subject.Json.subjectAltNames with
     | Some [] -> None
     | Some names ->
-        let san_names = X509.General_name.(add DNS names empty) in
+        (* support IP:X.X.X.X as syntax for IP SAN, like OpenSSL *)
+        let ip_names, dns_names =
+          List.partition_map
+            (fun name ->
+              if String.starts_with ~prefix:"IP:" name then
+                let ip = String.sub name 3 (String.length name - 3) in
+                match Ipaddr.of_string ip with
+                | Error _ ->
+                    Logs.warn (fun f ->
+                        f "using IP SAN '%s' as DNS: not a valid IP" name);
+                    Either.right name
+                | Ok ip ->
+                    (* RFC 3280 4.2.1.7 par 6 *)
+                    Either.left (Ipaddr.to_octets ip)
+              else Either.right name)
+            names
+        in
+        let san_names =
+          X509.General_name.(add DNS dns_names (add IP ip_names empty))
+        in
         let ext_map =
           X509.Extension.(add Subject_alt_name (false, san_names) empty)
         in
@@ -949,10 +1059,10 @@ module Make (KV : Kv_ext.Ranged) = struct
       (Config_store.get kv Certificate)
     >|= fun (cert, chain) -> (cert, chain, priv)
 
-  let boot_config_store ~cache_settings kv device_key =
+  let boot_config_store ~cache_settings config_store device_key =
     let open Lwt_result.Infix in
     lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
-      ( Config_store.get_opt kv Time_offset >|= function
+      ( Config_store.get_opt config_store Time_offset >|= function
         | None -> ()
         | Some span -> (
             let (`Raw now_raw) = Hsm_clock.now_raw () in
@@ -963,48 +1073,39 @@ module Make (KV : Kv_ext.Ranged) = struct
             | Some ts -> Hsm_clock.set ts) )
     >>= fun () ->
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
-      (Config_store.get kv Unlock_salt)
+      (Config_store.get config_store Unlock_salt)
     >>= fun _ ->
     lwt_error_fatal "get unattended boot" ~pp_error:Config_store.pp_error
-      (Config_store.get_opt kv Unattended_boot)
+      (Config_store.get_opt config_store Unattended_boot)
     >>= function
     | Some true -> (
         let open Lwt.Infix in
-        unlock_with_device_key ~cache_settings kv ~device_key >|= function
+        let domain_store =
+          Domain_key_store.connect config_store.kv config_store.device_id
+        in
+        unlock_with_device_key ~cache_settings ~domain_store ~config_store
+          ~device_key ()
+        >|= function
         | Ok s -> Ok s
         | Error (_, msg) ->
             Log.err (fun m -> m "unattended boot failed with %s" msg);
             Ok Locked)
-    | None | Some false -> Lwt.return (Ok Locked)
+    | None | Some false ->
+        Config_store.forget_config_domain_key config_store;
+        Lwt.return (Ok Locked)
 
   let info t = t.info
   let own_cert t = `Single (t.cert :: t.chain, t.key)
 
   let default_network_configuration net =
-    let net, gw =
+    let net, gateway =
       match String.split_on_char ',' net with
       | [ net ] -> (net, None)
       | [ net; gw ] -> (net, Some (Ipaddr.V4.of_string_exn gw))
       | _ -> failwith "Invalid default net config format"
     in
-    let ip, mask =
-      match String.split_on_char '/' net with
-      | [ ip ] -> (ip, 24)
-      | [ ip; mask ] -> (ip, int_of_string mask)
-      | _ -> failwith "Invalid CIDR format"
-    in
-    let ip = Ipaddr.V4.of_string_exn ip in
-    (ip, Ipaddr.V4.Prefix.make mask ip, gw)
-
-  let network_configuration t =
-    let open Lwt.Infix in
-    Config_store.(get t.kv Ip_config) >|= function
-    | Ok cfg -> cfg
-    | Error e ->
-        Log.warn (fun m ->
-            m "error %a while retrieving IP, using default"
-              Config_store.pp_error e);
-        default_network_configuration t.default_net
+    let cidr = Ipaddr.V4.Prefix.of_string_exn net in
+    { Json.ipv4 = { cidr; gateway }; ipv6 = None }
 
   let random n = Base64.encode_string @@ Mirage_crypto_rng.generate n
 
@@ -2064,99 +2165,97 @@ module Make (KV : Kv_ext.Ranged) = struct
       | Error _ -> None
   end
 
-  let provision t ~unlock ~admin time =
-    let open Lwt_result.Infix in
-    (* state already checked in Handler_provision.service_available *)
-    let start = now () in
-    assert (state t = `Unprovisioned);
-    let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
-    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-    let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
-    let auth_store_key, key_store_key, namespace_store_key =
-      make_store_keys domain_key
-    in
-    with_write_lock (fun () ->
-        KV.batch t.kv (fun b ->
-            internal_server_error Write "Initializing configuration store"
-              KV.pp_write_error
-              (Config_store.set b Version Version.current)
-            >>= fun () ->
-            internal_server_error Write "Writing private RSA key"
-              KV.pp_write_error
-              (Config_store.set b Private_key t.key)
-            >>= fun () ->
-            internal_server_error Write "Writing certificate chain key"
-              KV.pp_write_error
-              (Config_store.set b Certificate (t.cert, t.chain))
-            >>= fun () ->
-            let auth_store =
-              Encrypted_store.v Authentication ~key:auth_store_key t.kv
-            in
-            let a_v_key, a_v_value =
-              Encrypted_store.prepare_set auth_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing authentication store"
-              KV.pp_write_error
-              (KV.set b a_v_key a_v_value)
-            >>= fun () ->
-            let key_store = Encrypted_store.v Key ~key:key_store_key t.kv in
-            let k_v_key, k_v_value =
-              Encrypted_store.prepare_set key_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing key store"
-              KV.pp_write_error
-              (KV.set b k_v_key k_v_value)
-            >>= fun () ->
-            (* Initializing the namespace store is also done on the fly if
-               unlocking an old store without namespaces, in
-               Encrypted_store.unlock *)
-            let namespace_store =
-              Encrypted_store.v Namespace ~key:namespace_store_key t.kv
-            in
-            let n_v_key, n_v_value =
-              Encrypted_store.prepare_set namespace_store Version.filename
-                Version.(to_string current)
-            in
-            internal_server_error Write "Initializing namespace store"
-              KV.pp_write_error
-              (KV.set b n_v_key n_v_value)
-            >>= fun () ->
-            let keys =
-              {
-                domain_key;
-                auth_store = User_store.connect auth_store;
-                key_store = Key_store.connect key_store;
-                namespace_store = Namespace_store.connect namespace_store;
-              }
-            in
-            t.state <- Operational keys;
-            let admin_k, admin_v =
-              let name = "admin" in
-              let admin =
-                User.prepare_user ~name ~passphrase:admin ~role:`Administrator
-              in
-              let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
-              Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name)
-                value
-            in
-            internal_server_error Write "Write Administrator user"
-              KV.pp_write_error (KV.set b admin_k admin_v)
-            >>= fun () ->
-            let enc_dk =
-              encrypt_with_pass_key domain_key ~pass_key:unlock_key
-            in
-            let encryption_key = t.device_key in
-            internal_server_error Write "Write passphrase domain key"
-              KV.pp_write_error
-              (Domain_key_store.set b Attended ~encryption_key enc_dk)
-            >>= fun () ->
-            internal_server_error Write "Write unlock-salt" KV.pp_write_error
-              (Config_store.set b Unlock_salt unlock_salt)
-            >>= fun () ->
-            let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
-            set_time_offset b time))
+  module Cluster = struct
+    include KV.Cluster
+    open Lwt.Infix
+
+    let to_hsm_error =
+      Result.map_error (function `Cluster_error s ->
+          (Bad_request, "cluster error: " ^ s))
+
+    let member_list t = member_list t.kv >|= to_hsm_error
+
+    let is_clustered t =
+      let ( let* ) = Lwt_result.bind in
+      let* list = member_list t in
+      Lwt_result.return (List.length list >= 2)
+
+    let member_exists ~id t =
+      let open Lwt_result.Infix in
+      member_list t >|= fun member_list ->
+      List.exists (fun member -> member.KV.Cluster.id = id) member_list
+
+    let member_remove ~id t = member_remove ~id t.kv >|= to_hsm_error
+
+    let member_update ~id ~urls t =
+      member_update ~id ~urls t.kv >|= to_hsm_error
+
+    let member_add ~urls t =
+      let ( let** ) = Lwt_result.bind in
+      (* prepare a joiner kit for the new node to be able to
+         get the domain key *)
+      let** unlock_salt =
+        internal_server_error Read "Read unlock salt" Config_store.pp_error
+          (Config_store.get t.config_store Unlock_salt)
+      in
+      let** backup_key_opt =
+        internal_server_error Read "Read backup key" Config_store.pp_error
+          (Config_store.get_opt t.config_store Backup_key)
+      in
+      let** backup_key =
+        match backup_key_opt with
+        | None ->
+            Lwt.return
+              (Error
+                 ( Precondition_failed,
+                   "Please configure a backup key before adding new cluster \
+                    members" ))
+        | Some key -> Lwt_result.return key
+      in
+      let** backup_salt =
+        internal_server_error Read "Read backup salt" Config_store.pp_error
+          (Config_store.get t.config_store Backup_salt)
+      in
+      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+      let encryption_key = t.device_key in
+      let** locked_domain_key =
+        internal_server_error Read "Read locked domain key"
+          Config_store.pp_error
+          (Domain_key_store.get domain_store Attended ~encryption_key)
+      in
+      let backup_key' = Crypto.GCM.of_secret backup_key in
+      let encrypted_locked_domkey =
+        let adata = "domain-key" in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata
+          locked_domain_key
+      in
+      let encrypted_unlock_salt =
+        let adata = "unlock-salt" in
+        Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key' ~adata
+          unlock_salt
+      in
+      let joiner_kit =
+        {
+          Json.backup_salt = Base64.encode_string backup_salt;
+          unlock_salt = Base64.encode_string encrypted_unlock_salt;
+          locked_domain_key = Base64.encode_string encrypted_locked_domkey;
+        }
+      in
+      let joiner_kit =
+        Json.joiner_kit_to_yojson joiner_kit
+        |> Yojson.Safe.to_string |> Base64.encode_string
+      in
+      let** member_list = member_add ~urls t.kv >|= to_hsm_error in
+      Lwt_result.return
+        {
+          Json.joiner_kit;
+          members =
+            List.map
+              (fun m : Json.join_req_member -> { name = m.name; urls = m.urls })
+              member_list;
+          backup_passphrase = None;
+        }
+  end
 
   module Config = struct
     let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
@@ -2167,55 +2266,67 @@ module Make (KV : Kv_ext.Ranged) = struct
           let salt = Mirage_crypto_rng.generate Crypto.salt_len in
           let pass_key = Crypto.key_of_passphrase ~salt new_passphrase in
           with_write_lock (fun () ->
-              KV.batch t.kv (fun b ->
+              Config_store.batch t.config_store (fun b ->
                   internal_server_error Write "Write unlock salt"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Unlock_salt salt)
                   >>= fun () ->
                   let enc_dk =
                     encrypt_with_pass_key keys.domain_key ~pass_key
                   in
                   let encryption_key = t.device_key in
+                  let domain_store =
+                    Domain_key_store.connect b.kv b.device_id
+                  in
                   internal_server_error Write "Write passphrase domain key"
                     KV.pp_write_error
-                    (Domain_key_store.set b Attended enc_dk ~encryption_key)))
+                    (Domain_key_store.set domain_store Attended enc_dk
+                       ~encryption_key)))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot t =
       let open Lwt_result.Infix in
       internal_server_error Read "Read unattended boot" Config_store.pp_error
-        ( Config_store.get_opt t.kv Unattended_boot >|= function
+        ( Config_store.get_opt t.config_store Unattended_boot >|= function
           | None -> false
           | Some v -> v )
 
-    let set_unattended_boot t status =
+    (* must only be called within a write lock *)
+    let set_unattended_boot' t status =
       let open Lwt_result.Infix in
+      let status_b = Option.is_some status in
+      internal_server_error Write "Write unattended boot"
+        Config_store.pp_write_error
+        (Config_store.set t.config_store Unattended_boot status_b)
+      >>= fun () ->
+      let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+      match status with
+      | Some keys ->
+          let encryption_key = t.device_key in
+          internal_server_error Write "Write unattended Domain Key"
+            KV.pp_write_error
+            (Domain_key_store.set domain_store Unattended ~encryption_key
+               keys.domain_key)
+      | None ->
+          internal_server_error Write "Remove unattended Domain Key"
+            KV.pp_write_error
+            (Domain_key_store.remove domain_store Unattended)
+
+    let set_unattended_boot t status =
       (* (a) change setting in configuration store *)
       (* (b) add or remove to domain_key store *)
       match t.state with
       | Operational keys ->
           with_write_lock (fun () ->
-              internal_server_error Write "Write unattended boot"
-                KV.pp_write_error
-                (Config_store.set t.kv Unattended_boot status)
-              >>= fun () ->
-              if status then
-                let encryption_key = t.device_key in
-                internal_server_error Write "Write unattended Domain Key"
-                  KV.pp_write_error
-                  (Domain_key_store.set t.kv Unattended ~encryption_key
-                     keys.domain_key)
-              else
-                internal_server_error Write "Remove unattended Domain Key"
-                  KV.pp_write_error
-                  (Domain_key_store.remove t.kv Unattended))
+              let status = if status then Some keys else None in
+              set_unattended_boot' t status)
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
     let unattended_boot_digest t =
       let open Lwt.Infix in
-      Config_store.digest t.kv Unattended_boot >|= function
+      Config_store.digest t.config_store Unattended_boot >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
@@ -2225,13 +2336,113 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     let tls_public_pem_digest t =
       let open Lwt.Infix in
-      Config_store.digest t.kv Private_key >|= function
+      Config_store.digest t.config_store Private_key >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
     let tls_cert_pem t =
       let chain = t.cert :: t.chain in
       Lwt.return (X509.Certificate.encode_pem_multiple chain)
+
+    let tls_cluster_ca t =
+      let open Lwt.Infix in
+      Config_store.get t.config_store Cluster_CA >|= function
+      | Error _ -> None
+      | Ok x ->
+          let cert = X509.Certificate.encode_pem x in
+          Some cert
+
+    let set_local_config t =
+      let ( let* ) = Lwt_result.bind in
+      let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
+      let+ tls_cluster_ca = tls_cluster_ca t in
+      let device_id = t.system_info.deviceId in
+      let* time_offset_opt =
+        internal_server_error Read "Read time offset" Config_store.pp_error
+          (Config_store.get_opt t.config_store Time_offset)
+      in
+      let* time_offset_s =
+        match time_offset_opt with
+        | Some time_offset ->
+            Ptime.Span.to_int_s time_offset
+            |> Option.to_result
+                 ~none:
+                   ( Internal_server_error,
+                     "time offset is too big for an integer" )
+            |> Lwt.return
+        | None -> Lwt_result.return 0
+      in
+      (* let time_offset_s =
+        now () |> Ptime.to_span |> Ptime.Span.to_int_s
+        |> Option.value ~default:0
+      in *)
+      let+ tls_cert = tls_cert_pem t in
+      let tls_key = t.key |> X509.Private_key.encode_pem in
+      let* network_config =
+        internal_server_error Read "Read cluster CA" Config_store.pp_error
+          Config_store.(get_opt t.config_store Ip_config)
+      in
+      let local_config =
+        {
+          Json.device_id;
+          tls_cert;
+          tls_cluster_ca;
+          tls_key;
+          time_offset_s;
+          network_config;
+        }
+      in
+      Logs.debug (fun f -> f "caching config to the platform");
+      let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
+      Lwt_mvar.take t.res_mbox
+      |> Lwt_result.map_error (fun msg ->
+          Log.warn (fun m -> m "setting local config failed: %s" msg);
+          (Bad_request, "setting local config failed: " ^ msg))
+
+    let check_ca_signs_cert t ~cert ~ca =
+      let is_mock = t.system_info.hardwareVersion = "N/A" in
+      let time () = if is_mock then None else Some (now ()) in
+      X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None [ cert ]
+
+    let set_tls_cluster_ca t cert_data =
+      let is_mock = t.system_info.hardwareVersion = "N/A" in
+      let time = if is_mock then None else Some (now ()) in
+      let open Lwt_result.Infix in
+      Cluster.is_clustered t >>= fun is_clustered ->
+      (if is_clustered then
+         Lwt_result.fail
+           ( Precondition_failed,
+             "cannot change the cluster CA in an active cluster. Dismantle the \
+              cluster first." )
+       else Lwt_result.return ())
+      >>= fun () ->
+      match X509.Certificate.decode_pem cert_data with
+      | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
+      | Ok cert ->
+          (* check this is indeed a CA *)
+          Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_ca_error
+            (X509.Validation.valid_ca ?time cert)
+          |> Result.map_error (fun (`Msg msg) ->
+              let msg = Fmt.str "this is not a valid CA: %s" msg in
+              (Bad_request, msg))
+          |> Lwt.return
+          >>= fun () ->
+          (* check TLS cert is signed by this *)
+          Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
+            (check_ca_signs_cert t ~cert:t.cert ~ca:cert)
+          |> Result.map_error (fun (`Msg msg) ->
+              let msg =
+                Fmt.str "the installed TLS cert is not signed by this CA: %s"
+                  msg
+              in
+              (Precondition_failed, msg))
+          |> Lwt.return
+          >>= fun _ ->
+          with_write_lock (fun () ->
+              internal_server_error Write "Write cluster CA"
+                Config_store.pp_write_error
+                (Config_store.set t.config_store Cluster_CA cert))
+          >>= fun () -> set_local_config t
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
@@ -2243,6 +2454,27 @@ module Make (KV : Kv_ext.Ranged) = struct
       | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
       | Ok [] -> Lwt.return @@ Error (Bad_request, "empty certificate chain")
       | Ok (cert :: chain) ->
+          let check_signed_by_ca () =
+            (* if cluster-CA is set, the new cert has to be signed (at least) by the CA *)
+            let open Lwt_result.Infix in
+            Lwt_result.ok (Config_store.get t.config_store Cluster_CA)
+            >>= function
+            | Error _ -> Lwt_result.return ()
+            | Ok ca ->
+                Lwt.return
+                  (Rresult.R.error_to_msg
+                     ~pp_error:X509.Validation.pp_chain_error
+                     (check_ca_signs_cert t ~cert ~ca)
+                  |> Result.map (fun _ -> ())
+                  |> Result.map_error (fun (`Msg msg) ->
+                      let msg =
+                        Fmt.str
+                          "the cluster CA is set, and the given cert is not \
+                           signed by it: %s"
+                          msg
+                      in
+                      (Precondition_failed, msg)))
+          in
           let key_eq a b =
             String.equal
               (X509.Public_key.fingerprint a)
@@ -2268,15 +2500,17 @@ module Make (KV : Kv_ext.Ranged) = struct
             | Error (`Msg m) -> Lwt.return @@ Error (Bad_request, m)
             | Ok _ ->
                 let open Lwt_result.Infix in
+                check_signed_by_ca () >>= fun () ->
                 with_write_lock (fun () ->
                     internal_server_error Write "Write certificate"
-                      KV.pp_write_error
-                      (Config_store.set t.kv Certificate (cert, chain)))
+                      Config_store.pp_write_error
+                      (Config_store.set t.config_store Certificate (cert, chain)))
                 >>= fun r ->
                 t.cert <- cert;
                 t.chain <- chain;
                 Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
-                >|= fun () -> r)
+                >>= fun () ->
+                set_local_config t >|= fun () -> r)
           else
             Lwt.return
             @@ Error
@@ -2285,7 +2519,7 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     let tls_cert_digest t =
       let open Lwt.Infix in
-      Config_store.digest t.kv Certificate >|= function
+      Config_store.digest t.config_store Certificate >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
@@ -2299,69 +2533,78 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     let tls_generate t typ ~length =
       let open Lwt_result.Infix in
-      (* generate key *)
-      Lwt.return (Key.generate_x509 typ ~length) >>= fun priv ->
-      (* generate self-signed certificate *)
-      let cert, key = generate_cert priv in
-      (* update store *)
-      with_write_lock (fun () ->
-          Config_store.batch t.kv @@ fun kv ->
-          internal_server_error Write "Write tls private key" KV.pp_write_error
-            (Config_store.set kv Private_key key)
+      Lwt_result.ok (Config_store.get t.config_store Cluster_CA) >>= function
+      | Ok _ca ->
+          Lwt.return
+            (Error
+               ( Precondition_failed,
+                 "cannot generate cert if cluster CA has been set" ))
+      | Error _ ->
+          (* generate key *)
+          Lwt.return (Key.generate_x509 typ ~length) >>= fun priv ->
+          (* generate self-signed certificate *)
+          let cert, key = generate_cert priv in
+          (* update store *)
+          with_write_lock (fun () ->
+              Config_store.batch t.config_store @@ fun kv ->
+              internal_server_error Write "Write tls private key"
+                Config_store.pp_write_error
+                (Config_store.set kv Private_key key)
+              >>= fun () ->
+              internal_server_error Write "Write tls certificate"
+                Config_store.pp_write_error
+                (Config_store.set kv Certificate (cert, [])))
           >>= fun () ->
-          internal_server_error Write "Write tls certificate" KV.pp_write_error
-            (Config_store.set kv Certificate (cert, [])))
-      >>= fun () ->
-      (* update state *)
-      t.key <- key;
-      t.cert <- cert;
-      t.chain <- [];
-      (* notify server *)
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
+          (* update state *)
+          t.key <- key;
+          t.cert <- cert;
+          t.chain <- [];
+          (* notify server *)
+          Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
+          set_local_config t
 
     let network t =
       let open Lwt.Infix in
-      network_configuration t >|= fun (ipAddress, prefix, route) ->
-      let netmask = Ipaddr.V4.Prefix.netmask prefix
-      and gateway = match route with None -> Ipaddr.V4.any | Some ip -> ip in
-      { Json.ipAddress; netmask; gateway }
+      Config_store.(get t.config_store Ip_config) >>= function
+      | Ok cfg -> Lwt.return cfg
+      | Error e -> (
+          Log.warn (fun m ->
+              m "error %a while retrieving IP, using and storing default"
+                Config_store.pp_error e);
+          let network = default_network_configuration t.default_net in
+          with_write_lock (fun () ->
+              internal_server_error Write "Write network configuration"
+                Config_store.pp_write_error
+                Config_store.(set t.config_store Ip_config network))
+          >|= function
+          | Error (_, e) ->
+              Log.warn (fun f -> f "failed to store network config: %s" e);
+              network
+          | Ok () -> network)
 
-    let set_network t network =
+    let set_network t (network : Json.network) =
       let open Lwt_result.Infix in
-      Lwt.return
-        (let netmask = network.Json.netmask and address = network.ipAddress in
-         Rresult.R.reword_error
-           (function
-             | `Msg err ->
-                 (Bad_request, "error parsing network configuration: " ^ err))
-           (Ipaddr.V4.Prefix.of_netmask ~netmask ~address))
-      >>= fun prefix ->
-      let route =
-        if Ipaddr.V4.compare network.gateway Ipaddr.V4.any = 0 then None
-        else Some network.gateway
-      in
       with_write_lock (fun () ->
           internal_server_error Write "Write network configuration"
-            KV.pp_write_error
-            Config_store.(set t.kv Ip_config (network.ipAddress, prefix, route)))
+            Config_store.pp_write_error
+            Config_store.(set t.config_store Ip_config network))
       >>= fun r ->
-      Lwt_result.ok (Lwt_mvar.put t.mbox (Network (prefix, route)))
-      >|= fun () -> r
+      Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >>= fun () ->
+      set_local_config t >|= fun () -> r
 
     let network_digest t =
       let open Lwt.Infix in
-      Config_store.digest t.kv Ip_config >|= function
+      Config_store.digest t.config_store Ip_config >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let default_log =
-      { Json.ipAddress = Ipaddr.V4.any; port = 514; logLevel = Info }
+    let default_log = { Json.ipAddress = None; port = 514; logLevel = Info }
 
     let log t =
       let open Lwt.Infix in
-      Config_store.get_opt t.kv Log_config >|= function
+      Config_store.get_opt t.config_store Log_config >|= function
       | Ok None -> default_log
-      | Ok (Some (ipAddress, port, logLevel)) -> { ipAddress; port; logLevel }
+      | Ok (Some log) -> log
       | Error e ->
           Log.warn (fun m ->
               m "error %a while getting log configuration" Config_store.pp_error
@@ -2371,15 +2614,15 @@ module Make (KV : Kv_ext.Ranged) = struct
     let set_log t log =
       let open Lwt_result.Infix in
       with_write_lock (fun () ->
-          internal_server_error Write "Write log config" KV.pp_write_error
-            (Config_store.set t.kv Log_config
-               (log.Json.ipAddress, log.port, log.logLevel)))
+          internal_server_error Write "Write log config"
+            Config_store.pp_write_error
+            (Config_store.set t.config_store Log_config log))
       >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Log log)) >|= fun () -> r
 
     let log_digest t =
       let open Lwt.Infix in
-      Config_store.digest t.kv Log_config >|= function
+      Config_store.digest t.config_store Log_config >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
@@ -2387,7 +2630,7 @@ module Make (KV : Kv_ext.Ranged) = struct
       let ( let** ) = Lwt_result.bind in
       let** backup_key =
         internal_server_error Read "Read backup key" Config_store.pp_error
-          (Config_store.get_opt t.kv Backup_key)
+          (Config_store.get_opt t.config_store Backup_key)
       in
       let** valid =
         match backup_key with
@@ -2396,7 +2639,7 @@ module Make (KV : Kv_ext.Ranged) = struct
             let** salt =
               internal_server_error Read "Read backup salt"
                 Config_store.pp_error
-                (Config_store.get t.kv Backup_salt)
+                (Config_store.get t.config_store Backup_salt)
             in
             Lwt.return_ok
               (String.equal backup_key
@@ -2415,20 +2658,130 @@ module Make (KV : Kv_ext.Ranged) = struct
             Crypto.key_of_passphrase ~salt:backup_salt new_passphrase
           in
           with_write_lock (fun () ->
-              KV.batch t.kv (fun b ->
+              Config_store.batch t.config_store (fun b ->
                   internal_server_error Write "Write backup salt"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Backup_salt backup_salt)
                   >>= fun () ->
                   internal_server_error Write "Write backup key"
-                    KV.pp_write_error
+                    Config_store.pp_write_error
                     (Config_store.set b Backup_key backup_key)))
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
     let time _t = Lwt.return (now ())
-    let set_time t time = with_write_lock (fun () -> set_time_offset t.kv time)
+
+    let set_time t time =
+      let ( let* ) = Lwt_result.bind in
+      let* () =
+        with_write_lock (fun () -> set_time_offset t.config_store time)
+      in
+      set_local_config t
   end
+
+  let network_configuration = Config.network
+
+  let provision t ~unlock ~admin time =
+    let open Lwt_result.Infix in
+    (* state already checked in Handler_provision.service_available *)
+    let start = now () in
+    assert (state t = `Unprovisioned);
+    let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+    let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+    let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
+    let auth_store_key, key_store_key, namespace_store_key, config_store_key =
+      make_store_keys domain_key
+    in
+    internal_server_error Write "Unlock config store"
+      Config_store.pp_write_error
+      (Config_store.provide_config_domain_key t.config_store config_store_key)
+    >>= fun () ->
+    with_write_lock (fun () ->
+        Config_store.batch t.config_store (fun b ->
+            internal_server_error Write "Initializing configuration store"
+              Config_store.pp_write_error
+              (Config_store.set b Version
+                 Version.Current.config_and_domain_store)
+            >>= fun () ->
+            internal_server_error Write "Writing private RSA key"
+              Config_store.pp_write_error
+              (Config_store.set b Private_key t.key)
+            >>= fun () ->
+            internal_server_error Write "Writing certificate chain key"
+              Config_store.pp_write_error
+              (Config_store.set b Certificate (t.cert, t.chain))
+            >>= fun () ->
+            let auth_store =
+              Encrypted_store.v Authentication ~key:auth_store_key t.kv
+            in
+            let a_v_key, a_v_value =
+              Encrypted_store.prepare_set auth_store Version.filename
+                Version.(to_string Version.Current.authentication_store)
+            in
+            internal_server_error Write "Initializing authentication store"
+              KV.pp_write_error
+              (KV.set b.kv a_v_key a_v_value)
+            >>= fun () ->
+            let key_store = Encrypted_store.v Key ~key:key_store_key t.kv in
+            let k_v_key, k_v_value =
+              Encrypted_store.prepare_set key_store Version.filename
+                Version.(to_string Version.Current.key_store)
+            in
+            internal_server_error Write "Initializing key store"
+              KV.pp_write_error
+              (KV.set b.kv k_v_key k_v_value)
+            >>= fun () ->
+            (* Initializing the namespace store is also done on the fly if
+               unlocking an old store without namespaces, in
+               Encrypted_store.unlock *)
+            let namespace_store =
+              Encrypted_store.v Namespace ~key:namespace_store_key t.kv
+            in
+            let n_v_key, n_v_value =
+              Encrypted_store.prepare_set namespace_store Version.filename
+                Version.(to_string Version.Current.namespace_store)
+            in
+            internal_server_error Write "Initializing namespace store"
+              KV.pp_write_error
+              (KV.set b.kv n_v_key n_v_value)
+            >>= fun () ->
+            let keys =
+              {
+                domain_key;
+                auth_store = User_store.connect auth_store;
+                key_store = Key_store.connect key_store;
+                namespace_store = Namespace_store.connect namespace_store;
+              }
+            in
+            t.state <- Operational keys;
+            let admin_k, admin_v =
+              let name = "admin" in
+              let admin =
+                User.prepare_user ~name ~passphrase:admin ~role:`Administrator
+              in
+              let value = Yojson.Safe.to_string (User_info.to_yojson admin) in
+              Encrypted_store.prepare_set auth_store (Mirage_kv.Key.v name)
+                value
+            in
+            internal_server_error Write "Write Administrator user"
+              KV.pp_write_error
+              (KV.set b.kv admin_k admin_v)
+            >>= fun () ->
+            let enc_dk =
+              encrypt_with_pass_key domain_key ~pass_key:unlock_key
+            in
+            let encryption_key = t.device_key in
+            let domain_store = Domain_key_store.connect b.kv b.device_id in
+            internal_server_error Write "Write passphrase domain key"
+              KV.pp_write_error
+              (Domain_key_store.set domain_store Attended ~encryption_key enc_dk)
+            >>= fun () ->
+            internal_server_error Write "Write unlock-salt"
+              Config_store.pp_write_error
+              (Config_store.set b Unlock_salt unlock_salt)
+            >>= fun () ->
+            let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
+            set_time_offset b time >>= fun () -> Config.set_local_config t))
 
   module System = struct
     let system_info t = t.system_info
@@ -2442,6 +2795,176 @@ module Make (KV : Kv_ext.Ranged) = struct
       Key.dump_keys t >>= fun () -> Lwt_mvar.put t.mbox Shutdown
 
     let factory_reset t = Lwt_mvar.put t.mbox Factory_reset
+
+    let decode_joiner_kit ~backup_passphrase s =
+      (* this should not error: checked by Json before *)
+      let map_error adata = function
+        | Error `Insufficient_data ->
+            Error
+              (Bad_request, "Could not decrypt " ^ adata ^ ": truncated data")
+        | Error `Not_authenticated ->
+            Error
+              ( Bad_request,
+                "Could not decrypt " ^ adata ^ ": invalid passphrase" )
+        | Ok x -> Ok x
+      in
+      let ( let* ) = Lwt_result.bind in
+      let* joiner_kit =
+        Base64.decode_exn s |> Yojson.Safe.from_string
+        |> Json.joiner_kit_of_yojson
+        |> Result.map_error (fun e -> (Bad_request, e))
+        |> Lwt.return
+      in
+      let* backup_salt =
+        joiner_kit.backup_salt |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid backup salt"))
+        |> Lwt.return
+      in
+      let* unlock_salt_encrypted =
+        joiner_kit.unlock_salt |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid unlock salt"))
+        |> Lwt.return
+      in
+      let* locked_domain_key_encrypted =
+        joiner_kit.locked_domain_key |> Base64.decode
+        |> Result.map_error (fun (`Msg _) ->
+            (Bad_request, "invalid locked key"))
+        |> Lwt.return
+      in
+      let backup_key =
+        Crypto.key_of_passphrase ~salt:backup_salt backup_passphrase
+        |> Crypto.GCM.of_secret
+      in
+      let* unlock_salt =
+        Crypto.decrypt ~key:backup_key ~adata:"unlock-salt"
+          unlock_salt_encrypted
+        |> map_error "unlock-salt" |> Lwt.return
+      in
+      let* locked_domain_key =
+        Crypto.decrypt ~key:backup_key ~adata:"domain-key"
+          locked_domain_key_encrypted
+        |> map_error "domain-key" |> Lwt.return
+      in
+      Lwt_result.return (unlock_salt, locked_domain_key)
+
+    let join_cluster t (join_req : Json.join_req) =
+      let ( let* ) = Lwt_result.bind in
+      (* parse the join request *)
+      let* backup_passphrase =
+        join_req.backup_passphrase
+        |> Option.to_result
+             ~none:(Internal_server_error, "missing backup passphrase")
+        |> Lwt.return
+      in
+      let* unlock_salt, locked_domain_key =
+        decode_joiner_kit ~backup_passphrase join_req.joiner_kit
+      in
+      (* set our name to our device ID, since that's what the platform will use *)
+      let members =
+        List.map
+          (fun (m : Json.join_req_member) ->
+            if m.name = "" then { m with name = t.system_info.deviceId } else m)
+          join_req.members
+      in
+      (* TODO check if our own peer URLs match with how the network is
+         configured *)
+      with_write_lock (fun () ->
+          (* refuse to join if CA is not set *)
+          let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
+          let* () =
+            match cluster_ca with
+            | None ->
+                Lwt.return
+                  (Error (Precondition_failed, "cluster-ca.pem must be set"))
+            | Some _cluster_ca -> Lwt_result.return ()
+          in
+          (* ensure local cache is up to date *)
+          let* () = Config.set_local_config t in
+          (* backup local config to restore after join *)
+          let* config_backup =
+            internal_server_error Read "Backup local config store"
+              Config_store.pp_error
+              (Config_store.backup_local_config t.config_store)
+          in
+          (* to pass multiple peer urls for the same node, etcd simply expects
+         to pass name=url multiple times *)
+          let peers =
+            List.map
+              (fun (p : Json.join_req_member) ->
+                List.map (fun url -> (`Name p.name, `Url url)) p.urls)
+              members
+            |> List.concat
+          in
+          let print_peer fmt (`Name name, `Url url) =
+            Fmt.pf fmt "%s=%s" name url
+          in
+          let initial_cluster =
+            Fmt.str "%a" (Fmt.list ~sep:Fmt.(const string ",") print_peer) peers
+          in
+          (* make the jump ! this will erase all local etcd data and restart
+         etcd in join mode *)
+          Log.warn (fun m -> m "now erasing all data and joining cluster!");
+          let* () =
+            Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
+          in
+          (match t.state with
+          | Operational v ->
+              User_store.clear_cache v.auth_store;
+              Key_store.clear_cache v.key_store;
+              Namespace_store.clear_cache v.namespace_store
+          | _ -> assert false);
+          let* () =
+            Lwt_mvar.take t.res_mbox
+            |> Lwt_result.map_error (fun msg ->
+                Log.err (fun m -> m "joining cluster failed: %s" msg);
+                (Bad_request, "joining cluster failed: " ^ msg))
+          in
+          (* we are now on the other side *)
+          let* version =
+            internal_server_error Read "Fetch version after join"
+              Config_store.pp_error
+              (Config_store.get t.config_store Version)
+          in
+          let* () =
+            if version = Version.V1 then Lwt_result.return ()
+            else
+              Lwt.return
+                (Error
+                   ( Internal_server_error,
+                     "joined cluster is not V1, refusing to continue" ))
+          in
+          (* restore local config backup in our directory *)
+          let* () =
+            internal_server_error Write "Restore local config"
+              Config_store.pp_write_error
+              (Config_store.restore_local_config t.config_store config_backup)
+          in
+          (* use unlock salt and locked domain key retrieved from joiner kit *)
+          let* () =
+            internal_server_error Write "Override unlock salt"
+              Config_store.pp_write_error
+              (Config_store.set t.config_store Unlock_salt unlock_salt)
+          in
+          let domain_store =
+            Domain_key_store.connect t.kv t.system_info.deviceId
+          in
+          let encryption_key = t.device_key in
+          let* () =
+            internal_server_error Write "Write locked domain key"
+              KV.pp_write_error
+              (Domain_key_store.set domain_store Attended ~encryption_key
+                 locked_domain_key)
+          in
+          Log.info (fun m -> m "joining cluster OK! locking now");
+          KV.clear_watches t.kv;
+          let* new_state =
+            boot_config_store ~cache_settings:t.cache_settings t.config_store
+              t.device_key
+          in
+          t.state <- new_state;
+          Lwt_result.return ())
 
     type stream_buffer = {
       stream : string Lwt_stream.t;
@@ -2635,11 +3158,18 @@ module Make (KV : Kv_ext.Ranged) = struct
        - length of salt (encoded in 3 bytes); salt
        - length of ...; AES-GCM encrypted version [adata = backup-version]
        - length of ...; passphrase encrypted domain key
-       - indivial key, value entries of the store:
-         - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup] *)
+       - (IN VERSION 1 ONLY) length of ...; device ID of the HSM creating the backup
+       - (IN VERSION 1 ONLY) length of ...; config store key of the HSM creating the backup
+       - list of K-V entries in the store, each being:
+         - length of encrypted-k-v; AES GCM (length of key; key; data) [adata = backup]
+       - (IN VERSION 1 ONLY) end delimiter of the above list: 0x000000 (to be parsed as the length)
+       - (IN VERSION 1 ONLY) "_NETHSM_BACKUP_END_" (cleartext)
+         *)
 
     let backup_header = "_NETHSM_BACKUP_"
+    let backup_trailer = "_NETHSM_BACKUP_END_"
     let backup_version_v0 = Char.chr 0
+    let backup_version_v1 = Char.chr 1
 
     let rec backup_directory kv push backup_key path =
       let open Lwt.Infix in
@@ -2674,7 +3204,7 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     let backup t push =
       let open Lwt.Infix in
-      Config_store.get_opt t.kv Backup_key >>= function
+      Config_store.get_opt t.config_store Backup_key >>= function
       | Error e ->
           Log.err (fun m ->
               m "Error %a while reading backup key." Config_store.pp_error e);
@@ -2687,13 +3217,13 @@ module Make (KV : Kv_ext.Ranged) = struct
       | Ok (Some backup_key) -> (
           (* iterate over keys in KV store *)
           let backup_key' = Crypto.GCM.of_secret backup_key in
-          Config_store.get t.kv Backup_salt >>= function
+          Config_store.get t.config_store Backup_salt >>= function
           | Error e ->
               Log.err (fun m ->
                   m "error %a while reading backup salt" Config_store.pp_error e);
               Lwt.return (Error (Internal_server_error, "Corrupted database."))
           | Ok backup_salt -> (
-              let version_str = String.make 1 backup_version_v0 in
+              let version_str = String.make 1 backup_version_v1 in
               push (Some (backup_header ^ version_str));
               push (Some (prefix_len backup_salt));
               let encrypted_version =
@@ -2703,7 +3233,11 @@ module Make (KV : Kv_ext.Ranged) = struct
               in
               push (Some (prefix_len encrypted_version));
               let encryption_key = t.device_key in
-              Domain_key_store.get t.kv Attended ~encryption_key >>= function
+              let domain_store =
+                Domain_key_store.connect t.kv t.system_info.deviceId
+              in
+              Domain_key_store.get domain_store Attended ~encryption_key
+              >>= function
               | Error e ->
                   Log.err (fun m ->
                       m "error %a while reading attended domain key"
@@ -2717,8 +3251,25 @@ module Make (KV : Kv_ext.Ranged) = struct
                       ~adata locked_domkey
                   in
                   push (Some (prefix_len encrypted_domkey));
+                  let device_id = t.system_info.deviceId in
+                  let encrypted_device_id =
+                    let adata = "backup-device-id" in
+                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                      ~adata device_id
+                  in
+                  push (Some (prefix_len encrypted_device_id));
+                  let config_store_key = t.config_store.config_device_key in
+                  let encrypted_store_key =
+                    let adata = "backup-config-store-key" in
+                    Crypto.encrypt Mirage_crypto_rng.generate ~key:backup_key'
+                      ~adata config_store_key
+                  in
+                  push (Some (prefix_len encrypted_store_key));
                   backup_directory t.kv push backup_key' Mirage_kv.Key.empty
                   >|= fun () ->
+                  (* end delimiter for the KV list *)
+                  push (Some "\x00\x00\x00");
+                  push (Some backup_trailer);
                   push None;
                   Ok ()))
 
@@ -2756,13 +3307,19 @@ module Make (KV : Kv_ext.Ranged) = struct
               ^ ", authentication failed. Is the passphrase correct?" )
       | Ok x -> Ok x
 
+    exception End_of_kv_entries
+
     let read_and_decrypt stream key =
       let ( let** ) = Lwt_result.bind in
-      let** encrypted_data = decode_value stream in
-      let adata = "backup" in
-      let** kv = decrypt_backup ~key ~adata encrypted_data in
-      let** kv = Lwt.return @@ split_kv kv in
-      Lwt.return_ok kv
+      let** len = get_length stream in
+      (* should only happen in V1 *)
+      if len = 0 then raise End_of_kv_entries
+      else
+        let** encrypted_data = sb_read_n stream len in
+        let adata = "backup" in
+        let** kv = decrypt_backup ~key ~adata encrypted_data in
+        let** kv = Lwt.return @@ split_kv kv in
+        Lwt.return_ok kv
 
     (* runs the function while the stream has items *)
     let stream_while stream fn =
@@ -2779,16 +3336,62 @@ module Make (KV : Kv_ext.Ranged) = struct
 
     module KeySet = Set.Make (Mirage_kv.Key)
 
-    let restore_key ~is_operational ~backup_keys ~key ~kv stream =
+    (* this restores a key from an old backup where domain and config stores
+       were still global. Migrations will be applied later to conform to the new
+       store version *)
+    let restore_key_v0 ~device_id ~is_operational ~backup_keys ~key ~kv stream =
       let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
       if is_operational then backup_keys := KeySet.add key !backup_keys;
+      let is_config_key k =
+        Mirage_kv.Key.equal key
+          Config_store.(key_path' ~migration_in_progress:true ~device_id k)
+      in
       let should_restore_key =
         (not is_operational)
         || Option.is_some (Encrypted_store.slot_of_key key)
-        || Mirage_kv.Key.equal key Config_store.(key_path Unlock_salt)
+        || is_config_key Unlock_salt || is_config_key Backup_key
+        || is_config_key Backup_salt
+      in
+      if should_restore_key then
+        let** () =
+          internal_server_error Write "restoring backup (writing to KV)"
+            KV.pp_write_error (KV.set kv key v)
+        in
+        Lwt_result.return ()
+      else Lwt_result.return ()
+
+    (* this restores a key from a modern backup, with the knowledge of which
+       device ID was used to create the backup *)
+    let restore_key_v1 ~backup_device_id ~is_operational ~backup_keys ~key ~kv
+        stream =
+      let ( let** ) = Lwt_result.bind in
+      (* decrypt KV data *)
+      let** k, v = read_and_decrypt stream key in
+      let key = Mirage_kv.Key.v k in
+      if is_operational then backup_keys := KeySet.add key !backup_keys;
+      let is_config_key k =
+        Mirage_kv.Key.equal key
+          Config_store.(
+            key_path' ~migration_in_progress:false ~device_id:backup_device_id k)
+      in
+      (* ignore local key that's for another device id *)
+      let is_global, is_from_backup_device =
+        match Mirage_kv.Key.segments key with
+        | "local" :: id :: _ when String.equal backup_device_id id ->
+            (false, true)
+        | "local" :: _ :: _ -> (false, false)
+        | _ -> (true, false)
+      in
+      let should_restore_key =
+        ((not is_operational) && (is_global || is_from_backup_device))
+        || Option.is_some (Encrypted_store.slot_of_key key)
+        || is_config_key Config_store.Unlock_salt
+        || is_config_key Config_store.Backup_key
+        || is_config_key Config_store.Backup_salt
+        || is_config_key Config_store.Cluster_CA
       in
       if should_restore_key then
         let** () =
@@ -2812,7 +3415,7 @@ module Make (KV : Kv_ext.Ranged) = struct
                   Lwt_result.return (subkeys @ acc)))
         (Ok []) entries
 
-    let remove_extra_keys ~kv backup_keys =
+    let remove_extra_keys ~config_store ~kv backup_keys =
       let ( let** ) = Lwt_result.bind in
       let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
       let** auth_keys =
@@ -2829,14 +3432,25 @@ module Make (KV : Kv_ext.Ranged) = struct
         internal_server_error Read "restoring backup (listing keys)" KV.pp_error
           (list_keys_rec ~kv ns_prefix)
       in
-      let keys = auth_keys @ key_keys @ ns_keys in
+      let exists_config k =
+        internal_server_error Read "restoring backup (looking for config)"
+          Config_store.pp_error
+          (Config_store.exists config_store k)
+      in
+      let** exists_bk = exists_config Backup_key in
+      let** exists_bs = exists_config Backup_salt in
+      let** exists_ca = exists_config Cluster_CA in
+      let path k = Config_store.key_path config_store k in
+      let keys =
+        auth_keys @ key_keys @ ns_keys
+        @ (if exists_bk then [ path Backup_key ] else [])
+        @ (if exists_bs then [ path Backup_salt ] else [])
+        @ if exists_ca then [ path Cluster_CA ] else []
+      in
       List.filter_map
         (fun key ->
-          if
-            Option.is_some (Encrypted_store.slot_of_key key)
-            && not (KeySet.mem key backup_keys)
-          then (
-            Log.info (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
+          if not (KeySet.mem key backup_keys) then (
+            Log.debug (fun f -> f "removing: %a\n%!" Mirage_kv.Key.pp key);
             Some key)
           else None)
         keys
@@ -2850,14 +3464,43 @@ module Make (KV : Kv_ext.Ranged) = struct
                    (KV.remove kv k))
            (Ok ())
 
+    let apply_config_and_domain_migrations ?(partial = false) ~config_store kv
+        ~device_id stored_version =
+      let open Lwt_result.Infix in
+      match
+        Version.(compare Current.config_and_domain_store stored_version)
+      with
+      | `Equal -> Lwt_result.return ()
+      | `Smaller ->
+          let msg =
+            "store has higher version than software, please update software \
+             version"
+          in
+          Lwt.return (Error (`Msg msg))
+      | `Greater ->
+          (* here's the place to embed migration code, at least for the
+             configuration and domain stores *)
+          Logs.info (fun f -> f "Applying migrations.");
+          lwt_error_to_msg ~pp_error:Config_store.pp_write_error
+            (Config_store.migrate_v0_v1 ~partial config_store)
+          >>= fun deferred ->
+          (if not partial then
+             lwt_error_to_msg ~pp_error:Config_store.pp_error
+               Domain_key_store.(migrate_v0_v1 (connect kv device_id))
+           else Lwt_result.return ())
+          >|= fun () ->
+          Log.info (fun m -> m "Migration done (%d deferred)" deferred)
+
     let restore t json stream =
       let sb = sb_of_stream stream in
+      let open Lwt.Infix in
       let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Hsm_clock.now_raw () in
       let initial_state = t.state in
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
+      let device_id = t.system_info.deviceId in
       let** new_time, backup_passphrase_opt =
         match Json.decode_restore_req json with
         | Error e -> Lwt.return_error (Bad_request, e)
@@ -2872,18 +3515,21 @@ module Make (KV : Kv_ext.Ranged) = struct
         else Error (Bad_request, "Not a NetHSM backup file")
       in
       let version = String.(get header (length backup_header)) in
+      let handled_versions = [ backup_version_v0; backup_version_v1 ] in
       let** () =
         Lwt.return
         @@
         match version with
-        | x when x = backup_version_v0 -> Ok ()
+        | x when List.mem x handled_versions -> Ok ()
         | _ ->
             let msg =
               Printf.sprintf
                 "Version mismatch on restore, provided backup version is %d, \
-                 server expects %d"
+                 server expects one of [%s]"
                 (Char.code version)
-                (Char.code backup_version_v0)
+                (List.map Char.code handled_versions
+                |> List.fold_left (fun acc c -> acc ^ " " ^ string_of_int c) ""
+                )
             in
             Error (Bad_request, msg)
       in
@@ -2895,12 +3541,12 @@ module Make (KV : Kv_ext.Ranged) = struct
               if is_operational then
                 internal_server_error Read "Read backup salt"
                   Config_store.pp_error
-                  (Config_store.get_opt t.kv Backup_salt)
+                  (Config_store.get_opt t.config_store Backup_salt)
               else Lwt.return_ok None
             in
             if Some salt = salt' then
               internal_server_error Read "Read backup key" Config_store.pp_error
-                (Config_store.get t.kv Backup_key)
+                (Config_store.get t.config_store Backup_key)
             else Lwt.return_error (Bad_request, "No backupPassphrase provided")
         | Some backup_passphrase ->
             Lwt.return_ok @@ Crypto.key_of_passphrase ~salt backup_passphrase
@@ -2920,22 +3566,114 @@ module Make (KV : Kv_ext.Ranged) = struct
       let** locked_domain_key =
         decrypt_backup ~key ~adata encrypted_domain_key
       in
+      (* if this is a V1 backup, extract the backup device ID and store key it contains *)
+      let** v1_data =
+        if version = backup_version_v1 then
+          let** encrypted_backup_device_id = decode_value sb in
+          let adata = "backup-device-id" in
+          let** backup_device_id =
+            decrypt_backup ~key ~adata encrypted_backup_device_id
+          in
+          let** encrypted_backup_config_key = decode_value sb in
+          let adata = "backup-config-store-key" in
+          let** backup_config_key =
+            decrypt_backup ~key ~adata encrypted_backup_config_key
+          in
+          Lwt_result.return (Some (backup_device_id, backup_config_key))
+        else Lwt_result.return None
+      in
       (* when the mode is operational, we have to clear
          user and keys that are not in the backup. *)
       let backup_keys = ref KeySet.empty in
+      let** _acquire_global_lock =
+        (internal_server_error Read "Read backup key"
+           Config_store.pp_write_error)
+          (Config_store.set t.config_store Restore_in_progress ())
+      in
       with_write_lock (fun () ->
-          let** () =
+          let** _read_kv_entries =
             KV.batch t.kv (fun b ->
-                (* while the stream has content *)
-                stream_while sb
-                  (restore_key ~is_operational ~backup_keys ~key ~kv:b))
+                let restore_f =
+                  match v1_data with
+                  | None ->
+                      restore_key_v0 ~device_id ~is_operational ~backup_keys
+                        ~key ~kv:b
+                  | Some (backup_device_id, _) ->
+                      restore_key_v1 ~backup_device_id ~is_operational
+                        ~backup_keys ~key ~kv:b
+                in
+                (* while the stream has content (V0)
+                   or until we meet the end of list marker (V1) *)
+                Lwt.catch
+                  (fun () -> stream_while sb restore_f)
+                  (function
+                    | End_of_kv_entries -> Lwt_result.return ()
+                    | exn -> Lwt.reraise exn))
           in
+
+          let** is_backup_truncated =
+            if Option.is_some v1_data then
+              let** trailer = sb_read_n sb (String.length backup_trailer) in
+              Lwt_result.return (not (String.equal trailer backup_trailer))
+            else Lwt_result.return false
+          in
+
+          if is_backup_truncated then
+            Logs.err (fun f ->
+                f
+                  "Backup file is truncated! Finishing the restore anyway with \
+                   the keys we have to avoid a fully corrupted state");
+
+          let** _move_domain_key =
+            match v1_data with
+            | Some (backup_device_id, _) when not is_operational ->
+                internal_server_error Write "Move domain key" KV.pp_write_error
+                  (Domain_key_store.move_id t.kv ~from_id:backup_device_id
+                     ~to_id:device_id)
+            | _ -> Lwt_result.return ()
+          in
+
+          (* - domain migrations must be applied *BEFORE* potentially rewriting
+               the domain key
+             - config migrations can be applied any time before booting the
+               config store, since migrating configs is mutually exclusive with
+               re-encrypting configs
+          *)
+          let** _apply_config_domain_migrations =
+            let** migrate_from_version, partial =
+              if is_operational then
+                (* partial restore: by definition the stored version is the most
+                   current one, but we must apply partial migrations if
+                   restoring from a V0 backup. In particular, the unlock salt
+                   must be migrated. *)
+                let version =
+                  match v1_data with Some _ -> Version.V1 | None -> Version.V0
+                in
+                Lwt_result.return (version, true)
+              else
+                (* full restore: we must have restored a /config/version key just now *)
+                let** stored_version =
+                  internal_server_error Read "Get version" Config_store.pp_error
+                    (Config_store.get t.config_store Config_store.Version)
+                in
+                Lwt_result.return (stored_version, false)
+            in
+            apply_config_and_domain_migrations ~config_store:t.config_store t.kv
+              ~partial ~device_id:t.system_info.deviceId migrate_from_version
+            |> Lwt_result.map_error (fun (`Msg msg) ->
+                ( Bad_request,
+                  Fmt.str "could not apply migrations to old backup: %s" msg ))
+          in
+
           let** dk_rewritten =
             (* the domain key and/or device key might have changed if
                restored to a fresh or different device, so refresh the store
                 *)
             let encryption_key = t.device_key in
             let open Lwt.Infix in
+            let domain_store =
+              Domain_key_store.connect t.kv t.system_info.deviceId
+            in
             let** dk_still_valid =
               (* there are 2 cases, where the stored domain key is valid:
                  1. the Domain Key Store has been restored during a full restore
@@ -2943,7 +3681,8 @@ module Make (KV : Kv_ext.Ranged) = struct
                  2. after operational restore from a backup with same Domain
                     Key and Unlock Passphrase as the current one
               *)
-              Domain_key_store.get t.kv Attended ~encryption_key >>= function
+              Domain_key_store.get domain_store Attended ~encryption_key
+              >>= function
               | Ok old_locked_domain_key
                 when String.equal locked_domain_key old_locked_domain_key ->
                   Lwt_result.return true
@@ -2959,23 +3698,93 @@ module Make (KV : Kv_ext.Ranged) = struct
               let** () =
                 internal_server_error Write "Write locked domain key"
                   KV.pp_write_error
-                  (Domain_key_store.set t.kv Attended ~encryption_key
+                  (Domain_key_store.set domain_store Attended ~encryption_key
                      locked_domain_key)
+              in
+              let** () =
+                if is_operational then
+                  let** unattended_on = Config.unattended_boot t in
+                  if unattended_on then (
+                    Log.info (fun m ->
+                        m
+                          "Disabling unattended boot since domain key might \
+                           have changed");
+                    Config.set_unattended_boot' t None)
+                  else Lwt_result.return ()
+                else Lwt_result.return ()
               in
               Lwt_result.return true)
             else Lwt_result.return false
           in
-          let** () =
+
+          let** _remove_extra_keys =
             KV.batch t.kv (fun b ->
-                if is_operational then
+                if is_operational && not is_backup_truncated then
                   (* we remove keys and users that not present in the backup.
                      if namespace store is not present in backup, the current
                      one will be emptied (all namespaces deleted) but will stay
                      provisioned. *)
-                  remove_extra_keys ~kv:b !backup_keys
+                  remove_extra_keys ~config_store:t.config_store ~kv:b
+                    !backup_keys
                 else Lwt_result.return ())
           in
-          let** () =
+
+          (* after a full restore, (part of) the config store will be encrypted with
+             the config store of the backup device, we want to re-encrypt it
+             with our own *)
+          let** _reencrypt_local_configs =
+            match v1_data with
+            | None -> Lwt_result.return ()
+            | Some (backup_device_id, backup_config_key) ->
+                let is_same_device = String.equal backup_device_id device_id in
+                let is_same_devkey =
+                  String.equal backup_config_key
+                    t.config_store.config_device_key
+                in
+                if is_same_device && is_same_devkey then (
+                  Logs.info (fun f -> f "no config re-encrypt needed");
+                  Lwt_result.return ())
+                else (
+                  if not is_same_device then
+                    Logs.info (fun f ->
+                        f
+                          "different device: importing + re-encrypting local \
+                           configs from device %s"
+                          backup_device_id)
+                  else
+                    Logs.info (fun f ->
+                        f "device has been reset: re-encrypting local configs");
+                  (* this store will read/write with the backed-up key *)
+                  let backup_config_store =
+                    {
+                      t.config_store with
+                      device_id = backup_device_id;
+                      config_device_key = backup_config_key;
+                    }
+                  in
+                  let** config_values =
+                    Config_store.backup_local_config ~partial:is_operational
+                      backup_config_store
+                  in
+                  let** () =
+                    if not (String.equal backup_device_id device_id) then (
+                      Logs.info (fun f ->
+                          f
+                            "different device: removing all /local/%s/config \
+                             keys before writing in /local/%s/config"
+                            backup_device_id device_id);
+                      internal_server_error Write "Clear unrelated configs"
+                        Config_store.pp_write_error
+                        (Config_store.clear_local_config backup_config_store))
+                    else Lwt_result.return ()
+                  in
+                  internal_server_error Write "Re-encrypt local configs"
+                    Config_store.pp_write_error
+                    (Config_store.restore_local_config t.config_store
+                       config_values))
+          in
+
+          let** _boot_config_store =
             if (not is_operational) || dk_rewritten then (
               (* If the restore was
                   - unprovisioned, or
@@ -2984,31 +3793,50 @@ module Make (KV : Kv_ext.Ranged) = struct
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
               let** new_state =
-                boot_config_store ~cache_settings:t.cache_settings t.kv
-                  t.device_key
+                boot_config_store ~cache_settings:t.cache_settings
+                  t.config_store t.device_key
               in
               t.state <- new_state;
               Lwt_result.return ())
             else Lwt_result.return ()
           in
-          (match t.state with
-          | Operational v ->
-              User_store.clear_cache v.auth_store;
-              Key_store.clear_cache v.key_store;
-              Namespace_store.clear_cache v.namespace_store
-          | _ -> ());
-          let (`Raw stop_ts) = Hsm_clock.now_raw () in
-          match new_time with
-          | None -> Lwt.return_ok ()
-          | Some new_time -> (
-              let elapsed = Ptime.diff stop_ts start_ts in
-              match Ptime.add_span new_time elapsed with
-              | Some ts -> set_time_offset t.kv ts
-              | None ->
-                  t.state <- initial_state;
-                  Lwt.return
-                  @@ Error
-                       (Bad_request, "Invalid system time in restore request")))
+
+          let** _set_state =
+            (match t.state with
+            | Operational v ->
+                User_store.clear_cache v.auth_store;
+                Key_store.clear_cache v.key_store;
+                Namespace_store.clear_cache v.namespace_store
+            | _ -> ());
+            let (`Raw stop_ts) = Hsm_clock.now_raw () in
+            match new_time with
+            | None -> Lwt.return_ok ()
+            | Some new_time -> (
+                let elapsed = Ptime.diff stop_ts start_ts in
+                match Ptime.add_span new_time elapsed with
+                | Some ts ->
+                    let** () = set_time_offset t.config_store ts in
+                    Config.set_local_config t
+                | None ->
+                    t.state <- initial_state;
+                    Lwt.return
+                    @@ Error
+                         (Bad_request, "Invalid system time in restore request")
+                )
+          in
+          if is_backup_truncated then
+            Lwt_result.fail
+              ( Bad_request,
+                "The backup file was truncated. Present keys were still \
+                 restored." )
+          else Lwt_result.return ())
+      >>= fun restore_result ->
+      let** () =
+        internal_server_error Write "Unlock restore lock"
+          Config_store.pp_write_error
+          (Config_store.remove t.config_store Restore_in_progress)
+      in
+      Lwt.return restore_result
   end
   (* module System *)
 
@@ -3020,7 +3848,7 @@ module Make (KV : Kv_ext.Ranged) = struct
     }
 
   let boot ?(cache_settings = default_cache_settings)
-      ?(default_net = "192.168.1.1") ~platform software_update_key kv =
+      ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
     let softwareVersion =
       match version_of_string software_version with
@@ -3040,13 +3868,16 @@ module Make (KV : Kv_ext.Ranged) = struct
         akPub = platform.akPub;
         pcr = platform.pcr;
       }
+    in
+    let config_store =
+      Config_store.connect kv ~device_id:platform.deviceId ~device_key
     and has_changes = None
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
     (let open Lwt_result.Infix in
      lwt_error_to_msg ~pp_error:Config_store.pp_error
-       (Config_store.get_opt kv Version)
+       (Config_store.get_opt config_store Version)
      >>= function
      | None ->
          (* uninitialized / unprovisioned device *)
@@ -3065,6 +3896,7 @@ module Make (KV : Kv_ext.Ranged) = struct
              kv;
              info;
              system_info;
+             config_store;
              mbox;
              res_mbox;
              device_key;
@@ -3073,10 +3905,11 @@ module Make (KV : Kv_ext.Ranged) = struct
            }
          in
          Lwt.return (Ok t)
-     | Some version -> (
+     | Some version ->
          let boot () =
-           boot_config_store ~cache_settings kv device_key >>= fun state ->
-           certificate_chain kv >|= fun (cert, chain, key) ->
+           boot_config_store ~cache_settings config_store device_key
+           >>= fun state ->
+           certificate_chain config_store >|= fun (cert, chain, key) ->
            {
              state;
              has_changes;
@@ -3087,6 +3920,7 @@ module Make (KV : Kv_ext.Ranged) = struct
              kv;
              info;
              system_info;
+             config_store;
              mbox;
              res_mbox;
              device_key;
@@ -3094,22 +3928,9 @@ module Make (KV : Kv_ext.Ranged) = struct
              default_net;
            }
          in
-
-         match Version.(compare current version) with
-         | `Equal -> boot ()
-         | `Smaller ->
-             let msg =
-               "store has higher version than software, please update software \
-                version"
-             in
-             Lwt.return (Error (`Msg msg))
-         | `Greater ->
-             (* here's the place to embed migration code, at least for the
-                configuration store *)
-             let msg =
-               "store has smaller version than software, data will be migrated!"
-             in
-             Lwt.return (Error (`Msg msg))))
+         System.apply_config_and_domain_migrations ~config_store kv
+           ~device_id:system_info.deviceId version
+         >>= boot)
     >|= function
     | Ok t ->
         let dump_key_ops () =

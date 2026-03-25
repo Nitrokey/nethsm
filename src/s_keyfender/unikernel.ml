@@ -43,10 +43,9 @@ module Main
     (Update_key : Mirage_kv.RO)
     (Static_assets : Mirage_kv.RO)
     (Internal_stack : Tcpip.Stack.V4V6)
-    (Ext_reconfigurable_stack : Reconfigurable_stack.S)
+    (Ext_stack : Tcpip.Stack.V4V6)
     (Conf_args : Args.Conf.S) =
 struct
-  module Ext_stack = Ext_reconfigurable_stack.Stack
   module Conduit = Conduit_mirage.TCP (Stack_nodelay (Ext_stack))
   module Conduit_tls = Conduit_mirage.TLS (Conduit)
   module Srv = Cohttp_mirage.Server.Make (Conduit_tls)
@@ -147,6 +146,67 @@ struct
                     | Error e -> Lwt.return (Error (`Additional e)))) );
         ])
 
+  let s_net_ip = Ipaddr.(V4 (V4.of_string_exn "169.254.100.1"))
+
+  type s_net_data = Network of Keyfender.Json.network
+
+  let json_of_s_net_data (data : s_net_data list) : Yojson.Safe.t =
+    let f = function
+      | Network network ->
+          let nc = Keyfender.Json.network_to_yojson network in
+          ("network", nc)
+    in
+    `Assoc (List.map f data)
+
+  let write_network_subj stack (data : s_net_data list) =
+    let module T = Ext_stack.TCP in
+    let ( let* ) = Lwt.bind in
+    let ( let** ) = Lwt_result.bind in
+    let** () =
+      if Conf_args.no_platform then Lwt_result.fail (`Create "no S-Net")
+      else Lwt_result.return ()
+    in
+    let data = json_of_s_net_data data |> Yojson.Safe.to_string in
+    Log.debug (fun m -> m "sending %s to S-Net" data);
+    let send =
+      let conn =
+        T.create_connection (Ext_stack.tcp stack)
+          (s_net_ip, Args.platform_port ())
+      in
+      let** flow =
+        Lwt_result.map_error
+          (fun e -> `Create (Fmt.to_to_string T.pp_error e))
+          conn
+      in
+      let* res = T.write flow (Cstruct.of_string (data ^ "\n")) in
+      let** () =
+        match res with
+        | Error we ->
+            let* () = T.close flow in
+            Lwt.return_error (`Write (Fmt.to_to_string T.pp_write_error we))
+        | Ok x -> Lwt.return_ok ()
+      in
+      let rec read data =
+        T.read flow >>= function
+        | Ok `Eof -> T.close flow >|= fun () -> Ok data
+        | Ok (`Data d) ->
+            let data = String.cat data (Cstruct.to_string d) in
+            (read [@tailcall]) data
+        | Error e ->
+            T.close flow >|= fun () ->
+            Error (`Read (Fmt.to_to_string T.pp_error e))
+      in
+      read String.empty
+    in
+    Lwt.pick
+      [
+        ( Mirage_sleep.ns (Duration.of_sec 10) >|= fun () ->
+          Log.err (fun m ->
+              m "couldn't connect to S-Net (while sending %s)" data);
+          Error `Timeout );
+        send;
+      ]
+
   let startTrngListener stack port =
     if Conf_args.no_platform then Lwt.return_unit
     else
@@ -236,6 +296,7 @@ struct
       akPub = [];
       hardwareVersion = "N/A";
       firmwareVersion = "N/A";
+      networkConfig = None;
     }
 
   let start update_key_store assets internal_stack ext_stack
@@ -252,31 +313,6 @@ struct
       Log.warn (fun m ->
           m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
       Mirage_sleep.ns (Duration.of_sec 1)
-    in
-    let rec store_connect () =
-      KV_store.connect internal_stack >>= function
-      | Ok store -> Lwt.return store
-      | Error e ->
-          let err = Fmt.to_to_string KV_store.pp_error e in
-          let* () = sleep err in
-          (store_connect [@tailcall]) ()
-    in
-    let* store = store_connect () in
-    Logs.app (fun m -> m "connected to store");
-    let ini = Mirage_kv.Key.v ".initialized" in
-    let* () =
-      KV_store.exists store ini >>= function
-      | Ok None -> (
-          KV_store.set store ini "" >>= function
-          | Ok () -> Lwt.return_unit
-          | Error e ->
-              Log.err (fun m ->
-                  m "couldn't write to store %a" KV_store.pp_write_error e);
-              Lwt.fail_with "store not writable")
-      | Ok (Some _) -> Lwt.return_unit
-      | Error e ->
-          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
-          Lwt.fail_with "store not readable"
     in
     let* platform =
       write_platform internal_stack "PLATFORM-DATA" >>= function
@@ -319,48 +355,48 @@ struct
           | Error (`Msg m) -> Lwt.fail_with ("couldn't decode update key: " ^ m)
           )
     in
-    let default_net = Args.default_net () in
-    let* hsm_state, mvar, res_mvar =
-      Hsm.boot ~cache_settings ?default_net ~platform update_key store
-    in
     let setup_log stack log =
       Logs.set_level ~all:true (Some log.Keyfender.Json.logLevel);
       let logs_reporter = Log_reporter.create () in
-      if Ipaddr.V4.compare log.Keyfender.Json.ipAddress Ipaddr.V4.any <> 0 then
-        let syslog_reporter =
-          let port = log.Keyfender.Json.port in
-          Syslog.create stack ~hostname:"keyfender"
-            (Ipaddr.V4 log.Keyfender.Json.ipAddress) ~port ()
-        in
-        let udp_ignore_sources = [ "icmpv4"; "udp"; "ipv4" ] in
-        let combined_reporter =
-          let report =
-           fun src level ~over k msgf ->
-            let v =
-              logs_reporter.Logs.report src level ~over:(fun () -> ()) k msgf
-            in
-            (* When reporting to UDP, do not report any ICMP, IPv4 or UDP
-               messages that could cause an infinite loop of log lines *)
-            if List.exists (String.equal (Logs.Src.name src)) udp_ignore_sources
-            then v
-            else syslog_reporter.Logs.report src level ~over (fun () -> v) msgf
+      match log.Keyfender.Json.ipAddress with
+      | Some ip ->
+          let syslog_reporter =
+            let port = log.Keyfender.Json.port in
+            Syslog.create stack ~hostname:"keyfender" ip ~port ()
           in
-          { Logs.report }
-        in
-        Logs.set_reporter
-          (Keyfender.Logs_sequence_number.reporter combined_reporter)
-      else
-        Logs.set_reporter
-          (Keyfender.Logs_sequence_number.reporter logs_reporter)
+          let udp_ignore_sources = [ "icmpv4"; "udp"; "ipv4" ] in
+          let combined_reporter =
+            let report =
+             fun src level ~over k msgf ->
+              let v =
+                logs_reporter.Logs.report src level ~over:(fun () -> ()) k msgf
+              in
+              (* When reporting to UDP, do not report any ICMP, IPv4 or UDP
+               messages that could cause an infinite loop of log lines *)
+              if
+                List.exists
+                  (String.equal (Logs.Src.name src))
+                  udp_ignore_sources
+              then v
+              else
+                syslog_reporter.Logs.report src level ~over (fun () -> v) msgf
+            in
+            { Logs.report }
+          in
+          Logs.set_reporter
+            (Keyfender.Logs_sequence_number.reporter combined_reporter)
+      | None ->
+          Logs.set_reporter
+            (Keyfender.Logs_sequence_number.reporter logs_reporter)
     and setup_http_listener http =
       let http_port = Args.http_port () in
       let tcp = `TCP http_port in
       let open Webserver in
       Log.info (fun f -> f "listening on %d/TCP for HTTP" http_port);
       http tcp @@ serve (redirect (Args.https_port ()))
-    and setup_https_listener http certificates =
+    and setup_https_listener hsm_state http certificates =
       match Tls.Config.server ~certificates () with
-      | Error e -> assert false
+      | Error e -> failwith "invalid HTTPs configuration"
       | Ok tls_cfg ->
           let https_port = Args.https_port () in
           let tls = `TLS (tls_cfg, `TCP https_port) in
@@ -374,30 +410,170 @@ struct
           Logs.err (fun m ->
               m "error %a communicating with platform" pp_platform_err e)
     in
-    let reconfigure_network cidr gateway =
-      let* () = Ext_reconfigurable_stack.setup ext_stack ?gateway cidr in
-      let stack = Ext_reconfigurable_stack.stack ext_stack in
-      let http = Srv.listen stack in
+    let align_peer_urls store (network : Keyfender.Json.network) =
+      (* if needed, update how S-Platform's etcd advertise its IP *)
+      KV_store.Cluster.member_list store >>= function
+      | Error (`Cluster_error s) ->
+          Logs.err (fun m ->
+              m "could not check if our etcd peer url is up to date: %s" s);
+          Lwt.return_unit
+      | Ok member_list -> (
+          let own_id = KV_store.Cluster.my_id store in
+          match
+            List.find_opt
+              (fun member -> member.KV_store.Cluster.id = own_id)
+              member_list
+          with
+          | None ->
+              Logs.err (fun m ->
+                  m "cannot find ourselves in the cluster member list!");
+              Lwt.return_unit
+          | Some member -> (
+              let wanted_peer_url_4 =
+                Fmt.str "https://%a:2380" Ipaddr.V4.pp
+                  (Ipaddr.V4.Prefix.address network.ipv4.cidr)
+              in
+              let wanted_peer_url_6 cidr =
+                Fmt.str "https://[%a]:2380" Ipaddr.V6.pp
+                  (Ipaddr.V6.Prefix.address cidr)
+              in
+              let wanted_peer_urls =
+                match network.ipv6 with
+                | None -> [ wanted_peer_url_4 ]
+                | Some { cidr; _ } ->
+                    [ wanted_peer_url_4; wanted_peer_url_6 cidr ]
+              in
+              if List.equal String.equal member.urls wanted_peer_urls then (
+                Logs.info (fun m -> m "etcd peer url is up to date");
+                Lwt.return_unit)
+              else
+                KV_store.Cluster.member_update ~id:own_id ~urls:wanted_peer_urls
+                  store
+                >|= function
+                | Ok _ -> Logs.info (fun m -> m "etcd peer urls updated!")
+                | Error (`Cluster_error s) ->
+                    Logs.err (fun m -> m "couldn't update peer url: %s" s)))
+    in
+    let reconfigure_external_network (network : Keyfender.Json.network) =
+      (* just tell S-Net to change our external network configuration *)
+      let data = [ Network network ] in
+      let* response = write_network_subj ext_stack data in
+      (match response with
+      | Error e ->
+          Log.err (fun m ->
+              m "reconfigure_network: %s" (Fmt.to_to_string pp_platform_err e))
+      | Ok s -> Log.info (fun m -> m "reconfigure_network: response: %s" s));
+      Lwt.return_unit
+    in
+    let reconfigure_network ~hsm_state ~store (network : Keyfender.Json.network)
+        =
+      (* if this is a runtime reconfiguration, align peer URLs *)
+      let* () = align_peer_urls store network in
+      let* () = reconfigure_external_network network in
+      let http = Srv.listen ext_stack in
       Lwt.async (fun () -> setup_http_listener http);
-      Lwt.async (fun () -> setup_https_listener http (Hsm.own_cert hsm_state));
-      let* log = Hsm.Config.log hsm_state in
-      setup_log stack log;
+      let certificates = Hsm.own_cert hsm_state in
+      Lwt.async (fun () -> setup_https_listener hsm_state http certificates);
+      let* () =
+        let* log = Hsm.Config.log hsm_state in
+        setup_log ext_stack log;
+        Lwt.return_unit
+      in
       Lwt.return http
+    in
+    let* () =
+      match platform.networkConfig with
+      | None -> Lwt.return_unit
+      | Some network ->
+          (* if the platform has stored a network config, use it to
+             initially configure the network, so that etcd can connect to a
+             potential cluster. http/https is not yet activated *)
+          Log.warn (fun f ->
+              f
+                "platform has stored network config: setting up initial \
+                 network with it");
+          let* _ = reconfigure_external_network network in
+          Lwt.return_unit
+    in
+    let rec store_connect () =
+      KV_store.connect internal_stack >>= function
+      | Ok store -> Lwt.return store
+      | Error e ->
+          let err = Fmt.to_to_string KV_store.pp_error e in
+          let* () = sleep err in
+          (store_connect [@tailcall]) ()
+    in
+    let* store = store_connect () in
+    Logs.app (fun m -> m "connected to store");
+    let ini = Mirage_kv.Key.v ".initialized" in
+    let* () =
+      KV_store.exists store ini >>= function
+      | Ok None -> (
+          KV_store.set store ini "" >>= function
+          | Ok () -> Lwt.return_unit
+          | Error e ->
+              Log.err (fun m ->
+                  m "couldn't write to store %a" KV_store.pp_write_error e);
+              Lwt.fail_with "store not writable")
+      | Ok (Some _) -> Lwt.return_unit
+      | Error e ->
+          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
+          Lwt.fail_with "store not readable"
+    in
+    let default_net = Args.default_net () in
+    let* hsm_state, mvar, res_mvar =
+      Hsm.boot ~cache_settings ?default_net ~platform update_key store
     in
     let rec handle_cb http =
       Lwt_mvar.take mvar >>= function
       | Hsm.Log log ->
-          setup_log (Ext_reconfigurable_stack.stack ext_stack) log;
+          setup_log ext_stack log;
           (handle_cb [@tailcall]) http
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
-          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
           write_to_platform cmd
+      | Hsm.Join_cluster initial_cluster as cmd ->
+          let write () =
+            let additional_data write = write (initial_cluster ^ "\n") in
+            Lwt_mutex.with_lock KV_store.Etcd.connection_create_mtx (fun () ->
+                (* block etcd requests while reconfig is going on *)
+                KV_store.Etcd.shutdown_persistent_connection ();
+                write_platform ~additional_data internal_stack
+                  (Hsm.cb_to_string cmd)
+                >>= function
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Error e ->
+                    Lwt_mvar.put res_mvar
+                      (Error (Fmt.to_to_string pp_platform_err e)))
+          in
+          write () >>= fun () -> (handle_cb [@tailcall]) http
+      | Hsm.Set_local_config conf as cmd ->
+          let write () =
+            let additional_data write =
+              let ( let* ) = Lwt_result.bind in
+              let data =
+                Keyfender.Json.local_conf_to_yojson conf
+                |> Yojson.Safe.to_string
+              in
+              let* () = write (string_of_int (String.length data) ^ "\n") in
+              write data
+            in
+            Lwt_mutex.with_lock KV_store.Etcd.connection_create_mtx (fun () ->
+                (* block etcd requests while reconfig is going on *)
+                KV_store.Etcd.shutdown_persistent_connection ();
+                write_platform ~additional_data internal_stack
+                  (Hsm.cb_to_string cmd)
+                >>= function
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Error e ->
+                    Lwt_mvar.put res_mvar
+                      (Error (Fmt.to_to_string pp_platform_err e)))
+          in
+          write () >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Tls certificates ->
-          Lwt.async (fun () -> setup_https_listener http certificates);
+          Lwt.async (fun () -> setup_https_listener hsm_state http certificates);
           (handle_cb [@tailcall]) http
-      | Hsm.Network (cidr, gateway) ->
-          let* () = Ext_reconfigurable_stack.disconnect ext_stack in
-          let* http = reconfigure_network cidr gateway in
+      | Hsm.Network network ->
+          let* http = reconfigure_network ~store ~hsm_state network in
           (handle_cb [@tailcall]) http
       | Hsm.Update (blocks, stream) as cmd ->
           let additional_data write =
@@ -429,37 +605,24 @@ struct
           in
           (handle_cb [@tailcall]) http
     in
-    let* ip, net, gateway = Hsm.network_configuration hsm_state in
-    let cidr = Ipaddr.V4.Prefix.(make (bits net) ip) in
-    let* () =
-      if not Conf_args.no_platform then (
-        (* wait for S-Net to startup *)
-        let delay = 4 in
-        Log.info (fun m ->
-            m "Waiting %n seconds to make sure S-Net is up" delay);
-        Mirage_sleep.ns (Duration.of_sec delay))
-      else Lwt.return_unit
-    in
-    let* http = reconfigure_network cidr gateway in
+    let* network = Hsm.network_configuration hsm_state in
+    let* http = reconfigure_network ~store ~hsm_state network in
     (match conf_args.memtrace_port with
     | None -> ()
     | Some port ->
-        Ext_reconfigurable_stack.Stack.TCP.listen
-          Ext_reconfigurable_stack.(Stack.tcp (stack ext_stack))
-          ~port
-          (fun f ->
+        Ext_stack.TCP.listen (Ext_stack.tcp ext_stack) ~port (fun f ->
             (* only allow a single tracing client *)
             match Memtrace.Memprof_tracer.active_tracer () with
             | Some _ ->
                 Logs.warn (fun m -> m "tracing already active");
-                Ext_reconfigurable_stack.Stack.TCP.close f
+                Ext_stack.TCP.close f
             | None ->
                 Logs.info (fun m -> m "starting tracing");
                 let tracer =
                   Memtrace.start_tracing ~context:None ~sampling_rate:1e-4 f
                 in
                 Lwt.async (fun () ->
-                    Ext_reconfigurable_stack.Stack.TCP.read f >|= fun _ ->
+                    Ext_stack.TCP.read f >|= fun _ ->
                     Logs.warn (fun m -> m "tracing read returned, closing");
                     Memtrace.stop_tracing tracer);
                 Lwt.return_unit));

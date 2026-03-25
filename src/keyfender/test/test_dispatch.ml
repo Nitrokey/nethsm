@@ -18,9 +18,60 @@ let ( @? ) name fn =
   Alcotest.test_case name `Quick (fun () ->
       Alcotest.(check bool) "OK" true (fn ()))
 
+let http_status = Alcotest.testable Http.Status.pp ( = )
+
 let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
+
+let msg_with_body body msg =
+  let body =
+    match body with
+    | `Empty -> "empty"
+    | `String str -> str
+    | _ -> "not empty but not string"
+  in
+  Fmt.str "%s (body was: %s)" msg body
+
+let returns_empty' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      begin match body with
+      | `Empty -> new_state
+      | _ -> Alcotest.fail "did not return empty body"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
+
+let returns_string' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      begin match body with
+      | `String s -> (new_state, s)
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_string ~with_status r =
+  let _, body = returns_string' ~with_status r in
+  body
+
+let returns_stream' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      begin match body with
+      | `Stream s -> (new_state, s)
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_stream ~with_status r =
+  let _, body = returns_stream' ~with_status r in
+  body
 
 let empty =
   "a request for / will produce no result" @? fun () ->
@@ -76,6 +127,34 @@ let random_error_bad_length =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let operational_mock_with_mbox' ?(platform = platform) f =
+  Lwt_main.run
+    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+    >>= fun (state, o, m) ->
+      Lwt.async (fun () ->
+          let rec go () =
+            Lwt_mvar.take o >>= fun cb ->
+            f cb;
+            go ()
+          in
+          go ());
+      Lwt.async (fun () ->
+          let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
+          go ());
+      Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
+        Ptime.epoch
+      >>= fun _ ->
+      Hsm.User.add state (user "operator") ~role:`Operator
+        ~passphrase:"test2Passphrase" ~name:"operator"
+      >>= fun _ ->
+      Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
+      Hsm.User.add state (user "backup") ~role:`Backup
+        ~passphrase:"backupUserPassphrase" ~name:"backup"
+      >|= fun _ -> state )
+
+let operational_mock_with_mbox ?platform () =
+  operational_mock_with_mbox' ?platform (fun _ -> ())
+
 let provision_json =
   {| {
   "unlockPassphrase": "UnlockPassphrase",
@@ -84,20 +163,27 @@ let provision_json =
 } |}
 
 let provision_ok =
-  "an initial provision request is successful (state transition to \
-   operational, HTTP response 204)"
-  @? fun () ->
-  let body = `String provision_json in
-  match request ~body ~meth:`POST "/provision" with
-  | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
-  | _ -> false
+  Alcotest.test_case
+    "an initial provision request is successful (state transition to \
+     operational, HTTP response 204)"
+    `Quick (fun () ->
+      let body = `String provision_json in
+      let hsm_state =
+        request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "new state operational" true
+          (Hsm.state hsm_state = `Operational)))
 
 let provision_error_malformed_request =
   "an initial provision request with invalid json returns a malformed request \
    with 400"
   @? fun () ->
   let body = `String ("hallo" ^ provision_json) in
-  match request ~body ~meth:`POST "/provision" with
+  match request ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision" with
   | hsm_state, Some (`Bad_request, _, _, _) ->
       Hsm.state hsm_state = `Unprovisioned
   | _ -> false
@@ -107,7 +193,11 @@ let provision_error_precondition_failed =
    with 412"
   @? fun () ->
   let body = `String provision_json in
-  match request ~body ~meth:`POST "/provision" with
+  match
+    request
+      ~expect:(debug "caching config to the platform")
+      ~hsm_state:(booted_mock ()) ~body ~meth:`POST "/provision"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match request ~hsm_state ~body ~meth:`POST "/provision" with
       | _, Some (`Precondition_failed, _, _, _) -> true
@@ -154,7 +244,8 @@ let system_info_error_forbidden =
 let system_reboot_ok =
   "a request for /system/reboot with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/reboot" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/reboot" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -170,7 +261,8 @@ let system_reboot_namespaced_fails =
 let system_shutdown_ok =
   "a request for /system/shutdown with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/shutdown" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/shutdown" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -211,7 +303,8 @@ let system_shutdown_locked_no_auth =
 let system_factory_reset_ok =
   "a request for /system/factory-reset with authenticated user returns 200"
   @? fun () ->
-  match admin_post_request "/system/factory-reset" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state "/system/factory-reset" with
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
@@ -282,7 +375,8 @@ let system_update_ok =
     let update = "\000\000\018A new system image\000\000\0039.0" ^ data in
     `String (sign_update update ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`OK, _, `String release_notes, _) ->
       String.equal "{\"releaseNotes\":\"A new system image\"}" release_notes
       && Hsm.state hsm_state = `Operational
@@ -312,7 +406,8 @@ let system_update_signature_mismatch =
     let signature = sign_update (update ^ "\000") in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -326,7 +421,8 @@ let system_update_too_much_data =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -343,7 +439,8 @@ let system_update_too_few_data =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -354,7 +451,8 @@ let system_update_invalid_data =
       "\000\000\003signature too long\000\000\018A new system \
        image\000\000\0039.0binary data is here"
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`Bad_request, _, `String body, _) ->
       Logs.info (fun m -> m "Update with invalid data returned %s" body);
       Hsm.state hsm_state = `Operational
@@ -370,7 +468,14 @@ let system_update_platform_bad =
   in
   let hsm_state =
     operational_mock
-      ~mbox:(fun mbox -> Lwt_mvar.put mbox (Error "platform bad"))
+      ~mbox:(fun o mbox ->
+        Lwt.async (fun () ->
+            let rec go () = Lwt_mvar.take o >>= fun _ -> go () in
+            go ());
+        Lwt.async (fun () ->
+            Lwt_mvar.put mbox (Ok ()) >>= fun () ->
+            Lwt_mvar.put mbox (Error "platform bad"));
+        Lwt.return_unit)
       ()
   in
   match admin_post_request ~expect ~hsm_state ~body "/system/update" with
@@ -387,33 +492,13 @@ let system_update_version_downgrade =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~body ~hsm_state "/system/update" with
   | hsm_state, Some (`Conflict, _, `String body, _) ->
       Logs.info (fun m ->
           m "Update with older software version returned %s" body);
       Hsm.state hsm_state = `Operational
   | _ -> false
-
-let operational_mock_with_mbox () =
-  Lwt_main.run
-    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-    >>= fun (state, o, m) ->
-      Lwt.async (fun () ->
-          let rec go () = Lwt_mvar.take o >>= fun _ -> go () in
-          go ());
-      Lwt.async (fun () ->
-          let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
-          go ());
-      Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
-        Ptime.epoch
-      >>= fun _ ->
-      Hsm.User.add state (user "operator") ~role:`Operator
-        ~passphrase:"test2Passphrase" ~name:"operator"
-      >>= fun _ ->
-      Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
-      Hsm.User.add state (user "backup") ~role:`Backup
-        ~passphrase:"backupUserPassphrase" ~name:"backup"
-      >|= fun _ -> state )
 
 let multipart_log =
   {|test_dispatch.exe: [DEBUG] Partial state of the multipart/form stream.
@@ -469,7 +554,8 @@ let system_update_cancel_ok =
     let signature = sign_update update in
     `String (signature ^ update)
   in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, _, _) -> (
       match admin_post_request ~hsm_state "/system/cancel-update" with
       | _, Some (`No_content, _, _, _) -> true
@@ -493,56 +579,545 @@ let system_update_cancel_namespaced_fails =
   | _ -> false
 
 let system_backup_and_restore_ok =
-  "a request for /system/restore succeeds" @? fun () ->
-  let backup_passphrase = "backup passphrase" in
+  Alcotest.test_case "a request for /system/restore succeeds" `Quick (fun () ->
+      let backup_passphrase = "backup passphrase" in
+      let passphrase =
+        Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+          backup_passphrase
+      in
+      let hsm_state =
+        hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      in
+      let hsm_state =
+        admin_put_request ~hsm_state ~body:(`String passphrase)
+          "/config/backup-passphrase"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let headers = auth_header "backup" "backupUserPassphrase" in
+      let s =
+        request ~meth:`POST ~hsm_state ~headers "/system/backup"
+        |> returns_stream ~with_status:`OK
+      in
+
+      let arguments =
+        Yojson.Safe.to_string
+          (Keyfender.Json.restore_req_to_yojson
+             ({
+                backupPassphrase = Some backup_passphrase;
+                systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+              }
+               : Keyfender.Json.restore_req))
+      in
+      let backup_data =
+        String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
+      in
+      let content_type, body =
+        create_multipart_request
+          [ ("arguments", arguments); ("backup_data", backup_data) ]
+      in
+      let expect =
+        multipart_log
+        ^ info "no config re-encrypt needed"
+        ^ debug "caching config to the platform"
+      in
+      let hsm_state' =
+        request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST ~content_type
+          ~body:(`String body) "/system/restore"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+      let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+      let hsm_state'' =
+        request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+          "/unlock"
+        |> returns_empty' ~with_status:`No_content
+      in
+      Alcotest.(
+        check bool "post unlock is operational" true
+          (Hsm.state hsm_state'' = `Operational));
+      (* The encrypted values for the time_offset differ before and after
+         restore even though we're passing the same time offset (epoch), because
+         the nonce is randomly generated in each case. *)
+      let except_key_values =
+        [
+          Mirage_kv.Key.(
+            empty / "local" / platform.deviceId / "config" / "time-offset");
+        ]
+      in
+      Lwt_main.run (Hsm.assert_equal ~except_key_values hsm_state hsm_state'');
+      let headers = auth_header "backup" "backupUserPassphrase" in
+      request ~meth:`POST ~hsm_state ~headers "/system/backup"
+      |> returns_stream ~with_status:`OK
+      |> ignore)
+
+let readfile filename =
+  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
+  let filesize = (Unix.stat filename).Unix.st_size in
+  let buf = Bytes.create filesize in
+  let rec read off =
+    if off = filesize then ()
+    else
+      let bytes_read = Unix.read fd buf off (filesize - off) in
+      read (bytes_read + off)
+  in
+  read 0;
+  Unix.close fd;
+  `String (Bytes.to_string buf)
+
+[@@@warning "-21"]
+
+let system_restore_v0_backup_unattended ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "v3.1_backup_full.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
+    ^ info
+        "migrating /config/certificate to /local/0000000000/config/certificate"
+    ^ info
+        "migrating /config/private-key to /local/0000000000/config/private-key"
+    ^ info
+        "migrating /config/unattended-boot to \
+         /local/0000000000/config/unattended-boot"
+    ^ info "migrating /config/log-config to /local/0000000000/config/log-config"
+    ^ info "migrating /config/ip-config to /local/0000000000/config/ip-config"
+    ^ info "migrating /config/version to /config/version"
+    ^ info "Migrating domain key store from V0 to V1"
+    ^ info
+        "migrating /domain-key/attended to \
+         /local/0000000000/domain-key/attended"
+    ^ info
+        "migrating /domain-key/unattended to \
+         /local/0000000000/domain-key/unattended"
+    ^ info "Migration done (2 deferred)"
+  in
+  let expect =
+    if changed_devkey then
+      expect ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ error "unattended boot failed with not authenticated"
+      ^ debug "caching config to the platform"
+    else
+      expect
+      ^ info "Applying post unlock migrations"
+      ^ info "migrating /config/backup-key"
+      ^ info "migrating /config/backup-salt"
+      ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      Lwt_main.run
+        ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+        >>= fun (y, o, m) ->
+          happy_mbox o m >|= fun () -> y )
+    else booted_mock ()
+  in
+  let hsm_state' =
+    request ~hsm_state ~expect ~meth:`POST ~content_type ~body:(`String body)
+      "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state =
+    let expect =
+      info "Applying post unlock migrations"
+      ^ info "migrating /config/backup-key"
+      ^ info "migrating /config/backup-salt"
+    in
+    if changed_devkey then (
+      Alcotest.(
+        check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+      request ~meth:`POST ~expect ~body:(`String unlock_json)
+        ~hsm_state:hsm_state' "/unlock"
+      |> returns_empty' ~with_status:`No_content)
+    else (
+      Alcotest.(
+        check bool "post restore is locked" true
+          (Hsm.state hsm_state' = `Operational));
+      hsm_state')
+  in
+
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  (* locking and unlocking again does not re-apply migrations *)
+  let hsm_state =
+    request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_unattended_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended boot \
+     configured succeeds on a differente device"
+    `Quick (fun () -> system_restore_v0_backup_unattended ~changed_devkey:true)
+
+let system_restore_v0_backup_unattended =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended boot \
+     configured succeeds on the same device"
+    `Quick (fun () -> system_restore_v0_backup_unattended ~changed_devkey:false)
+
+let system_restore_v0_backup ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "big_100k.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info
+        "migrating /config/time-offset to /local/0000000000/config/time-offset"
+    ^ info
+        "migrating /config/certificate to /local/0000000000/config/certificate"
+    ^ info
+        "migrating /config/private-key to /local/0000000000/config/private-key"
+    ^ info "migrating /config/version to /config/version"
+    ^ info "Migrating domain key store from V0 to V1"
+    ^ info
+        "migrating /domain-key/attended to \
+         /local/0000000000/domain-key/attended"
+    ^ info "Migration done (2 deferred)"
+  in
+  let expect =
+    if changed_devkey then
+      expect ^ info "Device Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ debug "caching config to the platform"
+    else expect ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      Lwt_main.run
+        ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+        >>= fun (y, o, m) ->
+          happy_mbox o m >|= fun () -> y )
+    else booted_mock ()
+  in
+  let hsm_state' =
+    request ~hsm_state ~expect ~meth:`POST ~content_type ~body:(`String body)
+      "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
+  in
+  let hsm_state =
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  (* locking and unlocking again does not re-apply migrations *)
+  let hsm_state =
+    request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds on a device \
+     with a different device key"
+    `Quick (fun () -> system_restore_v0_backup ~changed_devkey:true)
+
+let system_restore_v0_backup =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds" `Quick
+    (fun () -> system_restore_v0_backup ~changed_devkey:false)
+
+let system_restore_v0_backup_operational ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "big_100k.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info "Migration done (2 deferred)"
+    ^ info "Domain Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      operational_mock_with_mbox ~platform ()
+    else operational_mock_with_mbox ()
+  in
+  (* configure a backup passphrase before the restore. It should still be usable
+     afterwards *)
   let passphrase =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
-      backup_passphrase
+      "backupUserPassphrase"
   in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
-  match
+  let hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
-  with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      let headers = auth_header "backup" "backupUserPassphrase" in
-      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let arguments =
-            Yojson.Safe.to_string
-              (Keyfender.Json.restore_req_to_yojson
-                 ({
-                    backupPassphrase = Some backup_passphrase;
-                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-                  }
-                   : Keyfender.Json.restore_req))
-          in
-          let backup_data =
-            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
-          in
-          let content_type, body =
-            create_multipart_request
-              [ ("arguments", arguments); ("backup_data", backup_data) ]
-          in
-          let expect = multipart_log in
-          match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              "/system/restore"
-          with
-          | hsm_state', Some (`No_content, _, _, _) -> (
-              assert (Hsm.state hsm_state' = `Locked);
-              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-              match
-                request ~meth:`POST ~body:(`String unlock_json)
-                  ~hsm_state:hsm_state' "/unlock"
-              with
-              | _, Some (`No_content, _, _, _) ->
-                  Hsm.state hsm_state' = `Operational
-                  && Lwt_main.run (Hsm.equal hsm_state hsm_state')
-              | _ -> false)
-          | _ -> false)
-      | _ -> false)
-  | _ -> false
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state' =
+    request ~hsm_state ~headers:admin_headers ~expect ~meth:`POST ~content_type
+      ~body:(`String body) "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
+  in
+  let hsm_state =
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  (* old backup key/salt should still be readable, even though we have changed
+     domain key *)
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_operational_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds on a device \
+     with a different device key in an operational state"
+    `Quick (fun () -> system_restore_v0_backup_operational ~changed_devkey:true)
+
+let system_restore_v0_backup_operational =
+  Alcotest.test_case
+    "a request for /system/restore with a large v0 backup succeeds in an \
+     operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational ~changed_devkey:false)
+
+let system_restore_v0_backup_operational_unattended ~changed_devkey =
+  let backup_passphrase = "backupPassphrase" in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let old_backup_path = "v3.1_backup_full.bin" in
+  let (`String backup_data) = readfile old_backup_path in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let expect =
+    multipart_log
+    ^ info "Applying migrations."
+    ^ info "Migrating config store from V0 to V1"
+    ^ info
+        "migrating /config/unlock-salt to /local/0000000000/config/unlock-salt"
+    ^ info "migrating /config/backup-salt to /config/backup-salt"
+    ^ info
+        "need domain key to migrate /config/backup-salt! deferring to after \
+         unlock"
+    ^ info "migrating /config/backup-key to /config/backup-key"
+    ^ info
+        "need domain key to migrate /config/backup-key! deferring to after \
+         unlock"
+    ^ info "Migration done (2 deferred)"
+    ^ info "Domain Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ info "Disabling unattended boot since domain key might have changed"
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state =
+    if changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      operational_mock_with_mbox ~platform ()
+    else operational_mock_with_mbox ()
+  in
+  (* configure unattended boot before the restore, to see how the restore
+     behaves afterwards *)
+  let hsm_state =
+    admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
+      "/config/unattended-boot"
+    |> returns_empty' ~with_status:`No_content
+  in
+  (* configure a backup passphrase before the restore. It should still be usable
+     afterwards *)
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      "backupUserPassphrase"
+  in
+  let hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state' =
+    request ~hsm_state ~headers:admin_headers ~expect ~meth:`POST ~content_type
+      ~body:(`String body) "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect =
+    info "Applying post unlock migrations"
+    ^ info "migrating /config/backup-key"
+    ^ info "migrating /config/backup-salt"
+  in
+  let hsm_state =
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  Alcotest.(
+    check bool "post unlock is operational" true
+      (Hsm.state hsm_state = `Operational));
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  (* old backup key/salt should still be readable, even though we have changed
+     domain key *)
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_restore_v0_backup_operational_unattended_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended mode \
+     configured succeeds on a device with a different device key in an \
+     operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational_unattended ~changed_devkey:true)
+
+let system_restore_v0_backup_operational_unattended =
+  Alcotest.test_case
+    "a request for /system/restore with a v0 backup with unattended mode \
+     configured succeeds in an operational state"
+    `Quick (fun () ->
+      system_restore_v0_backup_operational_unattended ~changed_devkey:false)
 
 let system_backup_and_restore_no_backuppassphrase_fails =
   "a request for /system/restore w/o backupPassphrase fails" @? fun () ->
@@ -551,7 +1126,9 @@ let system_backup_and_restore_no_backuppassphrase_fails =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
   match
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -586,8 +1163,8 @@ let system_backup_and_restore_no_backuppassphrase_fails =
              test_dispatch.exe: [DEBUG] Decode a 8-bit part.\n"
           in
           match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              "/system/restore"
+            request ~hsm_state:(booted_mock ()) ~expect ~meth:`POST
+              ~content_type ~body:(`String body) "/system/restore"
           with
           | _, Some (`Bad_request, _, `String b, _) ->
               Alcotest.(check string)
@@ -597,76 +1174,118 @@ let system_backup_and_restore_no_backuppassphrase_fails =
       | _ -> false)
   | _ -> false
 
-let system_backup_and_restore_changed_devkey =
-  "/system/restore with changed device key and unlock -> operational"
-  @? fun () ->
+let system_backup_and_restore_changed_devkey ~also_change_devid =
   let backup_passphrase = "backup passphrase" in
   let passphrase =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  match
-    admin_put_request ~body:(`String passphrase) "/config/backup-passphrase"
-  with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      let headers = auth_header "backup" "backupUserPassphrase" in
-      match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
-      | _hsm_state, Some (`OK, _, `Stream s, _) -> (
-          let arguments =
-            Yojson.Safe.to_string
-              (Keyfender.Json.restore_req_to_yojson
-                 ({
-                    backupPassphrase = Some backup_passphrase;
-                    systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-                  }
-                   : Keyfender.Json.restore_req))
-          in
-          let backup_data =
-            String.concat "" (Lwt_main.run (Lwt_stream.to_list s))
-          in
-          let content_type, body =
-            create_multipart_request
-              [ ("arguments", arguments); ("backup_data", backup_data) ]
-          in
-          let platform =
-            {
-              platform with
-              deviceKey = "//////////////////////////////////////////8=";
-            }
-          in
-          let hsm_state_2 =
-            Lwt_main.run
-              ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-              >|= fun (y, _, _) -> y )
-          in
-          let expect =
-            multipart_log ^ info "Device Key changed."
-            ^ info "Rewriting stored Domain Key."
-          in
-          match
-            request ~expect ~meth:`POST ~content_type ~body:(`String body)
-              ~hsm_state:hsm_state_2 "/system/restore"
-          with
-          | hsm_state', Some (`No_content, _, _, _) -> (
-              assert (Hsm.state hsm_state' = `Locked);
-              let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-              match
-                request ~meth:`POST ~body:(`String unlock_json)
-                  ~hsm_state:hsm_state' "/unlock"
-              with
-              | _, Some (`No_content, _, _, _) ->
-                  Hsm.state hsm_state' = `Operational
-                  && not (Lwt_main.run (Hsm.equal hsm_state hsm_state'))
-              | _ -> false)
-          | _ -> false)
-      | _ -> false)
-  | _ -> false
+  let hsm_state = operational_mock_with_mbox () in
+  let hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  let s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup"
+    |> returns_stream ~with_status:`OK
+  in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({
+            backupPassphrase = Some backup_passphrase;
+            systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+          }
+           : Keyfender.Json.restore_req))
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let platform =
+    { platform with deviceKey = "//////////////////////////////////////////8=" }
+  in
+  let platform =
+    if also_change_devid then { platform with deviceId = "0000000001" }
+    else platform
+  in
+  let hsm_state_2 =
+    Lwt_main.run
+      ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+      >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> y )
+  in
+  let expect_change =
+    if also_change_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
+      ^ info
+          "different device: removing all /local/0000000000/config keys before \
+           writing in /local/0000000001/config"
+      ^ debug "restoring /local/0000000001/config/unlock-salt"
+      ^ debug "restoring /local/0000000001/config/certificate"
+      ^ debug "restoring /local/0000000001/config/private-key"
+      ^ debug "restoring /local/0000000001/config/time-offset"
+    else
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+      ^ debug "restoring /local/0000000000/config/certificate"
+      ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/time-offset"
+  in
+  let expect =
+    multipart_log ^ info "Device Key changed."
+    ^ info "Rewriting stored Domain Key."
+    ^ expect_change
+    ^ debug "caching config to the platform"
+  in
+  let hsm_state' =
+    request ~expect ~meth:`POST ~content_type ~body:(`String body)
+      ~hsm_state:hsm_state_2 "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  assert (Hsm.state hsm_state' = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let hsm_state' =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
+      "/unlock"
+    |> returns_empty' ~with_status:`No_content
+  in
+  assert (Hsm.state hsm_state' = `Operational);
+  (* the new machine will have more keys correspondign to
+     its own config values. The old config values will not
+     be copied over *)
+  let except_keys = [ (Mirage_kv.Key.v "/local/0000000000", `Dictionary) ] in
+  Lwt_main.run
+    (Hsm.assert_equal ~except_system_info:true ~except_keys
+       ~allow_more_keys:true hsm_state hsm_state');
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_backup_and_restore_changed_all =
+  Alcotest.test_case
+    "/system/restore with changed device key and changed device ID + unlock -> \
+     operational"
+    `Quick (fun () ->
+      system_backup_and_restore_changed_devkey ~also_change_devid:true)
+
+let system_backup_and_restore_changed_devkey =
+  Alcotest.test_case
+    "/system/restore with changed device key + unlock -> operational" `Quick
+    (fun () ->
+      system_backup_and_restore_changed_devkey ~also_change_devid:false)
 
 let system_backup_and_restore_unattended =
   Alcotest.test_case "/system/restore with unattended mode -> operational"
     `Quick
   @@ fun () ->
-  let hsm_state = hsm_with_key () in
+  let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
     admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
       "/config/unattended-boot"
@@ -690,8 +1309,8 @@ let system_backup_and_restore_unattended =
   let hsm_state, store =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >|= fun (y, _, _) ->
-        (y, store) )
+        Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> (y, store) )
   in
   let* hsm_state =
     let arguments =
@@ -708,7 +1327,11 @@ let system_backup_and_restore_unattended =
       create_multipart_request
         [ ("arguments", arguments); ("backup_data", backup_data) ]
     in
-    let expect = multipart_log in
+    let expect =
+      multipart_log
+      ^ info "no config re-encrypt needed"
+      ^ debug "caching config to the platform"
+    in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
       "/system/restore"
     |> Expect.no_content
@@ -722,13 +1345,13 @@ let system_backup_and_restore_unattended =
   in
   Alcotest.(check string)
     "state" "operational"
-    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
 
-let system_backup_and_restore_unattended_changed_devkey =
-  Alcotest.test_case
-    "/system/restore with unattended mode and new device key -> locked" `Quick
-  @@ fun () ->
-  let hsm_state = hsm_with_key () in
+let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
+  let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
     admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
       "/config/unattended-boot"
@@ -750,19 +1373,46 @@ let system_backup_and_restore_unattended_changed_devkey =
   in
   (* restore *)
   let platform =
-    { platform with deviceKey = "//////////////////////////////////////////8=" }
+    {
+      platform with
+      deviceId = (if also_change_devid then "0000000001" else platform.deviceId);
+      deviceKey = "//////////////////////////////////////////8=";
+    }
   in
   let hsm_state, store =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >|= fun (y, _, _) ->
-        (y, store) )
+        Hsm.boot ~platform software_update_key store >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> (y, store) )
+  in
+  let changed_log =
+    if also_change_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
+      ^ info
+          "different device: removing all /local/0000000000/config keys before \
+           writing in /local/0000000001/config"
+      ^ debug "restoring /local/0000000001/config/unlock-salt"
+      ^ debug "restoring /local/0000000001/config/certificate"
+      ^ debug "restoring /local/0000000001/config/private-key"
+      ^ debug "restoring /local/0000000001/config/time-offset"
+      ^ debug "restoring /local/0000000001/config/unattended-boot"
+    else
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+      ^ debug "restoring /local/0000000000/config/certificate"
+      ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/time-offset"
+      ^ debug "restoring /local/0000000000/config/unattended-boot"
   in
   let* hsm_state =
     let expect =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
+      ^ changed_log (* unat. boot fails as expected *)
       ^ error "unattended boot failed with not authenticated"
+      ^ debug "caching config to the platform"
     in
     let arguments =
       Yojson.Safe.to_string
@@ -792,6 +1442,19 @@ let system_backup_and_restore_unattended_changed_devkey =
   Alcotest.(check string)
     "state" "locked"
     (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
+let system_backup_and_restore_unattended_changed_all =
+  Alcotest.test_case
+    "/system/restore with unattended mode and new device key AND id -> locked"
+    `Quick
+  @@ fun () ->
+  system_backup_and_restore_unattended_changed_devkey ~also_change_devid:true
+
+let system_backup_and_restore_unattended_changed_devkey =
+  Alcotest.test_case
+    "/system/restore with unattended mode and new device key -> locked" `Quick
+  @@ fun () ->
+  system_backup_and_restore_unattended_changed_devkey ~also_change_devid:false
 
 let system_backup_and_restore_operational_without_backuppassphrase =
   Alcotest.test_case
@@ -824,7 +1487,7 @@ let system_backup_and_restore_operational_without_backuppassphrase =
   in
   (* restore *)
   let* hsm_state =
-    let expect = multipart_log in
+    let expect = multipart_log ^ info "no config re-encrypt needed" in
     let content_type, body =
       create_multipart_request
         [ ("arguments", "{}"); ("backup_data", backup_data) ]
@@ -838,138 +1501,6 @@ let system_backup_and_restore_operational_without_backuppassphrase =
   let* _ =
     request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
   in
-  ()
-
-let system_backup_and_restore_operational =
-  Alcotest.test_case "a request for /system/restore succeeds while operational"
-    `Quick
-  @@ fun () ->
-  let backup_passphrase = "backup passphrase" in
-  let passphrase =
-    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
-      backup_passphrase
-  in
-  let hsm_state = hsm_with_key ~and_namespace:"namespace1" () in
-  let* hsm_state =
-    admin_put_request ~hsm_state ~body:(`String passphrase)
-      "/config/backup-passphrase"
-    |> Expect.no_content
-  in
-  let headers = auth_header "backup" "backupUserPassphrase" in
-  let* _hsm_state, s =
-    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
-  in
-  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
-  (* backup is done, let's remove a key and try to restore it *)
-  let* hsm_state =
-    let expect = info "removed (keyID)" in
-    request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
-      "/keys/keyID"
-    |> Expect.no_content
-  in
-  (* add key, we'll check that it's removed after restore *)
-  Lwt_main.run
-    (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
-     Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
-       test_key_pem no_restrictions)
-  |> Result.get_ok;
-  (* do the same with namespaces *)
-  let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
-  let* hsm_state =
-    request ~expect:expect_ns ~meth:`DELETE ~hsm_state ~headers:admin_headers
-      "/namespaces/namespace1"
-    |> Expect.no_content
-  in
-  let expect = info "created (namespace3)" in
-  let* hsm_state =
-    request ~expect ~meth:`PUT ~hsm_state ~headers:admin_headers
-      "/namespaces/namespace3"
-    |> Expect.no_content
-  in
-  (* the unlock passphrase is changed, must be restored *)
-  Lwt_main.run
-    (Hsm.Config.change_unlock_passphrase hsm_state ~new_passphrase:"i am secure"
-       ~current_passphrase:"unlockPassphrase")
-  |> Result.get_ok;
-  (* the removed key is indeed removed *)
-  let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.not_found
-  in
-  (* restore *)
-  let* hsm_state =
-    let expect =
-      multipart_log ^ info "Domain Key changed."
-      ^ info "Rewriting stored Domain Key."
-      ^ info "removing: /key/newKeyID\n"
-      ^ info "removing: /namespace/namespace3\n"
-    in
-    let arguments =
-      Yojson.Safe.to_string
-        (Keyfender.Json.restore_req_to_yojson
-           ({
-              backupPassphrase = Some backup_passphrase;
-              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-            }
-             : Keyfender.Json.restore_req))
-    in
-    let content_type, body =
-      create_multipart_request
-        [ ("arguments", arguments); ("backup_data", backup_data) ]
-    in
-    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
-      ~body:(`String body) "/system/restore"
-    |> Expect.no_content
-  in
-  (* after first restore it should be locked *)
-  assert (Hsm.state hsm_state = `Locked);
-  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
-  let* hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
-    |> Expect.no_content
-  in
-  assert (Hsm.state hsm_state = `Operational);
-  (* check that deleted keys are restored *)
-  let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
-  in
-  (* check that new keys are deleted *)
-  let* _ =
-    request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
-    |> Expect.not_found
-  in
-  (* same for namespaces and related keys *)
-  let* _ =
-    request ~expect:expect_ns ~headers:admin_headers ~meth:`DELETE ~hsm_state
-      "/namespaces/namespace1"
-    |> Expect.no_content
-  in
-  let* _ =
-    request ~headers:admin_headers ~meth:`DELETE ~hsm_state
-      "/namespaces/namespace3"
-    |> Expect.not_found
-  in
-  (* second restore *)
-  let* hsm_state =
-    let expect = multipart_log in
-    let arguments =
-      Yojson.Safe.to_string
-        (Keyfender.Json.restore_req_to_yojson
-           ({
-              backupPassphrase = Some backup_passphrase;
-              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
-            }
-             : Keyfender.Json.restore_req))
-    in
-    let content_type, body =
-      create_multipart_request
-        [ ("arguments", arguments); ("backup_data", backup_data) ]
-    in
-    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
-      ~body:(`String body) "/system/restore"
-    |> Expect.no_content
-  in
-  (* after second restore it should be operational *)
-  assert (Hsm.state hsm_state = `Operational);
   ()
 
 let system_backup_post_accept_header =
@@ -995,26 +1526,13 @@ let system_backup_post_accept_header =
       | _ -> false)
   | _ -> false
 
-let readfile filename =
-  let fd = Unix.openfile filename [ Unix.O_RDONLY ] 0 in
-  let filesize = (Unix.stat filename).Unix.st_size in
-  let buf = Bytes.create filesize in
-  let rec read off =
-    if off = filesize then ()
-    else
-      let bytes_read = Unix.read fd buf off (filesize - off) in
-      read (bytes_read + off)
-  in
-  read 0;
-  Unix.close fd;
-  `String (Bytes.to_string buf)
-
 let system_update_from_file_ok =
   "a request for /system/update with authenticated user and update read from \
    disk returns 200"
   @? fun () ->
   let body = readfile "update.bin" in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, `String _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
 
@@ -1028,7 +1546,8 @@ let sign_update_ok =
   in
   assert (returncode = 0);
   let body = readfile "signed_update.bin" in
-  match admin_post_request ~body "/system/update" with
+  let hsm_state = operational_mock_with_mbox () in
+  match admin_post_request ~hsm_state ~body "/system/update" with
   | hsm_state, Some (`OK, _, `String _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
 
@@ -1078,43 +1597,36 @@ let unlock_twice =
       | _ -> false)
   | _ -> false
 
-let unlock_fails_wrong_device_key =
-  "a request for /unlock with the wrong device key fails" @? fun () ->
-  let kv =
-    Lwt_main.run
-      ( Kv_mem.connect () >>= fun kv ->
-        Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
-        Hsm.provision state ~unlock:"test1234Passphrase"
-          ~admin:"test1Passphrase" Ptime.epoch
-        >|= fun r ->
-        assert (r = Ok ());
-        kv )
-  in
-  let hsm_state =
-    Lwt_main.run
-      (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
-  in
-  match
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
-  with
-  | hsm_state, Some (`No_content, _, _, _)
-    when Hsm.state hsm_state = `Operational -> (
+let boot_device_key_change_fails =
+  Alcotest.test_case "booting with the config store of another device fails"
+    `Quick (fun () ->
+      let kv =
+        Lwt_main.run
+          ( Kv_mem.connect () >>= fun kv ->
+            Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+            happy_mbox o m >>= fun () ->
+            Hsm.provision state ~unlock:"test1234Passphrase"
+              ~admin:"test1Passphrase" Ptime.epoch
+            >|= fun r ->
+            assert (r = Ok ());
+            kv )
+      in
+      let _hsm_state =
+        Lwt_main.run
+          (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
+      in
       let platform =
         {
           platform with
           deviceKey = "//////////////////////////////////////////8=";
         }
       in
-      let hsm_state =
-        Lwt_main.run
-          (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
-      in
-      match
-        request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
-      with
-      | hsm_state, Some (`Forbidden, _, _, _) -> Hsm.state hsm_state = `Locked
-      | _ -> false)
-  | _ -> false
+      Alcotest.check_raises "boot fails"
+        (Invalid_argument "fatal in get time offset not authenticated")
+        (fun () ->
+          Lwt_main.run
+            (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
+          |> ignore))
 
 let lock_ok =
   "a request for /lock locks the HSM" @? fun () ->
@@ -1184,7 +1696,8 @@ let unattended_boot_succeeds =
   let store, hsm_state =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
+        Hsm.boot ~platform software_update_key store >>= fun (state, o, m) ->
+        happy_mbox o m >>= fun () ->
         Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
           Ptime.epoch
         >|= fun _ -> (store, state) )
@@ -1199,32 +1712,6 @@ let unattended_boot_succeeds =
         >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational )
   | _ -> false
 
-let unattended_boot_failed_wrong_device_key =
-  "unattended boot failed (wrong Device Key)" @? fun () ->
-  let store, hsm_state =
-    Lwt_main.run
-      ( Kv_mem.connect () >>= fun store ->
-        Hsm.boot ~platform software_update_key store >>= fun (state, _, _) ->
-        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
-          Ptime.epoch
-        >|= fun _ -> (store, state) )
-  in
-  match
-    admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state
-      "/config/unattended-boot"
-  with
-  | _hsm_state', Some (`No_content, _, _, _) ->
-      let platform =
-        {
-          platform with
-          deviceKey = "//////////////////////////////////////////8=";
-        }
-      in
-      Lwt_main.run
-        ( Hsm.boot ~platform software_update_key store
-        >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Locked )
-  | _ -> false
-
 let get_config_tls_public_pem =
   "get tls public pem file succeeds" @? fun () ->
   let headers = admin_headers in
@@ -1234,6 +1721,17 @@ let get_config_tls_public_pem =
   with
   | _, Some (`OK, _, _, _) -> true
   | _ -> false
+
+let get_config_tls_cluster_ca_pem =
+  Alcotest.test_case "get tls cluster CA succeeds (absent by default)" `Quick
+    (fun () ->
+      let headers = admin_headers in
+      request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
+        "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`Not_found
+      |> Alcotest.(
+           check string "expected error"
+             {|{"message":"cluster CA is absent unless configured"}|}))
 
 let get_config_tls_cert_pem =
   "get tls cert pem file succeeds" @? fun () ->
@@ -1249,14 +1747,17 @@ let put_config_tls_cert_pem =
   "put tls cert pem file succeeds" @? fun () ->
   let headers = admin_headers in
   match
-    request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/tls/cert.pem"
+    request
+      ~hsm_state:(operational_mock_with_mbox ())
+      ~meth:`GET ~headers "/config/tls/cert.pem"
   with
   | hsm_state, Some (`OK, _, `String body, _) -> (
       let content_type = "application/x-pem-file" in
       match
-        request ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~body:(`String body) "/config/tls/cert.pem"
+        request
+          ~expect:(debug "caching config to the platform")
+          ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String body)
+          "/config/tls/cert.pem"
       with
       | _, Some (`Created, headers, _, _) -> (
           match Cohttp.Header.get headers "location" with
@@ -1264,6 +1765,59 @@ let put_config_tls_cert_pem =
           | Some loc -> String.equal loc "/api/v1/config/tls/cert.pem")
       | _ -> false)
   | _ -> false
+
+let gen_ca () =
+  let pr_key = X509.Private_key.generate `RSA in
+  let sub = [ X509.Distinguished_name.Relative_distinguished_name.empty ] in
+  let self_csr = X509.Signing_request.create sub pr_key |> Result.get_ok in
+  let now = Ptime.of_year 2025 |> Option.get in
+  let valid_until = Ptime.of_year 2030 |> Option.get in
+  let extensions =
+    X509.Extension.(
+      empty
+      |> add Basic_constraints (true, (true, None))
+      |> add Key_usage (true, [ `Key_cert_sign ]))
+  in
+  let ca =
+    X509.Signing_request.sign self_csr ~valid_from:now ~valid_until ~extensions
+      pr_key sub
+    |> Result.get_ok
+  in
+  (sub, pr_key, ca)
+
+let put_config_tls_cluster_ca_pem_fail_not_signed =
+  Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
+    `Quick (fun () ->
+      let _, _, ca = gen_ca () in
+      let test_ca = X509.Certificate.encode_pem ca in
+      let headers = admin_headers in
+      let content_type = "application/x-pem-file" in
+      (* try to set CA without signing tls cert first *)
+      let hsm_state, err_msg =
+        request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
+          ~content_type ~body:(`String test_ca) "/config/tls/cluster-ca.pem"
+        |> returns_string' ~with_status:`Precondition_failed
+      in
+      Alcotest.(
+        check string "error msg"
+          "{\"message\":\"the installed TLS cert is not signed by this CA: no \
+           trust anchor found for X.509 certificate")
+        (String.sub err_msg 0 104);
+      request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`Not_found
+      |> Alcotest.(
+           check string "cert matches"
+             "{\"message\":\"cluster CA is absent unless configured\"}"))
+
+let put_config_tls_cluster_ca_pem_fail_invalid =
+  Alcotest.test_case "put tls cluster CA fails when not a CA" `Quick (fun () ->
+      let headers = admin_headers in
+      let content_type = "application/x-pem-file" in
+      request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~content_type
+        ~body:(`String "this is not a PEM file") "/config/tls/cluster-ca.pem"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error message" "{\"message\":\"No certificate\"}"))
 
 let put_config_tls_cert_pem_fail =
   "post tls cert pem file fail" @? fun () ->
@@ -1311,7 +1865,7 @@ let subject_custom_san =
     "organizationalUnitName": "",
     "commonName": "nethsm.local",
     "emailAddress": "info@nitrokey.com",
-    "subjectAltNames": ["test1.example.com", "test2.example.com"]
+    "subjectAltNames": ["test1.example.com", "test2.example.com", "IP:192.168.1.1"]
   }|}
 
 let post_config_tls_csr_pem =
@@ -1404,18 +1958,378 @@ let post_config_tls_csr_pem_custom_san =
           match X509.Signing_request.Ext.find Extensions info.extensions with
           | Some extensions -> (
               match X509.Extension.find Subject_alt_name extensions with
-              | Some (_, general_names) -> (
-                  match X509.General_name.find DNS general_names with
-                  | Some dns_names ->
-                      List.mem "test1.example.com" dns_names
-                      && List.mem "test2.example.com" dns_names
-                      && not (List.mem "nethsm.local" dns_names)
-                      (* Should NOT contain commonName *)
-                  | None -> false)
+              | Some (_, general_names) ->
+                  let dns_ok =
+                    match X509.General_name.find DNS general_names with
+                    | Some dns_names ->
+                        List.mem "test1.example.com" dns_names
+                        && List.mem "test2.example.com" dns_names
+                        && not (List.mem "nethsm.local" dns_names)
+                        (* Should NOT contain commonName *)
+                    | None -> false
+                  in
+                  let ip_ok =
+                    match X509.General_name.find IP general_names with
+                    | Some [ ip_oct ] ->
+                        Ipaddr.of_string_exn "192.168.1.1"
+                        |> Ipaddr.to_octets = ip_oct
+                    | _ -> false
+                  in
+                  dns_ok && ip_ok
               | None -> false)
           | None -> false)
       | Error _ -> false)
   | _ -> false
+
+let setup_cluster_ca hsm_state =
+  let headers = admin_headers in
+  (* create a self-signed CA and get the NetHSM CSR *)
+  let hsm_state, csr_pem =
+    admin_post_request ~hsm_state ~body:(`String subject) "/config/tls/csr.pem"
+    |> returns_string' ~with_status:`OK
+  in
+  (* sign the CSR with our CA *)
+  let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+  let ca_sub, ca_key, ca = gen_ca () in
+  let ca_pem = X509.Certificate.encode_pem ca in
+  let valid_from = Ptime.of_year 2025 |> Option.get in
+  let valid_until = Ptime.of_year 2030 |> Option.get in
+  let new_cert =
+    X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
+    |> Result.get_ok
+  in
+  let content_type = "application/x-pem-file" in
+  let new_cert_pem = X509.Certificate.encode_pem new_cert in
+  (* replace the NetHSM with that newly signed cert *)
+  let hsm_state =
+    request ~hsm_state ~meth:`PUT ~headers ~content_type
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+    |> returns_empty' ~with_status:`Created
+  in
+  (* now set the NetHSM CA *)
+  let hsm_state =
+    request ~hsm_state ~meth:`PUT ~headers ~content_type
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+    |> returns_empty' ~with_status:`Created
+  in
+  (hsm_state, ca_pem)
+
+let put_config_tls_cluster_ca_pem =
+  Alcotest.test_case "put tls cluster CA succeeds when cert is signed by it"
+    `Quick (fun () ->
+      let headers = admin_headers in
+      (* get the old cert, for last test *)
+      let hsm_state, old_cert_pem =
+        request ~headers
+          ~hsm_state:(operational_mock_with_mbox ())
+          "/config/tls/cert.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      let hsm_state, ca_pem = setup_cluster_ca hsm_state in
+
+      (* we should now be able to query the CA, which should match *)
+      let hsm_state, ca_pem' =
+        request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      Alcotest.(check string "cert matches" ca_pem ca_pem');
+      (* Check that we cannot put the old cert again, as it's not signed by the
+         CA *)
+      let content_type = "application/x-pem-file" in
+      let err_msg =
+        request ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String old_cert_pem) "/config/tls/cert.pem"
+        |> returns_string ~with_status:`Precondition_failed
+      in
+      Alcotest.(
+        check string "error msg"
+          "{\"message\":\"the cluster CA is set, and the given cert is not \
+           signed by it: no trust anchor found for X.509 certificate"
+          (String.sub err_msg 0 118));
+      (* Check that we cannot generate a new cert when cluster CA is set *)
+      let keygen_req = {|{ "type": "RSA", "length": 2048 }|} in
+      admin_post_request ~hsm_state ~body:(`String keygen_req)
+        "/config/tls/generate"
+      |> returns_string ~with_status:`Precondition_failed
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"cannot generate cert if cluster CA has been set\"}"))
+
+let system_backup_and_restore_operational ~unattended ~changed_devkey
+    ~changed_devid ~cluster_ca_before =
+  let backup_passphrase = "backup passphrase" in
+  let passphrase =
+    Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+      backup_passphrase
+  in
+  let hsm_state =
+    hsm_with_key ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+  in
+  let* hsm_state =
+    admin_put_request ~hsm_state ~body:(`String passphrase)
+      "/config/backup-passphrase"
+    |> Expect.no_content
+  in
+  let hsm_state =
+    if cluster_ca_before then
+      (* create a Cluster CA, it should get restored if deleted *)
+      let hsm_state, _ = setup_cluster_ca hsm_state in
+      hsm_state
+    else hsm_state
+  in
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  let* _hsm_state, s =
+    request ~meth:`POST ~hsm_state ~headers "/system/backup" |> Expect.stream
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  let expect_ns = info "removed (namespace1)" ^ info "removed (subKeyID)" in
+  let post_backup_operations hsm_state =
+    let ( let* ) = Option.bind in
+
+    let* hsm_state =
+      if unattended then
+        admin_put_request ~body:(`String {|{"status":"on"}|}) ~hsm_state
+          "/config/unattended-boot"
+        |> Expect.no_content
+      else Some hsm_state
+    in
+    (* backup is done, let's remove a key and try to restore it *)
+    let* hsm_state =
+      let expect = info "removed (keyID)" in
+      request ~expect ~meth:`DELETE ~hsm_state ~headers:admin_headers
+        "/keys/keyID"
+      |> Expect.no_content
+    in
+    (* add key, we'll check that it's removed after restore *)
+    Lwt_main.run
+      (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
+       Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
+         test_key_pem no_restrictions)
+    |> Result.get_ok;
+    (* do the same with namespaces *)
+    let* hsm_state =
+      request ~expect:expect_ns ~meth:`DELETE ~hsm_state ~headers:admin_headers
+        "/namespaces/namespace1"
+      |> Expect.no_content
+    in
+    let expect = info "created (namespace3)" in
+    let* hsm_state =
+      request ~expect ~meth:`PUT ~hsm_state ~headers:admin_headers
+        "/namespaces/namespace3"
+      |> Expect.no_content
+    in
+    (* the unlock passphrase is changed, must be restored *)
+    Lwt_main.run
+      (Hsm.Config.change_unlock_passphrase hsm_state
+         ~new_passphrase:"i am secure" ~current_passphrase:"unlockPassphrase")
+    |> Result.get_ok;
+    (* the removed key is indeed removed *)
+    let* _ =
+      request ~headers:admin_headers ~hsm_state "/keys/keyID"
+      |> Expect.not_found
+    in
+    if cluster_ca_before then Some hsm_state
+    else
+      (* create a Cluster CA, it should get removed afterwards *)
+      let hsm_state, _ = setup_cluster_ca hsm_state in
+      Some hsm_state
+  in
+  let* hsm_state = post_backup_operations hsm_state in
+  (* restore *)
+  let* hsm_state =
+    if changed_devid || changed_devkey then
+      let platform =
+        {
+          platform with
+          deviceKey = "//////////////////////////////////////////8=";
+        }
+      in
+      let platform =
+        if changed_devid then { platform with deviceId = "0000000001" }
+        else platform
+      in
+      let hsm_state =
+        hsm_with_key ~platform ~mbox:happy_mbox ~and_namespace:"namespace1" ()
+      in
+      admin_put_request ~hsm_state ~body:(`String passphrase)
+        "/config/backup-passphrase"
+      |> returns_empty' ~with_status:`No_content
+      |> post_backup_operations
+    else Some hsm_state
+  in
+  let changed_log =
+    if changed_devid then
+      info
+        "different device: importing + re-encrypting local configs from device \
+         0000000000"
+      ^ info
+          "different device: removing all /local/0000000000/config keys before \
+           writing in /local/0000000001/config"
+      ^ debug "restoring /local/0000000001/config/unlock-salt"
+    else if changed_devkey then
+      info "device has been reset: re-encrypting local configs"
+      ^ debug "restoring /local/0000000000/config/unlock-salt"
+    else info "no config re-encrypt needed"
+  in
+  let unattended_log =
+    if unattended then
+      info "Disabling unattended boot since domain key might have changed"
+    else ""
+  in
+  let* hsm_state =
+    let expect =
+      multipart_log ^ info "Domain Key changed."
+      ^ info "Rewriting stored Domain Key."
+      ^ unattended_log
+      ^ debug "removing: /key/newKeyID\n"
+      ^ debug "removing: /namespace/namespace3\n"
+      ^ (if cluster_ca_before then ""
+         else debug "removing: /config/cluster-ca\n")
+      ^ changed_log
+      ^ debug "caching config to the platform"
+    in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = Some backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after first restore it should be locked *)
+  assert (Hsm.state hsm_state = `Locked);
+  let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let* hsm_state =
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    |> Expect.no_content
+  in
+  assert (Hsm.state hsm_state = `Operational);
+  (* check that deleted keys are restored *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/keyID" |> Expect.ok
+  in
+  (* check that new keys are deleted *)
+  let* _ =
+    request ~headers:admin_headers ~hsm_state "/keys/newKeyID"
+    |> Expect.not_found
+  in
+  (* same for namespaces and related keys *)
+  let* _ =
+    request ~expect:expect_ns ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace1"
+    |> Expect.no_content
+  in
+  let* _ =
+    request ~headers:admin_headers ~meth:`DELETE ~hsm_state
+      "/namespaces/namespace3"
+    |> Expect.not_found
+  in
+  (* check that cluster CA deleted or still present, depending when it was set *)
+  request ~headers:admin_headers ~meth:`GET ~hsm_state
+    "/config/tls/cluster-ca.pem"
+  |> returns_string ~with_status:(if cluster_ca_before then `OK else `Not_found)
+  |> ignore;
+
+  (* second restore *)
+  let* hsm_state =
+    let expect =
+      multipart_log ^ changed_log ^ debug "caching config to the platform"
+    in
+    let arguments =
+      Yojson.Safe.to_string
+        (Keyfender.Json.restore_req_to_yojson
+           ({
+              backupPassphrase = Some backup_passphrase;
+              systemTime = Some (Ptime.to_rfc3339 Ptime.epoch);
+            }
+             : Keyfender.Json.restore_req))
+    in
+    let content_type, body =
+      create_multipart_request
+        [ ("arguments", arguments); ("backup_data", backup_data) ]
+    in
+    request ~expect ~meth:`POST ~hsm_state ~headers:admin_headers ~content_type
+      ~body:(`String body) "/system/restore"
+    |> Expect.no_content
+  in
+  (* after second restore it should be operational *)
+  assert (Hsm.state hsm_state = `Operational);
+  (* same backup passphrase should continue to work *)
+  let headers = auth_header "backup" "backupUserPassphrase" in
+  request ~meth:`POST ~hsm_state ~headers "/system/backup"
+  |> returns_stream ~with_status:`OK
+  |> ignore
+
+let system_backup_and_restore_operational_changed_devkey_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_all_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a different  \
+     device. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:true ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_unattended =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational. Unattended boot"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:true ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_devkey =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset device"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_all =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a different \
+     device"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:true ~unattended:false ~cluster_ca_before:false)
+
+let system_backup_and_restore_operational_changed_devkey_ca_before =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational on a reset \
+     device, with cluster CA preconfigured"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:true
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:true)
+
+let system_backup_and_restore_operational_ca_before =
+  Alcotest.test_case
+    "a request for /system/restore succeeds while operational with cluster CA \
+     preconfigured"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:true)
+
+let system_backup_and_restore_operational =
+  Alcotest.test_case "a request for /system/restore succeeds while operational"
+    `Quick (fun () ->
+      system_backup_and_restore_operational ~changed_devkey:false
+        ~changed_devid:false ~unattended:false ~cluster_ca_before:false)
 
 let post_config_tls_generate =
   let generate_json = {|{ type: "RSA", length: 2048 }|} in
@@ -1433,13 +2347,14 @@ let post_config_tls_generate =
     | _ -> raise (Failure "get_public_key")
   in
   "post tls generate" @? fun () ->
-  let hsm_state = operational_mock () in
+  let hsm_state = operational_mock_with_mbox () in
   try
     (* obtain generated key at provision *)
     let initial_key = get_public_key ~hsm_state in
     (* call the generate endpoint to generate an RSA key *)
     match
       admin_post_request ~hsm_state ~body:(`String generate_json)
+        ~expect:(debug "caching config to the platform")
         "/config/tls/generate"
     with
     | _, Some (`No_content, _, _, _) ->
@@ -1478,60 +2393,146 @@ let post_config_tls_generate_bad_length =
   with Failure _ -> false
 
 let config_network_ok =
-  "GET on /config/network succeeds" @? fun () ->
-  let expect =
-    warning
-      "error Cannot find the key /config/ip-config while retrieving IP, using \
-       default"
-  in
-  let headers = admin_headers in
-  match
-    request ~expect ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/network"
-  with
-  | _, Some (`OK, _, `String body, _) ->
-      String.equal body
-        {|{"ipAddress":"192.168.1.1","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  | _ -> false
+  Alcotest.test_case "GET on /config/network succeeds" `Quick (fun () ->
+      let expect =
+        warning
+          "error Cannot find the key /local/0000000000/config/ip-config while \
+           retrieving IP, using and storing default"
+      in
+      let body =
+        request ~expect
+          ~hsm_state:(operational_mock_with_mbox ())
+          ~meth:`GET ~headers:admin_headers "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string)
+        "body"
+        "{\"ipAddress\":\"192.168.1.1\",\"netmask\":\"255.255.255.0\",\"gateway\":\"0.0.0.0\"}"
+        body)
 
 let config_network_set_ok =
-  "PUT on /config/network succeeds" @? fun () ->
-  let new_network =
-    {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  in
-  match admin_put_request ~body:(`String new_network) "/config/network" with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      match
+  Alcotest.test_case "PUT on /config/network succeeds" `Quick (fun () ->
+      let new_network =
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":null}|}
+      in
+      let old_network =
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
+      in
+
+      let print_set_local = function
+        | Hsm.Set_local_config local_conf ->
+            Logs.info (fun f ->
+                f "sent to platform: %s"
+                  (Keyfender.Json.network_config_to_string
+                     local_conf.network_config
+                  |> Yojson.Safe.to_string))
+        | _ -> ()
+      in
+      let hsm_state = operational_mock_with_mbox' print_set_local in
+      let hsm_state' =
+        admin_put_request
+          ~expect:
+            (debug "caching config to the platform"
+            ^ info
+                "sent to platform: \
+                 \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null}}\""
+            )
+          ~hsm_state ~body:(`String new_network) "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
+        request ~hsm_state:hsm_state' ~meth:`GET ~headers:admin_headers
+          "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" old_network body;
+      (* still accept old config format *)
+      let hsm_state' =
+        admin_put_request
+          ~expect:
+            (debug "caching config to the platform"
+            ^ info
+                "sent to platform: \
+                 \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null}}\""
+            )
+          ~hsm_state ~body:(`String old_network) "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
+        request ~hsm_state:hsm_state' ~meth:`GET ~headers:admin_headers
+          "/config/network"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" old_network body)
+
+let config_network_set_ipv6_ok =
+  Alcotest.test_case "PUT on /config/network succeeds with ipv6" `Quick
+    (fun () ->
+      let print_set_local = function
+        | Hsm.Set_local_config local_conf ->
+            Logs.info (fun f ->
+                f "sent to platform: %s"
+                  (Keyfender.Json.network_config_to_string
+                     local_conf.network_config
+                  |> Yojson.Safe.to_string))
+        | _ -> ()
+      in
+      let new_network =
+        {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":{"cidr":"::1/8","gateway":"::1"}}|}
+      in
+      let hsm_state = operational_mock_with_mbox' print_set_local in
+      let expect =
+        debug "caching config to the platform"
+        ^ info
+            "sent to platform: \
+             \"{\\\"ipv4\\\":{\\\"cidr\\\":\\\"6.6.6.6/24\\\",\\\"gateway\\\":null},\\\"ipv6\\\":{\\\"cidr\\\":\\\"::1/8\\\",\\\"gateway\\\":\\\"::1\\\"}}\""
+      in
+
+      let hsm_state =
+        admin_put_request ~expect ~hsm_state ~body:(`String new_network)
+          "/config/network"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
         request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/network"
-      with
-      | _, Some (`OK, _, `String body, _) -> String.equal body new_network
-      | _ -> false)
-  | _ -> false
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returns the same config" new_network body)
 
 let config_network_set_fail =
-  "PUT with invalid IP address on /config/network fails" @? fun () ->
-  let new_network =
-    {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
-  in
-  match admin_put_request ~body:(`String new_network) "/config/network" with
-  | _, Some (`Bad_request, _, _, _) -> true
-  | _ -> false
+  Alcotest.test_case "PUT with invalid IP address on /config/network fails"
+    `Quick (fun () ->
+      let new_network =
+        {|{"ipAddress":"6.6.6.666","netmask":"255.255.255.0","gateway":"0.0.0.0"}|}
+      in
+      let body =
+        admin_put_request ~body:(`String new_network) "/config/network"
+        |> returns_string ~with_status:`Bad_request
+      in
+      Alcotest.(check string)
+        "error message"
+        "{\"message\":\"Invalid data for JSON schema: Ipaddr: fourth octet out \
+         of bounds.\"}"
+        body)
 
 let config_logging_ok =
-  "GET on /config/logging succeeds" @? fun () ->
-  let headers = admin_headers in
-  match
-    request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-      "/config/logging"
-  with
-  | _, Some (`OK, _, `String body, _) ->
-      String.equal body {|{"ipAddress":"0.0.0.0","port":514,"logLevel":"info"}|}
-  | _ -> false
+  Alcotest.test_case "GET on /config/logging succeeds" `Quick (fun () ->
+      let body =
+        request ~hsm_state:(operational_mock ()) ~meth:`GET
+          ~headers:admin_headers "/config/logging"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string)
+        "default config"
+        "{\"ipAddress\":\"0.0.0.0\",\"port\":514,\"logLevel\":\"info\"}" body)
 
 let config_logging_set_ok =
   "PUT on /config/logging succeeds" @? fun () ->
   let new_logging = {|{"ipAddress":"6.6.6.6","port":514,"logLevel":"error"}|} in
-  match admin_put_request ~body:(`String new_logging) "/config/logging" with
+  let hsm_state = operational_mock_with_mbox () in
+  match
+    admin_put_request ~hsm_state ~body:(`String new_logging) "/config/logging"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match
         request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/logging"
@@ -1565,7 +2566,12 @@ let config_time_ok =
 let config_time_set_ok =
   "PUT on /config/time succeeds" @? fun () ->
   let new_time = {|{time: "1970-01-01T00:00:00-00:00"}|} in
-  match admin_put_request ~body:(`String new_time) "/config/time" with
+  match
+    admin_put_request
+      ~hsm_state:(operational_mock_with_mbox ())
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String new_time) "/config/time"
+  with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match request ~hsm_state ~headers:admin_headers "/config/time" with
       | _, Some (`OK, _, `String body, _) -> (
@@ -1617,15 +2623,6 @@ let invalid_config_version =
       Lwt_main.run
         ( Kv_mem.connect () >>= fun data ->
           Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
-          Hsm.boot ~platform software_update_key data )
-      |> ignore)
-
-let config_version_but_no_salt =
-  Alcotest.test_case "config/version but no salt" `Quick @@ fun () ->
-  Alcotest.check_raises "breaks HSM" (Invalid_argument "fatal!") (fun () ->
-      Lwt_main.run
-        ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data (Mirage_kv.Key.v "config/version") "0" >>= fun _ ->
           Hsm.boot ~platform software_update_key data )
       |> ignore)
 
@@ -4120,6 +5117,188 @@ let keys_key_version_cert_delete_fails =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let cluster_member_ops_not_etcd =
+  Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
+    (fun () ->
+      let check body =
+        Alcotest.(check string)
+          "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
+      in
+      let backup_body =
+        {|{"newPassphrase" : "testtesttest", "currentPassphrase" : ""}|}
+      in
+      let hsm_state =
+        admin_put_request ~hsm_state:(operational_mock ())
+          ~body:(`String backup_body) "/config/backup-passphrase"
+        |> returns_empty' ~with_status:`No_content
+      in
+      request ~hsm_state ~headers:admin_headers "/cluster/members"
+      |> returns_string ~with_status:`OK
+      |> Alcotest.(check string)
+           "mock data" {|[{"id":"deadbeef","name":"mock","urls":[]}]|};
+      (* even when not implemented, we still check the JSON payload is
+         well-formed first *)
+      request ~meth:`POST ~hsm_state ~headers:admin_headers "/cluster/members"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(check string)
+           "bad request" "{\"message\":\"Invalid JSON: Blank input data.\"}";
+      let body = `String {|{"urls":["192.168.1.100"]}|} in
+      request ~meth:`POST ~body ~hsm_state ~headers:admin_headers
+        "/cluster/members"
+      |> returns_string ~with_status:`Bad_request
+      |> check)
+
+let cluster_member_ops_admin_only =
+  Alcotest.test_case "/cluster/members ops are admin-only" `Quick (fun () ->
+      request ~hsm_state:(operational_mock ()) "/cluster/members"
+      |> returns_empty ~with_status:`Unauthorized;
+      request ~meth:`POST ~hsm_state:(operational_mock ()) "/cluster/members"
+      |> returns_empty ~with_status:`Unauthorized)
+
+let joiner_kit =
+  "eyJiYWNrdXBfc2FsdCI6InhQdkNLU3pRcG0yZGtQU2dqbWhqRkE9PSIsInVubG9ja19zYWx0IjoiZCt4N0liNmxiNjRQMk1ZMWN5enRsMjNpQjdOblNybFpjL0kxTHNJOW01eENWQjNhR1c2QVdyRFc3N3c9IiwibG9ja2VkX2RvbWFpbl9rZXkiOiJENHlWTGVEdVNrWXowR0tYYVF6aGlSZE9vcDNHWGplMmVURnNxdHZMNThSeUhmNnZvYlpBTGtrSHdIdit6dnNmVUxkVTVXMXhsYVRpdUNXVUxVb0ZIbjRJZXB5cExQeXNKdXVXVjRwdWxxTlRtUFhuRnZKVHR3PT0ifQ=="
+
+let join_req' members =
+  Fmt.str
+    {|{"members": %s, "joinerKit": "%s", "backupPassphrase":"testtesttest"}|}
+    members joiner_kit
+
+let join_req =
+  join_req'
+    {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+     {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
+
+let cluster_join =
+  Alcotest.test_case "POST /cluster/join succeeds" `Quick (fun () ->
+      let headers = admin_headers in
+      (* create a self-signed CA and get the NetHSM CSR *)
+      let log_cb (cb : Hsm.cb) =
+        match cb with
+        | Join_cluster cfg -> Logs.info (fun f -> f "join-cluster (%s)" cfg)
+        | Set_local_config _ -> Logs.info (fun f -> f "set-local-config")
+        | Tls _ -> Logs.info (fun f -> f "tls")
+        | Reboot -> Logs.info (fun f -> f "reboot")
+        | _ -> Logs.info (fun f -> f "got another command")
+      in
+      let hsm_state, csr_pem =
+        admin_post_request
+          ~hsm_state:(operational_mock_with_mbox' log_cb)
+          ~body:(`String subject) "/config/tls/csr.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      (* sign the CSR with our CA *)
+      let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+      let ca_sub, ca_key, ca = gen_ca () in
+      let ca_pem = X509.Certificate.encode_pem ca in
+      let valid_from = Ptime.of_year 2025 |> Option.get in
+      let valid_until = Ptime.of_year 2030 |> Option.get in
+      let new_cert =
+        X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
+        |> Result.get_ok
+      in
+      let content_type = "application/x-pem-file" in
+      let new_cert_pem = X509.Certificate.encode_pem new_cert in
+      (* replace the NetHSM with that newly signed cert *)
+      let hsm_state =
+        request
+          ~expect:
+            (info "tls"
+            ^ debug "caching config to the platform"
+            ^ info "set-local-config")
+          ~hsm_state ~meth:`PUT ~headers ~content_type
+          ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      (* now set the NetHSM CA *)
+      let hsm_state =
+        request
+          ~expect:
+            (debug "caching config to the platform" ^ info "set-local-config")
+          ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String ca_pem)
+          "/config/tls/cluster-ca.pem"
+        |> returns_empty' ~with_status:`Created
+      in
+      let expect =
+        debug "caching config to the platform"
+        ^ info "set-local-config"
+        ^ warning "now erasing all data and joining cluster!"
+        ^ info
+            "join-cluster \
+             (0000000000=https://192.168.1.1:2380,node2=https://192.168.1.2:2380,node2=https://[::1]:2380)"
+        ^ debug "restoring /local/0000000000/config/unlock-salt"
+        ^ debug "restoring /local/0000000000/config/certificate"
+        ^ debug "restoring /local/0000000000/config/private-key"
+        ^ debug "restoring /local/0000000000/config/time-offset"
+        ^ info "joining cluster OK! locking now"
+      in
+      (* finally, join *)
+      admin_post_request ~expect ~hsm_state ~body:(`String join_req)
+        "/cluster/join"
+      |> returns_empty ~with_status:`No_content)
+
+let cluster_join_fail_no_ca =
+  Alcotest.test_case "POST /cluster/join fails when no CA is set" `Quick
+    (fun () ->
+      admin_post_request ~body:(`String join_req) "/cluster/join"
+      |> returns_string ~with_status:`Precondition_failed
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"cluster-ca.pem must be set\"}"))
+
+let cluster_join_fail_invalid =
+  Alcotest.test_case "POST /cluster/join fails when payload is invalid" `Quick
+    (fun () ->
+      let dup_names_req =
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
+      in
+      (admin_post_request ~body:(`String dup_names_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"duplicate names for members\"}"));
+      let dup_uris_req =
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "node2", "urls": ["https://192.168.1.1:2380/", "https://[::1]:2380"]}]|}
+      in
+      (admin_post_request ~body:(`String dup_uris_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg" "{\"message\":\"duplicate member URLs\"}"));
+      let wrong_port_req =
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2381"]},
+           {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
+      in
+      (admin_post_request ~body:(`String wrong_port_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"member URL must have explicit port 2380\"}"));
+      let missing_scheme_req =
+        join_req'
+          {|[{"name": "", "urls": ["192.168.1.1:2380"]},
+           {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
+      in
+      (admin_post_request ~body:(`String missing_scheme_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"member URL must start with https://\"}"));
+      let missing_empty_name_req =
+        join_req'
+          {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "node2", "urls": ["https://192.168.1.2:2380", "https://[::1]:2380"]}]|}
+      in
+      admin_post_request ~body:(`String missing_empty_name_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"exactly one member (the new joiner) is expected \
+              to have an empty name\"}"))
+
 let rate_limit_for_unlock =
   let path = "/unlock" in
   "rate limit for unlock" @? fun () ->
@@ -4142,6 +5321,8 @@ let rate_limit_for_unlock2 =
   | _, Some (`Too_many_requests, _, _, _) -> true
   | _ -> false
 
+let localhost_v4 = Ipaddr.(V4 V4.localhost)
+
 let rate_limit_for_get =
   let path = "/system/info" in
   "rate limit for get" @? fun () ->
@@ -4155,9 +5336,7 @@ let rate_limit_for_get =
   ignore (request ~expect ~hsm_state ~headers path);
   match request ~hsm_state ~headers path with
   | _, Some (`Too_many_requests, _, _, _) -> (
-      match
-        request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-      with
+      match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
       | _, Some (`OK, _, _, _) -> true
       | _ -> false)
   | _ -> false
@@ -4169,14 +5348,12 @@ let reset_rate_limit_after_successful_login =
   let headers = auth_header "admin" "no valid password" in
   (* one request left before the rate limit returns Too_many_requests *)
   (* reset the rate limit by a successful request *)
-  match
-    request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-  with
+  match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
   | _, Some (`OK, _, _, _) -> (
       (* test rate_limit requests again *)
-      match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+      match request ~hsm_state ~headers ~ip:localhost_v4 path with
       | _, Some (`Unauthorized, _, _, _) -> (
-          match request ~hsm_state ~headers ~ip:Ipaddr.V4.localhost path with
+          match request ~hsm_state ~headers ~ip:localhost_v4 path with
           | _, Some (`Too_many_requests, _, _, _) -> true
           | _ -> false)
       | _ -> false)
@@ -4188,13 +5365,9 @@ let reset_rate_limit_after_successful_login_2 =
    are fine)"
   @? fun () ->
   let hsm_state = operational_mock () in
-  match
-    request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-  with
+  match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
   | _, Some (`OK, _, _, _) -> (
-      match
-        request ~hsm_state ~headers:admin_headers ~ip:Ipaddr.V4.localhost path
-      with
+      match request ~hsm_state ~headers:admin_headers ~ip:localhost_v4 path with
       | _, Some (`OK, _, _, _) -> true
       | _ -> false)
   | _ -> false
@@ -4672,26 +5845,32 @@ let () =
           system_backup_and_restore_no_backuppassphrase_fails;
           system_backup_and_restore_unattended;
           system_backup_and_restore_unattended_changed_devkey;
+          system_backup_and_restore_unattended_changed_all;
           system_backup_and_restore_changed_devkey;
+          system_backup_and_restore_changed_all;
           system_backup_and_restore_operational;
+          system_backup_and_restore_operational_changed_devkey;
+          system_backup_and_restore_operational_changed_all;
+          system_backup_and_restore_operational_unattended;
+          system_backup_and_restore_operational_ca_before;
+          system_backup_and_restore_operational_changed_devkey_ca_before;
+          system_backup_and_restore_operational_changed_devkey_unattended;
+          system_backup_and_restore_operational_changed_all_unattended;
           system_backup_and_restore_operational_without_backuppassphrase;
           system_backup_post_accept_header;
+          system_restore_v0_backup;
+          system_restore_v0_backup_changed_devkey;
+          system_restore_v0_backup_unattended;
+          system_restore_v0_backup_unattended_changed_devkey;
+          system_restore_v0_backup_operational;
+          system_restore_v0_backup_operational_changed_devkey;
+          system_restore_v0_backup_operational_unattended;
+          system_restore_v0_backup_operational_unattended_changed_devkey;
         ] );
-      ( "/unlock",
-        [
-          unlock_ok;
-          unlock_failed;
-          unlock_failed_two;
-          unlock_twice;
-          unlock_fails_wrong_device_key;
-        ] );
+      ("/unlock", [ unlock_ok; unlock_failed; unlock_failed_two; unlock_twice ]);
       ("/lock", [ lock_ok; lock_failed; lock_nonroot_fails ]);
       ( "/config/unattended_boot",
-        [
-          get_unattended_boot_ok;
-          unattended_boot_succeeds;
-          unattended_boot_failed_wrong_device_key;
-        ] );
+        [ get_unattended_boot_ok; unattended_boot_succeeds ] );
       ( "/config/unlock-passphrase",
         [ change_unlock_passphrase; change_unlock_passphrase_empty ] );
       ("/config/tls/public.pem", [ get_config_tls_public_pem ]);
@@ -4700,6 +5879,13 @@ let () =
           get_config_tls_cert_pem;
           put_config_tls_cert_pem;
           put_config_tls_cert_pem_fail;
+        ] );
+      ( "/config/tls/cluster-ca.pem",
+        [
+          get_config_tls_cluster_ca_pem;
+          put_config_tls_cluster_ca_pem_fail_invalid;
+          put_config_tls_cluster_ca_pem_fail_not_signed;
+          put_config_tls_cluster_ca_pem;
         ] );
       ( "/config/tls/csr",
         [
@@ -4717,7 +5903,12 @@ let () =
           post_config_tls_generate_bad_length;
         ] );
       ( "/config/network",
-        [ config_network_ok; config_network_set_ok; config_network_set_fail ] );
+        [
+          config_network_ok;
+          config_network_set_ok;
+          config_network_set_ipv6_ok;
+          config_network_set_fail;
+        ] );
       ( "/config/logging",
         [ config_logging_ok; config_logging_set_ok; config_logging_set_fail ] );
       ( "/config/time",
@@ -4725,7 +5916,7 @@ let () =
       ( "/config/backup-passphrase",
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
-      ("config version but no unlock salt", [ config_version_but_no_salt ]);
+      ("config store with wrong device key", [ boot_device_key_change_fails ]);
       ("/namespaces", [ namespaces_get; namespaces_get_nuser; namespaces_seq ]);
       ( "/namespaces/namespace1",
         [
@@ -4951,6 +6142,10 @@ let () =
           keys_key_version_cert_put_fails;
           keys_key_version_cert_delete_fails;
         ] );
+      ( "/cluster/members",
+        [ cluster_member_ops_not_etcd; cluster_member_ops_admin_only ] );
+      ( "/cluster/join",
+        [ cluster_join; cluster_join_fail_no_ca; cluster_join_fail_invalid ] );
       ( "rate limit",
         [
           rate_limit_for_get;

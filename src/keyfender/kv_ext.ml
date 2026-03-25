@@ -99,25 +99,82 @@ module Range = struct
   let range_end t = Option.map (fun stop -> Key.(t.prefix / stop)) t.stop
 end
 
+module type Clustered = sig
+  type t
+  type member = { id : int64; name : string; urls : string list }
+  type cluster_error = [ `Cluster_error of string ]
+
+  val my_id : t -> int64
+  val member_list : t -> (member list, cluster_error) result Lwt.t
+  val member_remove : id:int64 -> t -> (member list, cluster_error) result Lwt.t
+
+  val member_update :
+    id:int64 ->
+    urls:string list ->
+    t ->
+    (member list, cluster_error) result Lwt.t
+
+  val member_add :
+    urls:string list -> t -> (member list, cluster_error) result Lwt.t
+end
+
+type event = { kind : [ `Put | `Delete ]; key : Mirage_kv.key }
+
 module type Ranged = sig
   include RW
 
   val list_range :
     t -> Range.t -> ((key * [ `Value | `Dictionary ]) list, error) result Lwt.t
   (** Return all keys in range that correspond to an entry in kv *)
+
+  val create_watch : t -> Range.t -> (event -> unit Lwt.t) -> unit
+end
+
+module type Platform = sig
+  include Ranged
+  module Cluster : Clustered with type t := t
+
+  val clear_watches : t -> unit
+
+  val atomic_set_if_no_restore :
+    t -> key -> string -> (bool, write_error) result Lwt.t
+  (** Sets a key to a value only if a global restore is not in progress. Returns
+      true if it succeeded, false if a restore was in progress *)
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
     ranged search *)
-module Make_ranged (KV : RW) : Ranged with type t = KV.t = struct
+module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
   include KV
 
   let list_range t range =
     let open Lwt_result.Infix in
     KV.list t (Range.prefix range) >|= fun items ->
     List.filter (fun (k, _) -> Range.within range k) items
+
+  let create_watch _ _ _ = ()
+  let clear_watches _ = ()
+
+  let atomic_set_if_no_restore t k v =
+    set t k v |> Lwt_result.map (fun () -> true)
+
+  module Cluster = struct
+    type member = { id : int64; name : string; urls : string list }
+    type cluster_error = [ `Cluster_error of string ]
+
+    let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
+    let my_id _ = 0xdeadbeefL
+
+    let member_list _ =
+      Lwt_result.return [ { id = 0xdeadbeefL; name = "mock"; urls = [] } ]
+
+    let member_remove ~id:_ _ = not_etcd
+    let member_update ~id:_ ~urls:_ _ = not_etcd
+    let member_add ~urls:_ _ = not_etcd
+  end
 end
 
+(* TODO rename to specialized = typed + ranged without cluster? *)
 module type Typed_ranged = sig
   include Ranged
   include Typed with type t := t and type error := error

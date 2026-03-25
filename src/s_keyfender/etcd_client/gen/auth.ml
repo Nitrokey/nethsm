@@ -11,7 +11,7 @@
     debug=false
     annot='[@@deriving show { with_path = false}]'
     opens=[]
-    int64_as_int=true
+    int64_as_int=false
     int32_as_int=true
     fixed_as_int=false
     singleton_record=false

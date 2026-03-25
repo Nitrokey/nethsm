@@ -38,11 +38,11 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 **Boot Mode**:The available _Boot Modes_ are _Attended Boot_ and _Unattended Boot_. See the user documentation for more information.
 
-**Configuration Store**: An unencrypted data store containing system configuration, including: network configuration, TLS endpoint configuration (certificates and private key), logging and metrics configuration.
+**Configuration Store**: A data store containing system configuration, including: network configuration, TLS endpoint configuration (certificates and private key), logging and metrics configuration. Some configurations are global (shared by members in a cluster) and encrypted with the _Domain Key_. The others are device-dependent (local) and encrypted with the _Device Key_ (see the `clustering.md` documentation for more details).
 
-**Device Key**: A device-dependent key that is securely stored by the TPM and only accessible if signed and unmodified NetHSM software is running. The _Device Key_ is used to encrypt the data in the _Domain Key Store_.
+**Device Key**: A device-dependent key that is securely stored by the TPM and only accessible if signed and unmodified NetHSM software is running. The _Device Key_ is used to encrypt the data in the _Domain Key Store_ and part of the _Configuration Store_.
 
-**Domain Key**: A cryptographic key used to encrypt data in the _Authentication Store_ and _Key Store_.
+**Domain Key**: A cryptographic key used to encrypt data in the _Authentication Store_, the _Key Store_, the _Namespace Store_ and part of the _Configuration Store_.
 
 **Domain Key Store**: A data store containing encrypted _Domain Keys_.
 
@@ -50,17 +50,19 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 **Key Store**: A data store containing encrypted assets (keys).
 
+**Namespace Store**: A data store containing encrypted details about existing namespaces.
+
 **Role**: Each user account configured on the NetHSM has a single _Role_ assigned to it. _Roles_ are referred to as *R-Name* throughout this document. See the [user documentation](https://docs.nitrokey.com/nethsm/) for a detailed list.
 
 **Subject**: An independent piece of software separated by Muen from others. _Subjects_ are referred to as *S-Name* throughout this document. See [Security Design](#security-design) for details.
 
 **System Software**: The NetHSM _System Software_, i.e. Muen and all subjects without the _Firmware_.
 
-**Unlock Key**: An _Unlock Key_ is an ephemeral key required to decrypt the _Domain Key_, gaining access to the encrypted _Authentication Store_ and _Key Store_.
+**Unlock Key**: An _Unlock Key_ is an ephemeral key required to decrypt the _Domain Key_, gaining access to the encrypted _Authentication Store_, _Key Store_ and _Namespace Store_.
 
 **Unlock Passphrase**: The _Unlock Passphrase_ is used to derive an _Unlock Key_ and must be provided by the user at boot time, unless _Unattended Boot_ has been configured.
 
-**User Data**: Used collectively to refer to all _User Data_ persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_ and _Key Store_. See [Data Model](#data-model) for details.
+**User Data**: Used collectively to refer to all _User Data_ persistently stored on the NetHSM, i.e. the _Domain Key Store_, _Configuration Store_, _Authentication Store_, _Key Store_ and _Namespace Store_. See [Data Model](#data-model) for details.
 
 **Verified Boot**: The process used by the _Firmware_ to ensure that only _System Software_ cryptographically signed with a trusted key can be booted on the NetHSM hardware. See [Verified Boot](#verified-boot) for details.
 
@@ -93,9 +95,14 @@ For each data store, the diagram shows, as a high-level overview, which types of
 
 ![Encryption Architecture](EncryptionArchitecture.svg)
 
-The _Authentication Store_ and _Key Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the subject **S-Keyfender** has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
+The _Authentication Store_,  _Key Store_ and _Namespace Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the subject **S-Keyfender** has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
 The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with the _Device Key_.
+
+The _Configuration Store_ contains global configurations shared across members
+of a cluster (e.g. the _Backup Key_) which are encrypted with the _Domain Key_.
+The other configurations are device-dependent (local) and encrypted with the
+_Device Key_ of the device owning them.
 
 The _Domain Key Store_ contains two "slots" for encrypted _Domain Keys_; which slot is used depends on whether or not the NetHSM is configured for _Unattended Boot_. Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
@@ -126,6 +133,15 @@ During _Attended Boot_, (see Figure 2: Encryption Architecture, left and right h
 For the avoidance of doubt: The act of Enabling _Unattended Boot_ causes **S-Keyfender** to populate slot 1 with a _Domain Key_ encrypted with _only_ the _Device Key_. Conversely, Disabling _Unattended Boot_ causes **S-Keyfender** to erase (overwrite) the contents of slot 1. At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
 Among others, the described hardware binding and encryption prevents that (a copy of) the disk of one device can be decrypted in a different device.
+
+### How encryption keys change
+
+The _Device Key_ persists across reboots, and cannot change during normal
+operation. It is however re-generated after a factory reset.
+
+The _Domain Key_ persists across reboots. It is created when first provisioning,
+and cannot change during normal operation, except when applying an operational
+restore with a backup from another device.
 
 ## Technical Architecture
 
@@ -167,28 +183,27 @@ Additionally there might be the possibility to set the system RTC from outside, 
 
 ### Backup and Restore
 
-Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using the key derivation function. When a _Backup Passphrase_ is configured or changed by an *R-Administrator*, the resulting _Backup Key_ is stored in the unencrypted _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an *R-Administrator* and a _Backup Key_ exists.
+Every backup is encrypted with a _Backup Key_, which is computed from the _Backup Passphrase_ using the key derivation function. When a _Backup Passphrase_ is configured or changed by an *R-Administrator*, the resulting _Backup Key_ is stored in the _Configuration Store_. The backup HTTPS endpoint is only enabled after the _Backup Passphrase_ has been configured by an *R-Administrator* and a _Backup Key_ exists.
 
-The backup is double-encrypted: The outer encryption layer uses the _Backup Key_. The data contained is the unencrypted _Configuration Store_, the _Domain Key Store_, which is encrypted with the _Device Key_, and the _Authentication Store_ and _Key Store_, which both are encrypted with the _Domain Key_ as an inner encryption layer.
+The backup is double-encrypted: The outer encryption layer uses the _Backup Key_. The data contained is the _Configuration Store_, which is encrypted with both the _Device_ or _Domain Key_, the _Domain Key Store_, which is encrypted with the _Device Key_, and the _Authentication Store_ and _Key Store_, which both are encrypted with the _Domain Key_ as an inner encryption layer.
 
-In order to allow restoring the backup to another device, the _locked Domain Key_, that is the _Domain Key_ only encrypted with the _Unlock Key_ and _not_ encrypted with the _Device Key_ is additionally stored in the backup.
+In order to allow restoring the backup to another device, the _locked Domain Key_, that is the _Domain Key_ only encrypted with the _Unlock Key_ and _not_ encrypted with the _Device Key_ is additionally stored in the backup. Furthermore, the device ID of the HSM that the device was performed on as well as the key needed to decrypt its local configs is stored, so they can be decrypted and restored on another device.
 
-This implies that:
-
-1. To gain access to all data contained in a backup (notably the encrypted contents of the _Authentication Store_ and _Key Store_), _both_ the _Backup Key_ and an _Unlock Key_ are required.
-2. Storing the _Backup Key_ in the unencrypted _Configuration Store_ is not a security risk (does not change the threat model), as the only data additionally protected by the _Backup Key_ is that contained in the same unencrypted _Configuration Store_. An attacker that has physical access to the NetHSM can already gain access to this data.
+This implies that to gain access to all data contained in a backup (notably the encrypted contents of the _Authentication Store_, _Key Store_ and _Namespace Store_), _both_ the _Backup Key_ and an _Unlock Key_ are required.
 
 The backup mechanism is designed this way to support automated backups: Once the _Backup Passphrase_ has been configured by an *R-Administrator*, an external client can periodically fetch the backup endpoint and store the backup file. This backup client only requires credentials for an *R-Backup* user account, and is _not_ able to decrypt the backup, neither the outer nor the inner layer.
 
 When a backup is initiated, *S-Keyfender* prepares a backup, encrypts it with the stored _Backup Key_ and sends it to the requesting client.
+When preparing backups, *S-Keyfender* serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a binary format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the content of each data store is de-serialized from the binary format and inserted into the store.
 
 During system restore, the backup is decrypted by *S-Keyfender* using an ephemeral _Backup Key_ computed from the _Backup Passphrase_ provided by the user and, if the decryption is successful, all _User Data_ is restored. In order to be able to operate on the restored data, the NetHSM also requires an _Unlock Key_. In practice this means that either the corresponding _Unlock Passphrase_ current at the time of the backup must be known to the person restoring the backup, or the backup must have been restored on the same hardware unit which has created it, and _Unattended Boot_ must have been enabled. Restoring a backup of a device with _Unattended Boot_ on a different device results in an _Attended Boot_ which requires the _Unlock Passphrase_. For details refer to [Encryption Architecture](#encryption-architecture).
 
-**Note (Operational)**: When restoring from an operational state, only _Authentication Store_ and _Key Store_ are restored. Data in _Configuration Store_ and _Domain Key Store_ is ignored.
+**Note (Operational)**: Restoring from an operational state is called a partial restore. A partial restore restores data from the _Authentication Store_, the _Key Store_, the _Namespace Store_, the _Domain Store_ and only global values from the _Configuration Store_ (device-dependent configurations like network configuration or certificates are ignored). Any data (user, key, namespace) previously on the device and not present in the backup is *removed*.
 
 **Note (Unprovisioned)**: For the avoidance of doubt, partial restore is _not_ provided when restoring from an unprovisioned state. This implies that restoring a backup may change the network and TLS endpoint configuration of the NetHSM and also the _Unlock Passphrase_ and _Boot Mode_, to those current at the time of the backup.
 
-When performing backups, *S-Keyfender* serializes (but _not_ decrypts) the contents of each data store (i.e. _User Data_) into a binary format, and encrypts the result with the _Backup Key_. This will only backup a snapshot of each data store without history. During system restore, the reverse process is performed; the content of each data store is de-serialized from the binary format and inserted into the store.
+Note that it should always be possible to restore a backup made on any previous
+version of the system software.
 
 ### Communication with S-Platform
 
@@ -280,7 +295,7 @@ Each subject has only the minimum of privileges absolutely necessary for its ope
 
 Muen is implemented in Ada, a memory-safe programming language, and its isolation properties are formally verified in the Spark language. *S-Keyfender* is a MirageOS unikernel implemented in OCaml, a functional memory-safe language. MirageOS has been developed over 10 years to remove dependencies written in unsafe languages.
 
-NetHSM uses etcd to store all _User Data_. This comes with an log for each data modification, which adds accountability and rollback points for the data (currently not used).
+NetHSM uses etcd to store all _User Data_. This comes with an log for each data modification, which adds accountability and rollback points for the data (currently not used). It is also used to enable clustering multiple devices together (see `clustering.md`).
 
 ### Entropy
 

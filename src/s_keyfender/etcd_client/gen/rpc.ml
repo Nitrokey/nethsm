@@ -11,7 +11,7 @@
     debug=false
     annot='[@@deriving show { with_path = false}]'
     opens=[]
-    int64_as_int=true
+    int64_as_int=false
     int32_as_int=true
     fixed_as_int=false
     singleton_record=false
@@ -52,15 +52,15 @@ module rec Etcdserverpb : sig
   end
   and ResponseHeader : sig
     type t = {
-    cluster_id: int;(** cluster_id is the ID of the cluster which sent the response. *)
-    member_id: int;(** member_id is the ID of the member which sent the response. *)
-    revision: int;(** revision is the key-value store revision when the request was applied.
+    cluster_id: int64;(** cluster_id is the ID of the cluster which sent the response. *)
+    member_id: int64;(** member_id is the ID of the member which sent the response. *)
+    revision: int64;(** revision is the key-value store revision when the request was applied.
     For watch progress responses, the header.revision indicates progress. All future events
     received in this stream are guaranteed to have a higher revision number than the
     header.revision number. *)
-    raft_term: int;(** raft_term is the raft term when the request was applied. *)
+    raft_term: int64;(** raft_term is the raft term when the request was applied. *)
     }[@@deriving show { with_path = false}]
-    val make: ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
+    val make: ?cluster_id:int64 -> ?member_id:int64 -> ?revision:int64 -> ?raft_term:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -79,7 +79,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
+    type make_t = ?cluster_id:int64 -> ?member_id:int64 -> ?revision:int64 -> ?raft_term:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -133,9 +133,9 @@ module rec Etcdserverpb : sig
     If range_end is key plus one (e.g., "aa"+1 == "ab", "a\\xff"+1 == "b"),
     then the range request gets all keys prefixed with key.
     If both key and range_end are '\\0', then the range request returns all keys. *)
-    limit: int;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
+    limit: int64;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
     it is treated as no limit. *)
-    revision: int;(** revision is the point-in-time of the key-value store to use for the range.
+    revision: int64;(** revision is the point-in-time of the key-value store to use for the range.
     If revision is less or equal to zero, the range is over the newest key-value store.
     If the revision has been compacted, ErrCompacted is returned as a response. *)
     sort_order: SortOrder.t;(** sort_order is the order for returned sorted results. *)
@@ -148,16 +148,16 @@ module rec Etcdserverpb : sig
     with other nodes in the cluster. *)
     keys_only: bool;(** keys_only when set returns only the keys and not the values. *)
     count_only: bool;(** count_only when set returns only the count of the keys in the range. *)
-    min_mod_revision: int;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
+    min_mod_revision: int64;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
     lesser mod revisions will be filtered away. *)
-    max_mod_revision: int;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
+    max_mod_revision: int64;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
     greater mod revisions will be filtered away. *)
-    min_create_revision: int;(** min_create_revision is the lower bound for returned key create revisions; all keys with
+    min_create_revision: int64;(** min_create_revision is the lower bound for returned key create revisions; all keys with
     lesser create revisions will be filtered away. *)
-    max_create_revision: int;(** max_create_revision is the upper bound for returned key create revisions; all keys with
+    max_create_revision: int64;(** max_create_revision is the upper bound for returned key create revisions; all keys with
     greater create revisions will be filtered away. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
+    val make: ?key:bytes -> ?range_end:bytes -> ?limit:int64 -> ?revision:int64 -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int64 -> ?max_mod_revision:int64 -> ?min_create_revision:int64 -> ?max_create_revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -176,7 +176,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int64 -> ?revision:int64 -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int64 -> ?max_mod_revision:int64 -> ?min_create_revision:int64 -> ?max_create_revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -189,9 +189,9 @@ module rec Etcdserverpb : sig
     kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** kvs is the list of key-value pairs matched by the range request.
     kvs is empty when count is requested. *)
     more: bool;(** more indicates if there are more keys to return in the requested range. *)
-    count: int;(** count is set to the number of keys within the range when requested. *)
+    count: int64;(** count is set to the number of keys within the range when requested. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -210,7 +210,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -221,7 +221,7 @@ module rec Etcdserverpb : sig
     type t = {
     key: bytes;(** key is the key, in bytes, to put into the key-value store. *)
     value: bytes;(** value is the value, in bytes, to associate with the key in the key-value store. *)
-    lease: int;(** lease is the lease ID to associate with the key in the key-value store. A lease
+    lease: int64;(** lease is the lease ID to associate with the key in the key-value store. A lease
     value of 0 indicates no lease. *)
     prev_kv: bool;(** If prev_kv is set, etcd gets the previous key-value pair before changing it.
     The previous key-value pair will be returned in the put response. *)
@@ -230,7 +230,7 @@ module rec Etcdserverpb : sig
     ignore_lease: bool;(** If ignore_lease is set, etcd updates the key using its current lease.
     Returns an error if the key does not exist. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
+    val make: ?key:bytes -> ?value:bytes -> ?lease:int64 -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -249,7 +249,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
+    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int64 -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -327,10 +327,10 @@ module rec Etcdserverpb : sig
   and DeleteRangeResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    deleted: int;(** deleted is the number of keys deleted by the delete range request. *)
+    deleted: int64;(** deleted is the number of keys deleted by the delete range request. *)
     prev_kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** if prev_kv is set in the request, the previous key-value pairs will be returned. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?deleted:int64 -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -349,7 +349,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?deleted:int64 -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -454,14 +454,14 @@ module rec Etcdserverpb : sig
     result: CompareResult.t;(** result is logical comparison operation for this comparison. *)
     target: CompareTarget.t;(** target is the key-value field to inspect for the comparison. *)
     key: bytes;(** key is the subject key for the comparison operation. *)
-    target_union: [ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ];
+    target_union: [ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ];
     range_end: bytes;(** range_end compares the given target to all keys in the range \[key, range_end).
     See RangeRequest for more details on key ranges.
 
 
     TODO: fill out with most of the rest of RangeRequest fields when needed. *)
     }[@@deriving show { with_path = false}]
-    val make: ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
+    val make: ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ] -> ?range_end:bytes -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -480,7 +480,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
+    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ] -> ?range_end:bytes -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -581,12 +581,12 @@ module rec Etcdserverpb : sig
   *)
   and CompactionRequest : sig
     type t = {
-    revision: int;(** revision is the key-value store revision for the compaction operation. *)
+    revision: int64;(** revision is the key-value store revision for the compaction operation. *)
     physical: bool;(** physical is set so the RPC will wait until the compaction is physically
     applied to the local database such that compacted entries are totally
     removed from the backend database. *)
     }[@@deriving show { with_path = false}]
-    val make: ?revision:int -> ?physical:bool -> unit -> t
+    val make: ?revision:int64 -> ?physical:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -605,7 +605,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?revision:int -> ?physical:bool -> unit -> t
+    type make_t = ?revision:int64 -> ?physical:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -669,12 +669,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and HashKVRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     revision is the key-value store revision for the hash operation.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?revision:int -> unit -> t
+    val make: ?revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -693,7 +693,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?revision:int -> unit -> t
+    type make_t = ?revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -704,9 +704,9 @@ module rec Etcdserverpb : sig
     type t = {
     header: ResponseHeader.t option;
     hash: int;(** hash is the hash value computed from the responding member's MVCC keys up to a given revision. *)
-    compact_revision: int;(** compact_revision is the compacted revision of key-value store when hash begins. *)
+    compact_revision: int64;(** compact_revision is the compacted revision of key-value store when hash begins. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -725,7 +725,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -795,13 +795,13 @@ module rec Etcdserverpb : sig
     type t = {
     header: ResponseHeader.t option;(** header has the current key-value store information. The first header in the snapshot
     stream indicates the point in time of the snapshot. *)
-    remaining_bytes: int;(** remaining_bytes is the number of blob bytes to be sent after this message *)
+    remaining_bytes: int64;(** remaining_bytes is the number of blob bytes to be sent after this message *)
     blob: bytes;(** blob contains the next chunk of the snapshot in the snapshot stream. *)
     version: string;(** local version of server that created the snapshot.
     In cluster with binaries with different version, each cluster can return different result.
     Informs which etcd server version should be used when restoring the snapshot. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?remaining_bytes:int64 -> ?blob:bytes -> ?version:string -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -820,7 +820,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int64 -> ?blob:bytes -> ?version:string -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -881,7 +881,7 @@ module rec Etcdserverpb : sig
     or equal to the key argument are watched.
     If the range_end is one bit larger than the given key,
     then all keys with the prefix (the given key) will be watched. *)
-    start_revision: int;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
+    start_revision: int64;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
     progress_notify: bool;(** progress_notify is set so that the etcd server will periodically send a WatchResponse with
     no events to the new watcher if there are no recent events. It is useful when clients
     wish to recover a disconnected watcher starting from a recent known revision.
@@ -889,14 +889,14 @@ module rec Etcdserverpb : sig
     filters: FilterType.t list;(** filters filter the events at server side before it sends back to the watcher. *)
     prev_kv: bool;(** If prev_kv is set, created watcher gets the previous KV before the event happens.
     If the previous KV is already compacted, nothing will be returned. *)
-    watch_id: int;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
+    watch_id: int64;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
     Since creating a watcher in etcd is not a synchronous operation,
     this can be used ensure that ordering is correct when creating multiple
     watchers on the same stream. Creating a watcher with an ID already in
     use on the stream will cause an error to be returned. *)
     fragment: bool;(** fragment enables splitting large revisions into multiple watch responses. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
+    val make: ?key:bytes -> ?range_end:bytes -> ?start_revision:int64 -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int64 -> ?fragment:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -915,7 +915,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int64 -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int64 -> ?fragment:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -923,12 +923,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and WatchCancelRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     watch_id is the watcher id to cancel so that no more events are transmitted.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?watch_id:int -> unit -> t
+    val make: ?watch_id:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -947,7 +947,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?watch_id:int -> unit -> t
+    type make_t = ?watch_id:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -990,14 +990,14 @@ module rec Etcdserverpb : sig
   and WatchResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    watch_id: int;(** watch_id is the ID of the watcher that corresponds to the response. *)
+    watch_id: int64;(** watch_id is the ID of the watcher that corresponds to the response. *)
     created: bool;(** created is set to true if the response is for a create watch request.
     The client should record the watch_id and expect to receive events for
     the created watcher from the same stream.
     All events sent to the created watcher will attach with the same watch_id. *)
     canceled: bool;(** canceled is set to true if the response is for a cancel watch request.
     No further events will be sent to the canceled watcher. *)
-    compact_revision: int;(** compact_revision is set to the minimum index if a watcher tries to watch
+    compact_revision: int64;(** compact_revision is set to the minimum index if a watcher tries to watch
     at a compacted index.
 
     This happens when creating a watcher at a compacted revision or the watcher cannot
@@ -1009,7 +1009,7 @@ module rec Etcdserverpb : sig
     fragment: bool;(** framgment is true if large watch response was split over multiple responses. *)
     events: Imported'modules.Kv.Mvccpb.Event.t list;
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?watch_id:int64 -> ?created:bool -> ?canceled:bool -> ?compact_revision:int64 -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1028,7 +1028,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?watch_id:int64 -> ?created:bool -> ?canceled:bool -> ?compact_revision:int64 -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1037,10 +1037,10 @@ module rec Etcdserverpb : sig
   end
   and LeaseGrantRequest : sig
     type t = {
-    tTL: int;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
-    iD: int;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
+    tTL: int64;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
+    iD: int64;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
     }[@@deriving show { with_path = false}]
-    val make: ?tTL:int -> ?iD:int -> unit -> t
+    val make: ?tTL:int64 -> ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1059,7 +1059,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?tTL:int -> ?iD:int -> unit -> t
+    type make_t = ?tTL:int64 -> ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1069,11 +1069,11 @@ module rec Etcdserverpb : sig
   and LeaseGrantResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID for the granted lease. *)
-    tTL: int;(** TTL is the server chosen lease time-to-live in seconds. *)
+    iD: int64;(** ID is the lease ID for the granted lease. *)
+    tTL: int64;(** TTL is the server chosen lease time-to-live in seconds. *)
     error: string;
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?error:string -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1092,7 +1092,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?error:string -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1100,12 +1100,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and LeaseRevokeRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID to revoke. When the ID is revoked, all associated keys will be deleted.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1124,7 +1124,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1161,10 +1161,10 @@ module rec Etcdserverpb : sig
   end
   and LeaseCheckpoint : sig
     type t = {
-    iD: int;(** ID is the lease ID to checkpoint. *)
-    remaining_TTL: int;(** Remaining_TTL is the remaining time until expiry of the lease. *)
+    iD: int64;(** ID is the lease ID to checkpoint. *)
+    remaining_TTL: int64;(** Remaining_TTL is the remaining time until expiry of the lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?remaining_TTL:int -> unit -> t
+    val make: ?iD:int64 -> ?remaining_TTL:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1183,7 +1183,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?remaining_TTL:int -> unit -> t
+    type make_t = ?iD:int64 -> ?remaining_TTL:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1247,12 +1247,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and LeaseKeepAliveRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID for the lease to keep alive.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1271,7 +1271,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1281,10 +1281,10 @@ module rec Etcdserverpb : sig
   and LeaseKeepAliveResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the new time-to-live for the lease. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the new time-to-live for the lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1303,7 +1303,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1312,10 +1312,10 @@ module rec Etcdserverpb : sig
   end
   and LeaseTimeToLiveRequest : sig
     type t = {
-    iD: int;(** ID is the lease ID for the lease. *)
+    iD: int64;(** ID is the lease ID for the lease. *)
     keys: bool;(** keys is true to query all the keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?keys:bool -> unit -> t
+    val make: ?iD:int64 -> ?keys:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1334,7 +1334,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?keys:bool -> unit -> t
+    type make_t = ?iD:int64 -> ?keys:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1344,12 +1344,12 @@ module rec Etcdserverpb : sig
   and LeaseTimeToLiveResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
-    grantedTTL: int;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
+    grantedTTL: int64;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
     keys: bytes list;(** Keys is the list of keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?grantedTTL:int64 -> ?keys:bytes list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1368,7 +1368,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?grantedTTL:int64 -> ?keys:bytes list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1404,12 +1404,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and LeaseStatus : sig
-    type t = (int)
+    type t = (int64)
     (**
     TODO: int64 TTL = 2;
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1428,7 +1428,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1468,13 +1468,13 @@ module rec Etcdserverpb : sig
   end
   and Member : sig
     type t = {
-    iD: int;(** ID is the member ID for this member. *)
+    iD: int64;(** ID is the member ID for this member. *)
     name: string;(** name is the human-readable name of the member. If the member is not started, the name will be an empty string. *)
     peerURLs: string list;(** peerURLs is the list of URLs the member exposes to the cluster for communication. *)
     clientURLs: string list;(** clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
+    val make: ?iD:int64 -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1493,7 +1493,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
+    type make_t = ?iD:int64 -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1564,12 +1564,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and MemberRemoveRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to remove.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1588,7 +1588,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1628,10 +1628,10 @@ module rec Etcdserverpb : sig
   end
   and MemberUpdateRequest : sig
     type t = {
-    iD: int;(** ID is the member ID of the member to update. *)
+    iD: int64;(** ID is the member ID of the member to update. *)
     peerURLs: string list;(** peerURLs is the new list of URLs the member will use to communicate with the cluster. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?peerURLs:string list -> unit -> t
+    val make: ?iD:int64 -> ?peerURLs:string list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1650,7 +1650,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?peerURLs:string list -> unit -> t
+    type make_t = ?iD:int64 -> ?peerURLs:string list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1748,12 +1748,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and MemberPromoteRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to promote.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1772,7 +1772,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1867,12 +1867,12 @@ module rec Etcdserverpb : sig
     (**/**)
   end
   and MoveLeaderRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     targetID is the node ID for the new leader.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?targetID:int -> unit -> t
+    val make: ?targetID:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1891,7 +1891,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?targetID:int -> unit -> t
+    type make_t = ?targetID:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1948,11 +1948,11 @@ module rec Etcdserverpb : sig
     action: AlarmAction.t;(** action is the kind of alarm request to issue. The action
     may GET alarm statuses, ACTIVATE an alarm, or DEACTIVATE a
     raised alarm. *)
-    memberID: int;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
+    memberID: int64;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
     alarm request covers all members. *)
     alarm: AlarmType.t;(** alarm is the type of alarm to consider for this request. *)
     }[@@deriving show { with_path = false}]
-    val make: ?action:AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    val make: ?action:AlarmAction.t -> ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -1971,7 +1971,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?action:AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    type make_t = ?action:AlarmAction.t -> ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -1980,10 +1980,10 @@ module rec Etcdserverpb : sig
   end
   and AlarmMember : sig
     type t = {
-    memberID: int;(** memberID is the ID of the member associated with the raised alarm. *)
+    memberID: int64;(** memberID is the ID of the member associated with the raised alarm. *)
     alarm: AlarmType.t;(** alarm is the type of alarm which has been raised. *)
     }[@@deriving show { with_path = false}]
-    val make: ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    val make: ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -2002,7 +2002,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    type make_t = ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -2153,16 +2153,16 @@ module rec Etcdserverpb : sig
     type t = {
     header: ResponseHeader.t option;
     version: string;(** version is the cluster protocol version used by the responding member. *)
-    dbSize: int;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
-    leader: int;(** leader is the member ID which the responding member believes is the current leader. *)
-    raftIndex: int;(** raftIndex is the current raft committed index of the responding member. *)
-    raftTerm: int;(** raftTerm is the current raft term of the responding member. *)
-    raftAppliedIndex: int;(** raftAppliedIndex is the current raft applied index of the responding member. *)
+    dbSize: int64;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
+    leader: int64;(** leader is the member ID which the responding member believes is the current leader. *)
+    raftIndex: int64;(** raftIndex is the current raft committed index of the responding member. *)
+    raftTerm: int64;(** raftTerm is the current raft term of the responding member. *)
+    raftAppliedIndex: int64;(** raftAppliedIndex is the current raft applied index of the responding member. *)
     errors: string list;(** errors contains alarm/health information and status. *)
-    dbSizeInUse: int;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
+    dbSizeInUse: int64;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int64 -> ?leader:int64 -> ?raftIndex:int64 -> ?raftTerm:int64 -> ?raftAppliedIndex:int64 -> ?errors:string list -> ?dbSizeInUse:int64 -> ?isLearner:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -2181,7 +2181,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int64 -> ?leader:int64 -> ?raftIndex:int64 -> ?raftTerm:int64 -> ?raftAppliedIndex:int64 -> ?errors:string list -> ?dbSizeInUse:int64 -> ?isLearner:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -2757,9 +2757,9 @@ module rec Etcdserverpb : sig
     type t = {
     header: ResponseHeader.t option;
     enabled: bool;
-    authRevision: int;(** authRevision is the current revision of auth store *)
+    authRevision: int64;(** authRevision is the current revision of auth store *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -2778,7 +2778,7 @@ module rec Etcdserverpb : sig
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -3668,15 +3668,15 @@ end = struct
   end
   and ResponseHeader : sig
     type t = {
-    cluster_id: int;(** cluster_id is the ID of the cluster which sent the response. *)
-    member_id: int;(** member_id is the ID of the member which sent the response. *)
-    revision: int;(** revision is the key-value store revision when the request was applied.
+    cluster_id: int64;(** cluster_id is the ID of the cluster which sent the response. *)
+    member_id: int64;(** member_id is the ID of the member which sent the response. *)
+    revision: int64;(** revision is the key-value store revision when the request was applied.
     For watch progress responses, the header.revision indicates progress. All future events
     received in this stream are guaranteed to have a higher revision number than the
     header.revision number. *)
-    raft_term: int;(** raft_term is the raft term when the request was applied. *)
+    raft_term: int64;(** raft_term is the raft term when the request was applied. *)
     }[@@deriving show { with_path = false}]
-    val make: ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
+    val make: ?cluster_id:int64 -> ?member_id:int64 -> ?revision:int64 -> ?raft_term:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -3695,7 +3695,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
+    type make_t = ?cluster_id:int64 -> ?member_id:int64 -> ?revision:int64 -> ?raft_term:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -3705,28 +3705,28 @@ end = struct
     module This'_ = ResponseHeader
     let name () = ".etcdserverpb.ResponseHeader"
     type t = {
-    cluster_id: int;(** cluster_id is the ID of the cluster which sent the response. *)
-    member_id: int;(** member_id is the ID of the member which sent the response. *)
-    revision: int;(** revision is the key-value store revision when the request was applied.
+    cluster_id: int64;(** cluster_id is the ID of the cluster which sent the response. *)
+    member_id: int64;(** member_id is the ID of the member which sent the response. *)
+    revision: int64;(** revision is the key-value store revision when the request was applied.
     For watch progress responses, the header.revision indicates progress. All future events
     received in this stream are guaranteed to have a higher revision number than the
     header.revision number. *)
-    raft_term: int;(** raft_term is the raft term when the request was applied. *)
+    raft_term: int64;(** raft_term is the raft term when the request was applied. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?cluster_id:int -> ?member_id:int -> ?revision:int -> ?raft_term:int -> unit -> t
-    let make ?(cluster_id = 0) ?(member_id = 0) ?(revision = 0) ?(raft_term = 0) () = { cluster_id; member_id; revision; raft_term }
+    type make_t = ?cluster_id:int64 -> ?member_id:int64 -> ?revision:int64 -> ?raft_term:int64 -> unit -> t
+    let make ?(cluster_id = 0L) ?(member_id = 0L) ?(revision = 0L) ?(raft_term = 0L) () = { cluster_id; member_id; revision; raft_term }
     let merge =
-    let merge_cluster_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "cluster_id", "clusterId"), uint64_int, (0)) ) in
-    let merge_member_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "member_id", "memberId"), uint64_int, (0)) ) in
-    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "revision", "revision"), int64_int, (0)) ) in
-    let merge_raft_term = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "raft_term", "raftTerm"), uint64_int, (0)) ) in
+    let merge_cluster_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "cluster_id", "clusterId"), uint64, (0L)) ) in
+    let merge_member_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "member_id", "memberId"), uint64, (0L)) ) in
+    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "revision", "revision"), int64, (0L)) ) in
+    let merge_raft_term = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "raft_term", "raftTerm"), uint64, (0L)) ) in
     fun t1 t2 -> {
     cluster_id = (merge_cluster_id t1.cluster_id t2.cluster_id);
     member_id = (merge_member_id t1.member_id t2.member_id);
     revision = (merge_revision t1.revision t2.revision);
     raft_term = (merge_raft_term t1.raft_term t2.raft_term);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "cluster_id", "clusterId"), uint64_int, (0)) ^:: basic ((2, "member_id", "memberId"), uint64_int, (0)) ^:: basic ((3, "revision", "revision"), int64_int, (0)) ^:: basic ((4, "raft_term", "raftTerm"), uint64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "cluster_id", "clusterId"), uint64, (0L)) ^:: basic ((2, "member_id", "memberId"), uint64, (0L)) ^:: basic ((3, "revision", "revision"), int64, (0L)) ^:: basic ((4, "raft_term", "raftTerm"), uint64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { cluster_id; member_id; revision; raft_term } -> serialize writer cluster_id member_id revision raft_term
@@ -3791,9 +3791,9 @@ end = struct
     If range_end is key plus one (e.g., "aa"+1 == "ab", "a\\xff"+1 == "b"),
     then the range request gets all keys prefixed with key.
     If both key and range_end are '\\0', then the range request returns all keys. *)
-    limit: int;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
+    limit: int64;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
     it is treated as no limit. *)
-    revision: int;(** revision is the point-in-time of the key-value store to use for the range.
+    revision: int64;(** revision is the point-in-time of the key-value store to use for the range.
     If revision is less or equal to zero, the range is over the newest key-value store.
     If the revision has been compacted, ErrCompacted is returned as a response. *)
     sort_order: SortOrder.t;(** sort_order is the order for returned sorted results. *)
@@ -3806,16 +3806,16 @@ end = struct
     with other nodes in the cluster. *)
     keys_only: bool;(** keys_only when set returns only the keys and not the values. *)
     count_only: bool;(** count_only when set returns only the count of the keys in the range. *)
-    min_mod_revision: int;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
+    min_mod_revision: int64;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
     lesser mod revisions will be filtered away. *)
-    max_mod_revision: int;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
+    max_mod_revision: int64;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
     greater mod revisions will be filtered away. *)
-    min_create_revision: int;(** min_create_revision is the lower bound for returned key create revisions; all keys with
+    min_create_revision: int64;(** min_create_revision is the lower bound for returned key create revisions; all keys with
     lesser create revisions will be filtered away. *)
-    max_create_revision: int;(** max_create_revision is the upper bound for returned key create revisions; all keys with
+    max_create_revision: int64;(** max_create_revision is the upper bound for returned key create revisions; all keys with
     greater create revisions will be filtered away. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
+    val make: ?key:bytes -> ?range_end:bytes -> ?limit:int64 -> ?revision:int64 -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int64 -> ?max_mod_revision:int64 -> ?min_create_revision:int64 -> ?max_create_revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -3834,7 +3834,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int64 -> ?revision:int64 -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int64 -> ?max_mod_revision:int64 -> ?min_create_revision:int64 -> ?max_create_revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -3958,9 +3958,9 @@ end = struct
     If range_end is key plus one (e.g., "aa"+1 == "ab", "a\\xff"+1 == "b"),
     then the range request gets all keys prefixed with key.
     If both key and range_end are '\\0', then the range request returns all keys. *)
-    limit: int;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
+    limit: int64;(** limit is a limit on the number of keys returned for the request. When limit is set to 0,
     it is treated as no limit. *)
-    revision: int;(** revision is the point-in-time of the key-value store to use for the range.
+    revision: int64;(** revision is the point-in-time of the key-value store to use for the range.
     If revision is less or equal to zero, the range is over the newest key-value store.
     If the revision has been compacted, ErrCompacted is returned as a response. *)
     sort_order: SortOrder.t;(** sort_order is the order for returned sorted results. *)
@@ -3973,31 +3973,31 @@ end = struct
     with other nodes in the cluster. *)
     keys_only: bool;(** keys_only when set returns only the keys and not the values. *)
     count_only: bool;(** count_only when set returns only the count of the keys in the range. *)
-    min_mod_revision: int;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
+    min_mod_revision: int64;(** min_mod_revision is the lower bound for returned key mod revisions; all keys with
     lesser mod revisions will be filtered away. *)
-    max_mod_revision: int;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
+    max_mod_revision: int64;(** max_mod_revision is the upper bound for returned key mod revisions; all keys with
     greater mod revisions will be filtered away. *)
-    min_create_revision: int;(** min_create_revision is the lower bound for returned key create revisions; all keys with
+    min_create_revision: int64;(** min_create_revision is the lower bound for returned key create revisions; all keys with
     lesser create revisions will be filtered away. *)
-    max_create_revision: int;(** max_create_revision is the upper bound for returned key create revisions; all keys with
+    max_create_revision: int64;(** max_create_revision is the upper bound for returned key create revisions; all keys with
     greater create revisions will be filtered away. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int -> ?revision:int -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int -> ?max_mod_revision:int -> ?min_create_revision:int -> ?max_create_revision:int -> unit -> t
-    let make ?(key = (Bytes.of_string {||})) ?(range_end = (Bytes.of_string {||})) ?(limit = 0) ?(revision = 0) ?(sort_order = SortOrder.from_int_exn 0) ?(sort_target = SortTarget.from_int_exn 0) ?(serializable = false) ?(keys_only = false) ?(count_only = false) ?(min_mod_revision = 0) ?(max_mod_revision = 0) ?(min_create_revision = 0) ?(max_create_revision = 0) () = { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision }
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?limit:int64 -> ?revision:int64 -> ?sort_order:SortOrder.t -> ?sort_target:SortTarget.t -> ?serializable:bool -> ?keys_only:bool -> ?count_only:bool -> ?min_mod_revision:int64 -> ?max_mod_revision:int64 -> ?min_create_revision:int64 -> ?max_create_revision:int64 -> unit -> t
+    let make ?(key = (Bytes.of_string {||})) ?(range_end = (Bytes.of_string {||})) ?(limit = 0L) ?(revision = 0L) ?(sort_order = SortOrder.from_int_exn 0) ?(sort_target = SortTarget.from_int_exn 0) ?(serializable = false) ?(keys_only = false) ?(count_only = false) ?(min_mod_revision = 0L) ?(max_mod_revision = 0L) ?(min_create_revision = 0L) ?(max_create_revision = 0L) () = { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision }
     let merge =
     let merge_key = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ) in
     let merge_range_end = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_limit = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "limit", "limit"), int64_int, (0)) ) in
-    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "revision", "revision"), int64_int, (0)) ) in
+    let merge_limit = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "limit", "limit"), int64, (0L)) ) in
+    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "revision", "revision"), int64, (0L)) ) in
     let merge_sort_order = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "sort_order", "sortOrder"), (enum (module SortOrder)), (SortOrder.from_int_exn 0)) ) in
     let merge_sort_target = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "sort_target", "sortTarget"), (enum (module SortTarget)), (SortTarget.from_int_exn 0)) ) in
     let merge_serializable = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "serializable", "serializable"), bool, (false)) ) in
     let merge_keys_only = Runtime'.Merge.merge Runtime'.Spec.( basic ((8, "keys_only", "keysOnly"), bool, (false)) ) in
     let merge_count_only = Runtime'.Merge.merge Runtime'.Spec.( basic ((9, "count_only", "countOnly"), bool, (false)) ) in
-    let merge_min_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((10, "min_mod_revision", "minModRevision"), int64_int, (0)) ) in
-    let merge_max_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((11, "max_mod_revision", "maxModRevision"), int64_int, (0)) ) in
-    let merge_min_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((12, "min_create_revision", "minCreateRevision"), int64_int, (0)) ) in
-    let merge_max_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((13, "max_create_revision", "maxCreateRevision"), int64_int, (0)) ) in
+    let merge_min_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((10, "min_mod_revision", "minModRevision"), int64, (0L)) ) in
+    let merge_max_mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((11, "max_mod_revision", "maxModRevision"), int64, (0L)) ) in
+    let merge_min_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((12, "min_create_revision", "minCreateRevision"), int64, (0L)) ) in
+    let merge_max_create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((13, "max_create_revision", "maxCreateRevision"), int64, (0L)) ) in
     fun t1 t2 -> {
     key = (merge_key t1.key t2.key);
     range_end = (merge_range_end t1.range_end t2.range_end);
@@ -4013,7 +4013,7 @@ end = struct
     min_create_revision = (merge_min_create_revision t1.min_create_revision t2.min_create_revision);
     max_create_revision = (merge_max_create_revision t1.max_create_revision t2.max_create_revision);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "limit", "limit"), int64_int, (0)) ^:: basic ((4, "revision", "revision"), int64_int, (0)) ^:: basic ((5, "sort_order", "sortOrder"), (enum (module SortOrder)), (SortOrder.from_int_exn 0)) ^:: basic ((6, "sort_target", "sortTarget"), (enum (module SortTarget)), (SortTarget.from_int_exn 0)) ^:: basic ((7, "serializable", "serializable"), bool, (false)) ^:: basic ((8, "keys_only", "keysOnly"), bool, (false)) ^:: basic ((9, "count_only", "countOnly"), bool, (false)) ^:: basic ((10, "min_mod_revision", "minModRevision"), int64_int, (0)) ^:: basic ((11, "max_mod_revision", "maxModRevision"), int64_int, (0)) ^:: basic ((12, "min_create_revision", "minCreateRevision"), int64_int, (0)) ^:: basic ((13, "max_create_revision", "maxCreateRevision"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "limit", "limit"), int64, (0L)) ^:: basic ((4, "revision", "revision"), int64, (0L)) ^:: basic ((5, "sort_order", "sortOrder"), (enum (module SortOrder)), (SortOrder.from_int_exn 0)) ^:: basic ((6, "sort_target", "sortTarget"), (enum (module SortTarget)), (SortTarget.from_int_exn 0)) ^:: basic ((7, "serializable", "serializable"), bool, (false)) ^:: basic ((8, "keys_only", "keysOnly"), bool, (false)) ^:: basic ((9, "count_only", "countOnly"), bool, (false)) ^:: basic ((10, "min_mod_revision", "minModRevision"), int64, (0L)) ^:: basic ((11, "max_mod_revision", "maxModRevision"), int64, (0L)) ^:: basic ((12, "min_create_revision", "minCreateRevision"), int64, (0L)) ^:: basic ((13, "max_create_revision", "maxCreateRevision"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { key; range_end; limit; revision; sort_order; sort_target; serializable; keys_only; count_only; min_mod_revision; max_mod_revision; min_create_revision; max_create_revision } -> serialize writer key range_end limit revision sort_order sort_target serializable keys_only count_only min_mod_revision max_mod_revision min_create_revision max_create_revision
@@ -4037,9 +4037,9 @@ end = struct
     kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** kvs is the list of key-value pairs matched by the range request.
     kvs is empty when count is requested. *)
     more: bool;(** more indicates if there are more keys to return in the requested range. *)
-    count: int;(** count is set to the number of keys within the range when requested. *)
+    count: int64;(** count is set to the number of keys within the range when requested. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -4058,7 +4058,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -4072,22 +4072,22 @@ end = struct
     kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** kvs is the list of key-value pairs matched by the range request.
     kvs is empty when count is requested. *)
     more: bool;(** more indicates if there are more keys to return in the requested range. *)
-    count: int;(** count is set to the number of keys within the range when requested. *)
+    count: int64;(** count is set to the number of keys within the range when requested. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int -> unit -> t
-    let make ?header ?(kvs = []) ?(more = false) ?(count = 0) () = { header; kvs; more; count }
+    type make_t = ?header:ResponseHeader.t -> ?kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> ?more:bool -> ?count:int64 -> unit -> t
+    let make ?header ?(kvs = []) ?(more = false) ?(count = 0L) () = { header; kvs; more; count }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
     let merge_kvs = Runtime'.Merge.merge Runtime'.Spec.( repeated ((2, "kvs", "kvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ) in
     let merge_more = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "more", "more"), bool, (false)) ) in
-    let merge_count = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "count", "count"), int64_int, (0)) ) in
+    let merge_count = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "count", "count"), int64, (0L)) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
     kvs = (merge_kvs t1.kvs t2.kvs);
     more = (merge_more t1.more t2.more);
     count = (merge_count t1.count t2.count);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: repeated ((2, "kvs", "kvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ^:: basic ((3, "more", "more"), bool, (false)) ^:: basic ((4, "count", "count"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: repeated ((2, "kvs", "kvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ^:: basic ((3, "more", "more"), bool, (false)) ^:: basic ((4, "count", "count"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; kvs; more; count } -> serialize writer header kvs more count
@@ -4109,7 +4109,7 @@ end = struct
     type t = {
     key: bytes;(** key is the key, in bytes, to put into the key-value store. *)
     value: bytes;(** value is the value, in bytes, to associate with the key in the key-value store. *)
-    lease: int;(** lease is the lease ID to associate with the key in the key-value store. A lease
+    lease: int64;(** lease is the lease ID to associate with the key in the key-value store. A lease
     value of 0 indicates no lease. *)
     prev_kv: bool;(** If prev_kv is set, etcd gets the previous key-value pair before changing it.
     The previous key-value pair will be returned in the put response. *)
@@ -4118,7 +4118,7 @@ end = struct
     ignore_lease: bool;(** If ignore_lease is set, etcd updates the key using its current lease.
     Returns an error if the key does not exist. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
+    val make: ?key:bytes -> ?value:bytes -> ?lease:int64 -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -4137,7 +4137,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
+    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int64 -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -4149,7 +4149,7 @@ end = struct
     type t = {
     key: bytes;(** key is the key, in bytes, to put into the key-value store. *)
     value: bytes;(** value is the value, in bytes, to associate with the key in the key-value store. *)
-    lease: int;(** lease is the lease ID to associate with the key in the key-value store. A lease
+    lease: int64;(** lease is the lease ID to associate with the key in the key-value store. A lease
     value of 0 indicates no lease. *)
     prev_kv: bool;(** If prev_kv is set, etcd gets the previous key-value pair before changing it.
     The previous key-value pair will be returned in the put response. *)
@@ -4158,12 +4158,12 @@ end = struct
     ignore_lease: bool;(** If ignore_lease is set, etcd updates the key using its current lease.
     Returns an error if the key does not exist. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
-    let make ?(key = (Bytes.of_string {||})) ?(value = (Bytes.of_string {||})) ?(lease = 0) ?(prev_kv = false) ?(ignore_value = false) ?(ignore_lease = false) () = { key; value; lease; prev_kv; ignore_value; ignore_lease }
+    type make_t = ?key:bytes -> ?value:bytes -> ?lease:int64 -> ?prev_kv:bool -> ?ignore_value:bool -> ?ignore_lease:bool -> unit -> t
+    let make ?(key = (Bytes.of_string {||})) ?(value = (Bytes.of_string {||})) ?(lease = 0L) ?(prev_kv = false) ?(ignore_value = false) ?(ignore_lease = false) () = { key; value; lease; prev_kv; ignore_value; ignore_lease }
     let merge =
     let merge_key = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ) in
     let merge_value = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "value", "value"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_lease = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "lease", "lease"), int64_int, (0)) ) in
+    let merge_lease = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "lease", "lease"), int64, (0L)) ) in
     let merge_prev_kv = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "prev_kv", "prevKv"), bool, (false)) ) in
     let merge_ignore_value = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "ignore_value", "ignoreValue"), bool, (false)) ) in
     let merge_ignore_lease = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "ignore_lease", "ignoreLease"), bool, (false)) ) in
@@ -4175,7 +4175,7 @@ end = struct
     ignore_value = (merge_ignore_value t1.ignore_value t2.ignore_value);
     ignore_lease = (merge_ignore_lease t1.ignore_lease t2.ignore_lease);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "value", "value"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "lease", "lease"), int64_int, (0)) ^:: basic ((4, "prev_kv", "prevKv"), bool, (false)) ^:: basic ((5, "ignore_value", "ignoreValue"), bool, (false)) ^:: basic ((6, "ignore_lease", "ignoreLease"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "value", "value"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "lease", "lease"), int64, (0L)) ^:: basic ((4, "prev_kv", "prevKv"), bool, (false)) ^:: basic ((5, "ignore_value", "ignoreValue"), bool, (false)) ^:: basic ((6, "ignore_lease", "ignoreLease"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { key; value; lease; prev_kv; ignore_value; ignore_lease } -> serialize writer key value lease prev_kv ignore_value ignore_lease
@@ -4338,10 +4338,10 @@ end = struct
   and DeleteRangeResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    deleted: int;(** deleted is the number of keys deleted by the delete range request. *)
+    deleted: int64;(** deleted is the number of keys deleted by the delete range request. *)
     prev_kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** if prev_kv is set in the request, the previous key-value pairs will be returned. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?deleted:int64 -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -4360,7 +4360,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?deleted:int64 -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -4371,21 +4371,21 @@ end = struct
     let name () = ".etcdserverpb.DeleteRangeResponse"
     type t = {
     header: ResponseHeader.t option;
-    deleted: int;(** deleted is the number of keys deleted by the delete range request. *)
+    deleted: int64;(** deleted is the number of keys deleted by the delete range request. *)
     prev_kvs: Imported'modules.Kv.Mvccpb.KeyValue.t list;(** if prev_kv is set in the request, the previous key-value pairs will be returned. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?deleted:int -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
-    let make ?header ?(deleted = 0) ?(prev_kvs = []) () = { header; deleted; prev_kvs }
+    type make_t = ?header:ResponseHeader.t -> ?deleted:int64 -> ?prev_kvs:Imported'modules.Kv.Mvccpb.KeyValue.t list -> unit -> t
+    let make ?header ?(deleted = 0L) ?(prev_kvs = []) () = { header; deleted; prev_kvs }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_deleted = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "deleted", "deleted"), int64_int, (0)) ) in
+    let merge_deleted = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "deleted", "deleted"), int64, (0L)) ) in
     let merge_prev_kvs = Runtime'.Merge.merge Runtime'.Spec.( repeated ((3, "prev_kvs", "prevKvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
     deleted = (merge_deleted t1.deleted t2.deleted);
     prev_kvs = (merge_prev_kvs t1.prev_kvs t2.prev_kvs);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "deleted", "deleted"), int64_int, (0)) ^:: repeated ((3, "prev_kvs", "prevKvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "deleted", "deleted"), int64, (0L)) ^:: repeated ((3, "prev_kvs", "prevKvs"), (message (module Imported'modules.Kv.Mvccpb.KeyValue)), not_packed) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; deleted; prev_kvs } -> serialize writer header deleted prev_kvs
@@ -4571,14 +4571,14 @@ end = struct
     result: CompareResult.t;(** result is logical comparison operation for this comparison. *)
     target: CompareTarget.t;(** target is the key-value field to inspect for the comparison. *)
     key: bytes;(** key is the subject key for the comparison operation. *)
-    target_union: [ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ];
+    target_union: [ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ];
     range_end: bytes;(** range_end compares the given target to all keys in the range \[key, range_end).
     See RangeRequest for more details on key ranges.
 
 
     TODO: fill out with most of the rest of RangeRequest fields when needed. *)
     }[@@deriving show { with_path = false}]
-    val make: ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
+    val make: ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ] -> ?range_end:bytes -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -4597,7 +4597,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
+    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ] -> ?range_end:bytes -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -4718,24 +4718,24 @@ end = struct
     result: CompareResult.t;(** result is logical comparison operation for this comparison. *)
     target: CompareTarget.t;(** target is the key-value field to inspect for the comparison. *)
     key: bytes;(** key is the subject key for the comparison operation. *)
-    target_union: [ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ];
+    target_union: [ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ];
     range_end: bytes;(** range_end compares the given target to all keys in the range \[key, range_end).
     See RangeRequest for more details on key ranges.
 
 
     TODO: fill out with most of the rest of RangeRequest fields when needed. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int | `Create_revision of int | `Mod_revision of int | `Value of bytes | `Lease of int ] -> ?range_end:bytes -> unit -> t
+    type make_t = ?result:CompareResult.t -> ?target:CompareTarget.t -> ?key:bytes -> ?target_union:[ `not_set | `Version of int64 | `Create_revision of int64 | `Mod_revision of int64 | `Value of bytes | `Lease of int64 ] -> ?range_end:bytes -> unit -> t
     let make ?(result = CompareResult.from_int_exn 0) ?(target = CompareTarget.from_int_exn 0) ?(key = (Bytes.of_string {||})) ?(target_union = `not_set) ?(range_end = (Bytes.of_string {||})) () = { result; target; key; target_union; range_end }
     let merge =
     let merge_result = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "result", "result"), (enum (module CompareResult)), (CompareResult.from_int_exn 0)) ) in
     let merge_target = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "target", "target"), (enum (module CompareTarget)), (CompareTarget.from_int_exn 0)) ) in
     let merge_key = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "key", "key"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_oneof_target_union__Version = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64_int) ) in
-    let merge_oneof_target_union__Create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64_int) ) in
-    let merge_oneof_target_union__Mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64_int) ) in
+    let merge_oneof_target_union__Version = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64) ) in
+    let merge_oneof_target_union__Create_revision = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64) ) in
+    let merge_oneof_target_union__Mod_revision = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64) ) in
     let merge_oneof_target_union__Value = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), bytes) ) in
-    let merge_oneof_target_union__Lease = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64_int) ) in
+    let merge_oneof_target_union__Lease = Runtime'.Merge.merge Runtime'.Spec.( basic_req ((0, "", ""), int64) ) in
     let merge_range_end = Runtime'.Merge.merge Runtime'.Spec.( basic ((64, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ) in
     fun t1 t2 -> {
     result = (merge_result t1.result t2.result);
@@ -4751,7 +4751,7 @@ end = struct
     | (_, v2) -> v2);
     range_end = (merge_range_end t1.range_end t2.range_end);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "result", "result"), (enum (module CompareResult)), (CompareResult.from_int_exn 0)) ^:: basic ((2, "target", "target"), (enum (module CompareTarget)), (CompareTarget.from_int_exn 0)) ^:: basic ((3, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: oneof (([ oneof_elem ((4, "version", "version"), int64_int, ((fun v -> `Version v), (function `Version v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((5, "create_revision", "createRevision"), int64_int, ((fun v -> `Create_revision v), (function `Create_revision v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((6, "mod_revision", "modRevision"), int64_int, ((fun v -> `Mod_revision v), (function `Mod_revision v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((7, "value", "value"), bytes, ((fun v -> `Value v), (function `Value v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((8, "lease", "lease"), int64_int, ((fun v -> `Lease v), (function `Lease v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))) ], (function | `not_set -> failwith "Impossible case" | `Version _ -> 0 | `Create_revision _ -> 1 | `Mod_revision _ -> 2 | `Value _ -> 3 | `Lease _ -> 4))) ^:: basic ((64, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "result", "result"), (enum (module CompareResult)), (CompareResult.from_int_exn 0)) ^:: basic ((2, "target", "target"), (enum (module CompareTarget)), (CompareTarget.from_int_exn 0)) ^:: basic ((3, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: oneof (([ oneof_elem ((4, "version", "version"), int64, ((fun v -> `Version v), (function `Version v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((5, "create_revision", "createRevision"), int64, ((fun v -> `Create_revision v), (function `Create_revision v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((6, "mod_revision", "modRevision"), int64, ((fun v -> `Mod_revision v), (function `Mod_revision v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((7, "value", "value"), bytes, ((fun v -> `Value v), (function `Value v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))); oneof_elem ((8, "lease", "lease"), int64, ((fun v -> `Lease v), (function `Lease v -> v | _ -> raise (Invalid_argument "Cannot destruct given oneof")))) ], (function | `not_set -> failwith "Impossible case" | `Version _ -> 0 | `Create_revision _ -> 1 | `Mod_revision _ -> 2 | `Value _ -> 3 | `Lease _ -> 4))) ^:: basic ((64, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { result; target; key; target_union; range_end } -> serialize writer result target key target_union range_end
@@ -4917,12 +4917,12 @@ end = struct
   end
   and CompactionRequest : sig
     type t = {
-    revision: int;(** revision is the key-value store revision for the compaction operation. *)
+    revision: int64;(** revision is the key-value store revision for the compaction operation. *)
     physical: bool;(** physical is set so the RPC will wait until the compaction is physically
     applied to the local database such that compacted entries are totally
     removed from the backend database. *)
     }[@@deriving show { with_path = false}]
-    val make: ?revision:int -> ?physical:bool -> unit -> t
+    val make: ?revision:int64 -> ?physical:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -4941,7 +4941,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?revision:int -> ?physical:bool -> unit -> t
+    type make_t = ?revision:int64 -> ?physical:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -4951,21 +4951,21 @@ end = struct
     module This'_ = CompactionRequest
     let name () = ".etcdserverpb.CompactionRequest"
     type t = {
-    revision: int;(** revision is the key-value store revision for the compaction operation. *)
+    revision: int64;(** revision is the key-value store revision for the compaction operation. *)
     physical: bool;(** physical is set so the RPC will wait until the compaction is physically
     applied to the local database such that compacted entries are totally
     removed from the backend database. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?revision:int -> ?physical:bool -> unit -> t
-    let make ?(revision = 0) ?(physical = false) () = { revision; physical }
+    type make_t = ?revision:int64 -> ?physical:bool -> unit -> t
+    let make ?(revision = 0L) ?(physical = false) () = { revision; physical }
     let merge =
-    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "revision", "revision"), int64_int, (0)) ) in
+    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "revision", "revision"), int64, (0L)) ) in
     let merge_physical = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "physical", "physical"), bool, (false)) ) in
     fun t1 t2 -> {
     revision = (merge_revision t1.revision t2.revision);
     physical = (merge_physical t1.physical t2.physical);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "revision", "revision"), int64_int, (0)) ^:: basic ((2, "physical", "physical"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "revision", "revision"), int64, (0L)) ^:: basic ((2, "physical", "physical"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { revision; physical } -> serialize writer revision physical
@@ -5092,12 +5092,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and HashKVRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     revision is the key-value store revision for the hash operation.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?revision:int -> unit -> t
+    val make: ?revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5116,7 +5116,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?revision:int -> unit -> t
+    type make_t = ?revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5125,17 +5125,17 @@ end = struct
   end = struct
     module This'_ = HashKVRequest
     let name () = ".etcdserverpb.HashKVRequest"
-    type t = (int)
+    type t = (int64)
     (**
     revision is the key-value store revision for the hash operation.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?revision:int -> unit -> t
-    let make ?(revision = 0) () = (revision)
+    type make_t = ?revision:int64 -> unit -> t
+    let make ?(revision = 0L) () = (revision)
     let merge =
-    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "revision", "revision"), int64_int, (0)) ) in
+    let merge_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "revision", "revision"), int64, (0L)) ) in
     fun (t1_revision) (t2_revision) -> merge_revision t1_revision t2_revision
-    let spec () = Runtime'.Spec.( basic ((1, "revision", "revision"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "revision", "revision"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (revision) -> serialize writer revision
@@ -5157,9 +5157,9 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     hash: int;(** hash is the hash value computed from the responding member's MVCC keys up to a given revision. *)
-    compact_revision: int;(** compact_revision is the compacted revision of key-value store when hash begins. *)
+    compact_revision: int64;(** compact_revision is the compacted revision of key-value store when hash begins. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5178,7 +5178,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5190,20 +5190,20 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     hash: int;(** hash is the hash value computed from the responding member's MVCC keys up to a given revision. *)
-    compact_revision: int;(** compact_revision is the compacted revision of key-value store when hash begins. *)
+    compact_revision: int64;(** compact_revision is the compacted revision of key-value store when hash begins. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int -> unit -> t
-    let make ?header ?(hash = 0) ?(compact_revision = 0) () = { header; hash; compact_revision }
+    type make_t = ?header:ResponseHeader.t -> ?hash:int -> ?compact_revision:int64 -> unit -> t
+    let make ?header ?(hash = 0) ?(compact_revision = 0L) () = { header; hash; compact_revision }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
     let merge_hash = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "hash", "hash"), uint32_int, (0)) ) in
-    let merge_compact_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "compact_revision", "compactRevision"), int64_int, (0)) ) in
+    let merge_compact_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "compact_revision", "compactRevision"), int64, (0L)) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
     hash = (merge_hash t1.hash t2.hash);
     compact_revision = (merge_compact_revision t1.compact_revision t2.compact_revision);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "hash", "hash"), uint32_int, (0)) ^:: basic ((3, "compact_revision", "compactRevision"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "hash", "hash"), uint32_int, (0)) ^:: basic ((3, "compact_revision", "compactRevision"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; hash; compact_revision } -> serialize writer header hash compact_revision
@@ -5343,13 +5343,13 @@ end = struct
     type t = {
     header: ResponseHeader.t option;(** header has the current key-value store information. The first header in the snapshot
     stream indicates the point in time of the snapshot. *)
-    remaining_bytes: int;(** remaining_bytes is the number of blob bytes to be sent after this message *)
+    remaining_bytes: int64;(** remaining_bytes is the number of blob bytes to be sent after this message *)
     blob: bytes;(** blob contains the next chunk of the snapshot in the snapshot stream. *)
     version: string;(** local version of server that created the snapshot.
     In cluster with binaries with different version, each cluster can return different result.
     Informs which etcd server version should be used when restoring the snapshot. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?remaining_bytes:int64 -> ?blob:bytes -> ?version:string -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5368,7 +5368,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int64 -> ?blob:bytes -> ?version:string -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5380,17 +5380,17 @@ end = struct
     type t = {
     header: ResponseHeader.t option;(** header has the current key-value store information. The first header in the snapshot
     stream indicates the point in time of the snapshot. *)
-    remaining_bytes: int;(** remaining_bytes is the number of blob bytes to be sent after this message *)
+    remaining_bytes: int64;(** remaining_bytes is the number of blob bytes to be sent after this message *)
     blob: bytes;(** blob contains the next chunk of the snapshot in the snapshot stream. *)
     version: string;(** local version of server that created the snapshot.
     In cluster with binaries with different version, each cluster can return different result.
     Informs which etcd server version should be used when restoring the snapshot. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int -> ?blob:bytes -> ?version:string -> unit -> t
-    let make ?header ?(remaining_bytes = 0) ?(blob = (Bytes.of_string {||})) ?(version = {||}) () = { header; remaining_bytes; blob; version }
+    type make_t = ?header:ResponseHeader.t -> ?remaining_bytes:int64 -> ?blob:bytes -> ?version:string -> unit -> t
+    let make ?header ?(remaining_bytes = 0L) ?(blob = (Bytes.of_string {||})) ?(version = {||}) () = { header; remaining_bytes; blob; version }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_remaining_bytes = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "remaining_bytes", "remainingBytes"), uint64_int, (0)) ) in
+    let merge_remaining_bytes = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "remaining_bytes", "remainingBytes"), uint64, (0L)) ) in
     let merge_blob = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "blob", "blob"), bytes, ((Bytes.of_string {||}))) ) in
     let merge_version = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "version", "version"), string, ({||})) ) in
     fun t1 t2 -> {
@@ -5399,7 +5399,7 @@ end = struct
     blob = (merge_blob t1.blob t2.blob);
     version = (merge_version t1.version t2.version);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "remaining_bytes", "remainingBytes"), uint64_int, (0)) ^:: basic ((3, "blob", "blob"), bytes, ((Bytes.of_string {||}))) ^:: basic ((4, "version", "version"), string, ({||})) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "remaining_bytes", "remainingBytes"), uint64, (0L)) ^:: basic ((3, "blob", "blob"), bytes, ((Bytes.of_string {||}))) ^:: basic ((4, "version", "version"), string, ({||})) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; remaining_bytes; blob; version } -> serialize writer header remaining_bytes blob version
@@ -5504,7 +5504,7 @@ end = struct
     or equal to the key argument are watched.
     If the range_end is one bit larger than the given key,
     then all keys with the prefix (the given key) will be watched. *)
-    start_revision: int;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
+    start_revision: int64;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
     progress_notify: bool;(** progress_notify is set so that the etcd server will periodically send a WatchResponse with
     no events to the new watcher if there are no recent events. It is useful when clients
     wish to recover a disconnected watcher starting from a recent known revision.
@@ -5512,14 +5512,14 @@ end = struct
     filters: FilterType.t list;(** filters filter the events at server side before it sends back to the watcher. *)
     prev_kv: bool;(** If prev_kv is set, created watcher gets the previous KV before the event happens.
     If the previous KV is already compacted, nothing will be returned. *)
-    watch_id: int;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
+    watch_id: int64;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
     Since creating a watcher in etcd is not a synchronous operation,
     this can be used ensure that ordering is correct when creating multiple
     watchers on the same stream. Creating a watcher with an ID already in
     use on the stream will cause an error to be returned. *)
     fragment: bool;(** fragment enables splitting large revisions into multiple watch responses. *)
     }[@@deriving show { with_path = false}]
-    val make: ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
+    val make: ?key:bytes -> ?range_end:bytes -> ?start_revision:int64 -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int64 -> ?fragment:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5538,7 +5538,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int64 -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int64 -> ?fragment:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5597,7 +5597,7 @@ end = struct
     or equal to the key argument are watched.
     If the range_end is one bit larger than the given key,
     then all keys with the prefix (the given key) will be watched. *)
-    start_revision: int;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
+    start_revision: int64;(** start_revision is an optional revision to watch from (inclusive). No start_revision is "now". *)
     progress_notify: bool;(** progress_notify is set so that the etcd server will periodically send a WatchResponse with
     no events to the new watcher if there are no recent events. It is useful when clients
     wish to recover a disconnected watcher starting from a recent known revision.
@@ -5605,23 +5605,23 @@ end = struct
     filters: FilterType.t list;(** filters filter the events at server side before it sends back to the watcher. *)
     prev_kv: bool;(** If prev_kv is set, created watcher gets the previous KV before the event happens.
     If the previous KV is already compacted, nothing will be returned. *)
-    watch_id: int;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
+    watch_id: int64;(** If watch_id is provided and non-zero, it will be assigned to this watcher.
     Since creating a watcher in etcd is not a synchronous operation,
     this can be used ensure that ordering is correct when creating multiple
     watchers on the same stream. Creating a watcher with an ID already in
     use on the stream will cause an error to be returned. *)
     fragment: bool;(** fragment enables splitting large revisions into multiple watch responses. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int -> ?fragment:bool -> unit -> t
-    let make ?(key = (Bytes.of_string {||})) ?(range_end = (Bytes.of_string {||})) ?(start_revision = 0) ?(progress_notify = false) ?(filters = []) ?(prev_kv = false) ?(watch_id = 0) ?(fragment = false) () = { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment }
+    type make_t = ?key:bytes -> ?range_end:bytes -> ?start_revision:int64 -> ?progress_notify:bool -> ?filters:FilterType.t list -> ?prev_kv:bool -> ?watch_id:int64 -> ?fragment:bool -> unit -> t
+    let make ?(key = (Bytes.of_string {||})) ?(range_end = (Bytes.of_string {||})) ?(start_revision = 0L) ?(progress_notify = false) ?(filters = []) ?(prev_kv = false) ?(watch_id = 0L) ?(fragment = false) () = { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment }
     let merge =
     let merge_key = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ) in
     let merge_range_end = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ) in
-    let merge_start_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "start_revision", "startRevision"), int64_int, (0)) ) in
+    let merge_start_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "start_revision", "startRevision"), int64, (0L)) ) in
     let merge_progress_notify = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "progress_notify", "progressNotify"), bool, (false)) ) in
     let merge_filters = Runtime'.Merge.merge Runtime'.Spec.( repeated ((5, "filters", "filters"), (enum (module FilterType)), packed) ) in
     let merge_prev_kv = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "prev_kv", "prevKv"), bool, (false)) ) in
-    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "watch_id", "watchId"), int64_int, (0)) ) in
+    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "watch_id", "watchId"), int64, (0L)) ) in
     let merge_fragment = Runtime'.Merge.merge Runtime'.Spec.( basic ((8, "fragment", "fragment"), bool, (false)) ) in
     fun t1 t2 -> {
     key = (merge_key t1.key t2.key);
@@ -5633,7 +5633,7 @@ end = struct
     watch_id = (merge_watch_id t1.watch_id t2.watch_id);
     fragment = (merge_fragment t1.fragment t2.fragment);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "start_revision", "startRevision"), int64_int, (0)) ^:: basic ((4, "progress_notify", "progressNotify"), bool, (false)) ^:: repeated ((5, "filters", "filters"), (enum (module FilterType)), packed) ^:: basic ((6, "prev_kv", "prevKv"), bool, (false)) ^:: basic ((7, "watch_id", "watchId"), int64_int, (0)) ^:: basic ((8, "fragment", "fragment"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "key", "key"), bytes, ((Bytes.of_string {||}))) ^:: basic ((2, "range_end", "rangeEnd"), bytes, ((Bytes.of_string {||}))) ^:: basic ((3, "start_revision", "startRevision"), int64, (0L)) ^:: basic ((4, "progress_notify", "progressNotify"), bool, (false)) ^:: repeated ((5, "filters", "filters"), (enum (module FilterType)), packed) ^:: basic ((6, "prev_kv", "prevKv"), bool, (false)) ^:: basic ((7, "watch_id", "watchId"), int64, (0L)) ^:: basic ((8, "fragment", "fragment"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { key; range_end; start_revision; progress_notify; filters; prev_kv; watch_id; fragment } -> serialize writer key range_end start_revision progress_notify filters prev_kv watch_id fragment
@@ -5652,12 +5652,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and WatchCancelRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     watch_id is the watcher id to cancel so that no more events are transmitted.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?watch_id:int -> unit -> t
+    val make: ?watch_id:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5676,7 +5676,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?watch_id:int -> unit -> t
+    type make_t = ?watch_id:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5685,17 +5685,17 @@ end = struct
   end = struct
     module This'_ = WatchCancelRequest
     let name () = ".etcdserverpb.WatchCancelRequest"
-    type t = (int)
+    type t = (int64)
     (**
     watch_id is the watcher id to cancel so that no more events are transmitted.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?watch_id:int -> unit -> t
-    let make ?(watch_id = 0) () = (watch_id)
+    type make_t = ?watch_id:int64 -> unit -> t
+    let make ?(watch_id = 0L) () = (watch_id)
     let merge =
-    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "watch_id", "watchId"), int64_int, (0)) ) in
+    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "watch_id", "watchId"), int64, (0L)) ) in
     fun (t1_watch_id) (t2_watch_id) -> merge_watch_id t1_watch_id t2_watch_id
-    let spec () = Runtime'.Spec.( basic ((1, "watch_id", "watchId"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "watch_id", "watchId"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (watch_id) -> serialize writer watch_id
@@ -5770,14 +5770,14 @@ end = struct
   and WatchResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    watch_id: int;(** watch_id is the ID of the watcher that corresponds to the response. *)
+    watch_id: int64;(** watch_id is the ID of the watcher that corresponds to the response. *)
     created: bool;(** created is set to true if the response is for a create watch request.
     The client should record the watch_id and expect to receive events for
     the created watcher from the same stream.
     All events sent to the created watcher will attach with the same watch_id. *)
     canceled: bool;(** canceled is set to true if the response is for a cancel watch request.
     No further events will be sent to the canceled watcher. *)
-    compact_revision: int;(** compact_revision is set to the minimum index if a watcher tries to watch
+    compact_revision: int64;(** compact_revision is set to the minimum index if a watcher tries to watch
     at a compacted index.
 
     This happens when creating a watcher at a compacted revision or the watcher cannot
@@ -5789,7 +5789,7 @@ end = struct
     fragment: bool;(** framgment is true if large watch response was split over multiple responses. *)
     events: Imported'modules.Kv.Mvccpb.Event.t list;
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?watch_id:int64 -> ?created:bool -> ?canceled:bool -> ?compact_revision:int64 -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5808,7 +5808,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?watch_id:int64 -> ?created:bool -> ?canceled:bool -> ?compact_revision:int64 -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5819,14 +5819,14 @@ end = struct
     let name () = ".etcdserverpb.WatchResponse"
     type t = {
     header: ResponseHeader.t option;
-    watch_id: int;(** watch_id is the ID of the watcher that corresponds to the response. *)
+    watch_id: int64;(** watch_id is the ID of the watcher that corresponds to the response. *)
     created: bool;(** created is set to true if the response is for a create watch request.
     The client should record the watch_id and expect to receive events for
     the created watcher from the same stream.
     All events sent to the created watcher will attach with the same watch_id. *)
     canceled: bool;(** canceled is set to true if the response is for a cancel watch request.
     No further events will be sent to the canceled watcher. *)
-    compact_revision: int;(** compact_revision is set to the minimum index if a watcher tries to watch
+    compact_revision: int64;(** compact_revision is set to the minimum index if a watcher tries to watch
     at a compacted index.
 
     This happens when creating a watcher at a compacted revision or the watcher cannot
@@ -5838,14 +5838,14 @@ end = struct
     fragment: bool;(** framgment is true if large watch response was split over multiple responses. *)
     events: Imported'modules.Kv.Mvccpb.Event.t list;
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?watch_id:int -> ?created:bool -> ?canceled:bool -> ?compact_revision:int -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
-    let make ?header ?(watch_id = 0) ?(created = false) ?(canceled = false) ?(compact_revision = 0) ?(cancel_reason = {||}) ?(fragment = false) ?(events = []) () = { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events }
+    type make_t = ?header:ResponseHeader.t -> ?watch_id:int64 -> ?created:bool -> ?canceled:bool -> ?compact_revision:int64 -> ?cancel_reason:string -> ?fragment:bool -> ?events:Imported'modules.Kv.Mvccpb.Event.t list -> unit -> t
+    let make ?header ?(watch_id = 0L) ?(created = false) ?(canceled = false) ?(compact_revision = 0L) ?(cancel_reason = {||}) ?(fragment = false) ?(events = []) () = { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "watch_id", "watchId"), int64_int, (0)) ) in
+    let merge_watch_id = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "watch_id", "watchId"), int64, (0L)) ) in
     let merge_created = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "created", "created"), bool, (false)) ) in
     let merge_canceled = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "canceled", "canceled"), bool, (false)) ) in
-    let merge_compact_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "compact_revision", "compactRevision"), int64_int, (0)) ) in
+    let merge_compact_revision = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "compact_revision", "compactRevision"), int64, (0L)) ) in
     let merge_cancel_reason = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "cancel_reason", "cancelReason"), string, ({||})) ) in
     let merge_fragment = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "fragment", "fragment"), bool, (false)) ) in
     let merge_events = Runtime'.Merge.merge Runtime'.Spec.( repeated ((11, "events", "events"), (message (module Imported'modules.Kv.Mvccpb.Event)), not_packed) ) in
@@ -5859,7 +5859,7 @@ end = struct
     fragment = (merge_fragment t1.fragment t2.fragment);
     events = (merge_events t1.events t2.events);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "watch_id", "watchId"), int64_int, (0)) ^:: basic ((3, "created", "created"), bool, (false)) ^:: basic ((4, "canceled", "canceled"), bool, (false)) ^:: basic ((5, "compact_revision", "compactRevision"), int64_int, (0)) ^:: basic ((6, "cancel_reason", "cancelReason"), string, ({||})) ^:: basic ((7, "fragment", "fragment"), bool, (false)) ^:: repeated ((11, "events", "events"), (message (module Imported'modules.Kv.Mvccpb.Event)), not_packed) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "watch_id", "watchId"), int64, (0L)) ^:: basic ((3, "created", "created"), bool, (false)) ^:: basic ((4, "canceled", "canceled"), bool, (false)) ^:: basic ((5, "compact_revision", "compactRevision"), int64, (0L)) ^:: basic ((6, "cancel_reason", "cancelReason"), string, ({||})) ^:: basic ((7, "fragment", "fragment"), bool, (false)) ^:: repeated ((11, "events", "events"), (message (module Imported'modules.Kv.Mvccpb.Event)), not_packed) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; watch_id; created; canceled; compact_revision; cancel_reason; fragment; events } -> serialize writer header watch_id created canceled compact_revision cancel_reason fragment events
@@ -5879,10 +5879,10 @@ end = struct
   end
   and LeaseGrantRequest : sig
     type t = {
-    tTL: int;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
-    iD: int;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
+    tTL: int64;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
+    iD: int64;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
     }[@@deriving show { with_path = false}]
-    val make: ?tTL:int -> ?iD:int -> unit -> t
+    val make: ?tTL:int64 -> ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5901,7 +5901,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?tTL:int -> ?iD:int -> unit -> t
+    type make_t = ?tTL:int64 -> ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5911,19 +5911,19 @@ end = struct
     module This'_ = LeaseGrantRequest
     let name () = ".etcdserverpb.LeaseGrantRequest"
     type t = {
-    tTL: int;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
-    iD: int;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
+    tTL: int64;(** TTL is the advisory time-to-live in seconds. Expired lease will return -1. *)
+    iD: int64;(** ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?tTL:int -> ?iD:int -> unit -> t
-    let make ?(tTL = 0) ?(iD = 0) () = { tTL; iD }
+    type make_t = ?tTL:int64 -> ?iD:int64 -> unit -> t
+    let make ?(tTL = 0L) ?(iD = 0L) () = { tTL; iD }
     let merge =
-    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "TTL", "TTL"), int64_int, (0)) ) in
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64_int, (0)) ) in
+    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "TTL", "TTL"), int64, (0L)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64, (0L)) ) in
     fun t1 t2 -> {
     tTL = (merge_tTL t1.tTL t2.tTL);
     iD = (merge_iD t1.iD t2.iD);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "TTL", "TTL"), int64_int, (0)) ^:: basic ((2, "ID", "ID"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "TTL", "TTL"), int64, (0L)) ^:: basic ((2, "ID", "ID"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { tTL; iD } -> serialize writer tTL iD
@@ -5944,11 +5944,11 @@ end = struct
   and LeaseGrantResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID for the granted lease. *)
-    tTL: int;(** TTL is the server chosen lease time-to-live in seconds. *)
+    iD: int64;(** ID is the lease ID for the granted lease. *)
+    tTL: int64;(** TTL is the server chosen lease time-to-live in seconds. *)
     error: string;
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?error:string -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -5967,7 +5967,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?error:string -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -5978,16 +5978,16 @@ end = struct
     let name () = ".etcdserverpb.LeaseGrantResponse"
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID for the granted lease. *)
-    tTL: int;(** TTL is the server chosen lease time-to-live in seconds. *)
+    iD: int64;(** ID is the lease ID for the granted lease. *)
+    tTL: int64;(** TTL is the server chosen lease time-to-live in seconds. *)
     error: string;
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?error:string -> unit -> t
-    let make ?header ?(iD = 0) ?(tTL = 0) ?(error = {||}) () = { header; iD; tTL; error }
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?error:string -> unit -> t
+    let make ?header ?(iD = 0L) ?(tTL = 0L) ?(error = {||}) () = { header; iD; tTL; error }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64_int, (0)) ) in
-    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64, (0L)) ) in
+    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64, (0L)) ) in
     let merge_error = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "error", "error"), string, ({||})) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
@@ -5995,7 +5995,7 @@ end = struct
     tTL = (merge_tTL t1.tTL t2.tTL);
     error = (merge_error t1.error t2.error);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64_int, (0)) ^:: basic ((3, "TTL", "TTL"), int64_int, (0)) ^:: basic ((4, "error", "error"), string, ({||})) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64, (0L)) ^:: basic ((3, "TTL", "TTL"), int64, (0L)) ^:: basic ((4, "error", "error"), string, ({||})) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; iD; tTL; error } -> serialize writer header iD tTL error
@@ -6014,12 +6014,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and LeaseRevokeRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID to revoke. When the ID is revoked, all associated keys will be deleted.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6038,7 +6038,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6047,17 +6047,17 @@ end = struct
   end = struct
     module This'_ = LeaseRevokeRequest
     let name () = ".etcdserverpb.LeaseRevokeRequest"
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID to revoke. When the ID is revoked, all associated keys will be deleted.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> unit -> t
-    let make ?(iD = 0) () = (iD)
+    type make_t = ?iD:int64 -> unit -> t
+    let make ?(iD = 0L) () = (iD)
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ) in
     fun (t1_iD) (t2_iD) -> merge_iD t1_iD t2_iD
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (iD) -> serialize writer iD
@@ -6131,10 +6131,10 @@ end = struct
   end
   and LeaseCheckpoint : sig
     type t = {
-    iD: int;(** ID is the lease ID to checkpoint. *)
-    remaining_TTL: int;(** Remaining_TTL is the remaining time until expiry of the lease. *)
+    iD: int64;(** ID is the lease ID to checkpoint. *)
+    remaining_TTL: int64;(** Remaining_TTL is the remaining time until expiry of the lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?remaining_TTL:int -> unit -> t
+    val make: ?iD:int64 -> ?remaining_TTL:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6153,7 +6153,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?remaining_TTL:int -> unit -> t
+    type make_t = ?iD:int64 -> ?remaining_TTL:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6163,19 +6163,19 @@ end = struct
     module This'_ = LeaseCheckpoint
     let name () = ".etcdserverpb.LeaseCheckpoint"
     type t = {
-    iD: int;(** ID is the lease ID to checkpoint. *)
-    remaining_TTL: int;(** Remaining_TTL is the remaining time until expiry of the lease. *)
+    iD: int64;(** ID is the lease ID to checkpoint. *)
+    remaining_TTL: int64;(** Remaining_TTL is the remaining time until expiry of the lease. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> ?remaining_TTL:int -> unit -> t
-    let make ?(iD = 0) ?(remaining_TTL = 0) () = { iD; remaining_TTL }
+    type make_t = ?iD:int64 -> ?remaining_TTL:int64 -> unit -> t
+    let make ?(iD = 0L) ?(remaining_TTL = 0L) () = { iD; remaining_TTL }
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ) in
-    let merge_remaining_TTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "remaining_TTL", "remainingTTL"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ) in
+    let merge_remaining_TTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "remaining_TTL", "remainingTTL"), int64, (0L)) ) in
     fun t1 t2 -> {
     iD = (merge_iD t1.iD t2.iD);
     remaining_TTL = (merge_remaining_TTL t1.remaining_TTL t2.remaining_TTL);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ^:: basic ((2, "remaining_TTL", "remainingTTL"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ^:: basic ((2, "remaining_TTL", "remainingTTL"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { iD; remaining_TTL } -> serialize writer iD remaining_TTL
@@ -6302,12 +6302,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and LeaseKeepAliveRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID for the lease to keep alive.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6326,7 +6326,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6335,17 +6335,17 @@ end = struct
   end = struct
     module This'_ = LeaseKeepAliveRequest
     let name () = ".etcdserverpb.LeaseKeepAliveRequest"
-    type t = (int)
+    type t = (int64)
     (**
     ID is the lease ID for the lease to keep alive.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> unit -> t
-    let make ?(iD = 0) () = (iD)
+    type make_t = ?iD:int64 -> unit -> t
+    let make ?(iD = 0L) () = (iD)
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ) in
     fun (t1_iD) (t2_iD) -> merge_iD t1_iD t2_iD
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (iD) -> serialize writer iD
@@ -6366,10 +6366,10 @@ end = struct
   and LeaseKeepAliveResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the new time-to-live for the lease. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the new time-to-live for the lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6388,7 +6388,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6399,21 +6399,21 @@ end = struct
     let name () = ".etcdserverpb.LeaseKeepAliveResponse"
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the new time-to-live for the lease. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the new time-to-live for the lease. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> unit -> t
-    let make ?header ?(iD = 0) ?(tTL = 0) () = { header; iD; tTL }
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> unit -> t
+    let make ?header ?(iD = 0L) ?(tTL = 0L) () = { header; iD; tTL }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64_int, (0)) ) in
-    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64, (0L)) ) in
+    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64, (0L)) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
     iD = (merge_iD t1.iD t2.iD);
     tTL = (merge_tTL t1.tTL t2.tTL);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64_int, (0)) ^:: basic ((3, "TTL", "TTL"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64, (0L)) ^:: basic ((3, "TTL", "TTL"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; iD; tTL } -> serialize writer header iD tTL
@@ -6433,10 +6433,10 @@ end = struct
   end
   and LeaseTimeToLiveRequest : sig
     type t = {
-    iD: int;(** ID is the lease ID for the lease. *)
+    iD: int64;(** ID is the lease ID for the lease. *)
     keys: bool;(** keys is true to query all the keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?keys:bool -> unit -> t
+    val make: ?iD:int64 -> ?keys:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6455,7 +6455,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?keys:bool -> unit -> t
+    type make_t = ?iD:int64 -> ?keys:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6465,19 +6465,19 @@ end = struct
     module This'_ = LeaseTimeToLiveRequest
     let name () = ".etcdserverpb.LeaseTimeToLiveRequest"
     type t = {
-    iD: int;(** ID is the lease ID for the lease. *)
+    iD: int64;(** ID is the lease ID for the lease. *)
     keys: bool;(** keys is true to query all the keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> ?keys:bool -> unit -> t
-    let make ?(iD = 0) ?(keys = false) () = { iD; keys }
+    type make_t = ?iD:int64 -> ?keys:bool -> unit -> t
+    let make ?(iD = 0L) ?(keys = false) () = { iD; keys }
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ) in
     let merge_keys = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "keys", "keys"), bool, (false)) ) in
     fun t1 t2 -> {
     iD = (merge_iD t1.iD t2.iD);
     keys = (merge_keys t1.keys t2.keys);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ^:: basic ((2, "keys", "keys"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ^:: basic ((2, "keys", "keys"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { iD; keys } -> serialize writer iD keys
@@ -6498,12 +6498,12 @@ end = struct
   and LeaseTimeToLiveResponse : sig
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
-    grantedTTL: int;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
+    grantedTTL: int64;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
     keys: bytes list;(** Keys is the list of keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?grantedTTL:int64 -> ?keys:bytes list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6522,7 +6522,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?grantedTTL:int64 -> ?keys:bytes list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6533,18 +6533,18 @@ end = struct
     let name () = ".etcdserverpb.LeaseTimeToLiveResponse"
     type t = {
     header: ResponseHeader.t option;
-    iD: int;(** ID is the lease ID from the keep alive request. *)
-    tTL: int;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
-    grantedTTL: int;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
+    iD: int64;(** ID is the lease ID from the keep alive request. *)
+    tTL: int64;(** TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds. *)
+    grantedTTL: int64;(** GrantedTTL is the initial granted time in seconds upon lease creation/renewal. *)
     keys: bytes list;(** Keys is the list of keys attached to this lease. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?iD:int -> ?tTL:int -> ?grantedTTL:int -> ?keys:bytes list -> unit -> t
-    let make ?header ?(iD = 0) ?(tTL = 0) ?(grantedTTL = 0) ?(keys = []) () = { header; iD; tTL; grantedTTL; keys }
+    type make_t = ?header:ResponseHeader.t -> ?iD:int64 -> ?tTL:int64 -> ?grantedTTL:int64 -> ?keys:bytes list -> unit -> t
+    let make ?header ?(iD = 0L) ?(tTL = 0L) ?(grantedTTL = 0L) ?(keys = []) () = { header; iD; tTL; grantedTTL; keys }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64_int, (0)) ) in
-    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64_int, (0)) ) in
-    let merge_grantedTTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "grantedTTL", "grantedTTL"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "ID", "ID"), int64, (0L)) ) in
+    let merge_tTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "TTL", "TTL"), int64, (0L)) ) in
+    let merge_grantedTTL = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "grantedTTL", "grantedTTL"), int64, (0L)) ) in
     let merge_keys = Runtime'.Merge.merge Runtime'.Spec.( repeated ((5, "keys", "keys"), bytes, not_packed) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
@@ -6553,7 +6553,7 @@ end = struct
     grantedTTL = (merge_grantedTTL t1.grantedTTL t2.grantedTTL);
     keys = (merge_keys t1.keys t2.keys);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64_int, (0)) ^:: basic ((3, "TTL", "TTL"), int64_int, (0)) ^:: basic ((4, "grantedTTL", "grantedTTL"), int64_int, (0)) ^:: repeated ((5, "keys", "keys"), bytes, not_packed) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "ID", "ID"), int64, (0L)) ^:: basic ((3, "TTL", "TTL"), int64, (0L)) ^:: basic ((4, "grantedTTL", "grantedTTL"), int64, (0L)) ^:: repeated ((5, "keys", "keys"), bytes, not_packed) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; iD; tTL; grantedTTL; keys } -> serialize writer header iD tTL grantedTTL keys
@@ -6626,12 +6626,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and LeaseStatus : sig
-    type t = (int)
+    type t = (int64)
     (**
     TODO: int64 TTL = 2;
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6650,7 +6650,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6659,17 +6659,17 @@ end = struct
   end = struct
     module This'_ = LeaseStatus
     let name () = ".etcdserverpb.LeaseStatus"
-    type t = (int)
+    type t = (int64)
     (**
     TODO: int64 TTL = 2;
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> unit -> t
-    let make ?(iD = 0) () = (iD)
+    type make_t = ?iD:int64 -> unit -> t
+    let make ?(iD = 0L) () = (iD)
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ) in
     fun (t1_iD) (t2_iD) -> merge_iD t1_iD t2_iD
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), int64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (iD) -> serialize writer iD
@@ -6753,13 +6753,13 @@ end = struct
   end
   and Member : sig
     type t = {
-    iD: int;(** ID is the member ID for this member. *)
+    iD: int64;(** ID is the member ID for this member. *)
     name: string;(** name is the human-readable name of the member. If the member is not started, the name will be an empty string. *)
     peerURLs: string list;(** peerURLs is the list of URLs the member exposes to the cluster for communication. *)
     clientURLs: string list;(** clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
+    val make: ?iD:int64 -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6778,7 +6778,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
+    type make_t = ?iD:int64 -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6788,16 +6788,16 @@ end = struct
     module This'_ = Member
     let name () = ".etcdserverpb.Member"
     type t = {
-    iD: int;(** ID is the member ID for this member. *)
+    iD: int64;(** ID is the member ID for this member. *)
     name: string;(** name is the human-readable name of the member. If the member is not started, the name will be an empty string. *)
     peerURLs: string list;(** peerURLs is the list of URLs the member exposes to the cluster for communication. *)
     clientURLs: string list;(** clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
-    let make ?(iD = 0) ?(name = {||}) ?(peerURLs = []) ?(clientURLs = []) ?(isLearner = false) () = { iD; name; peerURLs; clientURLs; isLearner }
+    type make_t = ?iD:int64 -> ?name:string -> ?peerURLs:string list -> ?clientURLs:string list -> ?isLearner:bool -> unit -> t
+    let make ?(iD = 0L) ?(name = {||}) ?(peerURLs = []) ?(clientURLs = []) ?(isLearner = false) () = { iD; name; peerURLs; clientURLs; isLearner }
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ) in
     let merge_name = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "name", "name"), string, ({||})) ) in
     let merge_peerURLs = Runtime'.Merge.merge Runtime'.Spec.( repeated ((3, "peerURLs", "peerURLs"), string, not_packed) ) in
     let merge_clientURLs = Runtime'.Merge.merge Runtime'.Spec.( repeated ((4, "clientURLs", "clientURLs"), string, not_packed) ) in
@@ -6809,7 +6809,7 @@ end = struct
     clientURLs = (merge_clientURLs t1.clientURLs t2.clientURLs);
     isLearner = (merge_isLearner t1.isLearner t2.isLearner);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ^:: basic ((2, "name", "name"), string, ({||})) ^:: repeated ((3, "peerURLs", "peerURLs"), string, not_packed) ^:: repeated ((4, "clientURLs", "clientURLs"), string, not_packed) ^:: basic ((5, "isLearner", "isLearner"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ^:: basic ((2, "name", "name"), string, ({||})) ^:: repeated ((3, "peerURLs", "peerURLs"), string, not_packed) ^:: repeated ((4, "clientURLs", "clientURLs"), string, not_packed) ^:: basic ((5, "isLearner", "isLearner"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { iD; name; peerURLs; clientURLs; isLearner } -> serialize writer iD name peerURLs clientURLs isLearner
@@ -6960,12 +6960,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and MemberRemoveRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to remove.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -6984,7 +6984,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -6993,17 +6993,17 @@ end = struct
   end = struct
     module This'_ = MemberRemoveRequest
     let name () = ".etcdserverpb.MemberRemoveRequest"
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to remove.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> unit -> t
-    let make ?(iD = 0) () = (iD)
+    type make_t = ?iD:int64 -> unit -> t
+    let make ?(iD = 0L) () = (iD)
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ) in
     fun (t1_iD) (t2_iD) -> merge_iD t1_iD t2_iD
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (iD) -> serialize writer iD
@@ -7087,10 +7087,10 @@ end = struct
   end
   and MemberUpdateRequest : sig
     type t = {
-    iD: int;(** ID is the member ID of the member to update. *)
+    iD: int64;(** ID is the member ID of the member to update. *)
     peerURLs: string list;(** peerURLs is the new list of URLs the member will use to communicate with the cluster. *)
     }[@@deriving show { with_path = false}]
-    val make: ?iD:int -> ?peerURLs:string list -> unit -> t
+    val make: ?iD:int64 -> ?peerURLs:string list -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -7109,7 +7109,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> ?peerURLs:string list -> unit -> t
+    type make_t = ?iD:int64 -> ?peerURLs:string list -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -7119,19 +7119,19 @@ end = struct
     module This'_ = MemberUpdateRequest
     let name () = ".etcdserverpb.MemberUpdateRequest"
     type t = {
-    iD: int;(** ID is the member ID of the member to update. *)
+    iD: int64;(** ID is the member ID of the member to update. *)
     peerURLs: string list;(** peerURLs is the new list of URLs the member will use to communicate with the cluster. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> ?peerURLs:string list -> unit -> t
-    let make ?(iD = 0) ?(peerURLs = []) () = { iD; peerURLs }
+    type make_t = ?iD:int64 -> ?peerURLs:string list -> unit -> t
+    let make ?(iD = 0L) ?(peerURLs = []) () = { iD; peerURLs }
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ) in
     let merge_peerURLs = Runtime'.Merge.merge Runtime'.Spec.( repeated ((2, "peerURLs", "peerURLs"), string, not_packed) ) in
     fun t1 t2 -> {
     iD = (merge_iD t1.iD t2.iD);
     peerURLs = (merge_peerURLs t1.peerURLs t2.peerURLs);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ^:: repeated ((2, "peerURLs", "peerURLs"), string, not_packed) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ^:: repeated ((2, "peerURLs", "peerURLs"), string, not_packed) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { iD; peerURLs } -> serialize writer iD peerURLs
@@ -7332,12 +7332,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and MemberPromoteRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to promote.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?iD:int -> unit -> t
+    val make: ?iD:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -7356,7 +7356,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?iD:int -> unit -> t
+    type make_t = ?iD:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -7365,17 +7365,17 @@ end = struct
   end = struct
     module This'_ = MemberPromoteRequest
     let name () = ".etcdserverpb.MemberPromoteRequest"
-    type t = (int)
+    type t = (int64)
     (**
     ID is the member ID of the member to promote.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?iD:int -> unit -> t
-    let make ?(iD = 0) () = (iD)
+    type make_t = ?iD:int64 -> unit -> t
+    let make ?(iD = 0L) () = (iD)
     let merge =
-    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ) in
+    let merge_iD = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ) in
     fun (t1_iD) (t2_iD) -> merge_iD t1_iD t2_iD
-    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "ID", "ID"), uint64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (iD) -> serialize writer iD
@@ -7566,12 +7566,12 @@ end = struct
     let from_json json = Runtime'.Result.catch (fun () -> from_json_exn json)
   end
   and MoveLeaderRequest : sig
-    type t = (int)
+    type t = (int64)
     (**
     targetID is the node ID for the new leader.
     *)
     [@@deriving show { with_path = false}]
-    val make: ?targetID:int -> unit -> t
+    val make: ?targetID:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -7590,7 +7590,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?targetID:int -> unit -> t
+    type make_t = ?targetID:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -7599,17 +7599,17 @@ end = struct
   end = struct
     module This'_ = MoveLeaderRequest
     let name () = ".etcdserverpb.MoveLeaderRequest"
-    type t = (int)
+    type t = (int64)
     (**
     targetID is the node ID for the new leader.
     *)
     [@@deriving show { with_path = false}]
-    type make_t = ?targetID:int -> unit -> t
-    let make ?(targetID = 0) () = (targetID)
+    type make_t = ?targetID:int64 -> unit -> t
+    let make ?(targetID = 0L) () = (targetID)
     let merge =
-    let merge_targetID = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "targetID", "targetID"), uint64_int, (0)) ) in
+    let merge_targetID = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "targetID", "targetID"), uint64, (0L)) ) in
     fun (t1_targetID) (t2_targetID) -> merge_targetID t1_targetID t2_targetID
-    let spec () = Runtime'.Spec.( basic ((1, "targetID", "targetID"), uint64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "targetID", "targetID"), uint64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer (targetID) -> serialize writer targetID
@@ -7703,11 +7703,11 @@ end = struct
     action: AlarmAction.t;(** action is the kind of alarm request to issue. The action
     may GET alarm statuses, ACTIVATE an alarm, or DEACTIVATE a
     raised alarm. *)
-    memberID: int;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
+    memberID: int64;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
     alarm request covers all members. *)
     alarm: AlarmType.t;(** alarm is the type of alarm to consider for this request. *)
     }[@@deriving show { with_path = false}]
-    val make: ?action:AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    val make: ?action:AlarmAction.t -> ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -7726,7 +7726,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?action:AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    type make_t = ?action:AlarmAction.t -> ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -7784,22 +7784,22 @@ end = struct
     action: AlarmAction.t;(** action is the kind of alarm request to issue. The action
     may GET alarm statuses, ACTIVATE an alarm, or DEACTIVATE a
     raised alarm. *)
-    memberID: int;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
+    memberID: int64;(** memberID is the ID of the member associated with the alarm. If memberID is 0, the
     alarm request covers all members. *)
     alarm: AlarmType.t;(** alarm is the type of alarm to consider for this request. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?action:AlarmAction.t -> ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
-    let make ?(action = AlarmAction.from_int_exn 0) ?(memberID = 0) ?(alarm = AlarmType.from_int_exn 0) () = { action; memberID; alarm }
+    type make_t = ?action:AlarmAction.t -> ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
+    let make ?(action = AlarmAction.from_int_exn 0) ?(memberID = 0L) ?(alarm = AlarmType.from_int_exn 0) () = { action; memberID; alarm }
     let merge =
     let merge_action = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "action", "action"), (enum (module AlarmAction)), (AlarmAction.from_int_exn 0)) ) in
-    let merge_memberID = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "memberID", "memberID"), uint64_int, (0)) ) in
+    let merge_memberID = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "memberID", "memberID"), uint64, (0L)) ) in
     let merge_alarm = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ) in
     fun t1 t2 -> {
     action = (merge_action t1.action t2.action);
     memberID = (merge_memberID t1.memberID t2.memberID);
     alarm = (merge_alarm t1.alarm t2.alarm);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "action", "action"), (enum (module AlarmAction)), (AlarmAction.from_int_exn 0)) ^:: basic ((2, "memberID", "memberID"), uint64_int, (0)) ^:: basic ((3, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "action", "action"), (enum (module AlarmAction)), (AlarmAction.from_int_exn 0)) ^:: basic ((2, "memberID", "memberID"), uint64, (0L)) ^:: basic ((3, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { action; memberID; alarm } -> serialize writer action memberID alarm
@@ -7819,10 +7819,10 @@ end = struct
   end
   and AlarmMember : sig
     type t = {
-    memberID: int;(** memberID is the ID of the member associated with the raised alarm. *)
+    memberID: int64;(** memberID is the ID of the member associated with the raised alarm. *)
     alarm: AlarmType.t;(** alarm is the type of alarm which has been raised. *)
     }[@@deriving show { with_path = false}]
-    val make: ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    val make: ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -7841,7 +7841,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
+    type make_t = ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -7851,19 +7851,19 @@ end = struct
     module This'_ = AlarmMember
     let name () = ".etcdserverpb.AlarmMember"
     type t = {
-    memberID: int;(** memberID is the ID of the member associated with the raised alarm. *)
+    memberID: int64;(** memberID is the ID of the member associated with the raised alarm. *)
     alarm: AlarmType.t;(** alarm is the type of alarm which has been raised. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?memberID:int -> ?alarm:AlarmType.t -> unit -> t
-    let make ?(memberID = 0) ?(alarm = AlarmType.from_int_exn 0) () = { memberID; alarm }
+    type make_t = ?memberID:int64 -> ?alarm:AlarmType.t -> unit -> t
+    let make ?(memberID = 0L) ?(alarm = AlarmType.from_int_exn 0) () = { memberID; alarm }
     let merge =
-    let merge_memberID = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "memberID", "memberID"), uint64_int, (0)) ) in
+    let merge_memberID = Runtime'.Merge.merge Runtime'.Spec.( basic ((1, "memberID", "memberID"), uint64, (0L)) ) in
     let merge_alarm = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ) in
     fun t1 t2 -> {
     memberID = (merge_memberID t1.memberID t2.memberID);
     alarm = (merge_alarm t1.alarm t2.alarm);
      }
-    let spec () = Runtime'.Spec.( basic ((1, "memberID", "memberID"), uint64_int, (0)) ^:: basic ((2, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic ((1, "memberID", "memberID"), uint64, (0L)) ^:: basic ((2, "alarm", "alarm"), (enum (module AlarmType)), (AlarmType.from_int_exn 0)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { memberID; alarm } -> serialize writer memberID alarm
@@ -8197,16 +8197,16 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     version: string;(** version is the cluster protocol version used by the responding member. *)
-    dbSize: int;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
-    leader: int;(** leader is the member ID which the responding member believes is the current leader. *)
-    raftIndex: int;(** raftIndex is the current raft committed index of the responding member. *)
-    raftTerm: int;(** raftTerm is the current raft term of the responding member. *)
-    raftAppliedIndex: int;(** raftAppliedIndex is the current raft applied index of the responding member. *)
+    dbSize: int64;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
+    leader: int64;(** leader is the member ID which the responding member believes is the current leader. *)
+    raftIndex: int64;(** raftIndex is the current raft committed index of the responding member. *)
+    raftTerm: int64;(** raftTerm is the current raft term of the responding member. *)
+    raftAppliedIndex: int64;(** raftAppliedIndex is the current raft applied index of the responding member. *)
     errors: string list;(** errors contains alarm/health information and status. *)
-    dbSizeInUse: int;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
+    dbSizeInUse: int64;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int64 -> ?leader:int64 -> ?raftIndex:int64 -> ?raftTerm:int64 -> ?raftAppliedIndex:int64 -> ?errors:string list -> ?dbSizeInUse:int64 -> ?isLearner:bool -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -8225,7 +8225,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int64 -> ?leader:int64 -> ?raftIndex:int64 -> ?raftTerm:int64 -> ?raftAppliedIndex:int64 -> ?errors:string list -> ?dbSizeInUse:int64 -> ?isLearner:bool -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -8237,27 +8237,27 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     version: string;(** version is the cluster protocol version used by the responding member. *)
-    dbSize: int;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
-    leader: int;(** leader is the member ID which the responding member believes is the current leader. *)
-    raftIndex: int;(** raftIndex is the current raft committed index of the responding member. *)
-    raftTerm: int;(** raftTerm is the current raft term of the responding member. *)
-    raftAppliedIndex: int;(** raftAppliedIndex is the current raft applied index of the responding member. *)
+    dbSize: int64;(** dbSize is the size of the backend database physically allocated, in bytes, of the responding member. *)
+    leader: int64;(** leader is the member ID which the responding member believes is the current leader. *)
+    raftIndex: int64;(** raftIndex is the current raft committed index of the responding member. *)
+    raftTerm: int64;(** raftTerm is the current raft term of the responding member. *)
+    raftAppliedIndex: int64;(** raftAppliedIndex is the current raft applied index of the responding member. *)
     errors: string list;(** errors contains alarm/health information and status. *)
-    dbSizeInUse: int;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
+    dbSizeInUse: int64;(** dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. *)
     isLearner: bool;(** isLearner indicates if the member is raft learner. *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int -> ?leader:int -> ?raftIndex:int -> ?raftTerm:int -> ?raftAppliedIndex:int -> ?errors:string list -> ?dbSizeInUse:int -> ?isLearner:bool -> unit -> t
-    let make ?header ?(version = {||}) ?(dbSize = 0) ?(leader = 0) ?(raftIndex = 0) ?(raftTerm = 0) ?(raftAppliedIndex = 0) ?(errors = []) ?(dbSizeInUse = 0) ?(isLearner = false) () = { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner }
+    type make_t = ?header:ResponseHeader.t -> ?version:string -> ?dbSize:int64 -> ?leader:int64 -> ?raftIndex:int64 -> ?raftTerm:int64 -> ?raftAppliedIndex:int64 -> ?errors:string list -> ?dbSizeInUse:int64 -> ?isLearner:bool -> unit -> t
+    let make ?header ?(version = {||}) ?(dbSize = 0L) ?(leader = 0L) ?(raftIndex = 0L) ?(raftTerm = 0L) ?(raftAppliedIndex = 0L) ?(errors = []) ?(dbSizeInUse = 0L) ?(isLearner = false) () = { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
     let merge_version = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "version", "version"), string, ({||})) ) in
-    let merge_dbSize = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "dbSize", "dbSize"), int64_int, (0)) ) in
-    let merge_leader = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "leader", "leader"), uint64_int, (0)) ) in
-    let merge_raftIndex = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "raftIndex", "raftIndex"), uint64_int, (0)) ) in
-    let merge_raftTerm = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "raftTerm", "raftTerm"), uint64_int, (0)) ) in
-    let merge_raftAppliedIndex = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "raftAppliedIndex", "raftAppliedIndex"), uint64_int, (0)) ) in
+    let merge_dbSize = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "dbSize", "dbSize"), int64, (0L)) ) in
+    let merge_leader = Runtime'.Merge.merge Runtime'.Spec.( basic ((4, "leader", "leader"), uint64, (0L)) ) in
+    let merge_raftIndex = Runtime'.Merge.merge Runtime'.Spec.( basic ((5, "raftIndex", "raftIndex"), uint64, (0L)) ) in
+    let merge_raftTerm = Runtime'.Merge.merge Runtime'.Spec.( basic ((6, "raftTerm", "raftTerm"), uint64, (0L)) ) in
+    let merge_raftAppliedIndex = Runtime'.Merge.merge Runtime'.Spec.( basic ((7, "raftAppliedIndex", "raftAppliedIndex"), uint64, (0L)) ) in
     let merge_errors = Runtime'.Merge.merge Runtime'.Spec.( repeated ((8, "errors", "errors"), string, not_packed) ) in
-    let merge_dbSizeInUse = Runtime'.Merge.merge Runtime'.Spec.( basic ((9, "dbSizeInUse", "dbSizeInUse"), int64_int, (0)) ) in
+    let merge_dbSizeInUse = Runtime'.Merge.merge Runtime'.Spec.( basic ((9, "dbSizeInUse", "dbSizeInUse"), int64, (0L)) ) in
     let merge_isLearner = Runtime'.Merge.merge Runtime'.Spec.( basic ((10, "isLearner", "isLearner"), bool, (false)) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
@@ -8271,7 +8271,7 @@ end = struct
     dbSizeInUse = (merge_dbSizeInUse t1.dbSizeInUse t2.dbSizeInUse);
     isLearner = (merge_isLearner t1.isLearner t2.isLearner);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "version", "version"), string, ({||})) ^:: basic ((3, "dbSize", "dbSize"), int64_int, (0)) ^:: basic ((4, "leader", "leader"), uint64_int, (0)) ^:: basic ((5, "raftIndex", "raftIndex"), uint64_int, (0)) ^:: basic ((6, "raftTerm", "raftTerm"), uint64_int, (0)) ^:: basic ((7, "raftAppliedIndex", "raftAppliedIndex"), uint64_int, (0)) ^:: repeated ((8, "errors", "errors"), string, not_packed) ^:: basic ((9, "dbSizeInUse", "dbSizeInUse"), int64_int, (0)) ^:: basic ((10, "isLearner", "isLearner"), bool, (false)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "version", "version"), string, ({||})) ^:: basic ((3, "dbSize", "dbSize"), int64, (0L)) ^:: basic ((4, "leader", "leader"), uint64, (0L)) ^:: basic ((5, "raftIndex", "raftIndex"), uint64, (0L)) ^:: basic ((6, "raftTerm", "raftTerm"), uint64, (0L)) ^:: basic ((7, "raftAppliedIndex", "raftAppliedIndex"), uint64, (0L)) ^:: repeated ((8, "errors", "errors"), string, not_packed) ^:: basic ((9, "dbSizeInUse", "dbSizeInUse"), int64, (0L)) ^:: basic ((10, "isLearner", "isLearner"), bool, (false)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; version; dbSize; leader; raftIndex; raftTerm; raftAppliedIndex; errors; dbSizeInUse; isLearner } -> serialize writer header version dbSize leader raftIndex raftTerm raftAppliedIndex errors dbSizeInUse isLearner
@@ -9421,9 +9421,9 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     enabled: bool;
-    authRevision: int;(** authRevision is the current revision of auth store *)
+    authRevision: int64;(** authRevision is the current revision of auth store *)
     }[@@deriving show { with_path = false}]
-    val make: ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
+    val make: ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int64 -> unit -> t
     (** Helper function to generate a message using default values *)
 
     val to_proto: t -> Runtime'.Writer.t
@@ -9442,7 +9442,7 @@ end = struct
     (** Fully qualified protobuf name of this message *)
 
     (**/**)
-    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
+    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int64 -> unit -> t
     val merge: t -> t -> t
     val to_proto': Runtime'.Writer.t -> t -> unit
     val from_proto_exn: Runtime'.Reader.t -> t
@@ -9454,20 +9454,20 @@ end = struct
     type t = {
     header: ResponseHeader.t option;
     enabled: bool;
-    authRevision: int;(** authRevision is the current revision of auth store *)
+    authRevision: int64;(** authRevision is the current revision of auth store *)
     }[@@deriving show { with_path = false}]
-    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int -> unit -> t
-    let make ?header ?(enabled = false) ?(authRevision = 0) () = { header; enabled; authRevision }
+    type make_t = ?header:ResponseHeader.t -> ?enabled:bool -> ?authRevision:int64 -> unit -> t
+    let make ?header ?(enabled = false) ?(authRevision = 0L) () = { header; enabled; authRevision }
     let merge =
     let merge_header = Runtime'.Merge.merge Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ) in
     let merge_enabled = Runtime'.Merge.merge Runtime'.Spec.( basic ((2, "enabled", "enabled"), bool, (false)) ) in
-    let merge_authRevision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "authRevision", "authRevision"), uint64_int, (0)) ) in
+    let merge_authRevision = Runtime'.Merge.merge Runtime'.Spec.( basic ((3, "authRevision", "authRevision"), uint64, (0L)) ) in
     fun t1 t2 -> {
     header = (merge_header t1.header t2.header);
     enabled = (merge_enabled t1.enabled t2.enabled);
     authRevision = (merge_authRevision t1.authRevision t2.authRevision);
      }
-    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "enabled", "enabled"), bool, (false)) ^:: basic ((3, "authRevision", "authRevision"), uint64_int, (0)) ^:: nil )
+    let spec () = Runtime'.Spec.( basic_opt ((1, "header", "header"), (message (module ResponseHeader))) ^:: basic ((2, "enabled", "enabled"), bool, (false)) ^:: basic ((3, "authRevision", "authRevision"), uint64, (0L)) ^:: nil )
     let to_proto' =
       let serialize = Runtime'.apply_lazy (fun () -> Runtime'.Serialize.serialize (spec ())) in
       fun writer { header; enabled; authRevision } -> serialize writer header enabled authRevision

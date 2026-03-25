@@ -19,10 +19,14 @@ module Test_logs = struct
     Logs.set_reporter reporter;
     let result = fn () in
     Format.pp_print_flush fmt ();
-    Alcotest.(check string) "logs" expect (sanitize (Buffer.contents buffer));
+    let received = sanitize (Buffer.contents buffer) in
+    let expect = String.split_on_char '\n' expect in
+    let received = String.split_on_char '\n' received in
+    Alcotest.(check (list string) "logs" expect received);
     result
 end
 
+let debug msg = Fmt.str "test_dispatch.exe: [DEBUG] %s\n" msg
 let info msg = Fmt.str "test_dispatch.exe: [INFO] %s\n" msg
 let warning msg = Fmt.str "test_dispatch.exe: [WARNING] %s\n" msg
 let error msg = Fmt.str "test_dispatch.exe: [ERROR] %s\n" msg
@@ -38,7 +42,7 @@ module Kv_mem = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Mock_platform (Kv_mem))
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let software_update_key =
@@ -55,11 +59,12 @@ let platform =
     akPub = [];
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
+    networkConfig = None;
   }
 
 let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     ?(headers = Header.init ()) ?(content_type = "application/json") ?query
-    ?(ip = Ipaddr.V4.any) endpoint =
+    ?(ip = Ipaddr.(V4 V4.any)) endpoint =
   let headers = Header.replace headers "content-type" content_type in
   let hsm_state' =
     match hsm_state with
@@ -85,7 +90,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     resp;
   (hsm_state', resp)
 
-let good_platform mbox = Lwt_mvar.put mbox (Ok ())
+let good_platform _ m = Lwt_mvar.put m (Ok ())
 
 let copy t =
   let v = Marshal.to_string t [ Closures ] in
@@ -93,11 +98,30 @@ let copy t =
 
 let user ?namespace id = { Hsm.Nid.id; namespace }
 
-let create_operational_mock mbox =
+let happy_mbox ?(f = fun _ -> ()) o m =
+  Lwt.async (fun () ->
+      let rec go () =
+        Lwt_mvar.take o >>= fun cb ->
+        f cb;
+        go ()
+      in
+      go ());
+  Lwt.async (fun () ->
+      let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
+      go ());
+  Lwt.return_unit
+
+let booted_mock () =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-    >>= fun (state, _, m) ->
-      mbox m >>= fun () ->
+    >>= fun (y, o, m) ->
+      happy_mbox o m >|= fun () -> y )
+
+let create_operational_mock ?(platform = platform) mbox =
+  Lwt_main.run
+    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
+    >>= fun (state, o, m) ->
+      mbox o m >>= fun () ->
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun _ ->
@@ -129,10 +153,11 @@ let create_operational_mock mbox =
 
 let operational_mock = lazy (create_operational_mock good_platform)
 
-let operational_mock ?(mbox = good_platform) () =
+let operational_mock ?platform ?(mbox = good_platform) () =
   let t =
-    if mbox == good_platform then copy (Lazy.force operational_mock)
-    else create_operational_mock mbox
+    if mbox == good_platform && platform = None then
+      copy (Lazy.force operational_mock)
+    else create_operational_mock ?platform mbox
   in
   Hsm.reset_rate_limit ();
   t
@@ -142,14 +167,16 @@ let create_locked_mock () =
     ( (* create an empty in memory key-value store, and a HSM state (unprovisioned) *)
       Kv_mem.connect ()
     >>= fun kv ->
-      Hsm.boot ~platform software_update_key kv >>= fun (state, _, _) ->
+      Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+      good_platform o m >>= fun () ->
       (* provision HSM, leading to state operational (and writes to the kv store) *)
       Hsm.provision state ~unlock:"test1234Passphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun r ->
       (* create a new HSM state, using the provisioned kv store, with a `Locked state *)
       assert (r = Ok ());
-      Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y )
+      Hsm.boot ~platform software_update_key kv >>= fun (y, o, m) ->
+      happy_mbox o m >|= fun () -> y )
 
 let locked_mock = lazy (create_locked_mock ())
 
@@ -184,9 +211,9 @@ let test_key =
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
 
-let hsm_with_key ?and_namespace
+let hsm_with_key ?platform ?mbox ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
-  let state = operational_mock () in
+  let state = operational_mock ?platform ?mbox () in
   Lwt_main.run
     ( Hsm.Key.add_pem state mechanisms ~namespace:None ~id:"keyID" test_key_pem
         no_restrictions

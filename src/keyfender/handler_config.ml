@@ -63,6 +63,41 @@ struct
         Wm.continue digest rd
     end
 
+  class tls_cluster_ca hsm_state ip =
+    object (self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      method private get rd =
+        Hsm.Config.tls_cluster_ca hsm_state >>= function
+        | Some cert_pem -> Wm.continue (`String cert_pem) rd
+        | None ->
+            Endpoint.respond_status
+              (`Not_found, "cluster CA is absent unless configured")
+              rd
+
+      method private set rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        Hsm.Config.set_tls_cluster_ca hsm_state content >>= function
+        | Ok () ->
+            let cc hdr =
+              Cohttp.Header.replace hdr "Location" (Uri.path rd.uri)
+            in
+            let rd' = Webmachine.Rd.with_resp_headers cc rd in
+            Wm.continue true rd'
+        | Error e -> Endpoint.respond_error e rd
+
+      method content_types_provided =
+        Wm.continue [ ("application/x-pem-file", self#get) ]
+
+      method content_types_accepted =
+        Wm.continue [ ("application/x-pem-file", self#set) ]
+
+      method! allowed_methods = Wm.continue [ `GET; `PUT ]
+    end
+
   class tls_csr hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
@@ -186,7 +221,7 @@ struct
 
       method private get rd =
         Hsm.Config.network hsm_state >>= fun network ->
-        let json = Json.network_to_yojson network in
+        let json = Json.encode_network network in
         Wm.continue (`String (Yojson.Safe.to_string json)) rd
 
       method private set rd =

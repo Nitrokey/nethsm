@@ -123,21 +123,187 @@ let decode_restore_req json =
     | Some t -> decode_time t >>| fun t -> Some t)
   >>| fun time -> (time, b.backupPassphrase)
 
-type ip = Ipaddr.V4.t
+type ipv4 = Ipaddr.V4.t
 
-let ip_to_yojson ip = `String (Ipaddr.V4.to_string ip)
+let ipv4_to_yojson ip = `String (Ipaddr.V4.to_string ip)
 
-let ip_of_yojson = function
+let ipv4_of_yojson = function
   | `String ip_str ->
       Rresult.R.reword_error
         (function `Msg msg -> msg)
         (Ipaddr.V4.of_string ip_str)
   | _ -> Error "expected string for IP"
 
-type network = { ipAddress : ip; netmask : ip; gateway : ip }
+type cidr_v4 = Ipaddr.V4.Prefix.t
+
+let cidr_v4_to_yojson ip = `String (Ipaddr.V4.Prefix.to_string ip)
+
+let cidr_v4_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V4.Prefix.of_string ip_str)
+  | _ -> Error "expected string for CIDR"
+
+type network_v4 = { cidr : cidr_v4; gateway : ipv4 option } [@@deriving yojson]
+type ipv6 = Ipaddr.V6.t
+
+let ipv6_to_yojson ip = `String (Ipaddr.V6.to_string ip)
+
+let ipv6_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V6.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+type cidr_v6 = Ipaddr.V6.Prefix.t
+
+let cidr_v6_to_yojson ip = `String (Ipaddr.V6.Prefix.to_string ip)
+
+let cidr_v6_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.V6.Prefix.of_string ip_str)
+  | _ -> Error "expected string for CIDR"
+
+type network_v6 = { cidr : cidr_v6; gateway : ipv6 option } [@@deriving yojson]
+type ip = Ipaddr.t
+
+let ip_to_yojson ip = `String (Ipaddr.to_string ip)
+
+let ip_of_yojson = function
+  | `String ip_str ->
+      Rresult.R.reword_error
+        (function `Msg msg -> msg)
+        (Ipaddr.of_string ip_str)
+  | _ -> Error "expected string for IP"
+
+let some_or_any = function
+  | Some x -> ip_to_yojson x
+  | None -> Ipaddr.V4.any |> ipv4_to_yojson
+
+let none_if_any json =
+  match ip_of_yojson json with
+  | Ok ip ->
+      if Ipaddr.(compare ip (V4 V4.any) = 0) then Ok None else Ok (Some ip)
+  | Error e -> Error e
+
+type network_api = {
+  ipAddress : ipv4;
+  netmask : ipv4;
+  gateway : ipv4;
+  ipv6 : network_v6 option; [@default None]
+}
+[@@deriving yojson]
+(** used for the REST API, for backwards compatibility *)
+
+type network = { ipv4 : network_v4; ipv6 : network_v6 option [@default None] }
+[@@deriving yojson]
+(** use internally and in storage *)
+
+let decode_network json =
+  (* parse API format and immediately transform into internal format *)
+  match decode network_api_of_yojson json with
+  | Ok (x : network_api) ->
+      let gateway =
+        if Ipaddr.V4.(compare any x.gateway) = 0 then None else Some x.gateway
+      in
+      Ipaddr.V4.Prefix.of_netmask ~netmask:x.netmask ~address:x.ipAddress
+      |> Result.map_error (fun (`Msg x) -> x)
+      >>= fun cidr ->
+      let ipv4 : network_v4 = { gateway; cidr } in
+      Ok { ipv4; ipv6 = x.ipv6 }
+  | Error e -> Error e
+
+let encode_network (net : network) =
+  (* encode as network_api *)
+  let gateway =
+    match net.ipv4.gateway with Some g -> g | None -> Ipaddr.V4.any
+  in
+  let ipAddress = Ipaddr.V4.Prefix.address net.ipv4.cidr in
+  let netmask = Ipaddr.V4.Prefix.netmask net.ipv4.cidr in
+  network_api_to_yojson { ipAddress; netmask; gateway; ipv6 = net.ipv6 }
+
+type joiner_kit = {
+  (* to allow the old passphrase to still decode the new *)
+  backup_salt : string; (* unencrypted *)
+  unlock_salt : string; (* encrypted by backup key *)
+  (* encrypted by backup key (outer) and unlock
+  passphrase (inner) with above salt *)
+  locked_domain_key : string;
+}
 [@@deriving yojson]
 
-let decode_network json = decode network_of_yojson json
+type join_req_member = { name : string; urls : string list } [@@deriving yojson]
+
+type join_req = {
+  members : join_req_member list;
+  joiner_kit : string; [@key "joinerKit"]
+  backup_passphrase : string option; [@default None] [@key "backupPassphrase"]
+}
+[@@deriving yojson]
+
+let check_join_req (req : join_req) =
+  let members = req.members in
+  let ( let* ) = Result.bind in
+  let* () =
+    guard (Option.is_some req.backup_passphrase) "missing backup passphrase"
+  in
+  let* _joiner_kit =
+    try
+      Base64.decode_exn req.joiner_kit
+      |> Yojson.Safe.from_string |> joiner_kit_of_yojson
+    with _ -> Error "joiner_kit is not of the expected format"
+  in
+  let* () =
+    guard
+      (List.length members >= 2)
+      "the join request must have at least members (ourself and an existing \
+       member)"
+  in
+  let names = List.map (fun m -> m.name) members in
+  let uniq_names = List.sort_uniq String.compare names in
+  let* () =
+    guard
+      (List.length names = List.length uniq_names)
+      "duplicate names for members"
+  in
+  let* () =
+    guard (List.mem "" names)
+      "exactly one member (the new joiner) is expected to have an empty name"
+  in
+  (* the empty name will be replaced by our device-ID down the line *)
+  let all_urls = List.map (fun m -> m.urls) members |> List.concat in
+  let check_url s =
+    let uri = Uri.of_string s in
+    let* () =
+      guard
+        (Uri.scheme uri = Some "https")
+        "member URL must start with https://"
+    in
+    let* () =
+      guard (Uri.port uri = Some 2380) "member URL must have explicit port 2380"
+    in
+    Ok (Uri.canonicalize uri)
+  in
+  let rec fold_err acc = function
+    | [] -> Ok acc
+    | Ok uri :: tl -> fold_err (uri :: acc) tl
+    | Error e :: _ -> Error e
+  in
+  let* uris = fold_err [] (List.map check_url all_urls) in
+  let uniq_uris = List.sort_uniq Uri.compare uris in
+  let* () =
+    guard (List.length uris = List.length uniq_uris) "duplicate member URLs"
+  in
+  Ok { req with members }
+
+let decode_join_req json =
+  let ( let* ) = Result.bind in
+  let* req = join_req_of_yojson json in
+  check_join_req req
 
 let is_unattended_boot_to_yojson r =
   `Assoc [ ("status", `String (if r then "on" else "off")) ]
@@ -171,7 +337,11 @@ let log_level_of_yojson = function
   | `String l -> log_level_of_string l
   | _ -> Error "expected string as log level"
 
-type log = { ipAddress : ip; port : int; logLevel : log_level }
+type log = {
+  ipAddress : ip option; [@to_yojson some_or_any] [@of_yojson none_if_any]
+  port : int;
+  logLevel : log_level;
+}
 [@@deriving yojson]
 
 type random_req = { length : int } [@@deriving yojson]
@@ -522,6 +692,7 @@ let decode_user_req content =
 type user_res = { realName : string; role : role } [@@deriving yojson]
 type info = { vendor : string; product : string } [@@deriving yojson]
 type state = [ `Unprovisioned | `Operational | `Locked ] [@@deriving yojson]
+type member_req = { urls : string list } [@@deriving yojson]
 
 let state_to_yojson state = `Assoc [ ("state", head @@ state_to_yojson state) ]
 
@@ -568,6 +739,13 @@ type system_info = {
 }
 [@@deriving yojson]
 
+let network_config_of_string = function
+  | `Null -> Ok None
+  | `String "" -> Ok None
+  | `String s ->
+      Yojson.Safe.from_string s |> network_of_yojson |> Result.map Option.some
+  | _ -> Error "expecting serialized network config"
+
 (* must be in sync with platformData in src/u-root/uinit/tpm.go *)
 type platform_data = {
   deviceId : string;
@@ -576,6 +754,26 @@ type platform_data = {
   akPub : assoc_list;
   hardwareVersion : string;
   firmwareVersion : string;
+  networkConfig : network option;
+      [@default None] [@of_yojson network_config_of_string]
+}
+[@@deriving yojson]
+
+let network_config_to_string = function
+  | None -> `Null
+  | Some net ->
+      let payload = network_to_yojson net |> Yojson.Safe.to_string in
+      `String payload
+
+(* must be in sync with localConf in src/u-root/uinit/local_conf.go *)
+type local_conf = {
+  tls_cert : string;
+  tls_key : string;
+  tls_cluster_ca : string option; [@default None]
+  device_id : string;
+  time_offset_s : int; (* 0 is unset *)
+  network_config : network option;
+      [@default None] [@to_yojson network_config_to_string]
 }
 [@@deriving yojson]
 

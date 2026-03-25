@@ -5,6 +5,7 @@ run/
 obj/
 serial.out
 .stamp-*
+src/container/alpine/data
 src/keyfender/buildTag
 src/keyfender/softwareVersion
 src/muen/policy/xml/component_unikernel.xml

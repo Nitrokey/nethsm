@@ -45,8 +45,7 @@ let device_key =
 let default_net =
   let doc =
     Arg.info ~docs ~docv:"DEFAULT-NET"
-      ~doc:
-        "Set the default network configuration. (Format: <ip>[/<mask>[;<gw>]])"
+      ~doc:"Set the default network configuration. (Format: <ip>/<mask>[,<gw>])"
       [ "default-net" ]
   in
   Mirage_runtime.register_arg Arg.(value & opt (some string) None doc)
@@ -69,10 +68,15 @@ module Conf = struct
   module type S = sig
     val no_platform : bool
     val no_scrypt : bool
+    val single_interface : bool
   end
 
-  module Make (No_platform : Bool) (No_scrypt : Bool) : S = struct
+  module Make
+      (No_platform : Bool)
+      (No_scrypt : Bool)
+      (Single_interface : Bool) : S = struct
     let no_platform = No_platform.v
     let no_scrypt = No_scrypt.v
+    let single_interface = Single_interface.v
   end
 end

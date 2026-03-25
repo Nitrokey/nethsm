@@ -1,8 +1,8 @@
-ARG distro_version=alpine:3.16
+ARG distro_version=golang:alpine
 FROM ${distro_version} AS builder
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add curl openssl rsync git mercurial make gcc go patch musl-dev \
+  apk add curl openssl rsync git mercurial make gcc patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
     coreutils unzip bubblewrap sudo openssh-client bash
   cd /tmp
@@ -37,6 +37,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
+  git config --global --add safe.directory /repo
   git clone /repo /home/opam/nethsm
 EOF
 
@@ -47,8 +48,13 @@ RUN <<EOF
   ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
 EOF
 
+# RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+#   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
+# EOF
+
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
+  OPAMJOBS=$(nproc) opam pin add -y -n keyfender.dev src/keyfender
+  make src/keyfender/softwareVersion src/keyfender/buildTag src/s_keyfender/update_key_store/key.pem
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
@@ -59,9 +65,33 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   cp dist/keyfender dist/keyfender.unix
 EOF
 
+# COPY vendor/mirage-tcpip /mirage-tcpip
+
+# RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+#   OPAMJOBS=$(nproc) opam pin -y add tcpip.9.0.1 /mirage-tcpip/.
+# EOF
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+  export OPAMJOBS=$(nproc)
+  cd src/s_keyfender
+  opam exec -- mirage configure --no-depext -t unix --internal-net=direct --external-net=direct
+  opam exec -- make -j$(nproc)
+  cp dist/keyfender dist/keyfender.tap
+EOF
+
 RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
 
-FROM ${distro_version} as nethsm_production
+RUN cd src/u-root && CGO_ENABLED=0 go build -tags testing -o ./uinit/uinit ./uinit
+
+RUN cd src/tests && CGO_ENABLED=0 go build ./perftest.go
+
+FROM builder AS prod_builder
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+  OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
+EOF
+
+FROM ${distro_version} AS nethsm_production
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache iptables curl gmp
@@ -70,20 +100,25 @@ EOF
 EXPOSE 8443
 
 COPY src/container/alpine/start-production.sh /start.sh
-COPY --from=builder \
+COPY --from=prod_builder \
   /home/opam/.opam/default/bin/solo5-hvt \
   /home/opam/nethsm/src/s_keyfender/dist/keyfender.hvt \
   /home/opam/nethsm/src/s_keyfender/dist/keyfender.unix \
   /home/opam/nethsm/src/container/alpine/tlsproxy \
   /
 
-ENTRYPOINT /start.sh
+ENTRYPOINT [ "/start.sh" ]
 
-FROM ${distro_version} as nethsm_test
+FROM alpine AS nethsm_test
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache gmp
   apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
+  ln -s /usr/bin/etcd /bin
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp <<EOF
+  apk add --no-cache curl tcpdump iproute2 libcap nmap-nping arping screen
 EOF
 
 VOLUME /data
@@ -94,5 +129,12 @@ COPY src/container/alpine/start-test.sh /start.sh
 COPY --from=builder \
   /home/opam/nethsm/src/s_keyfender/dist/keyfender.unix \
   /
+COPY --from=builder \
+  /home/opam/nethsm/src/s_keyfender/dist/keyfender.tap \
+  /
+COPY src/container/alpine/start-debug.sh /
+COPY --from=builder /home/opam/nethsm/src/u-root/uinit/uinit /
+COPY --from=builder /home/opam/nethsm/src/tests/perftest /
+COPY src/container/alpine/provision.sh /
 
-ENTRYPOINT /start.sh
+ENTRYPOINT [ "/start.sh" ]

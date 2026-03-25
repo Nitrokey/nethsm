@@ -374,7 +374,7 @@ func getClient() *http.Client {
 	// MaxIdleConnsPerHost controls the number of persistent
 	// connections per host.
 	// transport.MaxIdleConnsPerHost = 1 // Set to 1 to ensure a single connection.
-	transport.MaxIdleConnsPerHost = 100
+	transport.MaxIdleConnsPerHost = 2000
 
 	// var connCount int64
 	// transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {

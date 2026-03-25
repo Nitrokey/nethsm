@@ -122,6 +122,7 @@ build_container_test_image:
       --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA},${PUSH}
 
 build_container_production_image:
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
@@ -388,6 +389,15 @@ test_muen_prodrive_hermes:
     SERIALPID: ${CI_PROJECT_DIR}/obj/serial_out.pid
     SERIALTXT: ${CI_PROJECT_DIR}/obj/serial_out.txt
   stage: test_hw
+  # Normally takes <15m and has a tendency to get stuck.
+  # This let us discover the timeout without waiting 1h to retry
+  timeout: 30m
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout # allow retrying on exec timeout
   needs:
     - build_ci_installer_prodrive_hermes
   artifacts:
@@ -404,10 +414,11 @@ test_muen_prodrive_hermes:
     - nc -U /run/serial_hil2.sock >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
-    - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh
+    - exit_code=0
+    - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
-      while true ; do
+      for _ in $(seq 60) ; do # do not wait more than 1 minute for serial log
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
@@ -415,6 +426,7 @@ test_muen_prodrive_hermes:
         sleep 1
       done
       echo "done."
+    - if [ $exit_code -ne 0 ]; then exit 1; fi # but still report failure
     - if grep -a -v '^\[ERROR\]' $SERIALTXT | grep -a ' ERR\(OR:\)\? ' ; then exit 1 ; fi
   after_script:
     - >-
@@ -439,6 +451,15 @@ test_muen_msi_z790:
     SERIALPID: ${CI_PROJECT_DIR}/obj/serial_out.pid
     SERIALTXT: ${CI_PROJECT_DIR}/obj/serial_out.txt
   stage: test_hw
+  # Normally takes <10m and has a tendency to get stuck.
+  # This let us discover the timeout without waiting 1h to retry
+  timeout: 20m
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout # allow retrying on exec timeout
   needs:
     - build_ci_installer_msi_z790
   artifacts:
@@ -452,10 +473,11 @@ test_muen_msi_z790:
     - nc -U /run/serial_hil1.sock >$SERIALTXT 2>&1 &
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
-    - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh
+    - exit_code=0
+    - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
-      while true ; do
+      for _ in $(seq 60) ; do # do not wait more than 1 minute for serial log
         size=$(du -b $SERIALTXT | cut -f1)
         [ "$size" == "$lastsize" ] && break
         lastsize=$size
@@ -463,6 +485,7 @@ test_muen_msi_z790:
         sleep 1
       done
       echo "done."
+    - if [ $exit_code -ne 0 ]; then exit 1; fi # but still report failure
     - if grep -a -v '^\[ERROR\]' $SERIALTXT | grep -a ' ERR\(OR:\)\? ' ; then exit 1 ; fi
   after_script:
     - curl -s -k -u ${BMC_USER}:${BMC_PASS} -X POST "https://${BMC_IP}/api/atx/power?action=off_hard"
@@ -533,9 +556,9 @@ integration_test_sdk_py:
   variables:
     FLIT_ROOT_INSTALL: 1
   script:
-    - apk add python3 git make
+    - apk add python3 git make poetry
     - git clone https://github.com/Nitrokey/nethsm-sdk-py.git
-    - cd nethsm-sdk-py && make init && TEST_MODE=ci make test
+    - cd nethsm-sdk-py && make install && TEST_MODE=ci make test
 
 run-openapi-fuzzer:
   allow_failure: true

@@ -20,7 +20,9 @@ package script
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -83,38 +85,68 @@ func (s *Script) Execf(format string, a ...interface{}) {
 // made for retrieving it's exit status, however the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
 // and GID equal to uidgid.
-func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
+// This function returns a "cancel" function which, when called, kills the
+// running command if running.
+func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...interface{}) (context.CancelFunc, io.ReadCloser) {
 	if s.err != nil {
-		return
+		return nil, nil
 	}
 
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
 	if len(cmdSplit) == 0 {
 		s.err = fmt.Errorf("Empty command string")
-		return
+		return nil, nil
 	}
 
-	cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
+	context, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(context, cmdSplit[0], cmdSplit[1:]...)
 	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	// Cancel will kill with a SIGINT instead of a SIGKILL
+	cmd.Cancel = func() error {
+		return cmd.Process.Signal(os.Interrupt)
+	}
 	// Does go have an option type? Could use that instead of -1.
 	if uidgid != -1 {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
 	}
+	var logPipe io.ReadCloser
+	if exitCh != nil {
+		var err error
+		logPipe, err = cmd.StderrPipe()
+		if err != nil {
+			s.err = fmt.Errorf("Cannot acquire stdout pipe: %v", err)
+			return cancel, nil
+		}
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 	if err := cmd.Start(); err != nil {
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
+		return cancel, nil
 	}
 	go func(child *exec.Cmd) {
 		err := child.Wait()
+		var success bool
 		if err != nil {
 			log.Printf("Background process '%s' exited with status: %v", cmdSplit[0], err)
+			success = false
 		} else {
 			log.Printf("Background process '%s' exited", cmdSplit[0])
+			success = true
+		}
+		if exitCh != nil {
+			exitCh <- success
+			close(exitCh)
 		}
 	}(cmd)
+	return cancel, logPipe
+}
+
+func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
+	_, _ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
 }
 
 func (s *Script) BackgroundExecf(format string, a ...interface{}) {
@@ -167,4 +199,15 @@ func (s *Script) FileExists(filename string) bool {
 		}
 	}
 	return true
+}
+
+// WriteFile writes some data into a file
+func (s *Script) WriteFile(path string, value string) {
+	if s.err != nil {
+		return
+	}
+	err := os.WriteFile(path, []byte(value), 0o644)
+	if err != nil {
+		s.err = err
+	}
 }

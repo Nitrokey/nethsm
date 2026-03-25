@@ -1,6 +1,6 @@
 # Allow overriding from environment.
 NETHSM_URL="${NETHSM_URL:-https://192.168.1.1/api}"
-CURL="${CURL:-curl -f -sS -k}"
+CURL="${CURL:-curl --fail-with-body -sS -k}"
 
 GET()
 {
@@ -32,6 +32,16 @@ POST()
     echo
 }
 
+DELETE()
+{
+    local url
+    url="${NETHSM_URL}$1"
+    shift
+    echo "DELETE ${url}" 1>&2
+    ${CURL} -X DELETE ${url} "$@" || exit 1
+    echo
+}
+
 GET_admin()
 {
     GET "$@" --user admin:Administrator
@@ -45,6 +55,11 @@ PUT_admin()
 POST_admin()
 {
     POST "$@" --user admin:Administrator
+}
+
+DELETE_admin()
+{
+    DELETE "$@" --user admin:Administrator
 }
 
 GET_operator()

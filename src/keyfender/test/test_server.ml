@@ -18,7 +18,7 @@ module Kv_mem = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Mock_platform (Kv_mem))
 module Webserver = Keyfender.Server.Make (Srv) (Hsm)
 
 let platform =
@@ -29,6 +29,7 @@ let platform =
     akPub = [];
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
+    networkConfig = None;
   }
 
 let () =
@@ -46,7 +47,7 @@ let () =
   Mirage_crypto_rng_unix.use_default ();
   Lwt_main.run
     ( Kv_mem.connect () >>= fun store ->
-      Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, _) ->
+      Hsm.boot ~platform update_key store >>= fun (hsm_state, mvar, p) ->
       let any = Ipaddr.V4.Prefix.global in
       Tcpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false any None
       >>= fun tcp ->
@@ -74,6 +75,8 @@ let () =
       let rec handle_cb () =
         Lwt_mvar.take mvar >>= function
         | Hsm.Shutdown -> Lwt.return_unit
+        | Hsm.Set_local_config _ ->
+            Lwt_mvar.put p (Ok ()) >>= fun () -> handle_cb ()
         | _ -> handle_cb ()
       in
       handle_cb () )

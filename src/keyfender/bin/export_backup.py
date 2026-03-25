@@ -23,8 +23,10 @@ def decode_length(data):
 
 def get_field(data):
     len = decode_length(data)
-    field = data[3:3+len]
     rest = data[3+len:]
+    if len == 0:
+        return None, rest
+    field = data[3:3+len]
     return field, rest
 
 
@@ -59,9 +61,10 @@ def export(passphrase, backup_image_filename, output):
     if not header.startswith(b"_NETHSM_BACKUP_"):
         raise Exception("Not a NetHSM backup file")
 
-    if version != 0:
+    handled_versions = [0, 1]
+    if version not in handled_versions:
         raise Exception(
-            f"Version mismatch on export, provided backup version is {version}, this tool expects 0")
+            f"Version mismatch on export, provided backup version is {version}, this tool expects 0 or 1")
 
     salt, backup_data = get_field(backup_data)
 
@@ -83,12 +86,33 @@ def export(passphrase, backup_image_filename, output):
     locked_domain_key = decrypt(key, adata, encrypted_domain_key)
 
     kvs = []
+    if version == 1:
+        adata = b"backup-device-id"
+        encrypted_backup_device_id, backup_data = get_field(backup_data)
+        backup_device_id = decrypt(key, adata, encrypted_backup_device_id)
+        kvs.append((".backup-device-id", base64.b64encode(backup_device_id).decode()))
+        adata = b"backup-config-store-key"
+        encrypted_backup_config_store_key, backup_data = get_field(backup_data)
+        backup_config_store_key = decrypt(key, adata, encrypted_backup_config_store_key)
+        kvs.append((".backup-config-store-key", base64.b64encode(backup_config_store_key).decode()))
+
     while backup_data:
         item, backup_data = get_field(backup_data)
+        if item is None:
+            if version == 1:
+                break
+            raise Exception("entry with 0 length in V0 backup")
+
         adata = b"backup"
         key_value_pair = decrypt(key, adata, item)
         k, v = get_field(key_value_pair)
         kvs.append((k.decode(), base64.b64encode(v).decode()))
+
+    if version == 1:
+        expected_trailer = b"_NETHSM_BACKUP_END_"
+        trailer = backup_data[:len(expected_trailer)]
+        if not trailer.startswith(expected_trailer):
+            raise Exception("Backup file is truncated (trailer absent)")
 
     data = {
         ".locked-domain-key": base64.b64encode(locked_domain_key).decode(), **dict(kvs)}

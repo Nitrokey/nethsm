@@ -2,6 +2,10 @@
 
 source "$(dirname $0)/common_functions.sh"
 
+echo
+echo "=== Backup/Restore tests ==="
+echo
+
 STATE=$(GET /v1/health/state)
 if [[ "$STATE" != *Operational* ]] ; then
   echo "State $STATE != Operational"
@@ -33,15 +37,17 @@ fi
 # }
 # EOM
 
-echo "creating backup"
+echo "- creating backup"
 POST /v1/system/backup --user backup:BackupBackup -o backup.bin
 
-echo "doing factory reset"
+echo "- doing factory reset"
 POST_admin /v1/system/factory-reset
 
-echo "waiting for NetHSM"
+NETHSM_URL="https://192.168.1.1/api"
+
+echo -n "- waiting for NetHSM"
 x=0
-while ! curl -m 1 -s -k -f https://${NETHSM_IP}/api/v1/health/state ; do
+while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
   printf "."
   ((x++>25)) && echo "time out!" && exit 1
   sleep 2
@@ -55,7 +61,7 @@ if [[ "$STATE" != *Unprovisioned* ]] ; then
 fi
 
 # provision hsm differently
-echo "Provisioning again differently."
+echo "- provisioning again differently"
 SYSTEM_TIME="$(date -u +%FT%TZ)"
 POST /v1/provision <<EOM
 {
@@ -65,9 +71,9 @@ POST /v1/provision <<EOM
 }
 EOM
 
-echo "restoring backup"
+echo "- restoring backup"
 ${CURL} -X POST --user admin:Administrator2 -F arguments='{"backupPassphrase": "backupPassphrase"}' -F backup=@backup.bin \
-  https://${NETHSM_IP}/api/v1/system/restore || exit 1
+  ${NETHSM_URL}/v1/system/restore || exit 1
 
 
 STATE=$(GET /v1/health/state)
@@ -76,7 +82,7 @@ if [[ "$STATE" != *Locked* ]] ; then
   exit 1
 fi
 
-echo "unlocking"
+echo "- unlocking"
 POST /v1/unlock <<EOM
 {
   "passphrase": "UnlockPassphrase"
@@ -89,9 +95,9 @@ if [[ "$STATE" != *Operational* ]] ; then
   exit 1
 fi
 
-echo "restoring backup again"
+echo "- restoring backup again"
 ${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "backupPassphrase"}' -F backup=@backup.bin \
-  https://${NETHSM_IP}/api/v1/system/restore || exit 1
+  ${NETHSM_URL}/v1/system/restore || exit 1
 
 # should be directly operational
 STATE=$(GET /v1/health/state)

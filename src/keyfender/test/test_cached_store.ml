@@ -40,6 +40,7 @@ module Stats_store (Store : Keyfender.Kv_ext.Ranged) = struct
     stats.writes <- batch_stats.writes + stats.writes;
     v
 
+  let create_watch t = create_watch t.t
   let connect t = { t; stats = { reads = 0; writes = 0 } }
 end
 
@@ -49,7 +50,7 @@ module KV = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Underlying_store = Stats_store (Keyfender.Kv_ext.Make_ranged (KV))
+module Underlying_store = Stats_store (Keyfender.Kv_ext.Mock_platform (KV))
 module Cached_store = Keyfender.Cached_store.Make (Underlying_store)
 open Lwt.Syntax
 

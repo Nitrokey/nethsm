@@ -11,11 +11,12 @@ import (
 	"os"
 	"time"
 
+	"nethsm/hw"
+
 	"github.com/u-root/u-root/pkg/termios"
 )
 
 const (
-	trngDev       = "/dev/ttyS1"
 	trngRandSize  = 4096 // this must be in sync with values in startTrngListener in unikernel.ml
 	totalRandSize = trngRandSize + tpmRandSize
 	timeout       = time.Second * 10
@@ -48,19 +49,22 @@ func check(err error) {
 }
 
 func trngTask() {
-	f, err := os.Open(trngDev)
+	f, err := os.Open(hw.TRNGDev)
 	check(err)
+	defer f.Close()
 
-	settings, err := termios.GetTermios(f.Fd())
-	check(err)
+	if !hw.IsTesting() {
+		settings, err := termios.GetTermios(f.Fd())
+		check(err)
 
-	settings, err = termios.MakeSerialBaud(settings, 115200)
-	check(err)
+		settings, err = termios.MakeSerialBaud(settings, 115200)
+		check(err)
 
-	settings = termios.MakeRaw(settings)
+		settings = termios.MakeRaw(settings)
 
-	err = termios.SetTermios(f.Fd(), settings)
-	check(err)
+		err = termios.SetTermios(f.Fd(), settings)
+		check(err)
+	}
 
 	trngLoop(f)
 }
@@ -112,14 +116,16 @@ func trngLoop(trng io.Reader) {
 	check(err)
 	defer keyfender.Close() // nolint
 
-	devRand, err := os.OpenFile("/dev/random", os.O_WRONLY, 0)
-	check(err)
-	defer devRand.Close() // nolint
-
 	fullySeeded := false
 	seed := func(buf []byte) {
-		_, err = devRand.Write(buf)
-		check(err)
+		if !hw.IsTesting() {
+			devRand, err := os.OpenFile("/dev/random", os.O_WRONLY, 0)
+			check(err)
+			defer devRand.Close() // nolint
+
+			_, err = devRand.Write(buf)
+			check(err)
+		}
 		if !fullySeeded && len(buf) == totalRandSize {
 			fullySeededNotify()
 			fullySeeded = true

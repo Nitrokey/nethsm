@@ -11,7 +11,7 @@ module Kv_mem = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Make_ranged (Kv_mem))
+module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Mock_platform (Kv_mem))
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let request hsm_state ?(body = `Empty) ?(meth = `GET)
@@ -21,7 +21,9 @@ let request hsm_state ?(body = `Empty) ?(meth = `GET)
   let path = "/api/v1" ^ path in
   let uri = Uri.make ~scheme:"http" ~host:"localhost" ~path ?query () in
   let request = Request.make ~meth ~headers uri in
-  Handlers.Wm.dispatch' (Handlers.routes hsm_state Ipaddr.V4.any) ~body ~request
+  Handlers.Wm.dispatch'
+    (Handlers.routes hsm_state Ipaddr.(V4 V4.any))
+    ~body ~request
 
 let update_key =
   match X509.Public_key.decode_pem [%blob "public.pem"] with
@@ -37,6 +39,7 @@ let platform =
     akPub = [];
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
+    networkConfig = None;
   }
 
 let unprovisioned_mock () =

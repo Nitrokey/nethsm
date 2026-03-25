@@ -4,14 +4,21 @@
 
 open Lwt.Infix
 
-module Make (KV : Kv_ext.Ranged) = struct
+module Make (KV : Kv_ext.Platform) = struct
   type t = { kv : KV.t; prefix : Mirage_kv.Key.t; key : Crypto.GCM.key }
   type slot = Authentication | Key | Namespace
+
+  let create_watch t = KV.create_watch t.kv
 
   let slot_to_string = function
     | Authentication -> "authentication"
     | Key -> "key"
     | Namespace -> "namespace"
+
+  let current_version = function
+    | Authentication -> Version.Current.authentication_store
+    | Key -> Version.Current.key_store
+    | Namespace -> Version.Current.namespace_store
 
   let pp_slot ppf slot = Fmt.string ppf (slot_to_string slot) [@@coverage off]
 
@@ -22,7 +29,10 @@ module Make (KV : Kv_ext.Ranged) = struct
     | `Invalid_key of KV.key ]
 
   type write_error =
-    [ Mirage_kv.write_error | `Kv of KV.write_error | `Invalid_key of KV.key ]
+    [ Mirage_kv.write_error
+    | `Kv of KV.write_error
+    | `Invalid_key of KV.key
+    | `Restore_in_progress ]
 
   type version_error = [ error | `Msg of string ]
 
@@ -36,6 +46,8 @@ module Make (KV : Kv_ext.Ranged) = struct
     | #Mirage_kv.write_error as e -> Mirage_kv.pp_write_error ppf e
     | `Kv e -> KV.pp_write_error ppf e
     | `Invalid_key k -> Fmt.pf ppf "Invalid key '%a'" Mirage_kv.Key.pp k
+    | `Restore_in_progress ->
+        Fmt.pf ppf "Cannot write while a restore operation is in progress"
 
   type key = Mirage_kv.Key.t
 
@@ -101,8 +113,16 @@ module Make (KV : Kv_ext.Ranged) = struct
     (key', encrypted)
 
   let raw_set t key value =
+    let ( let* ) = Lwt_result.bind in
     let key', encrypted = prepare_set t key value in
-    KV.set t.kv key' encrypted
+    (* writes in the (global) encrypted store are prohibited if a restore is in
+       progress on the cluster *)
+    let* success =
+      KV.atomic_set_if_no_restore t.kv key' encrypted
+      |> Lwt_result.map_error (fun e -> `Kv e)
+    in
+    if success then Lwt_result.return ()
+    else Lwt_result.fail `Restore_in_progress
 
   let set_version t version =
     raw_set t Version.filename (Version.to_string version)
@@ -112,10 +132,7 @@ module Make (KV : Kv_ext.Ranged) = struct
     | Ok v -> Lwt.return (Version.of_string v)
     | Error e -> Lwt.return_error e
 
-  let set t key value =
-    with_key_check key @@ fun () ->
-    raw_set t key value |> Lwt_result.map_error (fun e -> `Kv e)
-
+  let set t key value = with_key_check key @@ fun () -> raw_set t key value
   let get t key = with_key_check key @@ fun () -> raw_get t key
 
   let remove t key =

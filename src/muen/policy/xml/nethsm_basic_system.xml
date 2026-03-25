@@ -51,6 +51,8 @@
     <channel name="keyfender_external_out" size="16#0010_0000#"/>
     <channel name="keyfender_internal_in" size="16#0010_0000#"/>
     <channel name="keyfender_internal_out" size="16#0010_0000#"/>
+    <channel name="net_to_platform" size="16#0010_0000#"/>
+    <channel name="platform_to_net" size="16#0010_0000#"/>
   </channels>
   <components>
     <!--
@@ -115,6 +117,8 @@
       <channels>
         <writer logical="external|in" physical="keyfender_external_in" virtualAddress="16#000e_0300_0000#"/>
         <reader logical="external|out" physical="keyfender_external_out" virtualAddress="16#000e_0310_0000#"/>
+        <writer logical="platform|in" physical="net_to_platform" virtualAddress="16#000e_0340_0000#"/>
+        <reader logical="platform|out" physical="platform_to_net" virtualAddress="16#000e_0350_0000#"/>
       </channels>
       <component ref="linux">
         <map logical="lowmem" physical="net_external|lowmem"/>
@@ -170,6 +174,8 @@
       <channels>
         <writer logical="internal|in" physical="keyfender_internal_in" virtualAddress="16#000e_0320_0000#"/>
         <reader logical="internal|out" physical="keyfender_internal_out" virtualAddress="16#000e_0330_0000#"/>
+        <writer logical="net|in" physical="platform_to_net" virtualAddress="16#000e_0360_0000#"/>
+        <reader logical="net|out" physical="net_to_platform" virtualAddress="16#000e_0370_0000#"/>
       </channels>
       <component ref="linux">
         <map logical="lowmem" physical="platform|lowmem"/>

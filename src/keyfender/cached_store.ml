@@ -54,6 +54,8 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
   type mode = Cache of cache | Batch of op list ref
   type t = { kv : KV.t; mode : mode }
 
+  let create_watch t = KV.create_watch t.kv
+
   let clear_cache cache =
     match cache.mode with
     | Batch _ -> invalid_arg "Cached_store: cannot clear in batch mode"
@@ -120,6 +122,12 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
         (* Note: refreshing flag is reset to false by update, or entry is removed *)
         refresh_loop ~settings ~kv ~cache stream
 
+  let handle_event t (_event : Kv_ext.event) =
+    Logs.debug (fun f ->
+        f "got write event from store: invalidating whole cache");
+    clear_cache t;
+    Lwt.return_unit
+
   let connect ?(settings = default_settings) kv =
     let async_refresh_stream =
       Option.map (fun _ -> Lwt_stream.create ()) settings.refresh_delay_s
@@ -145,7 +153,9 @@ module Make (KV : Kv_ext.Typed_ranged) = struct
                 f "Unexpected exception in cache refresh loop: %a" Fmt.exn exn);
             raise exn))
       async_refresh_stream;
-    { kv; mode = Cache cache }
+    let t = { kv; mode = Cache cache } in
+    KV.create_watch kv (Kv_ext.Range.create ()) (handle_event t);
+    t
 
   let disconnect t =
     (match t.mode with

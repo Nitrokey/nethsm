@@ -74,10 +74,14 @@ let get_length stream =
 let get_data (l, s) = read_n s l
 *)
 
+exception End_of_kv_entries
+
 let get_field s =
   let len = decode_length s in
-  let offset = 3 + len in
-  (String.sub s 3 len, String.sub s offset (String.length s - offset))
+  if len = 0 then raise End_of_kv_entries
+  else
+    let offset = 3 + len in
+    (String.sub s 3 len, String.sub s offset (String.length s - offset))
 
 let version = "0"
 let err_to_msg = function Error e -> Error (`Msg e) | Ok a -> Ok a
@@ -93,7 +97,9 @@ let decrypt ~key ~adata data =
   | Ok x -> Ok x
 
 let backup_header = "_NETHSM_BACKUP_"
+let backup_trailer = "_NETHSM_BACKUP_END_"
 let backup_version_v0 = Char.chr 0
+let backup_version_v1 = Char.chr 1
 
 let export passphrase backup_image_filename output =
   let ( let* ) = Result.bind in
@@ -112,18 +118,34 @@ let export passphrase backup_image_filename output =
       Ok ()
     else Error "Not a NetHSM backup file"
   in
+  let handled_versions = [ backup_version_v0; backup_version_v1 ] in
   let* () =
     match version with
-    | x when x = backup_version_v0 -> Ok ()
+    | x when List.mem x handled_versions -> Ok ()
     | _ ->
         let msg =
           Printf.sprintf
             "Version mismatch on restore, provided backup version is %d, \
-             server expects %d"
+             server expects one of [%s]"
             (Char.code version)
-            (Char.code backup_version_v0)
+            (List.map Char.code handled_versions
+            |> List.fold_left (fun acc c -> acc ^ " " ^ string_of_int c) "")
         in
         Error msg
+  in
+  let* backup_data =
+    if version = backup_version_v1 then
+      let trailer_len = String.length backup_trailer in
+      let total_len = String.length backup_data in
+      try
+        let trailer =
+          String.sub backup_data (total_len - trailer_len) trailer_len
+        in
+        if String.equal trailer backup_trailer then
+          Ok (String.sub backup_data 0 (total_len - trailer_len))
+        else Error "Backup file is incomplete: wrong trailer"
+      with Invalid_argument _ -> Error "Backup file is incomplete: too small"
+    else Ok backup_data
   in
   let salt, backup_data = get_field backup_data in
   let backup_key = Crypto.key_of_passphrase ~salt passphrase in
@@ -138,16 +160,41 @@ let export passphrase backup_image_filename output =
   let encrypted_domain_key, backup_data = get_field backup_data in
   let adata = "domain-key" in
   let* locked_domain_key = decrypt ~key ~adata encrypted_domain_key in
+  let* v1_fields, backup_data =
+    if version = backup_version_v1 then
+      let encrypted_backup_device_id, backup_data = get_field backup_data in
+      let adata = "backup-device-id" in
+      let* backup_device_id = decrypt ~key ~adata encrypted_backup_device_id in
+      let encrypted_backup_config_store_key, backup_data =
+        get_field backup_data
+      in
+      let adata = "backup-config-store-key" in
+      let* backup_config_store_key =
+        decrypt ~key ~adata encrypted_backup_config_store_key
+      in
+      Ok (Some (backup_device_id, backup_config_store_key), backup_data)
+    else Ok (None, backup_data)
+  in
   let rec next acc rest =
-    if rest = "" then Ok acc
+    if rest = "" && version = backup_version_v0 then Ok acc
     else
-      let item, rest = get_field rest in
-      let adata = "backup" in
-      let* key_value_pair = decrypt ~key ~adata item in
-      let key, value = get_field key_value_pair in
-      next ((key, value) :: acc) rest
+      try
+        let item, rest = get_field rest in
+        let adata = "backup" in
+        let* key_value_pair = decrypt ~key ~adata item in
+        let key, value = get_field key_value_pair in
+        next ((key, value) :: acc) rest
+      with End_of_kv_entries -> Ok acc
   in
   let init = [ (".locked-domain-key", locked_domain_key) ] in
+  let init =
+    match v1_fields with
+    | None -> init
+    | Some (backup_device_id, backup_config_store_key) ->
+        (".backup-device-id", backup_device_id)
+        :: (".backup-config-store-key", backup_config_store_key)
+        :: init
+  in
   match next init backup_data with
   | Error e -> Error e
   | Ok kvs ->

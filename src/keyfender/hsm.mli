@@ -28,26 +28,34 @@ module type S = sig
 
   type cb =
     | Log of Json.log
-    | Network of Ipaddr.V4.Prefix.t * Ipaddr.V4.t option
+    | Network of Json.network
     | Tls of Tls.Config.own_cert
     | Shutdown
     | Reboot
     | Factory_reset
     | Update of int * string Lwt_stream.t
     | Commit_update
+    | Join_cluster of string
+    | Set_local_config of Json.local_conf
 
   val cb_to_string : cb -> string
 
   type t
 
-  val equal : t -> t -> bool Lwt.t
+  val assert_equal :
+    ?except_system_info:bool ->
+    ?except_key_values:Mirage_kv.Key.t list ->
+    ?except_keys:(Mirage_kv.Key.t * [ `Dictionary | `Value ]) list ->
+    ?allow_more_keys:bool ->
+    t ->
+    t ->
+    unit Lwt.t
+
   val info : t -> Json.info
   val state : t -> Json.state
   val lock : t -> unit
   val own_cert : t -> Tls.Config.own_cert
-
-  val network_configuration :
-    t -> (Ipaddr.V4.t * Ipaddr.V4.Prefix.t * Ipaddr.V4.t option) Lwt.t
+  val network_configuration : t -> Json.network Lwt.t
 
   val provision :
     t -> unlock:string -> admin:string -> Ptime.t -> (unit, error) result Lwt.t
@@ -83,6 +91,8 @@ module type S = sig
     val tls_public_pem_digest : t -> string option Lwt.t
     val tls_cert_pem : t -> string Lwt.t
     val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_cluster_ca : t -> string option Lwt.t
+    val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
     val tls_cert_digest : t -> string option Lwt.t
     val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
 
@@ -115,6 +125,7 @@ module type S = sig
     val commit_update : t -> (unit, error) result Lwt.t
     val cancel_update : t -> (unit, error) result
     val backup : t -> (string option -> unit) -> (unit, error) result Lwt.t
+    val join_cluster : t -> Json.join_req -> (unit, error) result Lwt.t
 
     val restore :
       t -> string -> string Lwt_stream.t -> (unit, error) result Lwt.t
@@ -316,9 +327,23 @@ module type S = sig
     val list : t -> (string list, error) result Lwt.t
     val remove : t -> id -> (unit, error) result Lwt.t
   end
+
+  module Cluster : sig
+    type member = { id : int64; name : string; urls : string list }
+
+    val member_list : t -> (member list, error) result Lwt.t
+    val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
+    val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
+
+    val member_update :
+      id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
+
+    val member_add :
+      urls:string list -> t -> (Json.join_req, error) result Lwt.t
+  end
 end
 
-module Make (KV : Kv_ext.Ranged) : sig
+module Make (KV : Kv_ext.Platform) : sig
   include S
 
   val boot :

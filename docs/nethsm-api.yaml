@@ -1168,6 +1168,227 @@ paths:
         required: true
         schema:
           $ref: "#/components/schemas/ID"
+  /cluster/join:
+    post:
+      responses:
+        "204":
+          description: Join successful.
+        "400":
+          description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: |
+            Precondition failed. NetHSM was not *Operational* or no cluster CA
+            was set before.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description:
+        Attempt to join an existing NetHSM cluster i.e. **wipe all user data** and
+        use the cluster data instead. This does **not** merge data on this node to cluster data.
+
+        'POST /cluster/members' *MUST* have been called on an existing member of the cluster
+        beforehand. The data returned by that call must be passed here along with the backup
+        passphrase *of the node that registered the new member*.
+
+        On success, the node will end up in a *Locked* stated, unlockable with the unlock passphrase
+        *of the node that registered the new member*. All device-specific configuration will be preserved
+        from before the join.
+
+        On immediate failure (e.g. if the cluster is not reachable), the NetHSM will attempt to
+        reverse the join. **WARNING**. Existing data will be definitely wiped after a first successful
+        connection to the cluster. Be sure to backup anything important.
+      security:
+        - basic: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterJoinReq"
+        required: true
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+  /cluster/members:
+    get:
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterMemberList"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        List members of the cluster this node belongs to.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    post:
+      responses:
+        "201":
+          description: |
+            New member successfully declared to the cluster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterMemberAddResponse"
+        "400":
+          description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: |
+            Precondition failed. NetHSM was not *Operational* or a backup key
+            has not been configured before.
+      description: |
+        Declare a new member to the cluster. The response of this call must
+        be passed to a call to '/cluster/join' on the new member to finalize the join,
+        along with the backup passphrase.
+        A backup key must be configured prior to this call.
+
+        *WARNING*: adding a member will change the quorum needed for the cluster
+        to operate. If the quorum is not met anymore (e.g. when adding a second node)
+        to a one-node cluster, the cluster (and hence the HSM) will cease to operate until
+        that new member actually joins. If it doesn't, the NetHSM is lost and must be factory reset.
+        Make sure to backup before this operation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterAddReq"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+  /cluster/members/{MemberID}:
+    parameters:
+      - name: MemberID
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
+    put:
+      responses:
+        "204":
+          description: Member successfully updated.
+        "400":
+          description: |
+            Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Cluster member not found.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Update the peer URLs of a cluster member (i.e. how others can reach it).
+
+        *WARNING*: misconfiguring this may lead to the member not being reachable anymore. If this makes the cluster
+        lose quorum, the cluster will cease to operate, in which case the NetHSM is lost and must be factory reset.
+        Make sure to backup before this operation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterAddReq"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+      x-test-value-MemberID: 8e9e05c52164694d
+    delete:
+      responses:
+        "204":
+          description: Member successfully removed from cluster.
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Cluster member not found.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Irreversibly remove a member from the cluster. The member in question
+        (even if it is ourself) will become inoperable and should be immediately
+        factory reset. It cannot be added back to the cluster without going
+        through a fresh join process.
+
+        *WARNING*: this MUST be called before resetting or otherwise isolating a
+        member from the cluster. Not doing this may lead the cluster to lose
+        quorum and cease to operate. Make sure to backup before this
+        operation.
+
+        If a member has failed and the cluster is still operable (it still has
+        quorum), this method MUST be called to remove voting power to the failed
+        node (if there is no hope that the member becomes available again).
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+      x-test-value-MemberID: 8e9e05c52164694d
   /namespaces:
     get:
       responses:
@@ -1849,7 +2070,9 @@ paths:
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Precondition failed (NetHSM was not *Operational*).
+          description: |
+            Either NetHSM was not *Operational*, or "cluster-ca.pem" is set and the
+            provided certicicate is not signed by that CA.
       description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
       requestBody:
         content:
@@ -1929,6 +2152,82 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
+  /config/tls/cluster-ca.pem:
+    get:
+      responses:
+        "200":
+          description: Successful retrieval of previously set CA.
+          content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemCert"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "404":
+          description: Cluster CA has never been set before.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+        "415":
+          description: Content type in Accept header not supported or not present.
+      description: Get currently set CA for cluster peer traffic (i.e. how cluster members communicate).
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    put:
+      responses:
+        "201":
+          description: Successfully set cluster CA.
+        "400":
+          description: |
+            Certificate malformed.
+            Check that it has the proper extensions for a CA (basicConstraint, keyUsage).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: |
+            Either the NetHSM was not *Operational*, or the installed TLS certificate
+            is not signed by the given CA. Install a certificate signed by this CA first.
+      description: |
+        Set cluster certificate authority used for etcd peer traffic (i.e. how cluster members communicate).
+        It is not set by default. When set, it cannot be unset (but it can be updated).
+
+        The NetHSM cert must be signed by this CA for this operation to succeed, it will be aborted otherwise.
+        *Note that this is checked for this node but not for all members!*
+        If you need to change the CA, ensure all nodes of the cluster have their cert signed by both the new and the old CA,
+        then change the CA. Afterwards, you can update the individual certs to be signed only by the new CA.
+
+        When changed, the underlying etcd server is restarted with the new CA.
+      requestBody:
+        content:
+          application/x-pem-file:
+            schema:
+              $ref: "#/components/schemas/PemCert"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
   /config/network:
     get:
       responses:
@@ -1937,7 +2236,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NetworkConfig"
+                $ref: "#/components/schemas/NetworkConfigOutput"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -1946,7 +2245,9 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get network configuration. IP address, netmask, router.
+      description: |
+        Get network configuration. IP address, netmask, router.
+        If IPv6 is configured (not by default), returns its CIDR and gateway.
       security:
         - basic: []
       x-annotation-role:
@@ -1973,12 +2274,14 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Configure network.
+      description: |
+        Configure IPv4 network. Optionally, an 'ipv6' field can be passed
+        to configure IPv6 network as well (passing 'null' will disable IPv6).
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NetworkConfig"
+              $ref: "#/components/schemas/NetworkConfigInput"
         required: true
       security:
         - basic: []
@@ -2008,7 +2311,7 @@ paths:
       description: |
         Get logging configuration.
         Protocol is always syslog over UDP.
-        Configurable are IP adress and port, log level.
+        Configurable are IP (v4 or v6) adress and port, log level.
       security:
         - basic: []
       x-annotation-role:
@@ -2588,6 +2891,91 @@ components:
           $ref: "#/components/schemas/UserID"
       required:
         - user
+    ClusterAddReq:
+      example:
+          urls:
+            - https://192.168.1.2:2380
+      type: object
+      properties:
+        urls:
+          $ref: "#/components/schemas/PeerURLs"
+      required:
+        - urls
+    ClusterInitialMember:
+      type: object
+      properties:
+        name:
+          type: string
+        urls:
+          $ref: "#/components/schemas/PeerURLs"
+      required:
+        - name
+        - urls
+    ClusterJoinReq:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterInitialMember"
+        joinerKit:
+          type: string
+        backupPassphrase:
+          type: string
+      required:
+        - members
+        - joinerKit
+        - backupPassphrase
+    ClusterMemberAddResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterInitialMember"
+        joinerKit:
+          type: string
+      required:
+        - members
+        - joinerKit
+    ClusterMemberList:
+      example:
+        - id: 8e9e05c52164694d
+          name: default
+          urls:
+            - https://192.168.1.1:2380
+      type: array
+      items:
+        $ref: "#/components/schemas/ClusterMember"
+    ClusterMember:
+      example:
+        id: 8e9e05c52164694d
+        name: default
+        urls:
+          - https://192.168.1.1:2380
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        name:
+          type: string
+        urls:
+          $ref: "#/components/schemas/PeerURLs"
+      required:
+        - id
+        - name
+        - urls
+    PeerURL:
+      pattern: ^https://.+
+      minLength: 1
+      maxLength: 1024
+      type: string
+    PeerURLs:
+      example:
+        - https://192.168.1.1:2380
+      type: array
+      items:
+        $ref: "#/components/schemas/PeerURL"
     NamespaceList:
       example:
         - id: namespace1
@@ -2716,6 +3104,8 @@ components:
         Data used for creation of CSRs.
         If subjectAltNames is omitted, it is set to the same value as
         commonName. If it is set to an empty list, no SAN Extension is added.
+        All SANs are considered DNS names, unless they start with "IP:" to signal
+        IP names.
       example:
         countryName: DE
         stateOrProvinceName: ""
@@ -2724,7 +3114,7 @@ components:
         organizationalUnitName: ""
         commonName: nethsm.local
         emailAddress: info@nitrokey.com
-        subjectAltNames: ["example.com", "www.example.com"]
+        subjectAltNames: ["example.com", "www.example.com", "IP:192.168.1.1"]
       type: object
       properties:
         countryName:
@@ -2995,7 +3385,7 @@ components:
           $ref: "#/components/schemas/Switch"
       required:
         - status
-    NetworkConfig:
+    NetworkConfigInput:
       example:
         ipAddress: 192.168.1.1
         netmask: 255.255.255.0
@@ -3008,10 +3398,40 @@ components:
           type: string
         gateway:
           type: string
+        ipv6:
+          $ref: "#/components/schemas/Ipv6Config"
+      required:
+        - ipAddress
+        - netmask
+    NetworkConfigOutput:
+      example:
+        ipAddress: 192.168.1.1
+        netmask: 255.255.255.0
+        gateway: 0.0.0.0
+      type: object
+      properties:
+        ipAddress:
+          type: string
+        netmask:
+          type: string
+        gateway:
+          type: string
+        ipv6:
+          $ref: "#/components/schemas/Ipv6Config"
       required:
         - ipAddress
         - netmask
         - gateway
+    Ipv6Config:
+      example:
+        cidr: de:ad:be:ef::42/8
+        gateway: de:ad:be:ef::1
+      type: object
+      properties:
+        cidr:
+          type: string
+        gateway:
+          type: string
     LoggingConfig:
       example:
         ipAddress: 0.0.0.0
@@ -3166,7 +3586,7 @@ components:
     PemCSR:
       example: |
         -----BEGIN CERTIFICATE REQUEST-----
-        MIIC6TCCAdECAQAwajEVMBMGA1UEAwwMbmV0aHNtLmxvY2FsMQswCQYDVQQGEwJE
+        MIIC7zCCAdcCAQAwajEVMBMGA1UEAwwMbmV0aHNtLmxvY2FsMQswCQYDVQQGEwJE
         RTEPMA0GA1UEBwwGQmVybGluMREwDwYDVQQKDAhOaXRyb2tleTEgMB4GCSqGSIb3
         DQEJARYRaW5mb0BuaXRyb2tleS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw
         ggEKAoIBAQDHuCF+uj5UR6libLZXsc+fk9JF2YbPF7BymbPFO2tnXQHKBsSqE+wC
@@ -3174,14 +3594,14 @@ components:
         HKv5pOUTeObZc/XYKrHTCxgYigmVYdsZv3QgDH3Ol1hCAeglnjHmKazm+juHem48
         TJXJwkfl8wEH2H7YHFzgHFo8oybXklHUHtOgHeDXpIljYHW39qo2apIFkLgc/V8K
         5JsGbzc6CpGF2TU/qv++o5UqvFW6kOoqR1x/91EGJBqUn21BtVuz045h9Dqfbka8
-        lO8a2o4S6CCK3fa1XXolcJmOdh48C+03AgMBAAGgOjA4BgkqhkiG9w0BCQ4xKzAp
-        MCcGA1UdEQQgMB6CC2V4YW1wbGUuY29tgg93d3cuZXhhbXBsZS5jb20wDQYJKoZI
-        hvcNAQELBQADggEBABD92ZM2fDcq8hNl/SrHIXyFdZIV+uGWVultZ22isLRuJbuh
-        jb+onDXT9F5mKa4JAoAWvBPnQZpO1d/tf2bPhg9F46Fd/1zd79dvStRrUTjmxdN3
-        6M2ExIRekBRyx5o5h5yjve6tmG1vWOqgcczJwQFG5GawiaBNVenXjJROBx1ad9ou
-        W1cCAvKISOD9OTHsw/Amksu3HyPUW+/celAF4GOzlT2F41rNMoiW0rCTiiJfBotE
-        FvTLWty55EECqoWbAOupRKutt/fu2zewTHINYAR+8NEZDOm8RxLoq4zqc+p1y5ax
-        n9jM28FJC+nYGFwrOmfMV5P/CMxjpp/6pttAvVY=
+        lO8a2o4S6CCK3fa1XXolcJmOdh48C+03AgMBAAGgQDA+BgkqhkiG9w0BCQ4xMTAv
+        MC0GA1UdEQQmMCSCC2V4YW1wbGUuY29tgg93d3cuZXhhbXBsZS5jb22HBMCoAQEw
+        DQYJKoZIhvcNAQELBQADggEBABWDe7Na8w0zeVgKHEQi8CPnIm/32j/RSj5W3oWA
+        tyWvuKNkhx80kvueGlsRO6HELj7aUG9gXz/2Q5WZBfitdFcx3H8i1cbPZEa8Uonk
+        XNsRnOV8lqnGiBRYvkWzNVNgd03kz/f43qpe5mzBVUNSEWSB15vY5NmXBPsxpA/4
+        KJgiPmVd7/X2vvfbzF/YVkI07fJakH8TJlEwpSzpGuWqrEPLtYG5nWlfz3XBjEZj
+        Fr0JBLINKW4qiryTaro3wVV38Ew1ZojBh9UZ2SiH/W3bKO9AZwacjwy/mqlzIv5Q
+        RNB95c627sR1F7zbVewmbM9LG44P3ARdHeEejOTl8WFFnV0=
         -----END CERTIFICATE REQUEST-----
       type: string
     PemCert:

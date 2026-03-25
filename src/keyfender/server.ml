@@ -29,8 +29,9 @@ module Make_handlers (Hsm : Hsm.S) = struct
   module Keys = Handler_keys.Make (Wm) (Hsm)
   module Namespace = Handler_namespaces.Make (Wm) (Hsm)
   module System = Handler_system.Make (Wm) (Hsm)
+  module Cluster = Handler_cluster.Make (Wm) (Hsm)
 
-  let routes hsm_state ip =
+  let routes hsm_state (ip : Ipaddr.t) =
     List.map
       (fun (p, h) -> ("/api/v1" ^ p, h))
       [
@@ -51,6 +52,8 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state ip);
         ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state ip);
         ("/config/tls/generate", fun () -> new Config.tls_generate hsm_state ip);
+        ( "/config/tls/cluster-ca.pem",
+          fun () -> new Config.tls_cluster_ca hsm_state ip );
         ("/config/network", fun () -> new Config.network hsm_state ip);
         ("/config/logging", fun () -> new Config.logging hsm_state ip);
         ( "/config/backup-passphrase",
@@ -89,6 +92,10 @@ module Make_handlers (Hsm : Hsm.S) = struct
           fun () -> new System.cancel_update hsm_state ip );
         ("/system/backup", fun () -> new System.backup hsm_state ip);
         ("/system/restore", fun () -> new System.restore hsm_state ip);
+        ("/cluster/members", fun () -> new Cluster.handler_members hsm_state ip);
+        ( "/cluster/members/:id",
+          fun () -> new Cluster.handler_member hsm_state ip );
+        ("/cluster/join", fun () -> new Cluster.handler_join hsm_state ip);
       ]
 end
 
@@ -98,7 +105,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
   let cid conn = Cohttp.Connection.to_string conn [@@alert "-deprecated"]
 
   (* Route dispatch. Returns [None] if the URI did not match any pattern, server should return a 404 [`Not_found]. *)
-  let dispatch hsm_state ip request body =
+  let dispatch hsm_state (ip : Ipaddr.t) request body =
     let start = Hsm.now () in
     Access_log.info (fun m ->
         m "request %s %s"
@@ -109,7 +116,8 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
           (Cohttp.Header.to_string (Cohttp.Request.headers request)));
     ( Lwt.catch
         (fun () ->
-          Handlers.Wm.dispatch' (Handlers.routes hsm_state ip) ~body ~request)
+          let routes = Handlers.routes hsm_state ip in
+          Handlers.Wm.dispatch' routes ~body ~request)
         (fun e ->
           if e = Out_of_memory then Gc.compact ();
           Lwt.return_some
@@ -150,14 +158,7 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
 
   let serve cb =
     let callback (_, conn) ip request body =
-      let ip =
-        match ip with
-        | Ipaddr.V4 ip -> ip
-        | V6 _ ->
-            Access_log.err (fun m -> m "IPv6 not supported");
-            Ipaddr.V4.localhost
-      in
-      Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.V4.pp ip);
+      Access_log.debug (fun m -> m "IP of client is %a" Ipaddr.pp ip);
       let uri = Cohttp.Request.uri request in
       let cid = cid conn in
       Access_log.debug (fun f -> f "[%s] serving %s." cid (Uri.to_string uri));

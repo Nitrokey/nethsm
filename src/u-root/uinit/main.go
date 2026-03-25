@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"log"
 	"os"
@@ -40,9 +41,13 @@ type globalState struct {
 	sysInactivePartition string
 	dataPartition        string
 	listenerProtocol     string
-	listenerPort         string
+	platListenerAddress  string
+	netListenerAddress	 string
 	keyfenderIP          string
 	entropyPort          string
+	deviceID             string
+	killEtcd             context.CancelFunc
+	etcdStoppedCh        chan bool
 }
 
 // G is the actual singleton instance of globalState used throughout. This
@@ -56,10 +61,14 @@ var G = &globalState{
 	sysActivePartition:   hw.DiskPrefix + "1",
 	sysInactivePartition: hw.DiskPrefix + "2",
 	dataPartition:        hw.DiskPrefix + "3",
-	listenerProtocol:     "tcp",
-	listenerPort:         ":1023",
+	listenerProtocol:     "tcp4",
+	platListenerAddress:  "169.254.169.2:1023",
+	netListenerAddress:   "169.254.100.1:1023",
 	keyfenderIP:          "169.254.169.1",
 	entropyPort:          "4444",
+	deviceID:             "",
+	killEtcd:             nil,
+	etcdStoppedCh:        nil,
 }
 
 func main() {
@@ -78,17 +87,6 @@ func main() {
 	case "platform":
 		log.Printf("Booting subject: S-Platform")
 		sPlatformActions()
-	case "mock":
-		log.Printf("Mock mode")
-		G.diskDevice = safeGetenv("MOCK_DISK_DEVICE", "/dev/null")
-		G.sysActivePartition = safeGetenv("MOCK_SYS_ACTIVE_PARTITION", "/dev/null")
-		G.sysInactivePartition = safeGetenv("MOCK_SYS_INACTIVE_PARTITION", "/dev/null")
-		G.dataPartition = safeGetenv("MOCK_DATA_PARTITION", "/dev/null")
-		G.listenerPort = safeGetenv("MOCK_LISTENER_PORT", ":12345")
-
-		mockActions()
-		// In mock mode we just exit here instead of halting.
-		return
 	default:
 		log.Printf("Unknown subject hostname: %s", hostname)
 	}
