@@ -1,0 +1,19 @@
+[package]
+name = "libcrux-ocaml"
+version = "0.1.0"
+edition = "2021"
+description = "OCaml FFI bindings for libcrux ML-DSA-87 + ML-KEM-768 — NetHSM keyfender integration"
+license = "EUPL-1.2"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# PQC — libcrux 0.0.8 (Cryspen, formally verified F*, INRIA)
+libcrux-ml-dsa = "0.0.8"
+libcrux-ml-kem = "0.0.8"
+getrandom = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
