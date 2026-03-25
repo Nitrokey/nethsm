@@ -1,6 +1,10 @@
-# 4.0 (2026-04-17)
+# 4.0 (2026-04-25)
 
-* This is a release candidate. DON'T USE.
+* Add IPv6 support
+* Improve networking with internal router
+* Add support for clustering (technical preview)
+* Fix frequent DA lock issues
+* Fix syslog feedback loop
 
 # 3.1 (2025-10-13)
 
