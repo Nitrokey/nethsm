@@ -2357,8 +2357,6 @@ module Make (KV : Kv_ext.Platform) = struct
       let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
       let+ tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
-      (*
-      let ( let* ) = Lwt_result.bind in
       let* time_offset_opt =
         internal_server_error Read "Read time offset" Config_store.pp_error
           (Config_store.get_opt t.config_store Time_offset)
@@ -2374,11 +2372,10 @@ module Make (KV : Kv_ext.Platform) = struct
             |> Lwt.return
         | None -> Lwt_result.return 0
       in
-      *)
-      let time_offset_s =
+      (* let time_offset_s =
         now () |> Ptime.to_span |> Ptime.Span.to_int_s
         |> Option.value ~default:0
-      in
+      in *)
       let+ tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
       let* network_config =

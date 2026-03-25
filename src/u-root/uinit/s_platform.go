@@ -381,6 +381,13 @@ func setSystemTime(t time.Time) error {
 	return syscall.Settimeofday(&tv)
 }
 
+var rtcTime = func() func() time.Time {
+	t0 := time.Now() // stores RTC wall-time at t0
+	return func() time.Time {
+		return t0.Round(0).Add(time.Since(t0))
+	}
+}()
+
 func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
@@ -452,7 +459,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		}
 
 		if conf.TimeOffsetS != 0 {
-			t := time.Unix(int64(conf.TimeOffsetS), 0)
+			t := rtcTime().Add(time.Duration(conf.TimeOffsetS) * time.Second)
 			G.s.Logf("Setting local time to %v", t)
 			if err := setSystemTime(t); err != nil {
 				log.Printf("Failed to set system time: %v", err)
