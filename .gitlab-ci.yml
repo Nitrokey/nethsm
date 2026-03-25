@@ -434,6 +434,12 @@ test_muen_prodrive_hermes:
       https://${BMC_IP}/redfish/v1/Systems/1/Actions/ComputerSystem.Reset -u
       ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
       '{"ResetType": "ForceOff"}'
+    - >-
+      [ $CI_PIPELINE_SOURCE == "schedule" ] &&
+      curl -k -sS
+      https://${BMC_IP}/redfish/v1/Managers/1/Actions/Manager.Reset -u
+      ${BMC_USER}:${BMC_PASS} -H "Content-Type: application/json" -d
+      '{"ResetType": "GracefulRestart"}'
   coverage: "/(^Performance Score: )(.*)%/"
 
 test_muen_msi_z790:
