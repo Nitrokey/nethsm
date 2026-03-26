@@ -55,6 +55,7 @@ EOF
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam pin add -y -n keyfender.dev src/keyfender
   make src/keyfender/softwareVersion src/keyfender/buildTag src/s_keyfender/update_key_store/key.pem
+  make ${PWD}/src/s_keyfender/htdocs/api_docs
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
