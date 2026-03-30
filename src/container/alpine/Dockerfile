@@ -112,10 +112,16 @@ ENTRYPOINT [ "/start.sh" ]
 
 FROM alpine AS nethsm_test
 
+# Install the same version and binary of etcd/etcdutl than production
+
+COPY Makefile.sub /Makefile
+
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add --no-cache gmp
-  apk add etcd --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
-  ln -s /usr/bin/etcd /bin
+  apk add --no-cache gmp make curl
+  cd / && make -f /Makefile //etcd-download # really needs to be '//'
+  mv /etcd-download/etcd /bin
+  mv /etcd-download/etcdutl /bin
+  rm -r /Makefile /etcd-download
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF

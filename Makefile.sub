@@ -481,11 +481,12 @@ $(OBJ_DIR):
 
 # ------------------------------------------------------------------------------
 OBJ_ETCD_BIN_DIR := $(OBJ_INITRAMFS_DIR)/bin
-INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd
+INSTALL_ETCD_DAEMON := $(OBJ_ETCD_BIN_DIR)/etcd $(OBJ_ETCD_BIN_DIR)/etcdutl
 
 $(INSTALL_ETCD_DAEMON): | $(OBJ_DIR) $(ETCD_DIR)
 	mkdir -p $(OBJ_ETCD_BIN_DIR)
-	cp -a $(ETCD_DIR)/etcd $@
+	cp -a $(ETCD_DIR)/etcd $(OBJ_ETCD_BIN_DIR)/etcd
+	cp -a $(ETCD_DIR)/etcdutl $(OBJ_ETCD_BIN_DIR)/etcdutl
 
 # ------------------------------------------------------------------------------
 MKE2FS := /nethsm-tools/bin/mke2fs

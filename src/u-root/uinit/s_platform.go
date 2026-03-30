@@ -606,6 +606,17 @@ func setupPlatform() error {
 			return fmt.Errorf("error extracting /data template: %w", err)
 		}
 	}
+
+	// Ensure /bin/etcd and /bin/etcdutl are present and executable
+	G.s.Execf("/bin/etcd --version")
+	if err := G.s.Err(); err != nil {
+		return fmt.Errorf("etcd is not properly installed: %w", err)
+	}
+	G.s.Execf("/bin/etcdutl version")
+	if err := G.s.Err(); err != nil {
+		return fmt.Errorf("etcdutl is not properly installed: %w", err)
+	}
+
 	return nil
 }
 
