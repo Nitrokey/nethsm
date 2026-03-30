@@ -3431,7 +3431,13 @@ components:
         cidr:
           type: string
         gateway:
-          type: string
+          $ref: "#/components/schemas/Ipv6Gateway"
+      required:
+        - cidr
+        - gateway
+    Ipv6Gateway:
+      type: string
+      nullable: true
     LoggingConfig:
       example:
         ipAddress: 0.0.0.0
