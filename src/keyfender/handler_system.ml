@@ -33,8 +33,11 @@ struct
   class reboot hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
-      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      inherit!
+        Endpoint.input_state_validated hsm_state [ `Operational; `Failed ]
+
+      inherit! Endpoint.failed_or_r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -49,7 +52,7 @@ struct
       inherit!
         Endpoint.input_state_validated
           hsm_state
-          [ `Operational; `Locked; `Unprovisioned ]
+          [ `Operational; `Locked; `Unprovisioned; `Failed ]
 
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
@@ -60,20 +63,23 @@ struct
 
       method! is_authorized rd =
         match Hsm.state hsm_state with
-        | `Locked | `Unprovisioned -> Wm.continue `Authorized rd
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue `Authorized rd
         | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
 
       method! forbidden rd =
         match Hsm.state hsm_state with
-        | `Locked | `Unprovisioned -> Wm.continue false rd
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue false rd
         | `Operational -> r_role#forbidden rd
     end
 
   class factory_reset hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
-      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      inherit!
+        Endpoint.input_state_validated hsm_state [ `Operational; `Failed ]
+
+      inherit! Endpoint.failed_or_r_role hsm_state `Administrator ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
@@ -237,11 +243,13 @@ struct
         | `Unprovisioned -> Wm.continue `Authorized rd
         | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
         | `Locked -> assert false
+        | `Failed -> assert false
 
       method! forbidden rd =
         match Hsm.state hsm_state with
         | `Unprovisioned -> Wm.continue false rd
         | `Operational -> r_role#forbidden rd
         | `Locked -> assert false
+        | `Failed -> assert false
     end
 end

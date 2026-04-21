@@ -206,6 +206,15 @@ struct
         join_ops ~join:( || ) [ role#forbidden; namespace#forbidden ]
     end
 
+  class failed_or_r_role ?r_exclude_meths hsm_state role ip =
+    object
+      inherit r_role ?r_exclude_meths hsm_state role ip as r_role
+
+      method! forbidden rd =
+        if Access.is_in_state hsm_state `Failed then Wm.continue false rd
+        else r_role#forbidden rd
+    end
+
   (*  For endpoints managing users, ensure that the target and caller are
       strictly in the same namespace.
       - this is a strict check: if the caller is a R-User and target a N-User,

@@ -691,7 +691,10 @@ let decode_user_req content =
 
 type user_res = { realName : string; role : role } [@@deriving yojson]
 type info = { vendor : string; product : string } [@@deriving yojson]
-type state = [ `Unprovisioned | `Operational | `Locked ] [@@deriving yojson]
+
+type state = [ `Unprovisioned | `Operational | `Locked | `Failed ]
+[@@deriving yojson]
+
 type member_req = { urls : string list } [@@deriving yojson]
 
 let state_to_yojson state = `Assoc [ ("state", head @@ state_to_yojson state) ]

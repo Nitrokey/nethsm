@@ -575,7 +575,8 @@ module Make (KV : Kv_ext.Platform) = struct
       (match s with
       | `Unprovisioned -> "unprovisioned"
       | `Operational -> "operational"
-      | `Locked -> "locked")
+      | `Locked -> "locked"
+      | `Failed -> "failed")
   [@@coverage off]
 
   type cb =
@@ -740,13 +741,18 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let equal_keys a b = String.equal a.domain_key b.domain_key
 
-  type internal_state = Unprovisioned | Operational of keys | Locked
+  type internal_state =
+    | Unprovisioned
+    | Operational of keys
+    | Locked
+    | Failed of internal_state option
   [@@deriving eq]
 
   let to_external_state = function
     | Unprovisioned -> `Unprovisioned
     | Operational _ -> `Operational
     | Locked -> `Locked
+    | Failed _ -> `Failed
 
   type t = {
     mutable state : internal_state;
@@ -1559,7 +1565,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let dump_keys t =
       let open Lwt.Infix in
       match t.state with
-      | Unprovisioned | Locked -> Lwt.return_unit
+      | Unprovisioned | Locked | Failed _ -> Lwt.return_unit
       | Operational _ -> (
           with_write_lock (fun () ->
               let store = key_store t in
