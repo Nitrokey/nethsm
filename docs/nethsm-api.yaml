@@ -31,6 +31,7 @@ paths:
         - Locked
         - Operational
         - Unprovisioned
+        - Failed
       x-annotation-role:
         - Public
       x-annotation-caller-namespace:
@@ -92,6 +93,7 @@ paths:
         - Locked
         - Operational
         - Unprovisioned
+        - Failed
       x-annotation-caller-namespace:
         - Root
         - Namespaced
@@ -2492,7 +2494,7 @@ paths:
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Precondition failed (NetHSM was not *Operational*).
+          description: Precondition failed (NetHSM was not *Operational* or *Failed*).
       description: Reboot NetHSM.
       security:
         - basic: []
@@ -2500,6 +2502,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+        - Failed
       x-annotation-caller-namespace:
         - Root
   /system/shutdown:
@@ -2518,7 +2521,7 @@ paths:
 
         Authentication behavior varies by NetHSM state:
         - **Operational**: Requires Administrator authentication
-        - **Locked** or **Unprovisioned**: No authentication required
+        - **Locked**, **Unprovisioned** or **Failed**: No authentication required
       security:
         - basic: [] # when Operational
         - {} # when Unprovisioned or Locked
@@ -2529,6 +2532,7 @@ paths:
         - Operational
         - Unprovisioned
         - Locked
+        - Failed
       x-annotation-caller-namespace:
         - Root
   /system/factory-reset:
@@ -2543,7 +2547,7 @@ paths:
         "406":
           description: Content type in Accept header not supported.
         "412":
-          description: Precondition failed (NetHSM was not *Operational*).
+          description: Precondition failed (NetHSM was not *Operational* or *Failed*).
       description: Reset NetHSM to factory settings.
       security:
         - basic: []
@@ -2551,6 +2555,7 @@ paths:
         - Administrator
       x-annotation-state:
         - Operational
+        - Failed
       x-annotation-caller-namespace:
         - Root
   /system/update:
@@ -2755,6 +2760,7 @@ components:
         - Unprovisioned
         - Locked
         - Operational
+        - Failed
       type: string
     UserRole:
       enum:
