@@ -18,7 +18,7 @@ let cmd path meth =
 
 let api_file = "../../docs/nethsm-api.yaml"
 let allowed_methods = [ "get"; "put"; "post" ]
-let all_states = [ "Unprovisioned"; "Locked"; "Operational" ]
+let all_states = [ "Failed"; "Unprovisioned"; "Locked"; "Operational" ]
 
 let skip_endpoints =
   [
@@ -140,6 +140,7 @@ let prepare_setup _meth _path _cmd (state, role, _req) =
   let prepare_state =
     match state with
     | "Unprovisioned" -> ""
+    | "Failed" -> ""
     | "Locked" -> provision ^ "\n" ^ lock
     | "Operational" -> provision
     | s ->
@@ -400,6 +401,10 @@ let tests_for_states meth path cmd (response_code, response_body)
   let setup_file = outdir ^ "/setup.sh" in
   let setup_cmd = prepare_setup meth path cmd (state, role, req) in
   write_cmd setup_file setup_cmd;
+
+  (* when testing Failed mode, we don't want etcd to be running, so keyfender
+     boots in Failed mode *)
+  if state = "Failed" then ignore (Sys.command ("touch " ^ outdir ^ "/no_etcd"));
 
   let shutdown_file = outdir ^ "/shutdown.sh" in
   let shutdown_cmd =

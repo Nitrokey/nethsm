@@ -6,7 +6,7 @@ module type BACKEND = sig
   type ctx
   type t
 
-  val start : unit -> t
+  val start : no_etcd:bool -> unit -> t
   val stop : t -> unit
   val init : ?retry:bool -> unit -> unit
   val finish : unit -> unit
@@ -69,7 +69,7 @@ module KeyfenderApp : BACKEND = struct
 
   type t = UnixApp.t
 
-  let start () =
+  let start ~no_etcd:_ () =
     UnixApp.start
       ~process:"../../../keyfender/_build/default/test/test_server.exe"
       ~message:"listening on 8080" ()
@@ -133,7 +133,8 @@ module KeyfenderUnikernel : BACKEND = struct
         Unix.kill etcd_pid Sys.sigterm;
         Unix.close_process_full etcd_process |> ignore;
         Thread.join log_thread)
-      !last_ctx
+      !last_ctx;
+    last_ctx := None
 
   let is_etcd_up () =
     let rec loop attempt =
@@ -153,23 +154,32 @@ module KeyfenderUnikernel : BACKEND = struct
     in
     loop 0
 
-  let rec start () =
-    if not (is_etcd_up ()) then (
+  let rec start ~no_etcd () =
+    let with_etcd = not no_etcd in
+    let restart_etcd () =
       Printf.printf "etcd down! starting it again...\n%!";
       finish ();
       init ~retry:true ();
-      start ())
-    else
-      UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
-        ~args:
-          [|
-            "keyfender";
-            "--platform=127.0.0.1";
-            "--http=8080";
-            "--https=8443";
-            "--start";
-          |]
-        ~message:"listening on 8443/TCP for HTTPS" ()
+      start ~no_etcd ()
+    in
+    match with_etcd with
+    | true when Option.is_none !last_ctx -> restart_etcd ()
+    | true when not (is_etcd_up ()) -> restart_etcd ()
+    | false when Option.is_some !last_ctx ->
+        Printf.printf "etcd up but we want it down, killing it...\n%!";
+        finish ();
+        start ~no_etcd ()
+    | _ ->
+        UnixApp.start ~process:"../../../s_keyfender/dist/keyfender"
+          ~args:
+            [|
+              "keyfender";
+              "--platform=127.0.0.1";
+              "--http=8080";
+              "--https=8443";
+              "--start";
+            |]
+          ~message:"listening on 8443/TCP for HTTPS" ()
 
   let stop t = UnixApp.stop t
 end
@@ -247,7 +257,10 @@ let test_error test =
    tests a specific endpoint. *)
 let rec tests_endpoint ~retries (module B : BACKEND) () =
   (* 1: start the server*)
-  let server = B.start () in
+  let no_etcd =
+    Bos.OS.Path.exists Fpath.(v "no_etcd") |> Result.value ~default:false
+  in
+  let server = B.start ~no_etcd () in
   Fun.protect ~finally:(fun () -> B.stop server) @@ fun () ->
   (* 3: perform endpoint-specific setup *)
   let () =
