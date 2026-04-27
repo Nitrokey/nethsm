@@ -12,7 +12,7 @@ artifacts:          Produce uniquely indentifable obj/artifacts [MODE=muen only]
 test-keyfender-lib: Run keyfender library tests
 test-keyfender-api: Run keyfender generated API tests [MODE=test only]
 test-keyfender-e2e: Run keyfender end-to-end tests
-coverage-summary:   Run all tests and produce a condensed coverage summaery [MODE=test only]
+coverage-summary:   Run all tests and produce a condensed coverage summary [MODE=test only]
 coverage:           Run all tests and produce HTML coverage report [MODE=test only]
 run:                Run the system
 clean:              Clean up everything except 'prepare' step
