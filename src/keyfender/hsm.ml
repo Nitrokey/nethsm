@@ -337,6 +337,9 @@ module type S = sig
   end
 end
 
+let ( let* ) = Lwt.bind
+let ( let** ) = Lwt_result.bind
+
 let to_hex str =
   let (`Hex hex) = Hex.of_string str in
   hex
@@ -979,8 +982,6 @@ module Make (KV : Kv_ext.Platform) = struct
     >|= fun state' -> t.state <- state'
 
   let check_unlock_passphrase t passphrase =
-    let ( let* ) = Lwt.bind in
-    let ( let** ) = Lwt_result.bind in
     let** salt =
       internal_server_error Read "Get passphrase salt" Config_store.pp_error
         (Config_store.get t.config_store Config_store.Unlock_salt)
@@ -2182,8 +2183,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let member_list t = member_list t.kv >|= to_hsm_error
 
     let is_clustered t =
-      let ( let* ) = Lwt_result.bind in
-      let* list = member_list t in
+      let** list = member_list t in
       Lwt_result.return (List.length list >= 2)
 
     let member_exists ~id t =
@@ -2197,7 +2197,6 @@ module Make (KV : Kv_ext.Platform) = struct
       member_update ~id ~urls t.kv >|= to_hsm_error
 
     let member_add ~urls t =
-      let ( let** ) = Lwt_result.bind in
       (* prepare a joiner kit for the new node to be able to
          get the domain key *)
       let** unlock_salt =
@@ -2359,15 +2358,14 @@ module Make (KV : Kv_ext.Platform) = struct
           Some cert
 
     let set_local_config t =
-      let ( let* ) = Lwt_result.bind in
       let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
       let+ tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
-      let* time_offset_opt =
+      let** time_offset_opt =
         internal_server_error Read "Read time offset" Config_store.pp_error
           (Config_store.get_opt t.config_store Time_offset)
       in
-      let* time_offset_s =
+      let** time_offset_s =
         match time_offset_opt with
         | Some time_offset ->
             Ptime.Span.to_int_s time_offset
@@ -2384,7 +2382,7 @@ module Make (KV : Kv_ext.Platform) = struct
       in *)
       let+ tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
-      let* network_config =
+      let** network_config =
         internal_server_error Read "Read cluster CA" Config_store.pp_error
           Config_store.(get_opt t.config_store Ip_config)
       in
@@ -2633,7 +2631,6 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error _ -> None
 
     let check_backup_passphrase t passphrase =
-      let ( let** ) = Lwt_result.bind in
       let** backup_key =
         internal_server_error Read "Read backup key" Config_store.pp_error
           (Config_store.get_opt t.config_store Backup_key)
@@ -2678,8 +2675,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      let ( let* ) = Lwt_result.bind in
-      let* () =
+      let** () =
         with_write_lock (fun () -> set_time_offset t.config_store time)
       in
       set_local_config t
@@ -2814,26 +2810,25 @@ module Make (KV : Kv_ext.Platform) = struct
                 "Could not decrypt " ^ adata ^ ": invalid passphrase" )
         | Ok x -> Ok x
       in
-      let ( let* ) = Lwt_result.bind in
-      let* joiner_kit =
+      let** joiner_kit =
         Base64.decode_exn s |> Yojson.Safe.from_string
         |> Json.joiner_kit_of_yojson
         |> Result.map_error (fun e -> (Bad_request, e))
         |> Lwt.return
       in
-      let* backup_salt =
+      let** backup_salt =
         joiner_kit.backup_salt |> Base64.decode
         |> Result.map_error (fun (`Msg _) ->
             (Bad_request, "invalid backup salt"))
         |> Lwt.return
       in
-      let* unlock_salt_encrypted =
+      let** unlock_salt_encrypted =
         joiner_kit.unlock_salt |> Base64.decode
         |> Result.map_error (fun (`Msg _) ->
             (Bad_request, "invalid unlock salt"))
         |> Lwt.return
       in
-      let* locked_domain_key_encrypted =
+      let** locked_domain_key_encrypted =
         joiner_kit.locked_domain_key |> Base64.decode
         |> Result.map_error (fun (`Msg _) ->
             (Bad_request, "invalid locked key"))
@@ -2843,12 +2838,12 @@ module Make (KV : Kv_ext.Platform) = struct
         Crypto.key_of_passphrase ~salt:backup_salt backup_passphrase
         |> Crypto.GCM.of_secret
       in
-      let* unlock_salt =
+      let** unlock_salt =
         Crypto.decrypt ~key:backup_key ~adata:"unlock-salt"
           unlock_salt_encrypted
         |> map_error "unlock-salt" |> Lwt.return
       in
-      let* locked_domain_key =
+      let** locked_domain_key =
         Crypto.decrypt ~key:backup_key ~adata:"domain-key"
           locked_domain_key_encrypted
         |> map_error "domain-key" |> Lwt.return
@@ -2856,15 +2851,14 @@ module Make (KV : Kv_ext.Platform) = struct
       Lwt_result.return (unlock_salt, locked_domain_key)
 
     let join_cluster t (join_req : Json.join_req) =
-      let ( let* ) = Lwt_result.bind in
       (* parse the join request *)
-      let* backup_passphrase =
+      let** backup_passphrase =
         join_req.backup_passphrase
         |> Option.to_result
              ~none:(Internal_server_error, "missing backup passphrase")
         |> Lwt.return
       in
-      let* unlock_salt, locked_domain_key =
+      let** unlock_salt, locked_domain_key =
         decode_joiner_kit ~backup_passphrase join_req.joiner_kit
       in
       (* set our name to our device ID, since that's what the platform will use *)
@@ -2878,8 +2872,8 @@ module Make (KV : Kv_ext.Platform) = struct
          configured *)
       with_write_lock (fun () ->
           (* refuse to join if CA is not set *)
-          let* cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
-          let* () =
+          let** cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
+          let** () =
             match cluster_ca with
             | None ->
                 Lwt.return
@@ -2887,9 +2881,9 @@ module Make (KV : Kv_ext.Platform) = struct
             | Some _cluster_ca -> Lwt_result.return ()
           in
           (* ensure local cache is up to date *)
-          let* () = Config.set_local_config t in
+          let** () = Config.set_local_config t in
           (* backup local config to restore after join *)
-          let* config_backup =
+          let** config_backup =
             internal_server_error Read "Backup local config store"
               Config_store.pp_error
               (Config_store.backup_local_config t.config_store)
@@ -2912,7 +2906,7 @@ module Make (KV : Kv_ext.Platform) = struct
           (* make the jump ! this will erase all local etcd data and restart
          etcd in join mode *)
           Log.warn (fun m -> m "now erasing all data and joining cluster!");
-          let* () =
+          let** () =
             Lwt_mvar.put t.mbox (Join_cluster initial_cluster) |> Lwt_result.ok
           in
           (match t.state with
@@ -2921,19 +2915,19 @@ module Make (KV : Kv_ext.Platform) = struct
               Key_store.clear_cache v.key_store;
               Namespace_store.clear_cache v.namespace_store
           | _ -> assert false);
-          let* () =
+          let** () =
             Lwt_mvar.take t.res_mbox
             |> Lwt_result.map_error (fun msg ->
                 Log.err (fun m -> m "joining cluster failed: %s" msg);
                 (Bad_request, "joining cluster failed: " ^ msg))
           in
           (* we are now on the other side *)
-          let* version =
+          let** version =
             internal_server_error Read "Fetch version after join"
               Config_store.pp_error
               (Config_store.get t.config_store Version)
           in
-          let* () =
+          let** () =
             if version = Version.V1 then Lwt_result.return ()
             else
               Lwt.return
@@ -2942,13 +2936,13 @@ module Make (KV : Kv_ext.Platform) = struct
                      "joined cluster is not V1, refusing to continue" ))
           in
           (* restore local config backup in our directory *)
-          let* () =
+          let** () =
             internal_server_error Write "Restore local config"
               Config_store.pp_write_error
               (Config_store.restore_local_config t.config_store config_backup)
           in
           (* use unlock salt and locked domain key retrieved from joiner kit *)
-          let* () =
+          let** () =
             internal_server_error Write "Override unlock salt"
               Config_store.pp_write_error
               (Config_store.set t.config_store Unlock_salt unlock_salt)
@@ -2957,7 +2951,7 @@ module Make (KV : Kv_ext.Platform) = struct
             Domain_key_store.connect t.kv t.system_info.deviceId
           in
           let encryption_key = t.device_key in
-          let* () =
+          let** () =
             internal_server_error Write "Write locked domain key"
               KV.pp_write_error
               (Domain_key_store.set domain_store Attended ~encryption_key
@@ -2965,7 +2959,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           Log.info (fun m -> m "joining cluster OK! locking now");
           KV.clear_watches t.kv;
-          let* new_state =
+          let** new_state =
             boot_config_store ~cache_settings:t.cache_settings t.config_store
               t.device_key
           in
@@ -2995,7 +2989,6 @@ module Make (KV : Kv_ext.Platform) = struct
       | x -> Lwt.return x
 
     let sb_fold f sb acc =
-      let ( let* ) = Lwt.bind in
       let* acc =
         match sb_consume_buf sb with
         | None -> Lwt.return acc
@@ -3316,7 +3309,6 @@ module Make (KV : Kv_ext.Platform) = struct
     exception End_of_kv_entries
 
     let read_and_decrypt stream key =
-      let ( let** ) = Lwt_result.bind in
       let** len = get_length stream in
       (* should only happen in V1 *)
       if len = 0 then raise End_of_kv_entries
@@ -3329,8 +3321,6 @@ module Make (KV : Kv_ext.Platform) = struct
 
     (* runs the function while the stream has items *)
     let stream_while stream fn =
-      let ( let* ) = Lwt.bind in
-      let ( let** ) = Lwt_result.bind in
       let rec go () =
         let* empty = sb_is_empty stream in
         if empty then Lwt.return_ok ()
@@ -3346,7 +3336,6 @@ module Make (KV : Kv_ext.Platform) = struct
        were still global. Migrations will be applied later to conform to the new
        store version *)
     let restore_key_v0 ~device_id ~is_operational ~backup_keys ~key ~kv stream =
-      let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
@@ -3373,7 +3362,6 @@ module Make (KV : Kv_ext.Platform) = struct
        device ID was used to create the backup *)
     let restore_key_v1 ~backup_device_id ~is_operational ~backup_keys ~key ~kv
         stream =
-      let ( let** ) = Lwt_result.bind in
       (* decrypt KV data *)
       let** k, v = read_and_decrypt stream key in
       let key = Mirage_kv.Key.v k in
@@ -3422,7 +3410,6 @@ module Make (KV : Kv_ext.Platform) = struct
         (Ok []) entries
 
     let remove_extra_keys ~config_store ~kv backup_keys =
-      let ( let** ) = Lwt_result.bind in
       let auth_prefix = Encrypted_store.prefix_of_slot Authentication in
       let** auth_keys =
         internal_server_error Read "restoring backup (listing keys)" KV.pp_error
@@ -3500,7 +3487,6 @@ module Make (KV : Kv_ext.Platform) = struct
     let restore t json stream =
       let sb = sb_of_stream stream in
       let open Lwt.Infix in
-      let ( let** ) = Lwt_result.bind in
       let (`Raw start_ts) = Hsm_clock.now_raw () in
       let initial_state = t.state in
       let is_operational =
