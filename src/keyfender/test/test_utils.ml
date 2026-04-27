@@ -92,7 +92,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
 
 let good_platform _ m = Lwt_mvar.put m (Ok ())
 
-let copy t =
+let copy (t : Hsm.t) : Hsm.t =
   let v = Marshal.to_string t [ Closures ] in
   Marshal.from_string v 0
 
