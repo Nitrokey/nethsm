@@ -296,12 +296,12 @@ The local development system builds only the subset of the codebase required to 
 
 This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`MODE=test` only).
 
-1. Ensure you have installed OPAM >= 2.0.0 and OCaml >= 4.10.1. We recommend that you use the latest OCaml release, at the moment 4.11.1.
+1. Ensure you have installed OPAM >= 2.0.0 and OCaml >= 4.10.1. We recommend that you use the latest OCaml release, at the moment 4.14.3.
 2. Create a new OPAM switch for NetHSM development, using a known-good commit of `ocaml/opam-repository`:
 
     ```
-    opam repo add nethsm-default git+https://github.com/ocaml/opam-repository#$(cat .opam-repository-commit) --dont-select
-    opam switch create nethsm 4.11.1 --repos nethsm-default
+    opam repo add nethsm-default git+https://github.com/ocaml/opam-repository --dont-select
+    opam switch create nethsm 4.14.2 --repos nethsm-default
     eval $(opam env)
     ```
 
