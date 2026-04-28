@@ -3867,82 +3867,100 @@ module Make (KV : Kv_ext.Platform) = struct
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
-    (let open Lwt_result.Infix in
-     lwt_error_to_msg ~pp_error:Config_store.pp_error
-       (Config_store.get_opt config_store Version)
-     >>= function
-     | None ->
-         (* uninitialized / unprovisioned device *)
-         let priv = X509.Private_key.generate `P256 in
-         let state = Unprovisioned
-         and cert, key = generate_cert priv
-         and chain = [] in
-         let t =
-           {
-             state;
-             has_changes;
-             key;
-             cert;
-             chain;
-             software_update_key;
-             kv;
-             info;
-             system_info;
-             config_store;
-             mbox;
-             res_mbox;
-             device_key;
-             cache_settings;
-             default_net;
-           }
-         in
-         Lwt.return (Ok t)
-     | Some version ->
-         let boot () =
-           boot_config_store ~cache_settings config_store device_key
-           >>= fun state ->
-           certificate_chain config_store >|= fun (cert, chain, key) ->
-           {
-             state;
-             has_changes;
-             key;
-             cert;
-             chain;
-             software_update_key;
-             kv;
-             info;
-             system_info;
-             config_store;
-             mbox;
-             res_mbox;
-             device_key;
-             cache_settings;
-             default_net;
-           }
-         in
-         System.apply_config_and_domain_migrations ~config_store kv
-           ~device_id:system_info.deviceId version
-         >>= boot)
-    >|= function
-    | Ok t ->
-        let dump_key_ops () =
-          let rec dump () =
-            Mirage_sleep.ns (Duration.of_hour 1) >>= fun () ->
-            Key.dump_keys t >>= dump
-          in
-          dump ()
+    let** observed_store_state =
+      let* healthy = KV.is_healthy kv in
+      if healthy then
+        let** version =
+          lwt_error_to_msg ~pp_error:Config_store.pp_error
+            (Config_store.get_opt config_store Version)
         in
-        Lwt.async dump_key_ops;
-        let discard_old_rate_limits () =
-          let rec discard () =
-            Mirage_sleep.ns (Duration.of_min 1) >>= fun () ->
-            Rate_limit.discard_old_entries (now ());
-            discard ()
+        match version with
+        | None -> Lwt_result.return `Unprovisioned
+        | Some v -> Lwt_result.return (`Provisioned v)
+      else Lwt_result.return `Unhealthy
+    in
+    let** t =
+      match observed_store_state with
+      | `Unhealthy -> failwith "not yet implemented"
+      | `Unprovisioned ->
+          (* uninitialized / unprovisioned device *)
+          let priv = X509.Private_key.generate `P256 in
+          let state = Unprovisioned
+          and cert, key = generate_cert priv
+          and chain = [] in
+          let t =
+            {
+              state;
+              has_changes;
+              key;
+              cert;
+              chain;
+              software_update_key;
+              kv;
+              info;
+              system_info;
+              config_store;
+              mbox;
+              res_mbox;
+              device_key;
+              cache_settings;
+              default_net;
+            }
           in
-          discard ()
-        in
-        Lwt.async discard_old_rate_limits;
-        (t, t.mbox, t.res_mbox)
+          Lwt.return (Ok t)
+      | `Provisioned version ->
+          let** () =
+            System.apply_config_and_domain_migrations ~config_store kv
+              ~device_id:system_info.deviceId version
+          in
+          let** state =
+            boot_config_store ~cache_settings config_store device_key
+          in
+          let** cert, chain, key = certificate_chain config_store in
+          Lwt_result.return
+            {
+              state;
+              has_changes;
+              key;
+              cert;
+              chain;
+              software_update_key;
+              kv;
+              info;
+              system_info;
+              config_store;
+              mbox;
+              res_mbox;
+              device_key;
+              cache_settings;
+              default_net;
+            }
+    in
+    let dump_key_ops () =
+      let rec dump () =
+        Mirage_sleep.ns (Duration.of_hour 1) >>= fun () ->
+        Key.dump_keys t >>= dump
+      in
+      dump ()
+    in
+    Lwt.async dump_key_ops;
+    let discard_old_rate_limits () =
+      let rec discard () =
+        Mirage_sleep.ns (Duration.of_min 1) >>= fun () ->
+        Rate_limit.discard_old_entries (now ());
+        discard ()
+      in
+      discard ()
+    in
+    Lwt.async discard_old_rate_limits;
+    Lwt_result.return (t, t.mbox, t.res_mbox)
+
+  let boot ?cache_settings ?default_net ~platform software_update_key kv =
+    let* res =
+      boot ?cache_settings ?default_net ~platform software_update_key kv
+    in
+    match res with
+    | Ok t -> Lwt.return t
     | Error (`Msg msg) ->
         Log.err (fun m -> m "error booting %s" msg);
         invalid_arg "broken NetHSM"
