@@ -270,14 +270,15 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             etcd_err (`Msg err))
     | Ok (Some r), _ -> Lwt.return r
 
-  let do_grpc_bidir ~stack ~service ~rpc ~callback =
+  let do_grpc_bidir ~stack ~service ~rpc ~callback ~error_handler =
     let requests, push_request = Lwt_stream.create () in
     let handler = make_bidir_handler ~requests ~callback in
     let repr = "bi-directional stream" in
     Lwt.async (fun () ->
-        do_grpc ~stack ~service ~rpc ~handler ~repr >|= fun (_, status) ->
-        Log.info (fun f ->
-            f "bi-directional stream closed: %a" Grpc.Status.pp status));
+        error_handler (fun () ->
+            do_grpc ~stack ~service ~rpc ~handler ~repr >|= fun (_, status) ->
+            Log.info (fun f ->
+                f "bi-directional stream closed: %a" Grpc.Status.pp status)));
     push_request
 
   let update_revision (header : ResponseHeader.t option) =
@@ -504,7 +505,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
               f "received watch %Ld event but we have no callback!" id);
           Lwt.return_unit
 
-    let connect stack f =
+    let connect ~error_handler stack f =
       last_known_revision := 0L;
       let callback str =
         Etcd_client.Reader.create str
@@ -516,7 +517,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       in
       let write_request =
         do_grpc_bidir ~stack ~service:"etcdserverpb.Watch" ~rpc:"Watch"
-          ~callback
+          ~callback ~error_handler
       in
       write_request
 
@@ -543,9 +544,9 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     let init stack =
       let callbacks = Hashtbl.create 10 in
       let waiting_watch_id = Queue.create () in
-      let f = demux (callbacks, waiting_watch_id) in
-      let write_request = connect stack f in
-      Log.info (fun f -> f "initial watch stream started");
+      let write_request _ =
+        Log.warn (fun f -> f "request received before connection")
+      in
       { write_request; callbacks; waiting_watch_id }
 
     let create t ~(request : WatchCreateRequest.t) ~(callback : callback) =
@@ -559,16 +560,16 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       Log.info (fun f -> f "new watch request sent");
       t.write_request (Some request')
 
-    let reconnect t stack =
+    let reconnect ~error_handler t stack =
       let f = demux (t.callbacks, t.waiting_watch_id) in
       let pending = Queue.to_seq t.waiting_watch_id |> List.of_seq in
       Queue.clear t.waiting_watch_id;
       let active = Hashtbl.to_seq_values t.callbacks |> List.of_seq in
       Hashtbl.clear t.callbacks;
       let to_replay = pending @ active in
-      t.write_request <- connect stack f;
+      t.write_request <- connect ~error_handler stack f;
       Log.info (fun f ->
-          f "watch stream restarted. replaying %d watchers..."
+          f "watch stream (re)started. replaying %d watchers..."
             (List.length to_replay));
       List.iter
         (fun (callback, request) -> create t ~request ~callback)
@@ -648,7 +649,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
     | #etcd_error as e -> pp_etcd_error ppf e
 
-  let etcd_try (t : t) (f : unit -> ('a, error) result Lwt.t) =
+  let etcd_try' t f =
     let handle_etcd_exception = function
       | `Disconnected -> t.push_health_event (Some `Disconnected)
       | `Timeout -> t.push_health_event (Some `Timeout)
@@ -677,8 +678,12 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       (fun () ->
         let* res = f () in
         handle_success ();
-        Lwt.return res)
+        Lwt.return (Ok res))
       handle_exception
+
+  let etcd_try t f =
+    let* res = etcd_try' t f in
+    match res with Error e -> Lwt.return (Error e) | Ok v -> Lwt.return v
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
   let disconnect _ = Lwt.return_unit
@@ -863,7 +868,11 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       }
     in
     let restart_watcher () =
-      Etcd.Watch.reconnect watcher stack;
+      let error_handler f =
+        let* _ = etcd_try' t f in
+        Lwt.return ()
+      in
+      Etcd.Watch.reconnect ~error_handler watcher stack;
       Lwt.return_unit
     in
     Etcd.connection_established_callbacks :=
