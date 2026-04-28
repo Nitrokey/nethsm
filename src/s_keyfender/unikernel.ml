@@ -463,7 +463,8 @@ struct
     in
     let reconfigure_network ~hsm_state ~store (network : Keyfender.Json.network)
         =
-      (* if this is a runtime reconfiguration, align peer URLs *)
+      (* if this is a runtime reconfiguration, align peer URLs.
+         will fail without blocking if etcd unavailable *)
       let* () = align_peer_urls store network in
       let* () = reconfigure_external_network network in
       let http = Srv.listen ext_stack in
@@ -471,6 +472,7 @@ struct
       let certificates = Hsm.own_cert hsm_state in
       Lwt.async (fun () -> setup_https_listener hsm_state http certificates);
       let* () =
+        (* will fail without blocking if etcd unavailable *)
         let* log = Hsm.Config.log hsm_state in
         setup_log ext_stack log;
         Lwt.return_unit
@@ -492,22 +494,6 @@ struct
           Lwt.return_unit
     in
     let store = KV_store.connect internal_stack in
-    Logs.app (fun m -> m "connected to store");
-    let ini = Mirage_kv.Key.v ".initialized" in
-    let* () =
-      KV_store.exists store ini >>= function
-      | Ok None -> (
-          KV_store.set store ini "" >>= function
-          | Ok () -> Lwt.return_unit
-          | Error e ->
-              Log.err (fun m ->
-                  m "couldn't write to store %a" KV_store.pp_write_error e);
-              Lwt.fail_with "store not writable")
-      | Ok (Some _) -> Lwt.return_unit
-      | Error e ->
-          Log.err (fun m -> m "couldn't read from store %a" KV_store.pp_error e);
-          Lwt.fail_with "store not readable"
-    in
     let default_net = Args.default_net () in
     let* hsm_state, mvar, res_mvar =
       Hsm.boot ~cache_settings ?default_net ~platform update_key store
@@ -593,7 +579,13 @@ struct
           in
           (handle_cb [@tailcall]) http
     in
-    let* network = Hsm.network_configuration hsm_state in
+    let* network =
+      (* use the cached network config or create one.
+         resilient to a failing store *)
+      match platform.networkConfig with
+      | Some network -> Lwt.return network
+      | None -> Hsm.network_configuration hsm_state
+    in
     let* http = reconfigure_network ~store ~hsm_state network in
     (match conf_args.memtrace_port with
     | None -> ()

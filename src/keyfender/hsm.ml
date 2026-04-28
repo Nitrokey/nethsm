@@ -3839,6 +3839,25 @@ module Make (KV : Kv_ext.Platform) = struct
       evict_delay_s = 1.;
     }
 
+  let check_store_healthy store =
+    let open Lwt.Infix in
+    let* baseline_healthy = KV.is_healthy store in
+    if not baseline_healthy then Lwt.return false
+    else
+      let ini = Mirage_kv.Key.v ".initialized" in
+      KV.exists store ini >>= function
+      | Ok None -> (
+          KV.set store ini "" >>= function
+          | Ok () -> Lwt.return true
+          | Error e ->
+              Log.err (fun m ->
+                  m "couldn't write to store %a" KV.pp_write_error e);
+              Lwt.return false)
+      | Ok (Some _) -> Lwt.return true
+      | Error e ->
+          Log.err (fun m -> m "couldn't read from store %a" KV.pp_error e);
+          Lwt.return false
+
   let boot ?(cache_settings = default_cache_settings)
       ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
@@ -3868,20 +3887,48 @@ module Make (KV : Kv_ext.Platform) = struct
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
     let** observed_store_state =
-      let* healthy = KV.is_healthy kv in
-      if healthy then
+      let* healthy = check_store_healthy kv in
+      if healthy then (
+        Logs.app (fun m -> m "connected to store");
         let** version =
           lwt_error_to_msg ~pp_error:Config_store.pp_error
             (Config_store.get_opt config_store Version)
         in
         match version with
         | None -> Lwt_result.return `Unprovisioned
-        | Some v -> Lwt_result.return (`Provisioned v)
+        | Some v -> Lwt_result.return (`Provisioned v))
       else Lwt_result.return `Unhealthy
     in
     let** t =
       match observed_store_state with
-      | `Unhealthy -> failwith "not yet implemented"
+      | `Unhealthy ->
+          (* etcd unreachable for now, boot in Failed state *)
+          let priv = X509.Private_key.generate `P256 in
+          let state = Failed None (* no previous state to return to *)
+          and cert, key =
+            generate_cert
+              priv (* TODO pass previous key/certs in platform data *)
+          and chain = [] in
+          let t =
+            {
+              state;
+              has_changes;
+              key;
+              cert;
+              chain;
+              software_update_key;
+              kv;
+              info;
+              system_info;
+              config_store;
+              mbox;
+              res_mbox;
+              device_key;
+              cache_settings;
+              default_net;
+            }
+          in
+          Lwt.return (Ok t)
       | `Unprovisioned ->
           (* uninitialized / unprovisioned device *)
           let priv = X509.Private_key.generate `P256 in
@@ -3909,6 +3956,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           Lwt.return (Ok t)
       | `Provisioned version ->
+          (* provisioned device, look at store to figure out state *)
           let** () =
             System.apply_config_and_domain_migrations ~config_store kv
               ~device_id:system_info.deviceId version
