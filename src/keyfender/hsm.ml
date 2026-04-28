@@ -3902,6 +3902,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let** t =
       match observed_store_state with
       | `Unhealthy ->
+          Log.warn (fun f -> f "store unavailable! booting into Failed state");
           (* etcd unreachable for now, boot in Failed state *)
           let priv = X509.Private_key.generate `P256 in
           let state = Failed None (* no previous state to return to *)

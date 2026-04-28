@@ -37,9 +37,19 @@ struct
       inherit!
         Endpoint.input_state_validated hsm_state [ `Operational; `Failed ]
 
-      inherit! Endpoint.failed_or_r_role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip as r_role
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
+
+      method! is_authorized rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue `Authorized rd
+        | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
+
+      method! forbidden rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue false rd
+        | `Operational -> r_role#forbidden rd
 
       method! process_post rd =
         Hsm.System.reboot hsm_state >>= fun () -> Wm.continue true rd
@@ -79,9 +89,19 @@ struct
       inherit!
         Endpoint.input_state_validated hsm_state [ `Operational; `Failed ]
 
-      inherit! Endpoint.failed_or_r_role hsm_state `Administrator ip
+      inherit! Endpoint.r_role hsm_state `Administrator ip as r_role
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
+
+      method! is_authorized rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue `Authorized rd
+        | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
+
+      method! forbidden rd =
+        match Hsm.state hsm_state with
+        | `Locked | `Unprovisioned | `Failed -> Wm.continue false rd
+        | `Operational -> r_role#forbidden rd
 
       method! process_post rd =
         Hsm.System.factory_reset hsm_state >>= fun () -> Wm.continue true rd
