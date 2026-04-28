@@ -24,6 +24,7 @@ let pp_etcd_error ppf = function
   | `Msg msg -> Fmt.pf ppf "etcd error: %s" msg
 
 let etcd_err err = raise (Etcd_error err)
+let ( let* ) = Lwt.bind
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   module TCP = Stack.TCP
@@ -251,6 +252,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         let message = message status in
         match code with
         | Unavailable ->
+            (* TODO after a number of retries, send the Timeout health event *)
             Log.warn (fun f ->
                 f
                   "request failed because service unavailable (%a), retrying \
@@ -277,8 +279,6 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         Log.info (fun f ->
             f "bi-directional stream closed: %a" Grpc.Status.pp status));
     push_request
-
-  let ( let* ) = Lwt.bind
 
   let update_revision (header : ResponseHeader.t option) =
     match header with
@@ -630,10 +630,15 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       promises
   end
 
+  type health_event = [ `Healthy | `Disconnected | `Timeout ]
+
   type t = {
     stack : Stack.t;
     mode : [ `Normal | `Batch of Txn_batcher.t ];
     watcher : Etcd.Watch.t;
+    health_event_stream : health_event Lwt_stream.t;
+    push_health_event : health_event option -> unit;
+    mutable healthy : bool;
   }
 
   type key = Key.t
@@ -643,19 +648,37 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
     | #etcd_error as e -> pp_etcd_error ppf e
 
-  let etcd_try (f : unit -> ('a, error) result Lwt.t) =
+  let etcd_try (t : t) (f : unit -> ('a, error) result Lwt.t) =
+    let handle_etcd_exception = function
+      | `Disconnected -> t.push_health_event (Some `Disconnected)
+      | `Timeout -> t.push_health_event (Some `Timeout)
+      | `Msg _ -> ()
+    in
+    let handle_exception exn =
+      (* convert to result and log *)
+      let err =
+        match exn with
+        | Etcd_error e ->
+            handle_etcd_exception e;
+            (e :> error)
+        | exn -> `Msg (Printexc.to_string exn)
+      in
+      Log.debug (fun m ->
+          let bt = Printexc.get_backtrace () in
+          m "%a backtrace:\n%s" pp_error err bt);
+      Lwt.return (Error err)
+    in
+    let handle_success () =
+      if not t.healthy then (
+        t.healthy <- true;
+        t.push_health_event (Some `Healthy))
+    in
     Lwt.catch
-      (fun () -> f ())
-      (fun e ->
-        let err =
-          match e with
-          | Etcd_error e -> (e :> error)
-          | exn -> `Msg (Printexc.to_string exn)
-        in
-        Log.debug (fun m ->
-            let bt = Printexc.get_backtrace () in
-            m "%a backtrace:\n%s" pp_error err bt);
-        Lwt.return (Error err))
+      (fun () ->
+        let* res = f () in
+        handle_success ();
+        Lwt.return res)
+      handle_exception
 
   let bytes_of_key k = Bytes.of_string (Key.to_string k)
   let disconnect _ = Lwt.return_unit
@@ -663,7 +686,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let last_modified t k =
     let key = bytes_of_key k in
     let request = RangeRequest.make ~key ~keys_only:true () in
-    etcd_try (fun () ->
+    etcd_try t (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         match resp.RangeResponse.kvs with
         | { KeyValue.mod_revision = i; _ } :: _ -> Ok (Ptime.v (0, i))
@@ -673,7 +696,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let exists t k =
     let key = bytes_of_key k in
     let request = RangeRequest.make ~key ~count_only:true () in
-    etcd_try (fun () ->
+    etcd_try t (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         if Int64.compare resp.RangeResponse.count 0L > 0 then Ok (Some `Value)
         else Ok None)
@@ -681,7 +704,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let get t k =
     let key = bytes_of_key k in
     let request = RangeRequest.make ~key () in
-    etcd_try (fun () ->
+    etcd_try t (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         match resp.RangeResponse.kvs with
         | { KeyValue.value = s; _ } :: _ -> Ok (Bytes.to_string s)
@@ -742,7 +765,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       RangeRequest.(
         make ~key ~range_end ~keys_only:true ~sort_order:SortOrder.DESCEND ())
     in
-    etcd_try (fun () ->
+    etcd_try t (fun () ->
         Etcd.range t.stack ~request >|= fun resp ->
         let rec acc_keys acc kvs =
           match kvs with
@@ -769,8 +792,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     let cluster_member_of_member (t : Member.t) =
       { id = t.iD; name = t.name; urls = t.peerURLs }
 
-    let etcd_try f =
-      etcd_try f
+    let etcd_try t f =
+      etcd_try t f
       >|= Result.map_error (fun e ->
           let msg = Fmt.str "%a" pp_error e in
           `Cluster_error msg)
@@ -779,34 +802,34 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
     let member_list t =
       let request = MemberListRequest.make () in
-      etcd_try (fun () ->
+      etcd_try t (fun () ->
           Etcd.member_list t.stack ~request >|= fun resp ->
           Ok (List.map cluster_member_of_member resp.MemberListResponse.members))
 
     let member_remove ~id t =
       let request = MemberRemoveRequest.make ~iD:id () in
-      etcd_try (fun () ->
+      etcd_try t (fun () ->
           Etcd.member_remove t.stack ~request >|= fun resp ->
           Ok
             (List.map cluster_member_of_member resp.MemberRemoveResponse.members))
 
     let member_update ~id ~urls t =
       let request = MemberUpdateRequest.make ~iD:id ~peerURLs:urls () in
-      etcd_try (fun () ->
+      etcd_try t (fun () ->
           Etcd.member_update t.stack ~request >|= fun resp ->
           Ok
             (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
 
     let member_add ~urls t =
       let request = MemberAddRequest.make ~peerURLs:urls () in
-      etcd_try (fun () ->
+      etcd_try t (fun () ->
           Etcd.member_add t.stack ~request >|= fun resp ->
           Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
   end
 
-  let status stack =
-    etcd_try (fun () ->
-        Etcd.maintenance_status stack >|= fun resp ->
+  let status t =
+    etcd_try t (fun () ->
+        Etcd.maintenance_status t.stack >|= fun resp ->
         let leader = resp.leader in
         let db_size = resp.dbSize in
         let errors = resp.errors in
@@ -820,9 +843,25 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
                   errors);
             Ok header.member_id)
 
+  let is_healthy t =
+    let* _ = status t in
+    Lwt.return t.healthy
+
+  let health_events t = t.health_event_stream
+
   let connect stack =
     let watcher = Etcd.Watch.init stack in
-    let t = { stack; mode = `Normal; watcher } in
+    let health_event_stream, push_health_event = Lwt_stream.create () in
+    let t =
+      {
+        stack;
+        mode = `Normal;
+        watcher;
+        health_event_stream;
+        push_health_event;
+        healthy = false;
+      }
+    in
     let restart_watcher () =
       Etcd.Watch.reconnect watcher stack;
       Lwt.return_unit
@@ -848,7 +887,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let request = PutRequest.make ~key ~value () in
     match t.mode with
     | `Normal ->
-        (etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
+        (etcd_try t (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
           :> (unit, write_error) result Lwt.t)
     | `Batch b -> Txn_batcher.add_op b (`Request_put request)
 
@@ -879,7 +918,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
         let request =
           TxnRequest.make ~compare:[ restore_nonexistent ] ~success:[ op ] ()
         in
-        (etcd_try (fun () ->
+        (etcd_try t (fun () ->
              Etcd.txn t.stack ~request >|= fun resp -> Ok resp.succeeded)
           :> (bool, write_error) result Lwt.t)
 
@@ -896,7 +935,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let exec_req ~request =
       match t.mode with
       | `Normal ->
-          (etcd_try (fun () ->
+          (etcd_try t (fun () ->
                Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
             :> (unit, write_error) result Lwt.t)
       | `Batch b -> Txn_batcher.add_op b (`Request_delete_range request)
@@ -911,7 +950,7 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
   let batch t ?retries:(_ = 42) f =
     let batcher = Txn_batcher.create () in
     f { t with mode = `Batch batcher } >>= fun value ->
-    etcd_try (fun () ->
+    etcd_try t (fun () ->
         Txn_batcher.finalize batcher t.stack >|= fun _resp -> Ok ())
     >|= fun res ->
     match res with

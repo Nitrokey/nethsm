@@ -140,6 +140,17 @@ module type Platform = sig
     t -> key -> string -> (bool, write_error) result Lwt.t
   (** Sets a key to a value only if a global restore is not in progress. Returns
       true if it succeeded, false if a restore was in progress *)
+
+  val is_healthy : t -> bool Lwt.t
+  (** Indicates if the connection to etcd is healthy i.e. if it is established
+      and etcd is not timing out. *)
+
+  val health_events : t -> [ `Healthy | `Disconnected | `Timeout ] Lwt_stream.t
+  (** Stream of updates in the health of the connection, enabling to have
+      callbacks when etcd becomes unreachable or reachable again. [`Healthy]
+      will be sent only once when coming from [`Disconnected] or [`Timeout].
+      However [`Disconnected] and [`Timeout] events will be sent as many times
+      as there are failed attempts, to allow detecting long-term failures. *)
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
@@ -154,6 +165,11 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
 
   let create_watch _ _ _ = ()
   let clear_watches _ = ()
+  let is_healthy _ = Lwt.return true
+
+  let health_events _ =
+    let stream, _ = Lwt_stream.create () in
+    stream
 
   let atomic_set_if_no_restore t k v =
     set t k v |> Lwt_result.map (fun () -> true)
