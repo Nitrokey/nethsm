@@ -55,7 +55,7 @@ struct
   (* module Client = H2_mirage.Client(Int_conduit.Flow) *)
 
   module KV_store = Etcd_store.KV_RW (Stack_nodelay (Internal_stack))
-  module Hsm = Keyfender.Hsm.Make (KV_store)
+  module Hsm = Keyfender.Hsm.Make (KV_store : Keyfender.Kv_ext.Platform)
   module Webserver = Keyfender.Server.Make (Srv) (Hsm)
   module Log_reporter = Mirage_logs
   module Syslog = Logs_syslog_mirage.Udp (Ext_stack)
@@ -309,11 +309,6 @@ struct
     if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params ();
     let entropy_port = 4444 in
     let* () = startTrngListener internal_stack entropy_port in
-    let sleep e =
-      Log.warn (fun m ->
-          m "Could not connect to KV store: %s\nRetrying in 1 second..." e);
-      Mirage_sleep.ns (Duration.of_sec 1)
-    in
     let* platform =
       write_platform internal_stack "PLATFORM-DATA" >>= function
       | Error e ->
@@ -418,7 +413,8 @@ struct
               m "could not check if our etcd peer url is up to date: %s" s);
           Lwt.return_unit
       | Ok member_list -> (
-          let own_id = KV_store.Cluster.my_id store in
+          (* if member_list returned OK, my_id must be set *)
+          let own_id = KV_store.Cluster.my_id store |> Option.get in
           match
             List.find_opt
               (fun member -> member.KV_store.Cluster.id = own_id)
@@ -495,15 +491,7 @@ struct
           let* _ = reconfigure_external_network network in
           Lwt.return_unit
     in
-    let rec store_connect () =
-      KV_store.connect internal_stack >>= function
-      | Ok store -> Lwt.return store
-      | Error e ->
-          let err = Fmt.to_to_string KV_store.pp_error e in
-          let* () = sleep err in
-          (store_connect [@tailcall]) ()
-    in
-    let* store = store_connect () in
+    let store = KV_store.connect internal_stack in
     Logs.app (fun m -> m "connected to store");
     let ini = Mirage_kv.Key.v ".initialized" in
     let* () =

@@ -14,9 +14,16 @@ let etcd_store_src = Logs.Src.create "etcd_store"
 
 module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
-exception Etcd_error of string
+type etcd_error = [ `Timeout | `Disconnected | `Msg of string ]
 
-let etcd_err s = raise (Etcd_error s)
+exception Etcd_error of etcd_error
+
+let pp_etcd_error ppf = function
+  | `Timeout -> Fmt.pf ppf "etcd connection is timing out"
+  | `Disconnected -> Fmt.pf ppf "cannot establish a connection to etcd"
+  | `Msg msg -> Fmt.pf ppf "etcd error: %s" msg
+
+let etcd_err err = raise (Etcd_error err)
 
 module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   module TCP = Stack.TCP
@@ -25,6 +32,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let etcd_port = 2379
   let persistent_connection = ref None
   let last_known_revision = ref 0L
+  let own_id = ref None
   let set_persistent_connection x = persistent_connection := Some x
   let connection_established_callbacks = ref []
 
@@ -83,11 +91,15 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       ]
     >|= function
     | Error e ->
-        etcd_err (Fmt.str "TCP connection to etcd failed: %a" TCP.pp_error e)
+        Log.err (fun f -> f "TCP connection to etcd failed: %a" TCP.pp_error e);
+        etcd_err `Disconnected
     | Ok conn -> conn
 
   let connection_create_mtx = Lwt_mutex.create ()
 
+  (* will raise on error establishing the connection.
+     returns (conn, err_handler) where err_handler is a promise
+     that will resolve if the connection is interrupted at runtime *)
   let create_connection ~stack =
     Lwt_mutex.with_lock connection_create_mtx (fun () ->
         match persistent_connection () with
@@ -131,10 +143,10 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             Lwt.pick
               [
                 conn;
-                Lwt.protected h2_conn_error >>= etcd_err;
-                ( timeout 5 "HTTP/2 connect timeout" >>= fun msg ->
+                (Lwt.protected h2_conn_error >>= fun _ -> etcd_err `Disconnected);
+                ( timeout 5 "HTTP/2 connect timeout" >>= fun _ ->
                   shutdown_tcp ();
-                  etcd_err msg );
+                  etcd_err `Disconnected );
               ]
             >>= fun conn ->
             Log.info (fun m -> m "HTTP/2 connection to etcd established");
@@ -142,12 +154,18 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             Lwt_list.iter_p (fun f -> f ()) !connection_established_callbacks
             >>= fun () -> Lwt.return (conn, h2_conn_error))
 
+  (* either reuse the persistent connection or open a new one,
+     will raise on error establishing the connection.
+     returns (conn, err_handler) where err_handler is a promise
+     that will be REJECTED if the connection is interrupted at runtime *)
   let get_connection ~stack =
     (match persistent_connection () with
       | Some x -> Lwt.return x
       | _ -> create_connection ~stack)
     >|= fun (conn, conn_err) ->
-    let conn_err' = Lwt.protected conn_err >>= etcd_err in
+    let conn_err' =
+      Lwt.protected conn_err >>= fun _ -> etcd_err `Disconnected
+    in
     (conn, conn_err')
 
   let next_req_id =
@@ -159,11 +177,18 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let make_unary_handler ~request ~decode =
    fun write_body read_body ->
     let read_body_with_timeout =
-      Lwt.pick [ read_body; timeout 20 "gRPC request timeout" >>= etcd_err ]
+      Lwt.pick
+        [
+          read_body;
+          (timeout 20 "gRPC request timeout" >>= fun _ -> etcd_err `Timeout);
+        ]
     in
     let f s =
       Lwt.pick
-        [ s >|= decode; timeout 120 "gRPC response timeout" >>= etcd_err ]
+        [
+          s >|= decode;
+          (timeout 120 "gRPC response timeout" >>= fun _ -> etcd_err `Timeout);
+        ]
     in
     Grpc_lwt.Client.Rpc.unary ~f request write_body read_body_with_timeout
 
@@ -204,7 +229,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       Log.debug (fun m ->
           m "gRPC call [%d] service:(%s) rpc:(%s) req:(%s)" req_id service rpc
             repr);
-      Lwt.wakeup_later_exn stream_err_resolver (Etcd_error msg)
+      Lwt.wakeup_later_exn stream_err_resolver (Etcd_error (`Msg msg))
     in
     let do_request = H2C.request conn ~error_handler in
 
@@ -212,14 +237,14 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
     in
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
-    | Error e -> etcd_err (Fmt.to_to_string H2.Status.pp_hum e)
+    | Error e -> etcd_err (`Msg (Fmt.to_to_string H2.Status.pp_hum e))
     | Ok r -> r
 
   let rec do_grpc_unary ~stack ~service ~rpc ~request ~decode =
     let handler = make_unary_handler ~request ~decode in
     let repr = String.escaped request in
     do_grpc ~stack ~service ~rpc ~handler ~repr >>= function
-    | Error e, _ -> etcd_err (Etcd_client.Result.show_error e)
+    | Error e, _ -> etcd_err (`Msg (Etcd_client.Result.show_error e))
     | Ok None, status -> (
         let open Grpc.Status in
         let code = code status in
@@ -240,7 +265,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
                 Fmt.(option string)
                 message
             in
-            etcd_err err)
+            etcd_err (`Msg err))
     | Ok (Some r), _ -> Lwt.return r
 
   let do_grpc_bidir ~stack ~service ~rpc ~callback =
@@ -258,7 +283,9 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
   let update_revision (header : ResponseHeader.t option) =
     match header with
     | None -> ()
-    | Some { revision; _ } -> last_known_revision := revision
+    | Some { revision; member_id; _ } ->
+        last_known_revision := revision;
+        own_id := Some member_id
 
   let txn stack ~(request : TxnRequest.t) : TxnResponse.t Lwt.t =
     let request = TxnRequest.to_proto request |> Etcd_client.Writer.contents in
@@ -483,8 +510,8 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
         Etcd_client.Reader.create str
         |> WatchResponse.from_proto |> Result.map Option.some
         |> function
-        | Error e -> etcd_err (Etcd_client.Result.show_error e)
-        | Ok None -> etcd_err "no response!"
+        | Error e -> etcd_err (`Msg (Etcd_client.Result.show_error e))
+        | Ok None -> etcd_err (`Msg "watch connect: no response")
         | Ok (Some r) -> f r
       in
       let write_request =
@@ -606,32 +633,32 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   type t = {
     stack : Stack.t;
     mode : [ `Normal | `Batch of Txn_batcher.t ];
-    member_id : int64;
     watcher : Etcd.Watch.t;
   }
 
   type key = Key.t
-
-  let etcd_try f =
-    Lwt.catch
-      (fun () -> f ())
-      (fun e ->
-        let msg =
-          match e with Etcd_error s -> s | exn -> Printexc.to_string exn
-        in
-        Log.debug (fun m ->
-            let bt = Printexc.get_backtrace () in
-            m "%s backtrace:\n%s" msg bt);
-        Lwt.return (Error (`Etcd_error msg)))
-
-  let bytes_of_key k = Bytes.of_string (Key.to_string k)
-  let disconnect _ = Lwt.return_unit
-
-  type error = [ `Etcd_error of string | Mirage_kv.error ]
+  type error = [ etcd_error | Mirage_kv.error ]
 
   let pp_error ppf = function
     | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
-    | `Etcd_error s -> Fmt.pf ppf "Etcd_error: %s" s
+    | #etcd_error as e -> pp_etcd_error ppf e
+
+  let etcd_try (f : unit -> ('a, error) result Lwt.t) =
+    Lwt.catch
+      (fun () -> f ())
+      (fun e ->
+        let err =
+          match e with
+          | Etcd_error e -> (e :> error)
+          | exn -> `Msg (Printexc.to_string exn)
+        in
+        Log.debug (fun m ->
+            let bt = Printexc.get_backtrace () in
+            m "%a backtrace:\n%s" pp_error err bt);
+        Lwt.return (Error err))
+
+  let bytes_of_key k = Bytes.of_string (Key.to_string k)
+  let disconnect _ = Lwt.return_unit
 
   let last_modified t k =
     let key = bytes_of_key k in
@@ -744,9 +771,11 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
     let etcd_try f =
       etcd_try f
-      >|= Result.map_error (function `Etcd_error s -> `Cluster_error s)
+      >|= Result.map_error (fun e ->
+          let msg = Fmt.str "%a" pp_error e in
+          `Cluster_error msg)
 
-    let my_id t = t.member_id
+    let my_id _t = !Etcd.own_id
 
     let member_list t =
       let request = MemberListRequest.make () in
@@ -782,7 +811,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         let db_size = resp.dbSize in
         let errors = resp.errors in
         match resp.header with
-        | None -> Error (`Etcd_error "response did not have a header")
+        | None -> Error (`Msg "response did not have a header")
         | Some header ->
             Log.info (fun f ->
                 f "status: (id=%Lx,@,leader=%Lx,@,db_size=%Ld,@,errors=[%a])"
@@ -792,18 +821,15 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
             Ok header.member_id)
 
   let connect stack =
-    status stack >|= function
-    | Error e -> Error e
-    | Ok member_id ->
-        let watcher = Etcd.Watch.init stack in
-        let t = { stack; mode = `Normal; member_id; watcher } in
-        let restart_watcher () =
-          Etcd.Watch.reconnect watcher stack;
-          Lwt.return_unit
-        in
-        Etcd.connection_established_callbacks :=
-          restart_watcher :: !Etcd.connection_established_callbacks;
-        Ok t
+    let watcher = Etcd.Watch.init stack in
+    let t = { stack; mode = `Normal; watcher } in
+    let restart_watcher () =
+      Etcd.Watch.reconnect watcher stack;
+      Lwt.return_unit
+    in
+    Etcd.connection_established_callbacks :=
+      restart_watcher :: !Etcd.connection_established_callbacks;
+    t
 end
 
 module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
@@ -822,7 +848,8 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let request = PutRequest.make ~key ~value () in
     match t.mode with
     | `Normal ->
-        etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
+        (etcd_try (fun () -> Etcd.put t.stack ~request >|= fun _resp -> Ok ())
+          :> (unit, write_error) result Lwt.t)
     | `Batch b -> Txn_batcher.add_op b (`Request_put request)
 
   let atomic_set_if_no_restore t k v =
@@ -852,8 +879,9 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
         let request =
           TxnRequest.make ~compare:[ restore_nonexistent ] ~success:[ op ] ()
         in
-        etcd_try (fun () ->
-            Etcd.txn t.stack ~request >|= fun resp -> Ok resp.succeeded)
+        (etcd_try (fun () ->
+             Etcd.txn t.stack ~request >|= fun resp -> Ok resp.succeeded)
+          :> (bool, write_error) result Lwt.t)
 
   let remove t k =
     (* We don't know if the key is meant to refer to a dictionary or a single
@@ -868,8 +896,9 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     let exec_req ~request =
       match t.mode with
       | `Normal ->
-          etcd_try (fun () ->
-              Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
+          (etcd_try (fun () ->
+               Etcd.delete_range t.stack ~request >|= fun _ -> Ok ())
+            :> (unit, write_error) result Lwt.t)
       | `Batch b -> Txn_batcher.add_op b (`Request_delete_range request)
     in
     let request_single = DeleteRangeRequest.make ~key:key_single () in
@@ -887,6 +916,6 @@ module KV_RW (Stack : Tcpip.Stack.V4V6) = struct
     >|= fun res ->
     match res with
     | Ok () -> value
-    | Error (`Etcd_error msg) -> raise (Etcd_error msg)
-    | Error _ -> raise (Etcd_error "unknown error")
+    | Error (#etcd_error as e) -> raise (Etcd_error e)
+    | Error _ -> raise (Etcd_error (`Msg "unknown error"))
 end
