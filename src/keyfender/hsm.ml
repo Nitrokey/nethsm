@@ -3858,6 +3858,71 @@ module Make (KV : Kv_ext.Platform) = struct
           Log.err (fun m -> m "couldn't read from store %a" KV.pp_error e);
           Lwt.return false
 
+  let boot_with_healthy_store ~(system_info : Json.system_info) ~cache_settings
+      ~device_key ~kv ~config_store =
+    let** version =
+      lwt_error_to_msg ~pp_error:Config_store.pp_error
+        (Config_store.get_opt config_store Version)
+    in
+    match version with
+    | None ->
+        (* uninitialized / unprovisioned device *)
+        let priv = X509.Private_key.generate `P256 in
+        let state = Unprovisioned
+        and cert, key = generate_cert priv
+        and chain = [] in
+        Lwt_result.return (state, cert, key, chain)
+    | Some version ->
+        (* provisioned device, look at store to figure out state *)
+        let** () =
+          System.apply_config_and_domain_migrations ~config_store kv
+            ~device_id:system_info.deviceId version
+        in
+        let** state =
+          boot_config_store ~cache_settings config_store device_key
+        in
+        let** cert, chain, key = certificate_chain config_store in
+        Lwt_result.return (state, cert, key, chain)
+
+  let rec store_health_watcher ~retry_boot t stream =
+    let* event = Lwt_stream.get stream in
+    let handle_event e =
+      match (t.state, e) with
+      | Failed (Some previous_state), `Healthy ->
+          t.state <- previous_state;
+          Log.info (fun f ->
+              f "store now healthy: Failed -> %a" pp_state (state t));
+          Lwt.return_unit
+      | Failed None, `Healthy -> (
+          Log.info (fun f -> f "store now healthy: Failed -> continue boot");
+          let* res = retry_boot () in
+          match res with
+          | Error (`Msg msg) ->
+              Log.err (fun f -> f "boot failed again: %s" msg);
+              Lwt.return_unit
+          | Ok (state, cert, key, chain) ->
+              t.state <- state;
+              t.cert <- cert;
+              t.key <- key;
+              t.chain <- chain;
+              Lwt.return_unit)
+      | _healthy_state, `Healthy -> Lwt.return_unit (* staying healthy *)
+      | Failed _, (`Disconnected | `Timeout) ->
+          Lwt.return_unit (* staying unhealthy *)
+      | non_failed_state, (`Disconnected | `Timeout) ->
+          Log.warn (fun f ->
+              f "store unhealthy! %a -> Failed" pp_state (state t));
+          t.state <- Failed (Some non_failed_state);
+          Lwt.return_unit
+    in
+    match event with
+    | Some e ->
+        let* () = handle_event e in
+        store_health_watcher ~retry_boot t stream
+    | None ->
+        Log.err (fun f -> f "store health event stream ended");
+        Lwt.return_unit
+
   let boot ?(cache_settings = default_cache_settings)
       ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
@@ -3886,105 +3951,46 @@ module Make (KV : Kv_ext.Platform) = struct
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
-    let** observed_store_state =
+    let normal_boot () =
+      boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
+        ~config_store
+    in
+    let** state, cert, key, chain =
       let* healthy = check_store_healthy kv in
+      (* check is store is healthy (reachable), and obtain normal boot state if so *)
       if healthy then (
-        Logs.app (fun m -> m "connected to store");
-        let** version =
-          lwt_error_to_msg ~pp_error:Config_store.pp_error
-            (Config_store.get_opt config_store Version)
-        in
-        match version with
-        | None -> Lwt_result.return `Unprovisioned
-        | Some v -> Lwt_result.return (`Provisioned v))
-      else Lwt_result.return `Unhealthy
+        Log.app (fun m -> m "connected to store");
+        normal_boot ())
+      else (
+        (* if not, boot into Failed state to make recovery available *)
+        Log.warn (fun f -> f "store unhealthy! booting into Failed state");
+        let priv = X509.Private_key.generate `P256 in
+        let state = Failed None
+        and cert, key = generate_cert priv
+        and chain = [] in
+        Lwt_result.return (state, cert, key, chain))
     in
-    let** t =
-      match observed_store_state with
-      | `Unhealthy ->
-          Log.warn (fun f -> f "store unavailable! booting into Failed state");
-          (* etcd unreachable for now, boot in Failed state *)
-          let priv = X509.Private_key.generate `P256 in
-          let state = Failed None (* no previous state to return to *)
-          and cert, key =
-            generate_cert
-              priv (* TODO pass previous key/certs in platform data *)
-          and chain = [] in
-          let t =
-            {
-              state;
-              has_changes;
-              key;
-              cert;
-              chain;
-              software_update_key;
-              kv;
-              info;
-              system_info;
-              config_store;
-              mbox;
-              res_mbox;
-              device_key;
-              cache_settings;
-              default_net;
-            }
-          in
-          Lwt.return (Ok t)
-      | `Unprovisioned ->
-          (* uninitialized / unprovisioned device *)
-          let priv = X509.Private_key.generate `P256 in
-          let state = Unprovisioned
-          and cert, key = generate_cert priv
-          and chain = [] in
-          let t =
-            {
-              state;
-              has_changes;
-              key;
-              cert;
-              chain;
-              software_update_key;
-              kv;
-              info;
-              system_info;
-              config_store;
-              mbox;
-              res_mbox;
-              device_key;
-              cache_settings;
-              default_net;
-            }
-          in
-          Lwt.return (Ok t)
-      | `Provisioned version ->
-          (* provisioned device, look at store to figure out state *)
-          let** () =
-            System.apply_config_and_domain_migrations ~config_store kv
-              ~device_id:system_info.deviceId version
-          in
-          let** state =
-            boot_config_store ~cache_settings config_store device_key
-          in
-          let** cert, chain, key = certificate_chain config_store in
-          Lwt_result.return
-            {
-              state;
-              has_changes;
-              key;
-              cert;
-              chain;
-              software_update_key;
-              kv;
-              info;
-              system_info;
-              config_store;
-              mbox;
-              res_mbox;
-              device_key;
-              cache_settings;
-              default_net;
-            }
+    let t =
+      {
+        state;
+        has_changes;
+        key;
+        cert;
+        chain;
+        software_update_key;
+        kv;
+        info;
+        system_info;
+        config_store;
+        mbox;
+        res_mbox;
+        device_key;
+        cache_settings;
+        default_net;
+      }
     in
+    Lwt.async (fun () ->
+        store_health_watcher ~retry_boot:normal_boot t (KV.health_events kv));
     let dump_key_ops () =
       let rec dump () =
         Mirage_sleep.ns (Duration.of_hour 1) >>= fun () ->
