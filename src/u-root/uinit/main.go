@@ -42,7 +42,7 @@ type globalState struct {
 	dataPartition        string
 	listenerProtocol     string
 	platListenerAddress  string
-	netListenerAddress	 string
+	netListenerAddress   string
 	keyfenderIP          string
 	entropyPort          string
 	deviceID             string
