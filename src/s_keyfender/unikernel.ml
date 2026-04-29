@@ -505,6 +505,20 @@ struct
       | Hsm.Log log ->
           setup_log ext_stack log;
           (handle_cb [@tailcall]) http
+      | Hsm.Diagnose as cmd ->
+          (if Conf_args.no_platform then
+             Lwt_mvar.put res_mvar
+               (Ok (DiagnoseResult Keyfender.Json.mock_diagnose_data))
+           else
+             write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+             | Ok data ->
+                 let data = Keyfender.Json.parse_diagnose_data data in
+                 Lwt_mvar.put res_mvar
+                   (Result.map (fun x -> Hsm.DiagnoseResult x) data)
+             | Error e ->
+                 Lwt_mvar.put res_mvar
+                   (Error (Fmt.to_to_string pp_platform_err e)))
+          >>= fun () -> (handle_cb [@tailcall]) http
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
           write_to_platform cmd
       | Hsm.Join_cluster initial_cluster as cmd ->

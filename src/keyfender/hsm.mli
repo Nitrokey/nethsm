@@ -26,7 +26,7 @@ module type S = sig
   val error_to_code : status_code -> int
   val pp_state : Json.state Fmt.t
 
-  type cb_result = EmptyResult
+  type cb_result = EmptyResult | DiagnoseResult of Json.diagnose_data
 
   type cb =
     | Log of Json.log
@@ -39,6 +39,7 @@ module type S = sig
     | Commit_update
     | Join_cluster of string
     | Set_local_config of Json.local_conf
+    | Diagnose
 
   val cb_to_string : cb -> string
 
@@ -342,6 +343,8 @@ module type S = sig
 
     val member_add :
       urls:string list -> t -> (Json.join_req, error) result Lwt.t
+
+    val diagnose : t -> (Json.diagnose_data, error) result Lwt.t
   end
 end
 

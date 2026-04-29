@@ -36,6 +36,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
       (fun (p, h) -> ("/api/v1" ^ p, h))
       [
         ("/info", fun () -> new Info.info hsm_state);
+        ("/health/diagnose", fun () -> new Health.diagnose hsm_state ip);
         ("/health/alive", fun () -> new Health.alive hsm_state);
         ("/health/ready", fun () -> new Health.ready hsm_state);
         ("/health/state", fun () -> new Health.state hsm_state);

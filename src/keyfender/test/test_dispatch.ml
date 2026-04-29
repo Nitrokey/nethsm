@@ -20,6 +20,10 @@ let ( @? ) name fn =
 
 let http_status = Alcotest.testable Http.Status.pp ( = )
 
+let jsonable to_yojson =
+  let pp = Fmt.using to_yojson Yojson.Safe.pretty_print in
+  Alcotest.testable pp ( = )
+
 let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
@@ -45,19 +49,40 @@ let returns_empty' ~with_status = function
 
 let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
 
-let returns_string' ~with_status = function
-  | new_state, Some (status, _, body, _) ->
+let returns_string' ?content_type ~with_status = function
+  | new_state, Some (status, headers, body, _) ->
       let err = msg_with_body body "incorrect return code" in
       Alcotest.(check http_status) err with_status status;
+      Option.iter
+        (fun expected ->
+          let header = "Content-Type" in
+          let actual = Header.get headers header in
+          Alcotest.(
+            check' (option string) ~expected:(Option.some expected) ~actual
+              ~msg:header))
+        content_type;
       begin match body with
       | `String s -> (new_state, s)
       | _ -> Alcotest.fail "did not return string"
       end
   | _ -> Alcotest.fail "invalid response form (route not found?)"
 
-let returns_string ~with_status r =
-  let _, body = returns_string' ~with_status r in
+let returns_string ?content_type ~with_status r =
+  let _, body = returns_string' ?content_type ~with_status r in
   body
+
+let returns_json of_yojson ~with_status r =
+  r
+  |> returns_string ~content_type:"application/json" ~with_status
+  |> Yojson.Safe.from_string |> of_yojson
+  |> function
+  | Ok v -> v
+  | Error e -> Alcotest.failf "Failed to convert returned JSON: %s" e
+
+let returns_json_equal of_yojson to_yojson ~expected ~with_status r =
+  let actual = r |> returns_json of_yojson ~with_status in
+  Alcotest.(
+    check' (jsonable to_yojson) ~expected ~actual ~msg:"returned json matches")
 
 let returns_stream' ~with_status = function
   | new_state, Some (status, _, body, _) ->
@@ -127,10 +152,10 @@ let random_error_bad_length =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let operational_mock_with_mbox' ?(platform = platform) f =
+let operational_mock_with_mbox'' ?(platform = platform) f =
   Lwt_main.run
-    ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-    >>= fun (state, o, m) ->
+    ( Kv_mem.connect () >>= fun kv ->
+      Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
       Lwt.async (fun () ->
           let rec go () =
             Lwt_mvar.take o >>= fun cb ->
@@ -148,10 +173,111 @@ let operational_mock_with_mbox' ?(platform = platform) f =
         ~passphrase:"backupUserPassphrase" ~name:"backup"
       >|= fun _ ->
       enable_access_log_debug ();
-      state )
+      (kv, state) )
+
+let operational_mock_with_mbox' ?platform f =
+  operational_mock_with_mbox'' ?platform f |> snd
 
 let operational_mock_with_mbox ?platform () =
   operational_mock_with_mbox' ?platform (fun _ -> Hsm.EmptyResult)
+
+let mock_diagnose_running =
+  Keyfender.Json.
+    {
+      clusterLogs = [];
+      clusterSnapshot =
+        Some
+          {
+            hash = 42;
+            revision = 0x42;
+            totalKey = 4242;
+            totalSize = 0x4242;
+            version = Some "3.6";
+          };
+      clusterState =
+        { exited = None; stopped = None; signaled = None; running = true };
+    }
+
+let mock_diagnose_ok =
+  let open Hsm in
+  function Diagnose -> DiagnoseResult mock_diagnose_running | _ -> EmptyResult
+
+let mock_diagnose_error =
+  Keyfender.Json.
+    {
+      clusterLogs = [];
+      clusterSnapshot =
+        Some
+          {
+            hash = 42;
+            revision = 0x42;
+            totalKey = 4242;
+            totalSize = 0x4242;
+            version = Some "3.6";
+          };
+      clusterState =
+        { exited = Some 1; stopped = None; signaled = None; running = false };
+    }
+
+let mock_diagnose_failed = function
+  | Hsm.Diagnose -> Hsm.DiagnoseResult mock_diagnose_error
+  | _ -> Hsm.EmptyResult
+
+let failed_mock () =
+  let kv, t = operational_mock_with_mbox'' mock_diagnose_failed in
+  Lwt_main.run (Kv_platform.inject_health_event kv `Disconnected)
+  |> Logs.on_error ~pp:Kv_platform.pp_write_error ~use:(fun _ ->
+      failwith "error injecting health event");
+  t
+
+let health_diagnose_operational_ok =
+  Alcotest.test_case
+    "a request for /health/diagnose with authentication will produce a HTTP \
+     200 with valid JSON when operational"
+    `Quick
+  @@ fun () ->
+  let hsm_state = operational_mock_with_mbox' mock_diagnose_ok in
+  let headers = auth_header "admin" "test1Passphrase" in
+  let open Keyfender.Json in
+  request ~hsm_state ~headers "/health/diagnose"
+  |> returns_json_equal ~with_status:`OK diagnose_data_of_yojson
+       diagnose_data_to_yojson ~expected:mock_diagnose_running
+
+let health_diagnose_operational_auth_required =
+  Alcotest.test_case
+    "a request for /health/diagnose without authentication will produce a HTTP \
+     401 when operational"
+    `Quick
+  @@ fun () ->
+  let hsm_state = operational_mock_with_mbox' mock_diagnose_ok in
+  request ~hsm_state "/health/diagnose"
+  |> returns_empty ~with_status:`Unauthorized
+
+let health_diagnose_failed_unauth_ok =
+  Alcotest.test_case
+    "a request for /health/diagnose without authentication will produce a HTTP \
+     200 when failed"
+    `Quick
+  @@ fun () ->
+  let open Keyfender.Json in
+  let hsm_state = failed_mock () in
+  request ~hsm_state "/health/diagnose"
+  |> returns_json_equal ~with_status:`OK diagnose_data_of_yojson
+       diagnose_data_to_yojson ~expected:mock_diagnose_error
+
+let health_diagnose_failed_auth_ok =
+  (* authentication attempt will be ignored *)
+  Alcotest.test_case
+    "a request for /health/diagnose with authentication will produce a HTTP \
+     200 when failed"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock () in
+  let headers = auth_header "admin" "test1Passphrase" in
+  let open Keyfender.Json in
+  request ~headers ~hsm_state "/health/diagnose"
+  |> returns_json_equal ~with_status:`OK diagnose_data_of_yojson
+       diagnose_data_to_yojson ~expected:mock_diagnose_error
 
 let provision_json =
   {| {
@@ -5793,6 +5919,13 @@ let () =
       (* the spaces trigger alcotest to do long line output*)
       ("/                                               ", [ empty ]);
       ("/health/alive", [ health_alive_ok ]);
+      ( "/health/diagnose",
+        [
+          health_diagnose_operational_ok;
+          health_diagnose_operational_auth_required;
+          health_diagnose_failed_unauth_ok;
+          health_diagnose_failed_auth_ok;
+        ] );
       ( "/health/ready",
         [ health_ready_ok; health_ready_error_precondition_failed ] );
       ("/health/state", [ health_state_ok ]);

@@ -42,7 +42,23 @@ module Kv_mem = struct
   let batch dict ?retries:_ f = f dict
 end
 
-module Hsm = Keyfender.Hsm.Make (Keyfender.Kv_ext.Mock_platform (Kv_mem))
+module Kv_platform = struct
+  include Keyfender.Kv_ext.Mock_platform (Kv_mem)
+
+  let unhealthy = Mirage_kv.Key.v "__unhealthy__"
+
+  let is_healthy t =
+    exists t unhealthy >|= function Ok None -> true | _ -> false
+
+  let stream, push = Lwt_stream.create ()
+  let health_events (_ : t) = stream
+
+  let inject_health_event (t : t) event =
+    push (Some event);
+    if event = `Healthy then remove t unhealthy else set t unhealthy ""
+end
+
+module Hsm = Keyfender.Hsm.Make (Kv_platform)
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
 
 let software_update_key =

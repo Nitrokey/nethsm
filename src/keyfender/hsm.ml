@@ -26,7 +26,7 @@ module type S = sig
   val error_to_code : status_code -> int
   val pp_state : Json.state Fmt.t
 
-  type cb_result = EmptyResult
+  type cb_result = EmptyResult | DiagnoseResult of Json.diagnose_data
 
   type cb =
     | Log of Json.log
@@ -39,6 +39,7 @@ module type S = sig
     | Commit_update
     | Join_cluster of string
     | Set_local_config of Json.local_conf
+    | Diagnose
 
   val cb_to_string : cb -> string
 
@@ -336,6 +337,8 @@ module type S = sig
 
     val member_add :
       urls:string list -> t -> (Json.join_req, error) result Lwt.t
+
+    val diagnose : t -> (Json.diagnose_data, error) result Lwt.t
   end
 end
 
@@ -584,7 +587,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | `Failed -> "failed")
   [@@coverage off]
 
-  type cb_result = EmptyResult
+  type cb_result = EmptyResult | DiagnoseResult of Json.diagnose_data
 
   type cb =
     | Log of Json.log
@@ -597,6 +600,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Commit_update
     | Join_cluster of string
     | Set_local_config of Json.local_conf
+    | Diagnose
 
   let cb_to_string = function
     | Log l -> "LOG " ^ Yojson.Safe.to_string (Json.log_to_yojson l)
@@ -615,6 +619,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Commit_update -> "COMMIT-UPDATE"
     | Join_cluster _ -> "JOIN-CLUSTER"
     | Set_local_config _ -> "SET-LOCAL-CONFIG"
+    | Diagnose -> "DIAGNOSE"
 
   let version_of_string s =
     match Astring.String.cut ~sep:"." s with
@@ -2183,6 +2188,22 @@ module Make (KV : Kv_ext.Platform) = struct
     let to_hsm_error =
       Result.map_error (function `Cluster_error s ->
           (Bad_request, "cluster error: " ^ s))
+
+    let diagnose t =
+      with_write_lock @@ fun () ->
+      let open Lwt.Syntax in
+      let* () = Lwt_mvar.put t.mbox Diagnose in
+      let open Lwt_result.Syntax in
+      let* data_opt =
+        Lwt_mvar.take t.res_mbox
+        |> Lwt_result.map_error (fun msg ->
+            Log.warn (fun m -> m "getting diagnostics failed: %s" msg);
+            (Bad_request, "getting diagnostics failed: " ^ msg))
+      in
+      match data_opt with
+      | EmptyResult ->
+          Lwt.return_error (Bad_request, "Got empty diagnostics reply")
+      | DiagnoseResult data -> Lwt.return_ok data
 
     let member_list t = member_list t.kv >|= to_hsm_error
 
