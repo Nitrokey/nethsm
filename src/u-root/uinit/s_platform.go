@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"container/ring"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -503,6 +504,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 
 	G.killEtcd = cancel
 	lastEtcdError := "unknown error"
+	G.etcdLogs = ring.New(1024)
 
 	go func() {
 		logs := bufio.NewReader(logPipe)
@@ -519,6 +521,26 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			}
 			if strings.Contains(line, "fatal") || strings.Contains(line, "error") {
 				lastEtcdError = line
+			}
+			var logItem clusterLogItem
+			err = json.Unmarshal([]byte(line), &logItem)
+			if err == nil && logItem != nil {
+				if level, ok := logItem["level"].(string); ok {
+					level := strings.ToLower(level)
+					switch level {
+					case "debug":
+						fallthrough
+					case "info":
+						// SKIP
+					default:
+						// store warn and above
+						// this is safe if new log levels are introduced,
+						// or if etcd changes logger libraries
+						// (we won't miss important logs)
+						G.etcdLogs.Value = logItem
+						G.etcdLogs = G.etcdLogs.Next()
+					}
+				}
 			}
 		}
 	}()

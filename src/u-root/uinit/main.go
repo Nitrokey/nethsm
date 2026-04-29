@@ -13,6 +13,7 @@
 package main
 
 import (
+	"container/ring"
 	"context"
 	_ "embed"
 	"log"
@@ -50,6 +51,7 @@ type globalState struct {
 	killEtcd             context.CancelFunc
 	etcdStoppedCh        chan bool
 	etcdProcessState     atomic.Pointer[os.ProcessState]
+	etcdLogs             *ring.Ring
 }
 
 // G is the actual singleton instance of globalState used throughout. This
