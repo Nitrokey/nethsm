@@ -134,12 +134,8 @@ let operational_mock_with_mbox' ?(platform = platform) f =
       Lwt.async (fun () ->
           let rec go () =
             Lwt_mvar.take o >>= fun cb ->
-            f cb;
-            go ()
+            Lwt_mvar.put m (Ok (f cb)) >>= fun () -> go ()
           in
-          go ());
-      Lwt.async (fun () ->
-          let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
           go ());
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
@@ -155,7 +151,7 @@ let operational_mock_with_mbox' ?(platform = platform) f =
       state )
 
 let operational_mock_with_mbox ?platform () =
-  operational_mock_with_mbox' ?platform (fun _ -> ())
+  operational_mock_with_mbox' ?platform (fun _ -> Hsm.EmptyResult)
 
 let provision_json =
   {| {
@@ -475,7 +471,7 @@ let system_update_platform_bad =
             let rec go () = Lwt_mvar.take o >>= fun _ -> go () in
             go ());
         Lwt.async (fun () ->
-            Lwt_mvar.put mbox (Ok ()) >>= fun () ->
+            Lwt_mvar.put mbox (Ok EmptyResult) >>= fun () ->
             Lwt_mvar.put mbox (Error "platform bad"));
         Lwt.return_unit)
       ()
@@ -2427,8 +2423,9 @@ let config_network_set_ok =
                 f "sent to platform: %s"
                   (Keyfender.Json.network_config_to_string
                      local_conf.network_config
-                  |> Yojson.Safe.to_string))
-        | _ -> ()
+                  |> Yojson.Safe.to_string));
+            Hsm.EmptyResult
+        | _ -> EmptyResult
       in
       let hsm_state = operational_mock_with_mbox' print_set_local in
       let hsm_state' =
@@ -2476,8 +2473,9 @@ let config_network_set_ipv6_ok =
                 f "sent to platform: %s"
                   (Keyfender.Json.network_config_to_string
                      local_conf.network_config
-                  |> Yojson.Safe.to_string))
-        | _ -> ()
+                  |> Yojson.Safe.to_string));
+            Hsm.EmptyResult
+        | _ -> Hsm.EmptyResult
       in
       let new_network =
         {|{"ipAddress":"6.6.6.6","netmask":"255.255.255.0","gateway":"0.0.0.0","ipv6":{"cidr":"::1/8","gateway":"::1"}}|}
@@ -5175,12 +5173,15 @@ let cluster_join =
       let headers = admin_headers in
       (* create a self-signed CA and get the NetHSM CSR *)
       let log_cb (cb : Hsm.cb) =
-        match cb with
-        | Join_cluster cfg -> Logs.info (fun f -> f "join-cluster (%s)" cfg)
-        | Set_local_config _ -> Logs.info (fun f -> f "set-local-config")
-        | Tls _ -> Logs.info (fun f -> f "tls")
-        | Reboot -> Logs.info (fun f -> f "reboot")
-        | _ -> Logs.info (fun f -> f "got another command")
+        let () =
+          match cb with
+          | Join_cluster cfg -> Logs.info (fun f -> f "join-cluster (%s)" cfg)
+          | Set_local_config _ -> Logs.info (fun f -> f "set-local-config")
+          | Tls _ -> Logs.info (fun f -> f "tls")
+          | Reboot -> Logs.info (fun f -> f "reboot")
+          | _ -> Logs.info (fun f -> f "got another command")
+        in
+        Hsm.EmptyResult
       in
       let hsm_state, csr_pem =
         admin_post_request

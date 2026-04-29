@@ -516,7 +516,7 @@ struct
                 write_platform ~additional_data internal_stack
                   (Hsm.cb_to_string cmd)
                 >>= function
-                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
                 | Error e ->
                     Lwt_mvar.put res_mvar
                       (Error (Fmt.to_to_string pp_platform_err e)))
@@ -539,7 +539,7 @@ struct
                 write_platform ~additional_data internal_stack
                   (Hsm.cb_to_string cmd)
                 >>= function
-                | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+                | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
                 | Error e ->
                     Lwt_mvar.put res_mvar
                       (Error (Fmt.to_to_string pp_platform_err e)))
@@ -565,7 +565,7 @@ struct
             write_platform ~additional_data internal_stack
               (Hsm.cb_to_string cmd)
             >>= function
-            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
             | Error e ->
                 Lwt_mvar.put res_mvar
                   (Error (Fmt.to_to_string pp_platform_err e))
@@ -574,7 +574,7 @@ struct
       | Hsm.Commit_update as cmd ->
           let* () =
             write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
-            | Ok _ -> Lwt_mvar.put res_mvar (Ok ())
+            | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
             | Error e ->
                 Lwt_mvar.put res_mvar
                   (Error (Fmt.to_to_string pp_platform_err e))

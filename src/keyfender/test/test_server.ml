@@ -78,7 +78,7 @@ let () =
         Lwt_mvar.take mvar >>= function
         | Hsm.Shutdown -> Lwt.return_unit
         | Hsm.Set_local_config _ ->
-            Lwt_mvar.put p (Ok ()) >>= fun () -> handle_cb ()
+            Lwt_mvar.put p (Ok EmptyResult) >>= fun () -> handle_cb ()
         | _ -> handle_cb ()
       in
       handle_cb () )

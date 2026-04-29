@@ -92,7 +92,7 @@ let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)
     resp;
   (hsm_state', resp)
 
-let good_platform _ m = Lwt_mvar.put m (Ok ())
+let good_platform _ m = Lwt_mvar.put m (Ok Hsm.EmptyResult)
 
 let copy (t : Hsm.t) : Hsm.t =
   let v = Marshal.to_string t [ Closures ] in
@@ -109,7 +109,7 @@ let happy_mbox ?(f = fun _ -> ()) o m =
       in
       go ());
   Lwt.async (fun () ->
-      let rec go () = Lwt_mvar.put m (Ok ()) >>= fun () -> go () in
+      let rec go () = Lwt_mvar.put m (Ok Hsm.EmptyResult) >>= fun () -> go () in
       go ());
   Lwt.return_unit
 

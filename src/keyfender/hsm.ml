@@ -26,6 +26,8 @@ module type S = sig
   val error_to_code : status_code -> int
   val pp_state : Json.state Fmt.t
 
+  type cb_result = EmptyResult
+
   type cb =
     | Log of Json.log
     | Network of Json.network
@@ -582,6 +584,8 @@ module Make (KV : Kv_ext.Platform) = struct
       | `Failed -> "failed")
   [@@coverage off]
 
+  type cb_result = EmptyResult
+
   type cb =
     | Log of Json.log
     | Network of Json.network
@@ -769,7 +773,7 @@ module Make (KV : Kv_ext.Platform) = struct
     system_info : Json.system_info;
     config_store : Config_store.t;
     mbox : cb Lwt_mvar.t;
-    res_mbox : (unit, string) result Lwt_mvar.t;
+    res_mbox : (cb_result, string) result Lwt_mvar.t;
     device_key : string;
     cache_settings : Cached_store.settings;
     default_net : string;
@@ -2402,6 +2406,7 @@ module Make (KV : Kv_ext.Platform) = struct
       |> Lwt_result.map_error (fun msg ->
           Log.warn (fun m -> m "setting local config failed: %s" msg);
           (Bad_request, "setting local config failed: " ^ msg))
+      |> Lwt_result.map ignore
 
     let check_ca_signs_cert t ~chain ~ca =
       let is_mock = t.system_info.hardwareVersion = "N/A" in
@@ -2920,6 +2925,7 @@ module Make (KV : Kv_ext.Platform) = struct
             |> Lwt_result.map_error (fun msg ->
                 Log.err (fun m -> m "joining cluster failed: %s" msg);
                 (Bad_request, "joining cluster failed: " ^ msg))
+            |> Lwt_result.map ignore
           in
           (* we are now on the other side *)
           let** version =
@@ -3096,7 +3102,7 @@ module Make (KV : Kv_ext.Platform) = struct
               pushf None;
               (let open Lwt.Infix in
                Lwt_mvar.take t.res_mbox >|= function
-               | Ok () -> Ok ()
+               | Ok _ -> Ok ()
                | Error msg ->
                    Log.warn (fun m ->
                        m "during update, platform reported %s" msg);
@@ -3136,7 +3142,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | Some _changes -> (
           Lwt_mvar.put t.mbox Commit_update >>= fun () ->
           Lwt_mvar.take t.res_mbox >>= function
-          | Ok () -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
+          | Ok _ -> Lwt_mvar.put t.mbox Reboot >|= fun () -> Ok ()
           | Error msg ->
               Log.warn (fun m -> m "commit of update failed %s" msg);
               Lwt.return (Error (Bad_request, "commit failed: " ^ msg)))

@@ -26,6 +26,8 @@ module type S = sig
   val error_to_code : status_code -> int
   val pp_state : Json.state Fmt.t
 
+  type cb_result = EmptyResult
+
   type cb =
     | Log of Json.log
     | Network of Json.network
@@ -352,7 +354,7 @@ module Make (KV : Kv_ext.Platform) : sig
     platform:Json.platform_data ->
     Mirage_crypto_pk.Rsa.pub ->
     KV.t ->
-    (t * cb Lwt_mvar.t * (unit, string) result Lwt_mvar.t) Lwt.t
+    (t * cb Lwt_mvar.t * (cb_result, string) result Lwt_mvar.t) Lwt.t
 
   val reset_rate_limit : unit -> unit
 end
