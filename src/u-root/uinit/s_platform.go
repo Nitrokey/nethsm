@@ -6,14 +6,17 @@ package main
 import (
 	"bufio"
 	"container/ring"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 
 	//"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -43,6 +46,37 @@ type diagnoseData struct {
 	ClusterLogs     []clusterLogItem `json:"clusterLogs"`
 	ClusterSnapshot *clusterSnapshot `json:"clusterSnapshot,omitempty"`
 	ClusterState    clusterState     `json:"clusterState"`
+}
+
+// getClusterState returns the etcd process's state
+func getClusterState(processState *os.ProcessState) (cs clusterState) {
+	if processState == nil {
+		cs.Running = true
+		return
+	}
+	cs.Running = false
+
+	if processState.Exited() {
+		cs.Exited = new(int)
+		*cs.Exited = processState.ExitCode()
+		return
+	}
+
+	if sys, ok := processState.Sys().(syscall.WaitStatus); ok {
+		if sys.Exited() {
+			cs.Exited = new(int)
+			*cs.Exited = sys.ExitStatus()
+		}
+		if sys.Signaled() {
+			cs.Signaled = new(int)
+			*cs.Signaled = int(sys.Signal())
+		}
+		if sys.Stopped() {
+			cs.Stopped = new(int)
+			*cs.Signaled = int(sys.StopSignal())
+		}
+	}
+	return
 }
 
 // platformListener runs the "platform" protocol on the requested protocol and
@@ -237,6 +271,66 @@ func platformListener(result chan string) {
 			return okResponse(""), err, false
 		}
 
+		doDiagnose := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested DIAGNOSE!", remoteAddr)
+			var data diagnoseData
+			data.ClusterState = getClusterState(G.etcdProcessState.Load())
+			if !data.ClusterState.Running {
+				log.Printf("DIAGNOSE: Getting etcd snapshot status")
+				context, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				cmd := exec.CommandContext(context, "/bin/etcdutl", "snapshot", "status", "/data/etcd/member/snap/db", "-w", "json")
+				result := make(chan []byte)
+				go func() {
+					defer close(result)
+					output, err := cmd.Output()
+					if err != nil {
+						log.Printf("DIAGNOSE error: %s", err)
+					} else {
+						result <- output
+					}
+				}()
+				select {
+				case out, ok := <-result:
+					if ok {
+						clusterSnapshot := new(clusterSnapshot)
+						if err := json.Unmarshal(out, &clusterSnapshot); err != nil {
+							log.Printf("DIAGNOSE: snapshot status: %s", out)
+							log.Printf("DIAGNOSE: Failed to parse snapshot status: %s", err)
+						} else {
+							data.ClusterSnapshot = clusterSnapshot
+						}
+					} else {
+						log.Printf("DIAGNOSE: channel closed")
+					}
+				case <-time.After(3 * time.Second):
+					log.Printf("DIAGNOSE: snapshot status took too long")
+				}
+			}
+
+			// TODO : how to use generics and more idiomatic code here?
+			clusterLogs := make([]clusterLogItem, G.etcdLogs.Len())
+			var i int
+			i = 0
+			G.etcdLogs.Do(func(entry any) {
+				if logItem, ok := entry.(clusterLogItem); ok {
+					clusterLogs[i] = logItem
+				}
+				i = i + 1
+			})
+			data.ClusterLogs = slices.DeleteFunc(clusterLogs, func(entry clusterLogItem) bool {
+				return entry == nil
+			})
+
+			json, err := json.Marshal(data)
+			if err != nil {
+				log.Printf("DIAGNOSE: error %v", err)
+				return errorResponse(err), err, false
+			}
+			log.Printf("DIAGNOSE: OK: %s", json)
+			return okResponse(string(json)), nil, false
+		}
+
 		// COMMIT-UPDATE
 		doCommitUpdate := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested COMMIT-UPDATE.", remoteAddr)
@@ -313,6 +407,8 @@ func platformListener(result chan string) {
 			response, cmdErr, terminalCommand = doCommitUpdate()
 		case "JOIN-CLUSTER":
 			response, cmdErr, terminalCommand = doJoinCluster()
+		case "DIAGNOSE":
+			response, cmdErr, terminalCommand = doDiagnose()
 		case "SHUTDOWN":
 			log.Printf("[%s] Requested SHUTDOWN.", remoteAddr)
 			response = okResponse("")
