@@ -723,6 +723,47 @@ type member_req = { urls : string list } [@@deriving yojson, jsonschema]
 
 let state_to_yojson state = `Assoc [ ("state", head @@ state_to_yojson state) ]
 
+type cluster_log_item = Yojson.Safe.t [@@deriving yojson]
+
+let cluster_log_item_jsonschema =
+  `Assoc [ ("type", `String "object"); ("additionalProperties", `Bool true) ]
+
+type cluster_snapshot = {
+  hash : int;
+  revision : int;
+  totalKey : int;
+  totalSize : int;
+  version : string option; [@default None]
+}
+[@@deriving yojson, jsonschema]
+
+type cluster_state = {
+  exited : int option; [@default None]
+  signaled : int option; [@default None]
+  stopped : int option; [@default None]
+  running : bool;
+}
+[@@deriving yojson, jsonschema]
+
+(* must be in sync with diagnose_data in src/u-root/uinit/s_platform.go *)
+type diagnose_data = {
+  clusterLogs : cluster_log_item list;
+  clusterSnapshot : cluster_snapshot option; [@default None]
+  clusterState : cluster_state;
+}
+[@@deriving yojson, jsonschema]
+
+let mock_diagnose_data =
+  {
+    clusterLogs =
+      [
+        `Assoc [ ("level", `String "error"); ("msg", `String "Mock: no etcd") ];
+      ];
+    clusterSnapshot = None;
+    clusterState =
+      { exited = None; signaled = None; stopped = None; running = false };
+  }
+
 type version = int * int
 
 let version_jsonschema = string_wire_jsonschema
@@ -817,3 +858,4 @@ type local_conf = {
 [@@deriving yojson, jsonschema]
 
 let parse_platform_data s = decode platform_data_of_yojson s
+let parse_diagnose_data s = decode diagnose_data_of_yojson s

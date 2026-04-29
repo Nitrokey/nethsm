@@ -21,6 +21,29 @@ import (
 	"nethsm/hw"
 )
 
+type clusterLogItem = map[string]any
+
+type clusterSnapshot struct {
+	Hash      uint32  `json:"hash"`
+	Revision  int64   `json:"revision"`
+	TotalKey  int     `json:"totalKey"`
+	TotalSize int64   `json:"totalSize"`
+	Version   *string `json:"version,omitempty"`
+}
+
+type clusterState struct {
+	Exited   *int `json:"exited,omitempty"`
+	Signaled *int `json:"signaled,omitempty"`
+	Stopped  *int `json:"stopped,omitempty"`
+	Running  bool `json:"running"`
+}
+
+type diagnoseData struct {
+	ClusterLogs     []clusterLogItem `json:"clusterLogs"`
+	ClusterSnapshot *clusterSnapshot `json:"clusterSnapshot,omitempty"`
+	ClusterState    clusterState     `json:"clusterState"`
+}
+
 // platformListener runs the "platform" protocol on the requested protocol and
 // port.
 //

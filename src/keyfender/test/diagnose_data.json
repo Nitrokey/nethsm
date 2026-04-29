@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": { "network_config": { "type": "string" } },
+  "type": "object",
+  "properties": {
+    "clusterState": {
+      "type": "object",
+      "properties": {
+        "running": { "type": "boolean" },
+        "stopped": { "type": "integer" },
+        "signaled": { "type": "integer" },
+        "exited": { "type": "integer" }
+      },
+      "required": [ "running" ],
+      "additionalProperties": false
+    },
+    "clusterSnapshot": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "totalSize": { "type": "integer" },
+        "totalKey": { "type": "integer" },
+        "revision": { "type": "integer" },
+        "hash": { "type": "integer" }
+      },
+      "required": [ "totalSize", "totalKey", "revision", "hash" ],
+      "additionalProperties": false
+    },
+    "clusterLogs": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  },
+  "required": [ "clusterState", "clusterLogs" ],
+  "additionalProperties": false
+}

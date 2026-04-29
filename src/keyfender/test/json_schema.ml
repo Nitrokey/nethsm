@@ -5,6 +5,7 @@ let schemas =
     ("platform_data", Json.platform_data_jsonschema);
     ("local_conf", Json.local_conf_jsonschema);
     ("network", Json.network_jsonschema);
+    ("diagnose_data", Json.diagnose_data_jsonschema);
   ]
   |> List.iter @@ fun (name, s) ->
      Out_channel.with_open_text (name ^ ".json") @@ fun ch ->

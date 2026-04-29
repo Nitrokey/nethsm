@@ -86,7 +86,8 @@
  (libraries keyfender ppx_deriving_jsonschema.runtime))
 
 (rule
- (targets platform_data.json local_conf.json network.json)
+ (targets platform_data.json local_conf.json network.json diagnose_data.json)
+ (alias runtest)
  (mode
   (promote (until-clean)))
  (deps ./json_schema.exe)

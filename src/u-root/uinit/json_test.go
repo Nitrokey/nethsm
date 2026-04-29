@@ -53,12 +53,35 @@ func testSchema[T any](t *testing.T, schemaPath string) {
 	testSchemaWith(t, sample, schemaPath)
 }
 
+func testSchemaDiagnoseData(t *testing.T, schemaPath string) {
+	// faker produces a null clusterLogs, which isn't actually valid
+	logItem := map[string]any{"level": "warn", "msg": "test"}
+	version := "3.6.0"
+	exited := 1
+	sample := diagnoseData{
+		ClusterLogs: []clusterLogItem{logItem},
+		ClusterSnapshot: &clusterSnapshot{
+			Hash:      4,
+			Revision:  5,
+			TotalKey:  6,
+			TotalSize: 7,
+			Version:   &version,
+		},
+		ClusterState: clusterState{
+			Exited:  &exited,
+			Running: false,
+		},
+	}
+	testSchemaWith(t, sample, schemaPath)
+}
+
 var tests = map[string]struct {
 	f (func(t *testing.T, schemaPath string))
 }{
 	"platform_data": {testSchema[platformData]},
 	"local_conf":    {testSchema[localConf]},
 	"network":       {testSchema[Network]},
+	"diagnose_data": {testSchemaDiagnoseData},
 }
 
 func TestSchemas(t *testing.T) {
