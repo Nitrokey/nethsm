@@ -97,6 +97,35 @@ paths:
       x-annotation-caller-namespace:
         - Root
         - Namespaced
+  /health/diagnose:
+    get:
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDiagnoseData"
+        "401":
+          description: Authentication required but none provided. Only when outside of the Failed state.
+        "403":
+          description: Access denied. Only when outside the Failed state.
+        "406":
+          description: Content type in Accept header not supported.
+      description: Retrieve NetHSM cluster diagnostics. This is always available, requiring authentication when operational, and no authentication otherwise (Locked, Failed, Unprovisioned).
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+        - Public
+      x-annotation-state:
+        - Locked
+        - Operational
+        - Unprovisioned
+        - Failed
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
   /metrics:
     get:
       responses:
@@ -2897,6 +2926,35 @@ components:
           $ref: "#/components/schemas/UserID"
       required:
         - user
+    ClusterLogItem:
+      example:
+        level: "error"
+        msg: "Mock: no etcd"
+      properties:
+        level:
+          type: string
+      type: object
+    ClusterLogList:
+      example:
+        - 
+          level: "error"
+          msg: "Mock: no etcd"
+      type: array
+      items:
+        $ref: "#/components/schemas/ClusterLogItem"
+    ClusterSnapshot:
+      type: object
+      properties:
+        hash:
+          type: integer
+        revision:
+          type: integer
+        totalKey:
+          type: integer
+        totalSize:
+          type: integer
+        version:
+          type: string
     ClusterAddReq:
       example:
           urls:
@@ -2971,6 +3029,27 @@ components:
         - id
         - name
         - urls
+    ClusterState:
+      type: object
+      example:
+        exited: 1
+      properties:
+        exited:
+          type: integer
+          minimum: 0
+          maximum: 255
+        signaled:
+          type: integer
+          minimum: 0
+          maximum: 255
+        stopped:
+          type: integer
+          minimum: 0
+          maximum: 255
+        running:
+          type: boolean
+      required:
+        - running
     PeerURL:
       pattern: ^https://.+
       minLength: 1
@@ -3165,6 +3244,25 @@ components:
           $ref: "#/components/schemas/SystemState"
       required:
         - state
+    HealthDiagnoseData:
+      example:
+        clusterLogs:
+          -
+            level: "error"
+            msg: "Mock: no etcd"
+        clusterState:
+            running: false
+      type: object
+      properties:
+        clusterLogs:
+          $ref: '#/components/schemas/ClusterLogList'
+        clusterSnapshot:
+          $ref: '#/components/schemas/ClusterSnapshot'
+        clusterState:
+          $ref: '#/components/schemas/ClusterState'
+      required:
+        - clusterLogs
+        - clusterState
     MetricsData:
       example:
         keyOperations: 1132412
