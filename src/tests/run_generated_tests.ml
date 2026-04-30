@@ -117,6 +117,7 @@ module KeyfenderUnikernel : BACKEND = struct
             "--data-dir";
             Fpath.to_string etcd_dir;
             "--force-new-cluster";
+            "--socket-reuse-address";
           |]
           (Unix.environment ())
       in
