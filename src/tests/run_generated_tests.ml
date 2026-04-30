@@ -327,6 +327,7 @@ let tests backend = api_tests backend @ custom_tests backend
 let main (module B : BACKEND) =
   let ctx = B.init () in
   try
+    Sys.catch_break true;
     Fun.protect ~finally:(fun () -> B.finish ctx) @@ fun () ->
     Alcotest.run ~and_exit:false ~argv:Sys.argv "unikernel" (tests (module B))
   with Alcotest.Test_error -> exit 1
