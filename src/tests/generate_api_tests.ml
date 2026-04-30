@@ -76,7 +76,10 @@ let get_meth meth meta =
   Ezjsonm.get_dict meta |> List.partition (fun (key, _v) -> key = meth)
 
 let api =
-  CCIO.with_in api_file CCIO.read_all |> Yaml.of_string |> Stdlib.Result.get_ok
+  CCIO.with_in api_file CCIO.read_all
+  |> Yaml.of_string
+  |> Result.fold ~ok:Fun.id ~error:(fun (`Msg m) ->
+      Printf.sprintf "Failed to parse %s: %s" api_file m |> invalid_arg)
 
 (* refs are in the form #/components/schemas/PemCert, so basically a path *)
 let json_ref_resolve ref =
