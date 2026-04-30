@@ -120,6 +120,8 @@ module Make (Srv : Cohttp_mirage.Server.S) (Hsm : Hsm.S) = struct
           Handlers.Wm.dispatch' routes ~body ~request)
         (fun e ->
           if e = Out_of_memory then Gc.compact ();
+          let bt = Printexc.get_raw_backtrace () in
+          Access_log.debug (fun m -> m "%a" Fmt.exn_backtrace (e, bt));
           Lwt.return_some
             ( `Service_unavailable,
               Cohttp.Header.init (),
