@@ -340,6 +340,12 @@ ifeq ($(XMODE),test)
 	bisect-ppx-report summary src/tests/*.coverage
 endif
 
+ifeq ($(XMODE),test)
+.PHONY: test-uroot
+test-uroot:
+	cd src/u-root && go test -tags testing -race ./...
+endif
+
 ifeq ($(XMODE),dev)
 # ------------------------------------------------------------------------------
 #
