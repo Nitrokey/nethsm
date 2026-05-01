@@ -344,6 +344,20 @@ ifeq ($(XMODE),test)
 .PHONY: test-uroot
 test-uroot:
 	cd src/u-root && go test -tags testing -race ./...
+
+.PHONY: build-keyfender-fast test-keyfender-fast
+build-keyfender-fast:
+	cd src/keyfender && $(DUNE) build $(DUNE_ARGS) --release
+	cd src/s_keyfender && flock $$(opam var root)/download-cache/.monorepo-lock $(MAKE) pull $(MAKE_ARGS)
+	cp docs/nethsm-api.yaml src/s_keyfender/htdocs/api_docs/nethsm-api.yaml
+	cd src/s_keyfender && $(MAKE) build $(MAKE_ARGS)
+
+TEST_API?='API:Failed'
+
+test-keyfender-fast: test-uroot build-keyfender-fast | $(ETCD_DIR)
+	cd src/keyfender && $(DUNE) runtest $(DUNE_ARGS)
+	cd src/tests && rm -rf generated && git checkout generated/.gitignore && $(DUNE) exec ./generate_api_tests.exe
+	cd src/tests && $(DUNE) exec ./run_generated_tests.exe -- test $(TEST_API)
 endif
 
 ifeq ($(XMODE),dev)

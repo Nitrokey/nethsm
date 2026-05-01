@@ -4,21 +4,23 @@
 Available targets:
 
 local-container-enter:
-                    Run the local Docker/Podman container for building
-prepare:            build and install keyfender OPAM dependencies, Coreboot toolchain
-build:              Build full system
-build-keyfender:    Build keyfender library and unikernel only
-artifacts:          Produce uniquely indentifable obj/artifacts [MODE=muen only]
-test-keyfender-lib: Run keyfender library tests
-test-keyfender-api: Run keyfender generated API tests [MODE=test only]
-test-keyfender-e2e: Run keyfender end-to-end tests
-test-uroot:         Run the u-root tests
-coverage-summary:   Run all tests and produce a condensed coverage summary [MODE=test only]
-coverage:           Run all tests and produce HTML coverage report [MODE=test only]
-run:                Run the system
-clean:              Clean up everything except 'prepare' step
-clean-keyfender:    Clean up keyfender library and unikernel only
-distclean:          Clean up everything, allows changing MODE
+                      Run the local Docker/Podman container for building
+prepare:              build and install keyfender OPAM dependencies, Coreboot toolchain
+build:                Build full system
+build-keyfender:      Build keyfender library and unikernel only
+build-keyfender-fast: Build keyfender library and unikernel only, incrementally [MODE=test only]
+artifacts:            Produce uniquely indentifable obj/artifacts [MODE=muen only]
+test-keyfender-lib:   Run keyfender library tests
+test-keyfender-api:   Run keyfender generated API tests [MODE=test only]
+test-keyfender-fast:  Run keyfender generated API tests for TEST_API only [MODE=test only]
+test-keyfender-e2e:   Run keyfender end-to-end tests
+test-uroot:           Run the u-root tests
+coverage-summary:     Run all tests and produce a condensed coverage summary [MODE=test only]
+coverage:             Run all tests and produce HTML coverage report [MODE=test only]
+run:                  Run the system
+clean:                Clean up everything except 'prepare' step
+clean-keyfender:      Clean up keyfender library and unikernel only
+distclean:            Clean up everything, allows changing MODE
 
 Available MODEs:
 
