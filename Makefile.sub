@@ -246,6 +246,7 @@ fix-format: $(S_KEYFENDER_PREP)
 	cd src/keyfender && $(DUNE) fmt || true
 	cd src/s_keyfender && $(DUNE) fmt || true
 	cd src/tests && $(DUNE) fmt || true
+	cd src/u-root && go fmt all || true
 
 .PHONY: test-keyfender-lib test-keyfender-e2e
 test-keyfender-lib:
