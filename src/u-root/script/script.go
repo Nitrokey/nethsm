@@ -1,7 +1,7 @@
 // Copyright 2023 - 2023, Nitrokey GmbH
 // SPDX-License-Identifier: EUPL-1.2
 
-// Script is a grab-bag of functions for easy shell-like "scripting".
+// Package script is a grab-bag of functions for easy shell-like "scripting".
 //
 // To reduce code verbosity, these functions do not return errors. Instead,
 // the first occurence of an error causes all invocations on a Script to become
@@ -51,7 +51,7 @@ func (s *Script) Err() error {
 }
 
 // Logf logs a fmt-formatted message.
-func (s *Script) Logf(format string, a ...interface{}) {
+func (s *Script) Logf(format string, a ...any) {
 	if s.err != nil {
 		return
 	}
@@ -60,7 +60,7 @@ func (s *Script) Logf(format string, a ...interface{}) {
 }
 
 // Execf executes a fmt-formatted command.
-func (s *Script) Execf(format string, a ...interface{}) {
+func (s *Script) Execf(format string, a ...any) {
 	if s.err != nil {
 		return
 	}
@@ -68,7 +68,7 @@ func (s *Script) Execf(format string, a ...interface{}) {
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
 	if len(cmdSplit) == 0 {
-		s.err = fmt.Errorf("Empty command string")
+		s.err = fmt.Errorf("empty command string")
 		return
 	}
 
@@ -81,13 +81,13 @@ func (s *Script) Execf(format string, a ...interface{}) {
 	}
 }
 
-// BackgroundExecAsf executes a fmt-formatted command in the background. No provision is
+// CancelableBackgroundExecAsf executes a fmt-formatted command in the background. No provision is
 // made for retrieving it's exit status, however the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running.
-func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...interface{}) (context.CancelFunc, io.ReadCloser) {
+func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
 	if s.err != nil {
 		return nil, nil
 	}
@@ -95,7 +95,7 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
 	if len(cmdSplit) == 0 {
-		s.err = fmt.Errorf("Empty command string")
+		s.err = fmt.Errorf("empty command string")
 		return nil, nil
 	}
 
@@ -117,7 +117,7 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 		var err error
 		logPipe, err = cmd.StderrPipe()
 		if err != nil {
-			s.err = fmt.Errorf("Cannot acquire stdout pipe: %v", err)
+			s.err = fmt.Errorf("cannot acquire stdout pipe: %v", err)
 			return cancel, nil
 		}
 	} else {
@@ -145,11 +145,11 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 	return cancel, logPipe
 }
 
-func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...interface{}) {
+func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...any) {
 	_, _ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
 }
 
-func (s *Script) BackgroundExecf(format string, a ...interface{}) {
+func (s *Script) BackgroundExecf(format string, a ...any) {
 	s.BackgroundExecAsf(-1, format, a...)
 }
 
