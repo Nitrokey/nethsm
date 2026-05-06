@@ -519,6 +519,12 @@ struct
                  Lwt_mvar.put res_mvar
                    (Error (Fmt.to_to_string pp_platform_err e)))
           >>= fun () -> (handle_cb [@tailcall]) http
+      | Hsm.Force_new_cluster as cmd -> (
+          write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
+          | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
+          | Error e ->
+              Lwt_mvar.put res_mvar (Error (Fmt.to_to_string pp_platform_err e))
+          )
       | (Hsm.Shutdown | Hsm.Reboot | Hsm.Factory_reset) as cmd ->
           write_to_platform cmd
       | Hsm.Join_cluster initial_cluster as cmd ->

@@ -38,6 +38,7 @@ module type S = sig
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Force_new_cluster
     | Set_local_config of Json.local_conf
     | Diagnose
 
@@ -334,6 +335,7 @@ module type S = sig
   module Cluster : sig
     type member = { id : int64; name : string; urls : string list }
 
+    val force_new : t -> (unit, error) result Lwt.t
     val member_list : t -> (member list, error) result Lwt.t
     val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
     val member_exists : id:int64 -> t -> (bool, error) result Lwt.t

@@ -97,6 +97,8 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ( "/cluster/members/:id",
           fun () -> new Cluster.handler_member hsm_state ip );
         ("/cluster/join", fun () -> new Cluster.handler_join hsm_state ip);
+        ( "/cluster/force-new",
+          fun () -> new Cluster.handler_force_new hsm_state ip );
       ]
 end
 

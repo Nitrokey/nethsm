@@ -134,4 +134,17 @@ struct
         in
         decode_id ok rd
     end
+
+  class handler_force_new hsm_state _ip =
+    object
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Failed ]
+      inherit! Endpoint.post
+      inherit! Endpoint.no_cache
+
+      method! process_post rd =
+        Hsm.Cluster.force_new hsm_state >>= function
+        | Ok () -> Wm.continue true rd
+        | Error e -> Endpoint.respond_error e rd
+    end
 end

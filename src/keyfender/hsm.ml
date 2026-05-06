@@ -38,6 +38,7 @@ module type S = sig
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Force_new_cluster
     | Set_local_config of Json.local_conf
     | Diagnose
 
@@ -328,6 +329,7 @@ module type S = sig
   module Cluster : sig
     type member = { id : int64; name : string; urls : string list }
 
+    val force_new : t -> (unit, error) result Lwt.t
     val member_list : t -> (member list, error) result Lwt.t
     val member_remove : id:int64 -> t -> (member list, error) result Lwt.t
     val member_exists : id:int64 -> t -> (bool, error) result Lwt.t
@@ -599,6 +601,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Update of int * string Lwt_stream.t
     | Commit_update
     | Join_cluster of string
+    | Force_new_cluster
     | Set_local_config of Json.local_conf
     | Diagnose
 
@@ -618,6 +621,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Update _ -> "UPDATE"
     | Commit_update -> "COMMIT-UPDATE"
     | Join_cluster _ -> "JOIN-CLUSTER"
+    | Force_new_cluster -> "FORCE-NEW-CLUSTER"
     | Set_local_config _ -> "SET-LOCAL-CONFIG"
     | Diagnose -> "DIAGNOSE"
 
@@ -2207,6 +2211,16 @@ module Make (KV : Kv_ext.Platform) = struct
       | DiagnoseResult data -> Lwt.return_ok data
 
     let member_list t = member_list t.kv >|= to_hsm_error
+
+    let force_new t =
+      with_write_lock @@ fun () ->
+      let open Lwt.Syntax in
+      let* () = Lwt_mvar.put t.mbox Force_new_cluster in
+      Lwt_mvar.take t.res_mbox
+      |> Lwt_result.map_error (fun msg ->
+          Log.err (fun m -> m "forcing new cluster failed: %s" msg);
+          (Bad_request, "forcing new cluster failed: " ^ msg))
+      |> Lwt_result.map ignore
 
     let is_clustered t =
       let** list = member_list t in
