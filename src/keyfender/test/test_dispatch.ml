@@ -150,7 +150,9 @@ let operational_mock_with_mbox' ?(platform = platform) f =
       Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
       Hsm.User.add state (user "backup") ~role:`Backup
         ~passphrase:"backupUserPassphrase" ~name:"backup"
-      >|= fun _ -> state )
+      >|= fun _ ->
+      enable_access_log_debug ();
+      state )
 
 let operational_mock_with_mbox ?platform () =
   operational_mock_with_mbox' ?platform (fun _ -> ())

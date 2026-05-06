@@ -119,6 +119,9 @@ let booted_mock () =
     >>= fun (y, o, m) ->
       happy_mbox o m >|= fun () -> y )
 
+let enable_access_log_debug () =
+  Logs.Src.set_level Keyfender.Server.access_src (Some Logs.Debug)
+
 let create_operational_mock ?(platform = platform) mbox =
   Lwt_main.run
     ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
@@ -162,6 +165,7 @@ let operational_mock ?platform ?(mbox = good_platform) () =
     else create_operational_mock ?platform mbox
   in
   Hsm.reset_rate_limit ();
+  enable_access_log_debug ();
   t
 
 let create_locked_mock () =
@@ -185,6 +189,7 @@ let locked_mock = lazy (create_locked_mock ())
 let locked_mock () =
   let t = copy (Lazy.force locked_mock) in
   Hsm.reset_rate_limit ();
+  enable_access_log_debug ();
   t
 
 let test_key_pem =
