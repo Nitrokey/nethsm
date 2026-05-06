@@ -60,8 +60,8 @@ func (s *Script) Logf(format string, a ...any) {
 	log.Printf(format, a...)
 }
 
-// Execf executes a fmt-formatted command.
-func (s *Script) Execf(format string, a ...any) {
+// ExecAsf executes a fmt-formatted command as the given UID and GID.
+func (s *Script) ExecAsf(uidgid int, format string, a ...any) {
 	if s.err != nil {
 		return
 	}
@@ -77,9 +77,19 @@ func (s *Script) Execf(format string, a ...any) {
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	if uidgid != -1 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
+	}
+
 	if err := cmd.Run(); err != nil {
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
 	}
+}
+
+// Execf executes a fmt-formatted command.
+func (s *Script) Execf(format string, a ...any) {
+	s.ExecAsf(-1, format, a...)
 }
 
 func safeClose[T any](c *chan T) {

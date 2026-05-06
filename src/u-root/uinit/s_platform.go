@@ -331,6 +331,21 @@ func platformListener(result chan string) {
 			return okResponse(string(json)), nil, false
 		}
 
+		doForceNewCluster := func() ([]byte, error, bool) {
+			log.Printf("[%s] Requested FORCE-NEW-CLUSTER.", remoteAddr)
+			// kill previously running etcd and wait until it exits
+			G.killEtcd()
+			if G.etcdStoppedCh != nil {
+				<-G.etcdStoppedCh
+			}
+			err = restoreFromSnapshotEtcd()
+			if err != nil {
+				return errorResponse(err), err, false
+			}
+			log.Printf("FORCE-NEW-CLUSTER: Rebooting!")
+			// ask about reboot?
+			return okResponse(""), nil, true
+		}
 		// COMMIT-UPDATE
 		doCommitUpdate := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested COMMIT-UPDATE.", remoteAddr)
@@ -405,6 +420,8 @@ func platformListener(result chan string) {
 			response, cmdErr, terminalCommand = doUpdate()
 		case "COMMIT-UPDATE":
 			response, cmdErr, terminalCommand = doCommitUpdate()
+		case "FORCE-NEW-CLUSTER":
+			response, cmdErr, terminalCommand = doForceNewCluster()
 		case "JOIN-CLUSTER":
 			response, cmdErr, terminalCommand = doJoinCluster()
 		case "DIAGNOSE":
@@ -523,6 +540,30 @@ func backupEtcd(dest string) error {
 	}
 	if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
 		return err
+	}
+	return nil
+}
+
+const etcdBackupSnapshot = "/data/etcd.backup.snapshot"
+
+func restoreFromSnapshotEtcd() error {
+	if err := backupEtcd(etcdBackupSnapshot); err != nil {
+		return err
+	}
+
+	// TODO: restore with revision bump?
+	// OCaml client could send additionalData and give the revision value
+	G.s.ClearErr()
+	G.s.ExecAsf(G.etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --skip-hash-check=true --data-dir /data/etcd", etcdBackupSnapshot)
+	if origErr := G.s.Err(); origErr != nil {
+		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
+		if err := os.RemoveAll("/data/etcd"); err != nil {
+			return fmt.Errorf("snapshot restore (%e) AND removeall failed: %e ! ", origErr, err)
+		}
+		if err := os.Rename(etcdBackupSnapshot, "/data/etcd"); err != nil {
+			return fmt.Errorf("snapshot restore (%e) AND backup rename failed: %e ! ", origErr, err)
+		}
+		return origErr
 	}
 	return nil
 }
@@ -672,6 +713,15 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			log.Printf("join succeeded: removing backed up data")
 			if err := os.RemoveAll(etcdBackupJoin); err != nil {
 				return err
+			}
+		}
+
+		if mode == EtcdNormal {
+			if _, err := os.Stat(etcdBackupSnapshot); os.IsExist(err) {
+				log.Printf("startup succeeded: removing backed up data")
+				if err := os.RemoveAll(etcdBackupSnapshot); err != nil {
+					return err
+				}
 			}
 		}
 		return G.s.Err()
@@ -830,6 +880,8 @@ func sPlatformActions() {
 		log.Printf("System will power off now.")
 		time.Sleep(2 * time.Second)
 		triggerMuenEvent("poweroff")
+	case "FORCE-NEW-CLUSTER":
+		fallthrough
 	case "REBOOT":
 		log.Printf("System will reboot now.")
 		time.Sleep(2 * time.Second)
