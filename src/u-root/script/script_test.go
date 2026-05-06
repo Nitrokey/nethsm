@@ -12,9 +12,10 @@ var tests = map[string]struct {
 	outSuccess bool
 	outStarted bool
 }{
-	"/bin/true":      {false, true, true},
-	"/bin/false":     {false, false, true},
-	"/bin/sleep 120": {true, false, true},
+	"/bin/true":                {false, true, true},
+	"/bin/false":               {false, false, true},
+	"/bin/sleep 120":           {true, false, true},
+	"/nonexistent/nonexistent": {false, false, false},
 }
 
 func TestCancelableBackgroundExecAsf(t *testing.T) {
@@ -43,7 +44,7 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 
 			var success bool
 			success, ok := <-exitCh
-			if !ok {
+			if !ok && test.outStarted {
 				t.Errorf("channel closed without providing success value")
 			}
 			if success != test.outSuccess {

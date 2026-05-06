@@ -81,6 +81,17 @@ func (s *Script) Execf(format string, a ...any) {
 	}
 }
 
+func safeClose[T any](c *chan T) {
+	if c == nil {
+		return
+	}
+
+	ch := *c
+	if ch != nil {
+		close(ch)
+	}
+}
+
 // CancelableBackgroundExecAsf executes a fmt-formatted command in the background. No provision is
 // made for retrieving it's exit status, however the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
@@ -88,6 +99,9 @@ func (s *Script) Execf(format string, a ...any) {
 // This function returns a "cancel" function which, when called, kills the
 // running command if running.
 func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
+	closeCh := exitCh
+	defer safeClose(&closeCh)
+
 	if s.err != nil {
 		return nil, nil
 	}
@@ -128,6 +142,7 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 		return cancel, nil
 	}
 	go func(child *exec.Cmd) {
+		defer close(exitCh)
 		err := child.Wait()
 		var success bool
 		if err != nil {
@@ -139,9 +154,11 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 		}
 		if exitCh != nil {
 			exitCh <- success
-			close(exitCh)
 		}
 	}(cmd)
+	// we no longer want to close the channel, the goroutine above will do that
+	closeCh = nil
+
 	return cancel, logPipe
 }
 
