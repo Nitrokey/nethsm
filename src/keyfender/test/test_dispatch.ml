@@ -5254,6 +5254,14 @@ let keys_key_version_cert_delete_fails =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
+let cluster_force_new_ok =
+  Alcotest.test_case
+    "a request for /cluster/force-new in the failed state produces 204" `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock () in
+  request ~meth:`POST ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`No_content
+
 let cluster_member_ops_not_etcd =
   Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
     (fun () ->
@@ -5930,6 +5938,7 @@ let () =
       (* the spaces trigger alcotest to do long line output*)
       ("/                                               ", [ empty ]);
       ("/health/alive", [ health_alive_ok ]);
+      ("/cluster/force-new", [ cluster_force_new_ok ]);
       ( "/health/diagnose",
         [
           health_diagnose_operational_ok;
