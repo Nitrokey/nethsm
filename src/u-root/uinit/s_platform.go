@@ -495,7 +495,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	aliveCh := make(chan struct{})
 
 	G.s.Logf("now launching: %s", cmd)
-	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, G.etcdUIDGID, "%s", cmd)
+	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, &G.etcdProcessState, G.etcdUIDGID, "%s", cmd)
 
 	if err := G.s.Err(); err != nil {
 		return fmt.Errorf("couldn't exec etcd: %e", err)

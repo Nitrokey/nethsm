@@ -4,18 +4,21 @@ package script
 
 import (
 	"io"
+	"os"
+	"sync/atomic"
 	"testing"
 )
 
 var tests = map[string]struct {
-	inCancel   bool
-	outSuccess bool
-	outStarted bool
+	inCancel    bool
+	outSuccess  bool
+	outStarted  bool
+	outExitCode int
 }{
-	"/bin/true":                {false, true, true},
-	"/bin/false":               {false, false, true},
-	"/bin/sleep 120":           {true, false, true},
-	"/nonexistent/nonexistent": {false, false, false},
+	"/bin/true":                {false, true, true, 0},
+	"/bin/false":               {false, false, true, 1},
+	"/bin/sleep 120":           {true, false, true, -1},
+	"/nonexistent/nonexistent": {false, false, false, -1},
 }
 
 func TestCancelableBackgroundExecAsf(t *testing.T) {
@@ -24,7 +27,8 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 			t.Parallel()
 			s := New()
 			exitCh := make(chan bool)
-			cancel, pipe := s.CancelableBackgroundExecAsf(exitCh, -1, "%s", cmd)
+			processState := new(atomic.Pointer[os.ProcessState])
+			cancel, pipe := s.CancelableBackgroundExecAsf(exitCh, processState, -1, "%s", cmd)
 			if test.inCancel {
 				t.Logf("Calling cancel()")
 				cancel()
@@ -49,6 +53,15 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 			}
 			if success != test.outSuccess {
 				t.Errorf("%s success: got %t, wanted %t", cmd, success, test.outSuccess)
+			}
+
+			state := processState.Load()
+			if state == nil && test.outStarted {
+				t.Errorf("no processState set")
+			} else {
+				if got := state.ExitCode(); got != test.outExitCode {
+					t.Errorf("got %v, wanted %d", state, test.outExitCode)
+				}
 			}
 		})
 	}

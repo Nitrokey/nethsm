@@ -17,6 +17,7 @@ import (
 	_ "embed"
 	"log"
 	"os"
+	"sync/atomic"
 	"syscall"
 
 	"nethsm/hw"
@@ -48,6 +49,7 @@ type globalState struct {
 	deviceID             string
 	killEtcd             context.CancelFunc
 	etcdStoppedCh        chan bool
+	etcdProcessState     atomic.Pointer[os.ProcessState]
 }
 
 // G is the actual singleton instance of globalState used throughout. This

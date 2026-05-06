@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -92,15 +93,19 @@ func safeClose[T any](c *chan T) {
 	}
 }
 
-// CancelableBackgroundExecAsf executes a fmt-formatted command in the background. No provision is
-// made for retrieving it's exit status, however the child is reaped and a message is
+// CancelableBackgroundExecAsf executes a fmt-formatted command in the background. Provision is
+// made for retrieving it's exit status, and the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
-// running command if running.
-func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
+// running command if running. It also returns a pointer to the process's exit state.
+func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, processState *atomic.Pointer[os.ProcessState], uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
 	closeCh := exitCh
 	defer safeClose(&closeCh)
+
+	if processState != nil {
+		processState.Store(nil)
+	}
 
 	if s.err != nil {
 		return nil, nil
@@ -144,6 +149,9 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 	go func(child *exec.Cmd) {
 		defer close(exitCh)
 		err := child.Wait()
+		if processState != nil {
+			processState.Store(cmd.ProcessState)
+		}
 		var success bool
 		if err != nil {
 			log.Printf("Background process '%s' exited with status: %v", cmdSplit[0], err)
@@ -163,7 +171,7 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, uidgid int, forma
 }
 
 func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...any) {
-	_, _ = s.CancelableBackgroundExecAsf(nil, -1, format, a...)
+	_, _ = s.CancelableBackgroundExecAsf(nil, nil, -1, format, a...)
 }
 
 func (s *Script) BackgroundExecf(format string, a ...any) {
