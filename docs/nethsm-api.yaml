@@ -1199,6 +1199,24 @@ paths:
         required: true
         schema:
           $ref: "#/components/schemas/ID"
+  /cluster/force-new:
+    post:
+      responses:
+        "204":
+          description: About to reboot NetHSM.
+        "412":
+          description: Precondition failed (NetHSM was not *Failed*).
+      description:
+        Rebuild etcd instance with the data on disk, switch to a single node cluster, and reboot.
+        **WARNING** this will restore data only up to the last snapshot, and will result in data loss for any unconfirmed writes, or writes that occured on other NetHSM nodes that are now unreachable.
+        This call is unauthenticated and available only in the Failed state. Before using this command it is recommended that you attempt to heal the cluster's network connectivity first and restore quorum.
+        To that end, use the /health/diagnose endpoint to understand to cause of the current failure.
+      x-annotation-role:
+        - Public
+      x-annotation-state:
+        - Failed
+      x-annotation-caller-namespace:
+        - Root
   /cluster/join:
     post:
       responses:
