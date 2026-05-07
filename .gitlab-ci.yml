@@ -240,6 +240,7 @@ test_keyfender:
   script:
     - opam exec -- make check-format || (echo "formatting check failed, please run 'make fix-format'" ; exit 1)
     - opam exec -- make -j$(nproc) coverage-summary
+    - make test-uroot
 
 build_dev:
   rules:
