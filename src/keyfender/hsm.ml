@@ -2190,6 +2190,7 @@ module Make (KV : Kv_ext.Platform) = struct
           (Bad_request, "cluster error: " ^ s))
 
     let diagnose t =
+      (* TODO: health events with timestamps? *)
       with_write_lock @@ fun () ->
       let open Lwt.Syntax in
       let* () = Lwt_mvar.put t.mbox Diagnose in

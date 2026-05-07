@@ -129,6 +129,8 @@ func TestDiagnoseRun(t *testing.T) {
 	}
 	defer stopEtcd()
 
+	// TODO: make snapshot mockable
+
 	status, response := command(t, "DIAGNOSE", "")
 
 	if !status {
