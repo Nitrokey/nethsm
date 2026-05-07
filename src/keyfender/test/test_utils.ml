@@ -60,6 +60,8 @@ let platform =
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
     networkConfig = None;
+    lastTlsCert = None;
+    lastTlsKey = None;
   }
 
 let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)

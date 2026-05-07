@@ -51,6 +51,8 @@ type platformData struct {
 	HardwareVersion string            `json:"hardwareVersion"`
 	FirmwareVersion string            `json:"firmwareVersion"`
 	NetworkConfig   string            `json:"networkConfig,omitempty"`
+	LastTlsCert     string            `json:"lastTlsCert,omitempty"`
+	LastTlsKey      string            `json:"lastTlsKey,omitempty"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -255,6 +257,11 @@ func tpmCreatePlatformData() error {
 		if conf, _ := localConfig.Get(); conf != nil && conf.NetworkConfig != "" {
 			// return stored network config as part of platform data
 			data.NetworkConfig = conf.NetworkConfig
+		}
+		if conf, _ := localConfig.Get(); conf != nil && conf.TLSCert != "" && conf.TLSKey != "" {
+			// return last TLS cert/key if stored, for use if booting in Failed mode
+			data.LastTlsCert = conf.TLSCert
+			data.LastTlsKey = conf.TLSKey
 		}
 
 		platformDataCh <- data

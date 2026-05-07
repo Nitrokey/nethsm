@@ -297,6 +297,8 @@ struct
       hardwareVersion = "N/A";
       firmwareVersion = "N/A";
       networkConfig = None;
+      lastTlsKey = None;
+      lastTlsCert = None;
     }
 
   let start update_key_store assets internal_stack ext_stack

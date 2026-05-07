@@ -759,6 +759,8 @@ type platform_data = {
   firmwareVersion : string;
   networkConfig : network option;
       [@default None] [@of_yojson network_config_of_string]
+  lastTlsCert : string option; [@default None]
+  lastTlsKey : string option; [@default None]
 }
 [@@deriving yojson]
 

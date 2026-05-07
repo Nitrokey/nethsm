@@ -3923,6 +3923,19 @@ module Make (KV : Kv_ext.Platform) = struct
         Log.err (fun f -> f "store health event stream ended");
         Lwt.return_unit
 
+  let decode_last_tls (platform : Json.platform_data) =
+    let ( let* ) = Option.bind in
+    let* key, chain =
+      match (platform.lastTlsKey, platform.lastTlsCert) with
+      | None, _ | _, None -> None
+      | Some key, Some chain -> Some (key, chain)
+    in
+    let* key = X509.Private_key.decode_pem key |> Result.to_option in
+    let* chain =
+      X509.Certificate.decode_pem_multiple chain |> Result.to_option
+    in
+    Some (key, chain)
+
   let boot ?(cache_settings = default_cache_settings)
       ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
@@ -3961,14 +3974,25 @@ module Make (KV : Kv_ext.Platform) = struct
       if healthy then (
         Log.app (fun m -> m "connected to store");
         normal_boot ())
-      else (
-        (* if not, boot into Failed state to make recovery available *)
-        Log.warn (fun f -> f "store unhealthy! booting into Failed state");
-        let priv = X509.Private_key.generate `P256 in
-        let state = Failed None
-        and cert, key = generate_cert priv
-        and chain = [] in
-        Lwt_result.return (state, cert, key, chain))
+      else
+        let state = Failed None in
+        match decode_last_tls platform with
+        | Some (key, cert :: chain) ->
+            (* if not, boot into Failed state to make recovery available *)
+            Log.warn (fun f ->
+                f
+                  "store unhealthy! booting into Failed state with recovered \
+                   certificate");
+            Lwt_result.return (state, cert, key, chain)
+        | _ ->
+            (* if not, boot into Failed state to make recovery available *)
+            Log.warn (fun f ->
+                f
+                  "store unhealthy! booting into Failed state with new \
+                   certificate");
+            let priv = X509.Private_key.generate `P256 in
+            let cert, key = generate_cert priv and chain = [] in
+            Lwt_result.return (state, cert, key, chain)
     in
     let t =
       {

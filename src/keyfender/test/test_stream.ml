@@ -40,6 +40,8 @@ let platform =
     hardwareVersion = "N/A";
     firmwareVersion = "N/A";
     networkConfig = None;
+    lastTlsCert = None;
+    lastTlsKey = None;
   }
 
 let unprovisioned_mock () =
