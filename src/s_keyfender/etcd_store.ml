@@ -856,18 +856,32 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         match resp.header with
         | None -> Error (`Msg "response did not have a header")
         | Some header ->
-            Log.info (fun f ->
+            Log.debug (fun f ->
                 f "status: (id=%Lx,@,leader=%Lx,@,db_size=%Ld,@,errors=[%a])"
                   header.member_id leader db_size
                   Fmt.(list string)
                   errors);
-            Ok header.member_id)
+            Ok ())
 
   let is_healthy t =
     let* _ = status t in
     Lwt.return t.healthy
 
   let health_events t = t.health_event_stream
+
+  (* Try fo fetch status every 15 seconds, to detect quickly if the health of
+     the connection changes. *)
+  let rec heartbeat_loop t =
+    Lwt.catch
+      (fun () ->
+        status t >|= function
+        | Ok () -> ()
+        | Error e ->
+            Log.warn (fun f -> f "heartbeat: %a" pp_error e);
+            ())
+      (fun _ -> Lwt.return_unit)
+    >>= fun () ->
+    Mirage_sleep.ns (Duration.of_sec 15) >>= fun () -> heartbeat_loop t
 
   let connect stack =
     let watcher = Etcd.Watch.init stack in
@@ -892,6 +906,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     in
     Etcd.connection_established_callbacks :=
       restart_watcher :: !Etcd.connection_established_callbacks;
+    Lwt.async (fun () -> heartbeat_loop t);
     t
 end
 
