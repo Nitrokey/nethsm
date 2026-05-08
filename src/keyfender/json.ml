@@ -6,7 +6,7 @@ open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err
 
-type err = { message : string } [@@deriving yojson]
+type err = { message : string } [@@deriving yojson, jsonschema]
 
 let error message = Yojson.Safe.to_string (err_to_yojson { message })
 
@@ -39,7 +39,7 @@ type subject_req = {
   emailAddress : (string[@default ""]);
   subjectAltNames : (string list option[@default None]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let decode_subject json =
   decode subject_req_of_yojson json >>= fun subject ->
@@ -78,7 +78,7 @@ let decode_time s =
     | _ -> Error "Error while parsing timestamp. Offset must be 0.")
   >>| fun () -> time
 
-type passphrase_req = { passphrase : string } [@@deriving yojson]
+type passphrase_req = { passphrase : string } [@@deriving yojson, jsonschema]
 
 let decode_passphrase json =
   to_ocaml passphrase_req_of_yojson json >>= fun passphrase ->
@@ -89,7 +89,7 @@ type passphrase_change_req = {
   newPassphrase : string;
   currentPassphrase : string;
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let decode_passphrase_change json =
   to_ocaml passphrase_change_req_of_yojson json >>= fun passphrase ->
@@ -101,7 +101,7 @@ type provision_req = {
   adminPassphrase : string;
   systemTime : string;
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let decode_provision_req json =
   to_ocaml provision_req_of_yojson json >>= fun b ->
@@ -114,7 +114,7 @@ type restore_req = {
   backupPassphrase : (string option[@default None]);
   systemTime : (string option[@default None]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let decode_restore_req json =
   decode restore_req_of_yojson json >>= fun b ->
@@ -134,8 +134,13 @@ let ipv4_of_yojson = function
         (Ipaddr.V4.of_string ip_str)
   | _ -> Error "expected string for IP"
 
+type string_wire = string [@@deriving jsonschema]
+
+let ipv4_jsonschema = string_wire_jsonschema
+
 type cidr_v4 = Ipaddr.V4.Prefix.t
 
+let cidr_v4_jsonschema = string_wire_jsonschema
 let cidr_v4_to_yojson ip = `String (Ipaddr.V4.Prefix.to_string ip)
 
 let cidr_v4_of_yojson = function
@@ -145,9 +150,12 @@ let cidr_v4_of_yojson = function
         (Ipaddr.V4.Prefix.of_string ip_str)
   | _ -> Error "expected string for CIDR"
 
-type network_v4 = { cidr : cidr_v4; gateway : ipv4 option } [@@deriving yojson]
+type network_v4 = { cidr : cidr_v4; gateway : ipv4 option }
+[@@deriving yojson, jsonschema]
+
 type ipv6 = Ipaddr.V6.t
 
+let ipv6_jsonschema = string_wire_jsonschema
 let ipv6_to_yojson ip = `String (Ipaddr.V6.to_string ip)
 
 let ipv6_of_yojson = function
@@ -159,6 +167,7 @@ let ipv6_of_yojson = function
 
 type cidr_v6 = Ipaddr.V6.Prefix.t
 
+let cidr_v6_jsonschema = string_wire_jsonschema
 let cidr_v6_to_yojson ip = `String (Ipaddr.V6.Prefix.to_string ip)
 
 let cidr_v6_of_yojson = function
@@ -168,9 +177,12 @@ let cidr_v6_of_yojson = function
         (Ipaddr.V6.Prefix.of_string ip_str)
   | _ -> Error "expected string for CIDR"
 
-type network_v6 = { cidr : cidr_v6; gateway : ipv6 option } [@@deriving yojson]
+type network_v6 = { cidr : cidr_v6; gateway : ipv6 option }
+[@@deriving yojson, jsonschema]
+
 type ip = Ipaddr.t
 
+let ip_jsonschema = string_wire_jsonschema
 let ip_to_yojson ip = `String (Ipaddr.to_string ip)
 
 let ip_of_yojson = function
@@ -196,11 +208,11 @@ type network_api = {
   gateway : ipv4;
   ipv6 : network_v6 option; [@default None]
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 (** used for the REST API, for backwards compatibility *)
 
 type network = { ipv4 : network_v4; ipv6 : network_v6 option [@default None] }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 (** use internally and in storage *)
 
 let decode_network json =
@@ -234,16 +246,17 @@ type joiner_kit = {
   passphrase (inner) with above salt *)
   locked_domain_key : string;
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
-type join_req_member = { name : string; urls : string list } [@@deriving yojson]
+type join_req_member = { name : string; urls : string list }
+[@@deriving yojson, jsonschema]
 
 type join_req = {
   members : join_req_member list;
   joiner_kit : string; [@key "joinerKit"]
   backup_passphrase : string option; [@default None] [@key "backupPassphrase"]
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let check_join_req (req : join_req) =
   let members = req.members in
@@ -320,9 +333,10 @@ let is_unattended_boot_of_yojson content =
   in
   decode parse content
 
-type time_req = { time : string } [@@deriving yojson]
+type time_req = { time : string } [@@deriving yojson, jsonschema]
 type log_level = Logs.level
 
+let log_level_jsonschema = string_wire_jsonschema
 let log_level_to_string l = Logs.level_to_string (Some l)
 
 let log_level_of_string str =
@@ -342,9 +356,9 @@ type log = {
   port : int;
   logLevel : log_level;
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
-type random_req = { length : int } [@@deriving yojson]
+type random_req = { length : int } [@@deriving yojson, jsonschema]
 
 let random_req_of_yojson x =
   random_req_of_yojson x >>= fun rr ->
@@ -358,7 +372,7 @@ type private_key = {
   publicExponent : (string[@default ""]);
   data : (string[@default ""]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type mechanism =
   | RSA_Decryption_RAW
@@ -381,14 +395,14 @@ type mechanism =
   | BIP340_Signature
   | AES_Encryption_CBC
   | AES_Decryption_CBC
-[@@deriving yojson, ord]
+[@@deriving yojson, jsonschema, ord]
 
 let mechanism_of_yojson = function
   | `String _ as s -> mechanism_of_yojson (`List [ s ])
   | _ -> Error "Expected JSON string for mechanism"
 
 let head = function `List [ l ] -> l | _ -> assert false
-(* deriving yojson for polymorphic variants without
+(* deriving yojson, jsonschema for polymorphic variants without
    arguments always returns a singleton *)
 
 let mechanism_to_yojson mechanism = head @@ mechanism_to_yojson mechanism
@@ -400,6 +414,9 @@ module MS = struct
     let compare (a : mechanism) (b : mechanism) = compare a b
   end)
 
+  type wire = string list [@@deriving jsonschema]
+
+  let t_jsonschema = wire_jsonschema
   let to_yojson ms = `List (List.map mechanism_to_yojson (elements ms))
 
   let of_yojson = function
@@ -425,6 +442,9 @@ let mechanisms_of_string m =
 module TagSet = struct
   include Set.Make (String)
 
+  type wire = string list [@@deriving jsonschema]
+
+  let t_jsonschema = wire_jsonschema
   let to_yojson set = `List (List.map (fun s -> `String s) (elements set))
 
   let of_yojson = function
@@ -454,7 +474,7 @@ type key_type =
   | BrainpoolP384
   | BrainpoolP512
   | Generic
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let key_type_of_yojson = function
   | `String _ as s -> key_type_of_yojson (`List [ s ])
@@ -500,7 +520,7 @@ type rsa_public_key = { modulus : string; publicExponent : string }
 type ec_public_key = { data : string } [@@deriving to_yojson]
 
 type restrictions = { tags : (TagSet.t[@default TagSet.empty]) }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type public_key = {
   mechanisms : MS.t;
@@ -517,13 +537,13 @@ type private_key_req = {
   typ : key_type; [@key "type"]
   priv : private_key; [@key "private"]
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type private_key_multipart_req = {
   mechanisms : MS.t;
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type decrypt_mode =
   | RAW
@@ -535,7 +555,7 @@ type decrypt_mode =
   | OAEP_SHA384
   | OAEP_SHA512
   | AES_CBC
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let mechanism_of_decrypt_mode = function
   | RAW -> RSA_Decryption_RAW
@@ -557,9 +577,9 @@ type decrypt_req = {
   encrypted : string;
   iv : (string option[@default None]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
-type encrypt_mode = AES_CBC [@@deriving yojson]
+type encrypt_mode = AES_CBC [@@deriving yojson, jsonschema]
 
 let mechanism_of_encrypt_mode = function AES_CBC -> AES_Encryption_CBC
 
@@ -572,7 +592,7 @@ type encrypt_req = {
   message : string;
   iv : (string option[@default None]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type sign_mode =
   | PKCS1
@@ -585,7 +605,7 @@ type sign_mode =
   | EdDSA
   | ECDSA
   | BIP340
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let mechanism_of_sign_mode = function
   | PKCS1 -> RSA_Signature_PKCS1
@@ -603,7 +623,8 @@ let sign_mode_of_yojson = function
   | `String _ as s -> sign_mode_of_yojson (`List [ s ])
   | _ -> Error "Expected JSON string for sign mode"
 
-type sign_req = { mode : sign_mode; message : string } [@@deriving yojson]
+type sign_req = { mode : sign_mode; message : string }
+[@@deriving yojson, jsonschema]
 
 type generate_key_req = {
   mechanisms : MS.t;
@@ -612,13 +633,13 @@ type generate_key_req = {
   id : (string[@default ""]);
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 type tls_generate_key_req = {
   typ : key_type; [@key "type"]
   length : (int[@default 0]);
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let has_valid_chars s =
   Astring.String.for_all
@@ -659,14 +680,14 @@ let decode_generate_key_req s =
   let empty_or_valid id = if String.length id = 0 then Ok "" else valid_id id in
   empty_or_valid r.id >>| fun _ -> r
 
-type move_key_req = { newId : string } [@@deriving yojson]
+type move_key_req = { newId : string } [@@deriving yojson, jsonschema]
 
 let decode_move_key_req data =
   decode move_key_req_of_yojson data >>= fun move_req ->
   nonempty ~name:"newId" move_req.newId >>= fun () -> valid_id move_req.newId
 
 type role = [ `Administrator | `Operator | `Metrics | `Backup ]
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let role_to_yojson role = head @@ role_to_yojson role
 
@@ -675,9 +696,9 @@ let role_of_yojson = function
   | _ -> Error "expected string as role"
 
 type user_req = { realName : string; role : role; passphrase : string }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
-type namespace = { namespace : string } [@@deriving yojson]
+type namespace = { namespace : string } [@@deriving yojson, jsonschema]
 
 let namespace_to_yojson namespace =
   let namespace = Option.value ~default:"" namespace in
@@ -689,23 +710,30 @@ let decode_user_req content =
   decode user_req_of_yojson content >>= fun user ->
   valid_passphrase ~name:"passphrase" user.passphrase >>| fun () -> user
 
-type user_res = { realName : string; role : role } [@@deriving yojson]
-type info = { vendor : string; product : string } [@@deriving yojson]
+type user_res = { realName : string; role : role }
+[@@deriving yojson, jsonschema]
+
+type info = { vendor : string; product : string }
+[@@deriving yojson, jsonschema]
 
 type state = [ `Unprovisioned | `Operational | `Locked | `Failed ]
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
-type member_req = { urls : string list } [@@deriving yojson]
+type member_req = { urls : string list } [@@deriving yojson, jsonschema]
 
 let state_to_yojson state = `Assoc [ ("state", head @@ state_to_yojson state) ]
 
 type version = int * int
 
+let version_jsonschema = string_wire_jsonschema
 let version_to_string (major, minor) = Printf.sprintf "%u.%u" major minor
 let version_to_yojson v = `String (version_to_string v)
 let version_of_yojson _ = Error "Cannot convert version"
 
 type assoc_list = (string * string) list
+
+let assoc_list_jsonschema =
+  `Assoc [ ("type", `String "object"); ("additionalProperties", `Bool true) ]
 
 let assoc_list_to_yojson l =
   let f (k, v) = (k, `String v) in
@@ -740,7 +768,7 @@ type system_info = {
   akPub : assoc_list;
   pcr : assoc_list;
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let network_config_of_string = function
   | `Null -> Ok None
@@ -748,6 +776,8 @@ let network_config_of_string = function
   | `String s ->
       Yojson.Safe.from_string s |> network_of_yojson |> Result.map Option.some
   | _ -> Error "expecting serialized network config"
+
+type network_config = string option [@@deriving jsonschema]
 
 (* must be in sync with platformData in src/u-root/uinit/tpm.go *)
 type platform_data = {
@@ -758,11 +788,13 @@ type platform_data = {
   hardwareVersion : string;
   firmwareVersion : string;
   networkConfig : network option;
-      [@default None] [@of_yojson network_config_of_string]
+      [@default None]
+      [@of_yojson network_config_of_string]
+      [@ref "network_config"]
   lastTlsCert : string option; [@default None]
   lastTlsKey : string option; [@default None]
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let network_config_to_string = function
   | None -> `Null
@@ -778,8 +810,10 @@ type local_conf = {
   device_id : string;
   time_offset_s : int; (* 0 is unset *)
   network_config : network option;
-      [@default None] [@to_yojson network_config_to_string]
+      [@default None]
+      [@to_yojson network_config_to_string]
+      [@ref "network_config"]
 }
-[@@deriving yojson]
+[@@deriving yojson, jsonschema]
 
 let parse_platform_data s = decode platform_data_of_yojson s

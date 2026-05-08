@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": { "network_config": { "type": "string" } },
+  "type": "object",
+  "properties": {
+    "lastTlsKey": { "type": "string" },
+    "lastTlsCert": { "type": "string" },
+    "networkConfig": { "$ref": "#/$defs/network_config" },
+    "firmwareVersion": { "type": "string" },
+    "hardwareVersion": { "type": "string" },
+    "akPub": { "type": "object", "additionalProperties": true },
+    "pcr": { "type": "object", "additionalProperties": true },
+    "deviceKey": { "type": "string" },
+    "deviceId": { "type": "string" }
+  },
+  "required": [
+    "firmwareVersion", "hardwareVersion", "akPub", "pcr", "deviceKey",
+    "deviceId"
+  ],
+  "additionalProperties": false
+}

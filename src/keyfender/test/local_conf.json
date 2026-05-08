@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": { "network_config": { "type": "string" } },
+  "type": "object",
+  "properties": {
+    "network_config": { "$ref": "#/$defs/network_config" },
+    "time_offset_s": { "type": "integer" },
+    "device_id": { "type": "string" },
+    "tls_cluster_ca": { "type": "string" },
+    "tls_key": { "type": "string" },
+    "tls_cert": { "type": "string" }
+  },
+  "required": [ "time_offset_s", "device_id", "tls_key", "tls_cert" ],
+  "additionalProperties": false
+}

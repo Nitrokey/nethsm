@@ -3,7 +3,7 @@
  (public_name keyfender)
  (preprocessor_deps buildTag softwareVersion)
  (preprocess
-  (pps ppx_blob ppx_deriving_yojson ppx_deriving.std))
+  (pps ppx_blob ppx_deriving_yojson ppx_deriving.std ppx_deriving_jsonschema))
  (instrumentation
   (backend bisect_ppx --bisect-sigterm))
  (libraries

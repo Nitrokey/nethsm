@@ -79,3 +79,16 @@
  (modules test_cached_store)
  (name test_cached_store)
  (package keyfender))
+
+(executable
+ (name json_schema)
+ (modules json_schema)
+ (libraries keyfender ppx_deriving_jsonschema.runtime))
+
+(rule
+ (targets platform_data.json local_conf.json network.json)
+ (mode
+  (promote (until-clean)))
+ (deps ./json_schema.exe)
+ (action
+  (run ./json_schema.exe)))
