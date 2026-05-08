@@ -872,7 +872,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
   let health_events t = t.health_event_stream
 
-  (* Try fo fetch status every 15 seconds, to detect quickly if the health of
+  (* Try fo fetch status every 5 seconds, to detect quickly if the health of
      the connection changes. *)
   let rec heartbeat_loop t =
     Lwt.catch
@@ -886,7 +886,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         Log.warn (fun f -> f "heartbeat: %s" (Printexc.to_string e));
         Lwt.return_unit)
     >>= fun () ->
-    Mirage_sleep.ns (Duration.of_sec 15) >>= fun () -> heartbeat_loop t
+    Mirage_sleep.ns (Duration.of_sec 5) >>= fun () -> heartbeat_loop t
 
   let connect stack =
     let watcher = Etcd.Watch.init stack in
