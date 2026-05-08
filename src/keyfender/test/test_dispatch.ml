@@ -239,9 +239,14 @@ let health_diagnose_operational_ok =
   let hsm_state = operational_mock_with_mbox' mock_diagnose_ok in
   let headers = auth_header "admin" "test1Passphrase" in
   let open Keyfender.Json in
-  request ~hsm_state ~headers "/health/diagnose"
-  |> returns_json_equal ~with_status:`OK diagnose_data_of_yojson
-       diagnose_data_to_yojson ~expected:mock_diagnose_running
+  let test () =
+    request ~hsm_state ~headers "/health/diagnose"
+    |> returns_json_equal ~with_status:`OK diagnose_data_of_yojson
+         diagnose_data_to_yojson ~expected:mock_diagnose_running
+  in
+  (* call it twice in a row to ensure we haven't forgotten the recursive call to the handler *)
+  test ();
+  test ()
 
 let health_diagnose_operational_auth_required =
   Alcotest.test_case
