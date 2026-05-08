@@ -879,7 +879,9 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         | Error e ->
             Log.warn (fun f -> f "heartbeat: %a" pp_error e);
             ())
-      (fun _ -> Lwt.return_unit)
+      (fun e ->
+        Log.warn (fun f -> f "heartbeat: %s" (Printexc.to_string e));
+        Lwt.return_unit)
     >>= fun () ->
     Mirage_sleep.ns (Duration.of_sec 15) >>= fun () -> heartbeat_loop t
 
@@ -906,7 +908,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     in
     Etcd.connection_established_callbacks :=
       restart_watcher :: !Etcd.connection_established_callbacks;
-    Lwt.async (fun () -> heartbeat_loop t);
+    Lwt.async (fun () ->
+        Log.info (fun f -> f "heartbeat loop started");
+        heartbeat_loop t >|= fun () ->
+        Log.err (fun f -> f "heartbeat loop has stopped"));
     t
 end
 

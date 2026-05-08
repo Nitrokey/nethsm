@@ -1,7 +1,7 @@
-.PHONY: rebuild down up logs clean flogs
+.PHONY: rebuild down up logs clean flogs etcd-panic etcd-break
 
 clean:
-	sudo rm -rf data
+	for i in 1 2 3 4 -witness; do docker volume rm -f nethsm-cluster_data$${i}; done
 
 down:
 	docker compose -f ./compose-multi.yaml down 
@@ -17,3 +17,9 @@ logs:
 
 flogs:
 	docker compose -f ./compose-multi.yaml logs -f
+
+etcd-break:
+	docker exec -it nethsm-cluster-nethsm1-1 sh -c 'echo BROKEN >/data/etcd/member/snap/db'
+
+etcd-panic: etcd-break down
+	docker compose -f ./compose-multi.yaml up -d
