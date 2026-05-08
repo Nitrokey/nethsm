@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 N1=https://172.22.1.2
 N2=https://172.22.1.3
 N3=https://172.22.1.4
@@ -44,7 +46,7 @@ POST_admin /v1/cluster/join <<EOF
 $join_req
 EOF
 
-GET /v1/health/state # should be Locked
+test $(GET /v1/health/state | jq -r .state) = "Locked"
 
 while ! (
     POST_admin /v1/unlock <<EOF
@@ -52,7 +54,7 @@ while ! (
 EOF
 ); do echo "retry.."; sleep 1; done
 
-GET /v1/health/state # should be Operational
+test $(GET /v1/health/state | jq -r .state) = "Operational"
 
 # should be able to see a key from N1
 GET_admin /v1/keys/myKey1 # should not 404
@@ -73,7 +75,11 @@ EOF
 NETHSM_URL="$N1/api"
 source ./common_functions.sh
 
-GET_admin /v1/health/state # should be Operational
+echo "waiting for N1 to be Operational"
+while test $(GET /v1/health/state | jq -r .state) != "Operational"; do
+    echo "not yet, retrying..."
+    sleep 1
+done
 
 GET_admin /v1/cluster/members
 
@@ -181,7 +187,7 @@ DELETE_admin "/v1/cluster/members/$N1_id"
 GET_admin /v1/cluster/members
 
 # finally let's remove N2 before it crashes, because we don't want to be left
-# with a 2-node cluster. This will in effect crash N2
+# with a 2-node cluster. This will in effect put N2 in Failed mode
 N2_id=$(GET_admin /v1/cluster/members | jq -r 'map(select(.urls[] | contains("172.22.1.3")))[0].id')
 echo "N2 etcd ID is: $N2_id"
 
@@ -207,7 +213,7 @@ POST_admin /v1/cluster/join <<EOF
 $join_req
 EOF
 
-GET /v1/health/state # should be Locked
+test $(GET /v1/health/state | jq -r .state) = "Locked"
 
 while ! (
     POST_admin /v1/unlock <<EOF
@@ -234,6 +240,36 @@ echo "check the cluster CA cannot be changed during operation, this should fail"
 ! (curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem") || exit 1
 echo 
+
+# shutdown N3, to simulate a failure in a 2-node cluster. Eventually this should
+# put N4 in Failed mode
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
+# N2 should be in Failed mode after having been removed earlier
+NETHSM_URL="$N2/api"
+source ./common_functions.sh
+
+test $(GET /v1/health/state | jq -r .state) = "Failed"
+# should still be able to shutdown, unauthenticated
+POST /v1/system/shutdown <<EOF
+EOF
+# TODO add diagnose/force-new tests
+
+# go back to the last node alive, N4, which should now be Failed as well
+NETHSM_URL="$N4/api"
+source ./common_functions.sh
+
+echo "waiting for N4 to fail"
+while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
+    echo "not yet, retrying..."
+    sleep 1
+done
+# TODO add diagnose/force-new tests
+
+# shutdown the last node
+POST /v1/system/shutdown <<EOF
+EOF
 
 make -f cert.make clean-all
 echo "Clustering tests OK!"

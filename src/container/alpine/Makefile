@@ -4,22 +4,22 @@ clean:
 	for i in 1 2 3 4 -witness; do docker volume rm -f nethsm-cluster_data$${i}; done
 
 down:
-	docker compose -f ./compose-multi.yaml down 
+	docker compose -f ./compose-cluster.yaml down 
 
 rebuild: down clean
-	docker compose -f ./compose-multi.yaml up --build --no-start nethsm1
+	docker compose -f ./compose-cluster.yaml up --build --no-start nethsm1
 
 up: down clean
-	docker compose -f ./compose-multi.yaml up -d
+	docker compose -f ./compose-cluster.yaml up -d
 
 logs:
-	docker compose -f ./compose-multi.yaml logs
+	docker compose -f ./compose-cluster.yaml logs
 
 flogs:
-	docker compose -f ./compose-multi.yaml logs -f
+	docker compose -f ./compose-cluster.yaml logs -f
 
 etcd-break:
 	docker exec -it nethsm-cluster-nethsm1-1 sh -c 'echo BROKEN >/data/etcd/member/snap/db'
 
 etcd-panic: etcd-break down
-	docker compose -f ./compose-multi.yaml up -d
+	docker compose -f ./compose-cluster.yaml up -d
