@@ -75,10 +75,11 @@ EOF
 NETHSM_URL="$N1/api"
 source ./common_functions.sh
 
-echo "waiting for N1 to be Operational"
+echo "waiting for N1 to be Operational..."
+x=0
 while test $(GET /v1/health/state | jq -r .state) != "Operational"; do
-    echo "not yet, retrying..."
-    sleep 1
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
 done
 
 GET_admin /v1/cluster/members
@@ -260,10 +261,11 @@ EOF
 NETHSM_URL="$N4/api"
 source ./common_functions.sh
 
-echo "waiting for N4 to fail"
+echo "waiting for N4 to fail..."
+x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
-    echo "not yet, retrying..."
-    sleep 1
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
 done
 # TODO add diagnose/force-new tests
 

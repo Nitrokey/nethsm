@@ -274,6 +274,38 @@ echo "- unlock HSM (should fail, store was never provisioned)"
 { "passphrase": "UnlockPassphrase" }
 EOM
 
+echo "- kill etcd and wait for HSM to fail"
+
+# kill etcd, this should make the HSM unhealthy
+pkill etcd
+rm -rf witness.etcd
+
+x=0
+while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
+done
+
+echo "- reboot HSM to check it comes back up Failed"
+POST_admin /v1/system/reboot
+
+x=0
+while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
+  printf "."
+  ((x++>25)) && echo "time out!" && exit 1
+  sleep 2
+done
+echo
+
+STATE=$(GET /v1/health/state)
+if [[ "$STATE" != *Failed* ]] ; then
+  echo "State $STATE != Failed"
+  exit 1
+fi
+
+#TODO add diagnose test
+#TODO add recovery test
+
 echo
 echo "Hardware tests OK."
 
