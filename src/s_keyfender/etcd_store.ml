@@ -853,6 +853,9 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
         let leader = resp.leader in
         let db_size = resp.dbSize in
         let errors = resp.errors in
+        if List.length errors > 0 then (
+          Logs.err (fun f -> f "etcd is unhealthy: %a" Fmt.(list string) errors);
+          etcd_err `Timeout);
         match resp.header with
         | None -> Error (`Msg "response did not have a header")
         | Some header ->
