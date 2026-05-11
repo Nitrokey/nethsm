@@ -2399,10 +2399,10 @@ module Make (KV : Kv_ext.Platform) = struct
           Log.warn (fun m -> m "setting local config failed: %s" msg);
           (Bad_request, "setting local config failed: " ^ msg))
 
-    let check_ca_signs_cert t ~cert ~ca =
+    let check_ca_signs_cert t ~chain ~ca =
       let is_mock = t.system_info.hardwareVersion = "N/A" in
       let time () = if is_mock then None else Some (now ()) in
-      X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None [ cert ]
+      X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None chain
 
     let set_tls_cluster_ca t cert_data =
       let is_mock = t.system_info.hardwareVersion = "N/A" in
@@ -2429,7 +2429,7 @@ module Make (KV : Kv_ext.Platform) = struct
           >>= fun () ->
           (* check TLS cert is signed by this *)
           Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
-            (check_ca_signs_cert t ~cert:t.cert ~ca:cert)
+            (check_ca_signs_cert t ~chain:(t.cert :: t.chain) ~ca:cert)
           |> Result.map_error (fun (`Msg msg) ->
               let msg =
                 Fmt.str "the installed TLS cert is not signed by this CA: %s"
@@ -2464,7 +2464,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 Lwt.return
                   (Rresult.R.error_to_msg
                      ~pp_error:X509.Validation.pp_chain_error
-                     (check_ca_signs_cert t ~cert ~ca)
+                     (check_ca_signs_cert t ~chain:(cert :: chain) ~ca)
                   |> Result.map (fun _ -> ())
                   |> Result.map_error (fun (`Msg msg) ->
                       let msg =
