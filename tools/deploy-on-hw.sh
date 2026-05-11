@@ -55,40 +55,37 @@ power_off ()
 if is_on; then
     echo "switching off"
     power_off
-    while is_on; do printf "." ; sleep 1; done
+    i=0; while is_on; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
     echo
 fi
 
 if is_inserted; then
     echo "ejecting media"
     eject
-    while is_inserted; do
-        printf "."
-        sleep 1
-    done
+    i=0; while is_inserted; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
     echo
 fi
 
 echo "inserting installer image $INSTALLER_URL"
 insert $INSTALLER_URL
 
-while ! is_inserted; do printf "." ; sleep 1; done
+i=0; while ! is_inserted; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
 echo
 
 echo "starting installer"
 power_on
 
-while ! is_on; do printf "." ; sleep 1; done
+i=0; while ! is_on; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
 echo
 
 echo "waiting for installer to finish (power off)"
-while is_on; do printf "." ; sleep 2; done
+i=0; while is_on; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
 echo
 
 echo "ejecting installer image"
 eject
 
-while is_inserted; do printf "." ; sleep 1; done
+i=0; while is_inserted; do printf "."; sleep 2; [ $((i=i+1)) -lt 30 ]; done
 echo
 
 echo "starting NetHSM"
