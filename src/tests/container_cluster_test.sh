@@ -215,6 +215,7 @@ $join_req
 EOF
 
 test $(GET /v1/health/state | jq -r .state) = "Locked"
+test $(GET /v1/health/diagnose | jq -r .clusterState.running) = "true"
 
 while ! (
     POST_admin /v1/unlock <<EOF
@@ -252,6 +253,10 @@ NETHSM_URL="$N2/api"
 source ./common_functions.sh
 
 test $(GET /v1/health/state | jq -r .state) = "Failed"
+
+test $(GET /v1/health/diagnose | jq -r .clusterState.running) = "false"
+test $(GET /v1/health/diagnose | jq -r .clusterState.exited) = "0"
+
 # should still be able to shutdown, unauthenticated
 POST /v1/system/shutdown <<EOF
 EOF

@@ -273,6 +273,15 @@ if [[ "$STATE" != *Locked* ]] ; then
   exit 1
 fi
 
+GET /v1/health/diagnose >diagnose.out
+RUNNING=$(jq -r .clusterState.running <diagnose.out)
+if [[ "$RUNNING" != "true" ]]; then
+  echo "Diagnose, running is not true: $RUNNING"
+  jq < diagnose.out
+  exit 1
+fi
+
+
 echo "- local witness should be healthy again after being joined"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 
@@ -290,6 +299,14 @@ echo "- kill etcd and wait for HSM to fail"
 
 # kill etcd, this should make the HSM unhealthy
 pkill etcd
+
+GET /v1/health/diagnose >diagnose.out
+RUNNING=$(jq -r .clusterState.running <diagnose.out)
+if [[ "$RUNNING" != "false" ]]; then
+  echo "Diagnose, running is not false: $RUNNING"
+  jq < diagnose.out
+  exit 1
+fi
 
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
@@ -337,8 +354,14 @@ while test "$(GET /v1/health/state | jq -r .state)" != "Failed"; do
     sleep 5
 done
 
-#TODO add diagnose test
-#TODO add recovery test
+GET /v1/health/diagnose >diagnose.out
+cat diagnose.out
+RUNNING=$(jq -r .clusterState.running <diagnose.out)
+if [[ "$RUNNING" != "false" ]]; then
+  echo "Diagnose, running is not false: $RUNNING"
+  jq < diagnose.out
+  exit 1
+fi
 
 echo
 echo "Hardware tests OK."
