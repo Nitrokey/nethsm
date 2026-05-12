@@ -59,6 +59,8 @@ services:
   nethsm4:
     hostname: nethsm4
     image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
+    # this node is used for testing reboots
+    restart: always
     networks:
       nethsm:
         interface_name: eth0

@@ -275,8 +275,30 @@ while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
 done
 # TODO add diagnose/force-new tests
 
+POST /v1/cluster/force-new <<EOF
+EOF
+
+echo "waiting for N4 to finish rebooting..."
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" != "Locked"; do
+    ((x++>25)) && echo "time out!" && GET /v1/health/diagnose && exit 1
+    sleep 2
+done
+
+GET /v1/health/diagnose
+
+# goes into Locked mode on succesful restore/boot, unlock it
+while ! (
+    POST_admin /v1/unlock <<EOF
+    {"passphrase": "UnlockPassphrase"}
+EOF
+); do echo "retry.."; sleep 1; done
+
+# N4 still alive and can see old key
+GET_admin /v1/keys/keyN3 > /dev/null
+
 # shutdown the last node
-POST /v1/system/shutdown <<EOF
+POST_admin /v1/system/shutdown <<EOF
 EOF
 
 make -f cert.make clean-all
