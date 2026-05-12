@@ -174,7 +174,7 @@ API_DOCS_DIR := $(TOP_DIR)/src/s_keyfender/htdocs/api_docs
 SWAGGER_UI_DOWNLOAD_URL := https://github.com/swagger-api/swagger-ui/archive/master.tar.gz
 
 $(API_DOCS_DIR):
-	curl -sSL $(SWAGGER_UI_DOWNLOAD_URL) -o /tmp/swagger-ui.tar.gz
+	curl -sSL --retry 5 --retry-all-errors $(SWAGGER_UI_DOWNLOAD_URL) -o /tmp/swagger-ui.tar.gz
 	mkdir -p /tmp/swagger-ui
 	tar -C /tmp/swagger-ui --strip-components=1 -xzf /tmp/swagger-ui.tar.gz
 	sed -i 's/url: "https:\/\/petstore.swagger.io\/v2\/swagger.json",/url: ".\/nethsm-api.yaml"\,/g' /tmp/swagger-ui/dist/swagger-initializer.js

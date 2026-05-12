@@ -65,7 +65,7 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/alire-project/alire/releases/download/v2.0.1/alr-2.0.1-bin-x86_64-linux.zip" -o /tmp/alr.zip
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/alire-project/alire/releases/download/v2.0.1/alr-2.0.1-bin-x86_64-linux.zip" -o /tmp/alr.zip
   unzip /tmp/alr.zip bin/alr -d /usr/local
 EOF
 
@@ -84,14 +84,14 @@ FROM base AS musl
 # TODO: Verify hash of downloaded toolchain
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "http://musl.cc/x86_64-linux-musl-cross.tgz" -o /tmp/musl-cross.tar.gz
   sudo tar -C /opt -xzf /tmp/musl-cross.tar.gz
 EOF
 
 FROM musl AS mke2fs
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/tytso/e2fsprogs/archive/v1.47.3.tar.gz" -o /tmp/e2fsprogs.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/tytso/e2fsprogs/archive/v1.47.3.tar.gz" -o /tmp/e2fsprogs.tar.gz
   mkdir -p /tmp/e2fsprogs/build
   tar -C /tmp/e2fsprogs --strip-components=1 -xzf /tmp/e2fsprogs.tar.gz
   cd /tmp/e2fsprogs/build
@@ -111,7 +111,7 @@ EOF
 FROM musl AS sfdisk
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/util-linux/util-linux/archive/v2.41.2.tar.gz" -o /tmp/util-linux.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/util-linux/util-linux/archive/v2.41.2.tar.gz" -o /tmp/util-linux.tar.gz
   mkdir -p /tmp/util-linux
   tar -C /tmp/util-linux --strip-components=1 -xzf /tmp/util-linux.tar.gz
   cd /tmp/util-linux
@@ -164,13 +164,13 @@ EOF
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://go.dev/dl/go1.25.1.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.25.1.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL "https://github.com/u-root/u-root/archive/v0.15.0.tar.gz" -o /tmp/u-root.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/v0.15.0.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
