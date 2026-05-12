@@ -256,6 +256,7 @@ test $(GET /v1/health/state | jq -r .state) = "Failed"
 
 test $(GET /v1/health/diagnose | jq -r .clusterState.running) = "false"
 test $(GET /v1/health/diagnose | jq -r .clusterState.exited) = "0"
+test $(GET /v1/health/diagnose | jq -r .clusterSnapshot.version) = "3.6.0"
 
 # should still be able to shutdown, unauthenticated
 POST /v1/system/shutdown <<EOF
