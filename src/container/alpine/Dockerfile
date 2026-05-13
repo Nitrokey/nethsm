@@ -1,7 +1,7 @@
 ARG distro_version=golang:alpine3.22
 FROM ${distro_version} AS builder
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   apk add curl openssl rsync git mercurial make gcc patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
     coreutils unzip bubblewrap sudo openssh-client bash
@@ -21,7 +21,7 @@ EOF
 
 USER opam
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   opam init -a --disable-sandboxing --bare
 EOF
 
@@ -31,14 +31,17 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   opam switch set default
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+# copy mode: avoid EXDEV when cache is on separate partition
+ENV DUNE_CACHE="enabled" DUNE_CACHE_STORAGE_MODE="copy"
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   opam update
   OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage=4.9.0
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
   git config --global --add safe.directory /repo
-  git clone /repo /home/opam/nethsm
+  git clone --depth=1 /repo /home/opam/nethsm
 EOF
 
 WORKDIR /home/opam/nethsm
@@ -52,17 +55,23 @@ EOF
 #   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
 # EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked  <<EOF
   OPAMJOBS=$(nproc) opam pin add -y -n keyfender.dev src/keyfender
   make src/keyfender/softwareVersion src/keyfender/buildTag src/s_keyfender/update_key_store/key.pem
   make ${PWD}/src/s_keyfender/htdocs/api_docs
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
   opam exec -- mirage configure --no-depext -t unix --no-platform --single-interface
-  opam exec -- make -j$(nproc)
+  opam exec -- make -j$(nproc) depends
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
+  export OPAMJOBS=$(nproc)
+  cd src/s_keyfender
+  opam exec -- make -j$(nproc) build
   cp dist/keyfender dist/keyfender.unix
 EOF
 
@@ -72,30 +81,43 @@ EOF
 #   OPAMJOBS=$(nproc) opam pin -y add tcpip.9.0.1 /mirage-tcpip/.
 # EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
   cd src/s_keyfender
   opam exec -- mirage configure --no-depext -t unix --internal-net=direct --external-net=direct
-  opam exec -- make -j$(nproc)
+  opam exec -- make -j$(nproc) depends
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
+  export OPAMJOBS=$(nproc)
+  cd src/s_keyfender
+  opam exec -- make -j$(nproc) build
   cp dist/keyfender dist/keyfender.tap
 EOF
 
-RUN CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
+CGO_ENABLED=0 <<EOF
+	go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
+EOF
 
-RUN cd src/u-root && CGO_ENABLED=0 go build -tags testing -o ./uinit/uinit ./uinit
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
+	cd src/u-root && CGO_ENABLED=0 go build -tags testing -o ./uinit/uinit ./uinit
+EOF
 
-RUN cd src/tests && CGO_ENABLED=0 go build ./perftest.go
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
+	cd src/tests && CGO_ENABLED=0 go build ./perftest.go
+EOF
 
 FROM builder AS prod_builder
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
 EOF
 
 FROM ${distro_version} AS nethsm_production
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add --no-cache iptables curl gmp
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
+  apk add iptables curl gmp
 EOF
 
 EXPOSE 8443
@@ -124,8 +146,8 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   rm -r /Makefile /etcd-download
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add --no-cache curl tcpdump iproute2 libcap nmap-nping arping screen
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
+  apk add curl tcpdump iproute2 libcap nmap-nping arping screen
 EOF
 
 VOLUME /data
