@@ -70,13 +70,34 @@ We use Muen as the lowest layer, i.e. operating system that runs on the NetHSM h
 
 ![States](states.svg)
 
-**Locked**: A _Provisioned_ NetHSM initially boots up in a _Locked_ state, with no access to the encrypted _Authentication Store_ or _Key Store_. See [Encryption Architecture](#encryption-architecture) for details of how a _Locked_ NetHSM can transition into an _Operational_ state.
+**Locked**: A _Provisioned_ NetHSM initially boots up in a _Locked_ state, with
+no access to the encrypted _Authentication Store_ or _Key Store_. See
+[Encryption Architecture](#encryption-architecture) for details of how a
+_Locked_ NetHSM can transition into an _Operational_ state.
 
-**Operational**: An _Operational_ NetHSM is ready to process requests, and all functionality is available. This implies that in this state the system is neither _Locked_ nor _Unprovisioned_.
+**Operational**: An _Operational_ NetHSM is ready to process requests, and all
+functionality is available. This implies that in this state the system is
+neither _Failed_, _Locked_ nor _Unprovisioned_.
 
-**Provisioned**: The opposite of _Unprovisioned_.
+**Failed**: A _Failed_ NetHSM is one that currently has limited or no access to
+its `etcd` database. It can enter this mode at boot if `etcd` is immediately
+unavailable, or during operation if it becomes unavailable (see the note below).
+If and when `etcd` becomes available again, the NetHSM will automatically
+transition out of the _Failed_ state to the state it was in before (or resume
+the normal boot sequence if it was booting).
 
-**Unprovisioned**: An _Unprovisioned_ NetHSM has not been configured by the user and does not contain any _User Data_, i.e. all data stores are empty or non-existent. This implies that only the limited subset of functionality needed for Initial Provisioning is available.
+Note: The _Failed_ mode should only be reachable (i.e. the `etcd` connection can
+only fail) if using the clustering feature, when the cluster loses quorum.
+However, even without clustering, very high loads can temporarily put the NetHSM
+in Failed mode to signify it cannot currently accept new operations.
+
+**Unprovisioned**: An _Unprovisioned_ NetHSM has not been configured by the user
+and does not contain any _User Data_, i.e. all data stores are empty or
+non-existent. This implies that only the limited subset of functionality needed
+for Initial Provisioning is available.
+
+**Provisioned**: Not a state per se, but a term used to refer to either
+_Operational_ or _Locked_ i.e. any functional state that is not _Unprovisioned_.
 
 Note: Other than a NetHSM hardware appliance, resetting a NetHSM test container results in a Locked state.
 
