@@ -108,7 +108,9 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
 echo "- start etcd"
 "$etcd_name/etcd" --config-file witness.conf.yml &
 
+
 sleep 20 # wait for join to complete
+while ! curl -s http://127.0.0.1:2379/readyz; do sleep 1; done # wait for etcd to start
 
 echo "- check witness is healthy"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
@@ -117,7 +119,13 @@ echo "- check we have synced with HSM"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
     get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
 
-echo "- check HSM is still healthy again"
+echo "- check HSM ends up healthy"
+
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" != "Operational"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
+done
 GET_admin /v1/cluster/members
 MEMBERS=$(GET_admin /v1/cluster/members)
 WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
@@ -210,21 +218,25 @@ GET_admin /v1/cluster/members
 
 echo "- launch fresh local etcd"
 
-# purposefully, this etcd instance is only available over IPv6
-"$etcd_name/etcd" \
-    --log-format console \
-    --log-level error \
-    --peer-client-cert-auth=true \
-    --peer-trusted-ca-file=CA.pem \
-    --peer-cert-file=witness.pem \
-    --peer-key-file=witness.key \
-    --peer-skip-client-san-verification=true \
-    --data-dir=witness.etcd --name witness \
-    --initial-advertise-peer-urls "https://[fc00:22:1::100]:2380" \
-    --listen-peer-urls "https://0.0.0.0:2380" \
-    --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
+start_etcd () {
+    # purposefully, this etcd instance is only available over IPv6
+    "$etcd_name/etcd" \
+        --log-format console \
+        --log-level error \
+        --peer-client-cert-auth=true \
+        --peer-trusted-ca-file=CA.pem \
+        --peer-cert-file=witness.pem \
+        --peer-key-file=witness.key \
+        --peer-skip-client-san-verification=true \
+        --data-dir=witness.etcd --name witness \
+        --initial-advertise-peer-urls "https://[fc00:22:1::100]:2380" \
+        --listen-peer-urls "https://0.0.0.0:2380" \
+        --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
 
-sleep 3 # wait for etcd to start
+    while ! curl -s http://127.0.0.1:2379/readyz; do sleep 1; done # wait for etcd to start
+}
+
+start_etcd
 
 # test that we can locally send requests to the witness
 
@@ -278,12 +290,11 @@ echo "- kill etcd and wait for HSM to fail"
 
 # kill etcd, this should make the HSM unhealthy
 pkill etcd
-rm -rf witness.etcd
 
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
     ((x++>25)) && echo "time out!" && exit 1
-    sleep 2
+    sleep 5
 done
 
 echo "- reboot HSM to check it comes back up Failed"
@@ -293,7 +304,7 @@ x=0
 while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
   printf "."
   ((x++>25)) && echo "time out!" && exit 1
-  sleep 2
+  sleep 5
 done
 echo
 
@@ -302,6 +313,29 @@ if [[ "$STATE" != *Failed* ]] ; then
   echo "State $STATE != Failed"
   exit 1
 fi
+
+echo "- restart witness to check HSM recovers automatically"
+start_etcd # restart etcd to check we can recover
+
+echo "- check local etcd is healthy"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" != "Locked"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 5
+done
+
+echo "- kill witness again"
+# kill etcd one last time
+pkill etcd
+rm -rf witness.etcd
+
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" != "Failed"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 5
+done
 
 #TODO add diagnose test
 #TODO add recovery test
