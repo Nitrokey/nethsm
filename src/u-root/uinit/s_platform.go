@@ -508,6 +508,23 @@ var rtcTime = func() func() time.Time {
 	}
 }()
 
+func backupEtcd() error {
+	// !! remove all previous etcd data before joining a new cluster
+	// !! will get restored if etcd fails to start, but definitely deleted
+	// !! otherwise
+	G.s.Logf("Moving previous etcd data!")
+	if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
+		return err
+	}
+	if err := os.Mkdir("/data/etcd", 0o700); err != nil {
+		return err
+	}
+	if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
 
@@ -543,17 +560,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	if mode == EtcdClusterJoin {
-		// !! remove all previous etcd data before joining a new cluster
-		// !! will get restored if etcd fails to start, but definitely deleted
-		// !! otherwise
-		G.s.Logf("Moving previous etcd data!")
-		if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
-			return err
-		}
-		if err := os.Mkdir("/data/etcd", 0o700); err != nil {
-			return err
-		}
-		if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
+		if err := backupEtcd(); err != nil {
 			return err
 		}
 	}
