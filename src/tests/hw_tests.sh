@@ -73,16 +73,14 @@ EOM
 
 sleep 2
 
+function generate_witness_conf () {
+
 # a backup passphrase is already configured from a previous restore
 echo "- add a new member to the cluster (should succeed)"
 ADD_RESP=$(POST_admin /v1/cluster/members < add_req.json) || exit 1
 echo $ADD_RESP > response.json
 
 echo "- configure an etcd witness in join mode"
-
-etcd_name="etcd-v3.6.5-linux-arm64"
-tar xf "$etcd_name.tar.gz"
-
 # follow the documentation in docs/clustering.md to create a witness
 export ETCD_NAME="witness"
 export ETCD_DATA_DIR="witness.etcd"
@@ -98,6 +96,13 @@ unset ETCD_DATA_DIR
 unset ETCD_INITIAL_CLUSTER
 unset ETCD_INITIAL_ADVERTISE_PEER_URLS
 
+}
+
+generate_witness_conf
+
+etcd_name="etcd-v3.6.5-linux-arm64"
+tar xf "$etcd_name.tar.gz"
+
 cleanup_etcd() {
     pkill -9 etcd
     rm -rf witness.etcd
@@ -108,9 +113,22 @@ trap cleanup_etcd EXIT # stop etcd no matter what at the end
 echo "- start etcd"
 "$etcd_name/etcd" --config-file witness.conf.yml &
 
+function wait_join() {
 
+echo "- wait for join to complete"
 sleep 20 # wait for join to complete
 while ! curl -s http://127.0.0.1:2379/readyz; do sleep 1; done # wait for etcd to start
+
+# Give time for the heartbeat to find that etcd is now alive again
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" == "Failed"; do
+    ((x++>3)) && echo "time out!" && exit 1
+    sleep 1
+done
+
+}
+
+wait_join
 
 echo "- check witness is healthy"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
@@ -188,6 +206,104 @@ sleep 10
 
 echo "- check HSM is still healthy"
 GET_admin /v1/cluster/members
+
+echo "- add back witness to the cluster (should succeed)"
+# cluster ID may have changed due to force-new, need to regenerate
+generate_witness_conf
+
+echo "- start etcd"
+"$etcd_name/etcd" --config-file witness.conf.yml &
+
+wait_join
+
+echo "- check witness is healthy"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+
+echo "- check HSM is still healthy again"
+GET_admin /v1/cluster/members
+MEMBERS=$(GET_admin /v1/cluster/members)
+WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
+
+echo "- generate a key (should be retained by recovery)"
+POST_admin /v1/keys/generate <<EOF
+{
+  "mechanisms": [
+    "RSA_Signature_PSS_SHA256"
+  ],
+  "type": "RSA",
+  "length": 2048,
+  "id": "extraKey2"
+}
+EOF
+
+echo "- simulating failure"
+pkill -9 etcd
+rm -rf witness.etcd
+x=0
+while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
+done
+
+STATE=$(GET /v1/health/state)
+if [[ "$STATE" != *Failed* ]] ; then
+  echo "State $STATE != Failed"
+  exit 1
+fi
+
+echo "- diagnose should show some etcd logs on failure"
+GET /v1/health/diagnose >diagnose.out
+if test "$(jq -r '.clusterLogs | length' <diagnose.out)" -lt 1; then
+	echo "When etcd fails we should have some logs"
+	cat diagnose.out
+	exit 1
+fi
+
+echo "- recover HSM into single node mode"
+
+POST /v1/cluster/force-new <<EOF
+EOF
+
+echo "- wait for HSM to complete reboot"
+x=0
+while ! curl -m 1 -s -k -f "${NETHSM_URL}/v1/health/state"; do
+  printf "."
+  ((x++>50)) && echo "time out!" && exit 1
+  sleep 2
+done
+echo
+
+echo "- HSM state should be Locked after a succesful recovery and reboot"
+STATE=$(GET /v1/health/state)
+if [[ "$STATE" != *Locked* ]] ; then
+  echo "State $STATE != Locked"
+  exit 1
+fi
+
+echo "- unlock HSM after recovery"
+POST /v1/unlock <<EOM
+{ "passphrase": "UnlockPassphrase" }
+EOM
+
+echo "- key generated prior to failure should be visible after recovery"
+GET_admin /v1/keys/extraKey2 >/dev/null
+
+echo "- after recovery we should have only 1 node: ourselves"
+GET_admin /v1/cluster/members >members.out
+N=$(jq -r length <members.out)
+if test "$N" != "1"; then
+	echo "Has unexpected cluster members: $N"
+	cat members.out
+	exit 1
+fi
+
+echo "- delete witness"
+
+pkill -9 etcd
+rm -rf witness.etcd
+sleep 10
+
+GET_admin /v1/config/network
 
 echo
 echo "=== Hardware tests - Cluster join (failure recovery) ==="
@@ -298,7 +414,8 @@ EOM
 echo "- kill etcd and wait for HSM to fail"
 
 # kill etcd, this should make the HSM unhealthy
-pkill etcd
+# to avoid race condition with .running below, has to be -9
+pkill -9 etcd
 
 GET /v1/health/diagnose >diagnose.out
 RUNNING=$(jq -r .clusterState.running <diagnose.out)

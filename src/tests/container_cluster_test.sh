@@ -261,7 +261,6 @@ test $(GET /v1/health/diagnose | jq -r .clusterSnapshot.version) = "3.6.0"
 # should still be able to shutdown, unauthenticated
 POST /v1/system/shutdown <<EOF
 EOF
-# TODO add diagnose/force-new tests
 
 # go back to the last node alive, N4, which should now be Failed as well
 NETHSM_URL="$N4/api"
@@ -273,7 +272,10 @@ while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
     ((x++>32)) && echo "time out!" && exit 1
     sleep 2
 done
-# TODO add diagnose/force-new tests
+
+# the actual state of etcd (whether it exited or not) would cause
+# a race condition in the test, so only fetch the diagnostic
+GET /v1/health/diagnose
 
 POST /v1/cluster/force-new <<EOF
 EOF
