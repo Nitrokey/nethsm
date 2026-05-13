@@ -6,10 +6,14 @@ clean:
 down:
 	docker compose -f ./compose-cluster.yaml down 
 
-rebuild: down clean
+kill:
+	docker compose -f ./compose-cluster.yaml kill
+	docker compose -f ./compose-cluster.yaml down
+
+rebuild: kill clean
 	docker compose -f ./compose-cluster.yaml up --build --no-start nethsm1
 
-up: down clean
+up: kill clean
 	docker compose -f ./compose-cluster.yaml up -d
 
 logs:
