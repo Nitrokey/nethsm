@@ -2,6 +2,14 @@
 
 source "$(dirname $0)/common_functions.sh"
 
+echo "=== Waiting for node to be up and unprovisioned ==="
+
+x=0
+while test "$(GET /v1/health/state | jq -r .state)" != "Unprovisioned"; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
+done
+
 echo
 echo "=== Provisioning ==="
 echo
