@@ -528,7 +528,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	case <-time.After(30 * time.Second):
 		log.Printf("etcd took too long to start: %s", lastEtcdError)
 		cancel() // stop etcd and wait for it to stop
-		<- G.etcdStoppedCh
+		<-G.etcdStoppedCh
 		return fmt.Errorf("etcd took too long to start: %s", lastEtcdError)
 	}
 }
