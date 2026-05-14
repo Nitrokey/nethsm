@@ -508,12 +508,14 @@ var rtcTime = func() func() time.Time {
 	}
 }()
 
-func backupEtcd() error {
+const etcdBackupJoin = "/data/etcd.backup"
+
+func backupEtcd(dest string) error {
 	// !! remove all previous etcd data before joining a new cluster
 	// !! will get restored if etcd fails to start, but definitely deleted
 	// !! otherwise
 	G.s.Logf("Moving previous etcd data!")
-	if err := os.Rename("/data/etcd", "/data/etcd.backup"); err != nil {
+	if err := os.Rename("/data/etcd", dest); err != nil {
 		return err
 	}
 	if err := os.Mkdir("/data/etcd", 0o700); err != nil {
@@ -560,7 +562,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	if mode == EtcdClusterJoin {
-		if err := backupEtcd(); err != nil {
+		if err := backupEtcd(etcdBackupJoin); err != nil {
 			return err
 		}
 	}
@@ -656,7 +658,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 			if err := os.RemoveAll("/data/etcd"); err != nil {
 				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
 			}
-			if err := os.Rename("/data/etcd.backup", "/data/etcd"); err != nil {
+			if err := os.Rename(etcdBackupJoin, "/data/etcd"); err != nil {
 				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
 			}
 			if err := startEtcd(EtcdNormal); err != nil {
@@ -668,7 +670,7 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 		log.Printf("etcd is now serving requests!")
 		if mode == EtcdClusterJoin {
 			log.Printf("join succeeded: removing backed up data")
-			if err := os.RemoveAll("/data/etcd.backup"); err != nil {
+			if err := os.RemoveAll(etcdBackupJoin); err != nil {
 				return err
 			}
 		}
