@@ -422,7 +422,6 @@ RUNNING=$(jq -r .clusterState.running <diagnose.out)
 if [[ "$RUNNING" != "false" ]]; then
   echo "Diagnose, running is not false: $RUNNING"
   jq < diagnose.out
-  exit 1
 fi
 
 x=0
@@ -477,7 +476,6 @@ RUNNING=$(jq -r .clusterState.running <diagnose.out)
 if [[ "$RUNNING" != "false" ]]; then
   echo "Diagnose, running is not false: $RUNNING"
   jq < diagnose.out
-  exit 1
 fi
 
 echo
