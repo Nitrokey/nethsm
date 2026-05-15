@@ -104,6 +104,7 @@ etcd_name="etcd-v3.6.5-linux-arm64"
 tar xf "$etcd_name.tar.gz"
 
 cleanup_etcd() {
+    echo "killing etcd due to TRAP"
     pkill -9 etcd
     rm -rf witness.etcd
 }
@@ -199,6 +200,7 @@ echo "- check witness cannot see the key anymore"
 echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
+echo "- killing etcd voluntarily"
 pkill etcd
 rm -rf witness.etcd
 
@@ -374,6 +376,8 @@ echo
 echo "=== Hardware tests - Cluster join (success) ==="
 echo
 
+echo "- check local etcd is healthy again"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 echo "- set /config/version to 1 to allow join to complete"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 put "/config/version" "1" || exit 1
 
