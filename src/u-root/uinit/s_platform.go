@@ -490,23 +490,11 @@ const (
 	   - the cluster has not previously added this member
 	*/
 	EtcdClusterJoin
-
-	/* if /etcd/data empty or the cluster is 1-node
-	     same behavior as EtcdNormal
-
-	   if /etcd/data exists and there are other members
-	     will forcibly forget about other members of the cluster and force startup
-		 as a 1-node cluster
-		 !! potential data loss if we are not in sync with the leader
-		 !! unsafe if other members are actually not down and contact us after recovery
-	*/
-	EtcdDisasterRecovery
 )
 
 var etcdModeName = map[EtcdMode]string{
-	EtcdNormal:           "normal",
-	EtcdClusterJoin:      "cluster join",
-	EtcdDisasterRecovery: "disaster recovery",
+	EtcdNormal:      "normal",
+	EtcdClusterJoin: "cluster join",
 }
 
 type JoinArgs struct {
@@ -601,10 +589,6 @@ func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
 	}
 
 	cmd += initialState
-
-	if mode == EtcdDisasterRecovery {
-		cmd += " --force-new-cluster"
-	}
 
 	if mode == EtcdClusterJoin {
 		if err := backupEtcd(etcdBackupJoin); err != nil {
