@@ -53,8 +53,8 @@ module Kv_platform = struct
   let stream, push = Lwt_stream.create ()
   let health_events (_ : t) = stream
 
-  let inject_health_event (t : t) event =
-    push (Some event);
+  let inject_health_event (t : t) ?(timestamp = 0L) event =
+    push (Some (event, timestamp));
     if event = `Healthy then remove t unhealthy else set t unhealthy ""
 end
 

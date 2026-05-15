@@ -3912,41 +3912,69 @@ module Make (KV : Kv_ext.Platform) = struct
         let** cert, chain, key = certificate_chain config_store in
         Lwt_result.return (state, cert, key, chain)
 
-  let rec store_health_watcher ~retry_boot t stream =
+  let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
+    (* minimum amount of time the store has to be continuously unhealthy for the HSM to go into Failed state *)
+    let failure_state_threshold_s = 60 in
     let* event = Lwt_stream.get stream in
-    let handle_event e =
-      match (t.state, e) with
+    (* use monotonic clock *)
+    let handle_failure current_failure_timestamp =
+      match first_failure_timestamp with
+      | None ->
+          Log.warn (fun f ->
+              f
+                "store currently unhealthy, waiting to see if this lasts more \
+                 than %d seconds"
+                failure_state_threshold_s);
+          Lwt.return (Some current_failure_timestamp)
+      | Some t0 ->
+          let elapsed = Int64.(sub current_failure_timestamp t0) in
+          if
+            Int64.compare elapsed (Duration.of_sec failure_state_threshold_s)
+            > 0
+          then (
+            Log.err (fun f ->
+                f "store unhealthy for more than %d seconds: %a -> Failed"
+                  failure_state_threshold_s pp_state (state t));
+            t.state <- Failed (Some t.state);
+            Lwt.return None)
+          else Lwt.return (Some t0)
+    in
+    let handle_event (event, timestamp) =
+      match (t.state, event) with
       | Failed (Some previous_state), `Healthy ->
           t.state <- previous_state;
-          Log.info (fun f ->
+          Log.warn (fun f ->
               f "store now healthy: Failed -> %a" pp_state (state t));
-          Lwt.return_unit
+          Lwt.return None
       | Failed None, `Healthy -> (
           Log.info (fun f -> f "store now healthy: Failed -> continue boot");
           let* res = retry_boot () in
           match res with
           | Error (`Msg msg) ->
               Log.err (fun f -> f "boot failed again: %s" msg);
-              Lwt.return_unit
+              Lwt.return None
           | Ok (state, cert, key, chain) ->
               t.state <- state;
               t.cert <- cert;
               t.key <- key;
               t.chain <- chain;
-              Lwt.return_unit)
-      | _healthy_state, `Healthy -> Lwt.return_unit (* staying healthy *)
+              Lwt.return None)
+      | _healthy_state, `Healthy ->
+          Option.iter
+            (fun _ ->
+              Log.info (fun f ->
+                  f "store recovered before reaching the failure threshold"))
+            first_failure_timestamp;
+          Lwt.return None (* staying healthy *)
       | Failed _, (`Disconnected | `Timeout) ->
-          Lwt.return_unit (* staying unhealthy *)
-      | non_failed_state, (`Disconnected | `Timeout) ->
-          Log.warn (fun f ->
-              f "store unhealthy! %a -> Failed" pp_state (state t));
-          t.state <- Failed (Some non_failed_state);
-          Lwt.return_unit
+          Lwt.return None (* staying unhealthy *)
+      | _non_failed_state, (`Disconnected | `Timeout) ->
+          handle_failure timestamp
     in
     match event with
     | Some e ->
-        let* () = handle_event e in
-        store_health_watcher ~retry_boot t stream
+        let* first_failure_timestamp = handle_event e in
+        store_health_watcher ?first_failure_timestamp ~retry_boot t stream
     | None ->
         Log.err (fun f -> f "store health event stream ended");
         Lwt.return_unit

@@ -225,7 +225,13 @@ let mock_diagnose_failed = function
 
 let failed_mock () =
   let kv, t = operational_mock_with_mbox'' mock_diagnose_failed in
-  Lwt_main.run (Kv_platform.inject_health_event kv `Disconnected)
+  Lwt_main.run
+    (let open Lwt_result.Infix in
+     (* sent two failure events separated in time by at least the failure
+       threshold, so we actually transition to Failed *)
+     Kv_platform.inject_health_event kv `Disconnected >>= fun () ->
+     Kv_platform.inject_health_event ~timestamp:(Duration.of_sec 120) kv
+       `Disconnected)
   |> Logs.on_error ~pp:Kv_platform.pp_write_error ~use:(fun _ ->
       failwith "error injecting health event");
   t

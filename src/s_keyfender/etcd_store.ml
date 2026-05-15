@@ -648,8 +648,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     stack : Stack.t;
     mode : [ `Normal | `Batch of Txn_batcher.t ];
     watcher : Etcd.Watch.t;
-    health_event_stream : health_event Lwt_stream.t;
-    push_health_event : health_event option -> unit;
+    health_event_stream : (health_event * int64) Lwt_stream.t;
+    push_health_event : health_event -> unit;
     mutable healthy : bool;
   }
 
@@ -664,10 +664,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     let handle_etcd_exception = function
       | `Disconnected ->
           t.healthy <- false;
-          t.push_health_event (Some `Disconnected)
+          t.push_health_event `Disconnected
       | `Timeout ->
           t.healthy <- false;
-          t.push_health_event (Some `Timeout)
+          t.push_health_event `Timeout
       | `Msg _ -> ()
     in
     let handle_exception exn =
@@ -687,7 +687,7 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     let handle_success () =
       if not t.healthy then (
         t.healthy <- true;
-        t.push_health_event (Some `Healthy))
+        t.push_health_event `Healthy)
     in
     Lwt.catch
       (fun () ->
@@ -891,6 +891,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
   let connect stack =
     let watcher = Etcd.Watch.init stack in
     let health_event_stream, push_health_event = Lwt_stream.create () in
+    let push_health_event e =
+      let timestamp = Mirage_mtime.elapsed_ns () in
+      push_health_event (Some (e, timestamp))
+    in
     let t =
       {
         stack;

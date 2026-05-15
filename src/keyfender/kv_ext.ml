@@ -145,12 +145,16 @@ module type Platform = sig
   (** Indicates if the connection to etcd is healthy i.e. if it is established
       and etcd is not timing out. *)
 
-  val health_events : t -> [ `Healthy | `Disconnected | `Timeout ] Lwt_stream.t
+  val health_events :
+    t -> ([ `Healthy | `Disconnected | `Timeout ] * int64) Lwt_stream.t
   (** Stream of updates in the health of the connection, enabling to have
       callbacks when etcd becomes unreachable or reachable again. [`Healthy]
       will be sent only once when coming from [`Disconnected] or [`Timeout].
       However [`Disconnected] and [`Timeout] events will be sent as many times
-      as there are failed attempts, to allow detecting long-term failures. *)
+      as there are failed attempts, to allow detecting long-term failures.
+
+      Each update is sent with a monotonically increasing timestamp in
+      nanoseconds. *)
 end
 
 (** Inefficient, only for test purposes, when the backend does not support
