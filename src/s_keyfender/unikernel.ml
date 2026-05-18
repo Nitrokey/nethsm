@@ -520,6 +520,7 @@ struct
                    (Error (Fmt.to_to_string pp_platform_err e)))
           >>= fun () -> (handle_cb [@tailcall]) http
       | Hsm.Force_new_cluster as cmd -> (
+          KV_store.Etcd.last_known_revision := 0L;
           write_platform internal_stack (Hsm.cb_to_string cmd) >>= function
           | Ok _ -> Lwt_mvar.put res_mvar (Ok EmptyResult)
           | Error e ->
