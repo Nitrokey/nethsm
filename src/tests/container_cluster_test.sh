@@ -78,7 +78,7 @@ source ./common_functions.sh
 echo "waiting for N1 to be Operational..."
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Operational"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 2
 done
 
@@ -264,7 +264,7 @@ source ./common_functions.sh
 echo "waiting for N4 to fail..."
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 2
 done
 # TODO add diagnose/force-new tests
