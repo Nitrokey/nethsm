@@ -229,9 +229,9 @@ let failed_mock () =
     (let open Lwt_result.Infix in
      (* sent two failure events separated in time by at least the failure
        threshold, so we actually transition to Failed *)
-     Kv_platform.inject_health_event kv `Disconnected >>= fun () ->
+     Kv_platform.inject_health_event kv (`Disconnected `Timeout) >>= fun () ->
      Kv_platform.inject_health_event ~timestamp:(Duration.of_sec 120) kv
-       `Disconnected)
+       (`Disconnected `Timeout))
   |> Logs.on_error ~pp:Kv_platform.pp_write_error ~use:(fun _ ->
       failwith "error injecting health event");
   t

@@ -130,6 +130,8 @@ module type Ranged = sig
   val create_watch : t -> Range.t -> (event -> unit Lwt.t) -> unit
 end
 
+type conn_error = [ Tcpip.Tcp.error | `Msg of string ]
+
 module type Platform = sig
   include Ranged
   module Cluster : Clustered with type t := t
@@ -146,7 +148,8 @@ module type Platform = sig
       and etcd is not timing out. *)
 
   val health_events :
-    t -> ([ `Healthy | `Disconnected | `Timeout ] * int64) Lwt_stream.t
+    t ->
+    ([ `Healthy | `Disconnected of conn_error | `Timeout ] * int64) Lwt_stream.t
   (** Stream of updates in the health of the connection, enabling to have
       callbacks when etcd becomes unreachable or reachable again. [`Healthy]
       will be sent only once when coming from [`Disconnected] or [`Timeout].

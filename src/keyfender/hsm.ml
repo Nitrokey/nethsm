@@ -3966,9 +3966,18 @@ module Make (KV : Kv_ext.Platform) = struct
                   f "store recovered before reaching the failure threshold"))
             first_failure_timestamp;
           Lwt.return None (* staying healthy *)
-      | Failed _, (`Disconnected | `Timeout) ->
+      | Failed _, (`Disconnected _ | `Timeout) ->
           Lwt.return None (* staying unhealthy *)
-      | _non_failed_state, (`Disconnected | `Timeout) ->
+      | _non_failed_state, `Disconnected `Refused ->
+          (* probably removed from cluster *)
+          Log.err (fun f ->
+              f
+                "connection refused, entering failed mode immediately: %a -> \
+                 Failed"
+                pp_state (state t));
+          t.state <- Failed (Some t.state);
+          Lwt.return_none
+      | _non_failed_state, (`Disconnected _ | `Timeout) ->
           handle_failure timestamp
     in
     match event with

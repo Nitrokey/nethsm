@@ -14,13 +14,19 @@ let etcd_store_src = Logs.Src.create "etcd_store"
 
 module Log = (val Logs.src_log etcd_store_src : Logs.LOG)
 
-type etcd_error = [ `Timeout | `Disconnected | `Msg of string ]
+type etcd_error =
+  [ `Timeout | `Disconnected of Keyfender.Kv_ext.conn_error | `Msg of string ]
 
 exception Etcd_error of etcd_error
 
+let pp_conn_error ppf = function
+  | `Msg s -> Fmt.string ppf s
+  | #Tcpip.Tcp.error as e -> Tcpip.Tcp.pp_error ppf e
+
 let pp_etcd_error ppf = function
   | `Timeout -> Fmt.pf ppf "etcd connection is timing out"
-  | `Disconnected -> Fmt.pf ppf "cannot establish a connection to etcd"
+  | `Disconnected conn ->
+      Fmt.pf ppf "cannot establish a connection to etcd: %a" pp_conn_error conn
   | `Msg msg -> Fmt.pf ppf "etcd error: %s" msg
 
 let etcd_err err = raise (Etcd_error err)
@@ -93,7 +99,12 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     >|= function
     | Error e ->
         Log.err (fun f -> f "TCP connection to etcd failed: %a" TCP.pp_error e);
-        etcd_err `Disconnected
+        let e =
+          match e with
+          | #Tcpip.Tcp.error as e -> e
+          | other -> `Msg (Fmt.to_to_string TCP.pp_error other)
+        in
+        etcd_err (`Disconnected e)
     | Ok conn -> conn
 
   let connection_create_mtx = Lwt_mutex.create ()
@@ -144,10 +155,11 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
             Lwt.pick
               [
                 conn;
-                (Lwt.protected h2_conn_error >>= fun _ -> etcd_err `Disconnected);
+                ( Lwt.protected h2_conn_error >>= fun msg ->
+                  etcd_err (`Disconnected (`Msg msg)) );
                 ( timeout 5 "HTTP/2 connect timeout" >>= fun _ ->
                   shutdown_tcp ();
-                  etcd_err `Disconnected );
+                  etcd_err (`Disconnected `Timeout) );
               ]
             >>= fun conn ->
             Log.info (fun m -> m "HTTP/2 connection to etcd established");
@@ -165,7 +177,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       | _ -> create_connection ~stack)
     >|= fun (conn, conn_err) ->
     let conn_err' =
-      Lwt.protected conn_err >>= fun _ -> etcd_err `Disconnected
+      Lwt.protected conn_err >>= fun e -> etcd_err (`Disconnected (`Msg e))
     in
     (conn, conn_err')
 
@@ -642,7 +654,8 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       promises
   end
 
-  type health_event = [ `Healthy | `Disconnected | `Timeout ]
+  type health_event =
+    [ `Healthy | `Disconnected of Keyfender.Kv_ext.conn_error | `Timeout ]
 
   type t = {
     stack : Stack.t;
@@ -662,12 +675,9 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
 
   let etcd_try' t f =
     let handle_etcd_exception = function
-      | `Disconnected ->
+      | (`Disconnected _ | `Timeout) as e ->
           t.healthy <- false;
-          t.push_health_event `Disconnected
-      | `Timeout ->
-          t.healthy <- false;
-          t.push_health_event `Timeout
+          t.push_health_event e
       | `Msg _ -> ()
     in
     let handle_exception exn =
