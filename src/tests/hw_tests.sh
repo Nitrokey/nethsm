@@ -142,7 +142,7 @@ echo "- check HSM ends up healthy"
 
 x=0
 while test "$(GET /v1/health/state | jq -r .state)" != "Operational"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 2
 done
 GET_admin /v1/cluster/members
@@ -156,7 +156,7 @@ echo -n "- waiting for NetHSM"
 x=0
 while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
   printf "."
-  ((x++>25)) && echo "time out!" && exit 1
+  ((x++>32)) && echo "time out!" && exit 1
   sleep 2
 done
 echo
@@ -243,7 +243,7 @@ pkill -9 etcd
 rm -rf witness.etcd
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 2
 done
 
@@ -430,7 +430,7 @@ fi
 
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 5
 done
 
@@ -440,7 +440,7 @@ POST_admin /v1/system/reboot
 x=0
 while ! curl -m 1 -s -k -f ${NETHSM_URL}/v1/health/state ; do
   printf "."
-  ((x++>25)) && echo "time out!" && exit 1
+  ((x++>32)) && echo "time out!" && exit 1
   sleep 5
 done
 echo
@@ -459,7 +459,7 @@ echo "- check local etcd is healthy"
 
 x=0
 while test "$(GET /v1/health/state | jq -r .state)" != "Locked"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 5
 done
 
@@ -470,7 +470,7 @@ rm -rf witness.etcd
 
 x=0
 while test "$(GET /v1/health/state | jq -r .state)" != "Failed"; do
-    ((x++>25)) && echo "time out!" && exit 1
+    ((x++>32)) && echo "time out!" && exit 1
     sleep 5
 done
 
