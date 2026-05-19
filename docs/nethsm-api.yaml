@@ -2945,14 +2945,22 @@ components:
       required:
         - user
     ClusterLogItem:
+      description: |
+        A log message from etcd on the current node.
+        The level is warning or above.
       example:
         level: "error"
         msg: "Mock: no etcd"
       properties:
         level:
           type: string
+        msg:
+          type: string
       type: object
+      required:
+        - level
     ClusterLogList:
+      description: A list of recent log messages from etcd on the current node.
       example:
         - 
           level: "error"
@@ -2961,6 +2969,9 @@ components:
       items:
         $ref: "#/components/schemas/ClusterLogItem"
     ClusterSnapshot:
+      description: |
+        Statistics about the local cluster database snapshot.
+        This is only present when etcd is not running.
       type: object
       properties:
         hash:
@@ -2973,6 +2984,11 @@ components:
           type: integer
         version:
           type: string
+      required:
+        - hash
+        - revision
+        - totalKey
+        - totalSize
     ClusterAddReq:
       example:
           urls:
@@ -3048,23 +3064,39 @@ components:
         - name
         - urls
     ClusterState:
+      description: |
+        Status of etcd cluster process on the local node.
       type: object
       example:
         exited: 1
+        running: false
       properties:
         exited:
+          description: |
+            Present when the cluster process has exited on the local node
+            with this exit code.
+            An exit code of 0 indicates success
+            (e.g. the node has cleanly left the cluster).
           type: integer
           minimum: 0
           maximum: 255
         signaled:
+          description: |
+            Present when the cluster process has been killed by
+            this signal.
           type: integer
           minimum: 0
           maximum: 255
         stopped:
+          description: |
+            Present when the cluster process has been stopped by
+            this signal.
           type: integer
           minimum: 0
           maximum: 255
         running:
+          description: |
+            Whether the cluster process is currently running.
           type: boolean
       required:
         - running
@@ -3263,6 +3295,9 @@ components:
       required:
         - state
     HealthDiagnoseData:
+      description: |
+        Information about the health of the etcd process on the current node,
+        including the process running state, exit code, and recent logs.
       example:
         clusterLogs:
           -
