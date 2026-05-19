@@ -92,11 +92,11 @@
       <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 1196,326.654 A 1042,1042 0 0 1 471.955,503.874"/>
       <polygon style="fill: #000000; fill-opacity: 1; stroke-opacity: 1; stroke-width: 2; stroke: #000000" fill-rule="evenodd" points="464.518,502.909 475.1,499.301 471.949,503.919 473.753,509.21 "/>
     </g>
-    <text font-size="10.7244" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="705.116" y="390.606">
-      <tspan x="705.116" y="390.606">a) Automatic recovery if</tspan>
-      <tspan xml:space="preserve" x="705.116" y="404.012">   quorum reached again</tspan>
-      <tspan xml:space="preserve" x="705.116" y="417.417">   and previous state was</tspan>
-      <tspan xml:space="preserve" x="705.116" y="430.823">   "Operational"</tspan>
+    <text font-size="10.7244" style="fill: #000000; fill-opacity: 1; stroke: none;text-anchor:start;font-family:sans-serif;font-style:normal;font-weight:normal" x="719.116" y="382.606">
+      <tspan x="719.116" y="382.606">Automatic recovery if</tspan>
+      <tspan x="719.116" y="396.012">quorum reached again</tspan>
+      <tspan x="719.116" y="409.417">and previous state was</tspan>
+      <tspan x="719.116" y="422.823">"Operational"</tspan>
     </text>
     <g>
       <path style="fill: none; stroke-opacity: 1; stroke-width: 2; stroke: #000000" d="M 457.578,514.482 A 867.98,867.98 0 0 0 1218.21,330.065"/>
