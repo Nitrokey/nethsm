@@ -1,4 +1,4 @@
-ARG distro_version=golang:alpine
+ARG distro_version=golang:alpine3.22
 FROM ${distro_version} AS builder
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
