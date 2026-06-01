@@ -1,9 +1,15 @@
 name: nethsm-cluster
 
+x-nethsm-healthcheck: &nethsm-healthcheck
+  test: ["CMD", "curl", "-f", "-k", "-s", "https://169.254.100.2/api/v1/info"]
+  interval: 1s
+  timeout: 1s
+  retries: 10
+
 services:
   nethsm1:
     hostname: nethsm1
-    image: nitrokey/nethsm:test-clustering
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
     build:
       context: ../../..
       dockerfile: src/container/alpine/Dockerfile
@@ -18,10 +24,11 @@ services:
       - "data1:/data"
     cap_add:
       - NET_ADMIN
+    healthcheck: *nethsm-healthcheck
 
   nethsm2:
     hostname: nethsm2
-    image: nitrokey/nethsm:test-clustering
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
     networks:
       nethsm:
         interface_name: eth0
@@ -32,10 +39,11 @@ services:
       - "data2:/data"
     cap_add:
       - NET_ADMIN
+    healthcheck: *nethsm-healthcheck
 
   nethsm3:
     hostname: nethsm3
-    image: nitrokey/nethsm:test-clustering
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
     networks:
       nethsm:
         interface_name: eth0
@@ -46,10 +54,11 @@ services:
       - "data3:/data"
     cap_add:
       - NET_ADMIN
+    healthcheck: *nethsm-healthcheck
 
   nethsm4:
     hostname: nethsm4
-    image: nitrokey/nethsm:test-clustering
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
     networks:
       nethsm:
         interface_name: eth0
@@ -60,6 +69,7 @@ services:
       - NET_ADMIN
     volumes:
       - "data4:/data"
+    healthcheck: *nethsm-healthcheck
 
   etcd-witness:
     hostname: etcd-wittness
@@ -84,32 +94,11 @@ services:
     #   - ca_cert
     #   - etcd_server_cert
     #   - etcd_server_key
-
-  nethsm-test:
-    image: nitrokey/nethsm:test-clustering
-    pull_policy: never
-    depends_on:
-      - nethsm1
-      - nethsm2
-      - nethsm3
-      - nethsm4
-    entrypoint:
-      - "/bin/sh"
-      - "-c"
-      - |-
-        echo -n "nethsm1: "
-        curl -f -k -s -w '\n' https://nethsm1/api/v1/info
-        echo -n "nethsm2: "
-        curl -f -k -s -w '\n' https://nethsm2/api/v1/info
-        echo -n "nethsm3: "
-        curl -f -k -s -w '\n' https://nethsm3/api/v1/info
-        echo -n "nethsm4: "
-        curl -f -k -s -w '\n' https://nethsm4/api/v1/info
-        sleep 1000
-    networks:
-      nethsm:
-        interface_name: eth0
-        ipv4_address: 172.22.1.99
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
 
 networks:
   nethsm:
