@@ -96,8 +96,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
-CGO_ENABLED=0 <<EOF
-	go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
+    CGO_ENABLED=0 go build -o src/container/alpine/tlsproxy src/container/alpine/tlsproxy.go
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
