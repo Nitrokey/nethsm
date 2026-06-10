@@ -97,8 +97,6 @@ build_container_test_image:
   needs:
     - job: build_builder_image
       optional: true
-    - job: build_dev
-      artifacts: false
   stage: build
   image: docker:cli
   script:
