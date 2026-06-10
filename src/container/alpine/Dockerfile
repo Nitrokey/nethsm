@@ -110,7 +110,7 @@ EOF
 
 FROM builder AS prod_builder
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
+RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   OPAMJOBS=$(nproc) opam exec -- make -j$(nproc) build-keyfender
 EOF
 
