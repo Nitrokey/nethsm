@@ -14,7 +14,6 @@ package main
 
 import (
 	"container/ring"
-	"context"
 	_ "embed"
 	"log"
 	"os"
@@ -22,7 +21,8 @@ import (
 	"syscall"
 
 	"nethsm/hw"
-	"nethsm/script"
+	"nethsm/internal/script"
+	. "nethsm/internal/util"
 )
 
 // globalState encapsulates global variables shared across the uinit codebase.
@@ -48,8 +48,7 @@ type globalState struct {
 	keyfenderIP          string
 	entropyPort          string
 	deviceID             string
-	killEtcd             context.CancelFunc
-	etcdStoppedCh        chan bool
+	etcdSupervisor       *etcdSupervisor
 	etcdProcessState     atomic.Pointer[os.ProcessState]
 	etcdLogs             *ring.Ring
 }
@@ -60,7 +59,7 @@ type globalState struct {
 var G = &globalState{
 	s:                    script.New(),
 	etcdUIDGID:           1,
-	kernelRelease:        getKernelRelease(),
+	kernelRelease:        GetKernelRelease(),
 	diskDevice:           hw.DiskDev,
 	sysActivePartition:   hw.DiskPrefix + "1",
 	sysInactivePartition: hw.DiskPrefix + "2",
@@ -71,8 +70,6 @@ var G = &globalState{
 	keyfenderIP:          "169.254.169.1",
 	entropyPort:          "4444",
 	deviceID:             "",
-	killEtcd:             nil,
-	etcdStoppedCh:        nil,
 }
 
 func main() {
@@ -82,6 +79,7 @@ func main() {
 	if len(os.Args) == 2 {
 		hostname = os.Args[1]
 	}
+	log.SetOutput(os.Stdout)
 	log.SetPrefix(hostname + ": ")
 
 	switch hostname {

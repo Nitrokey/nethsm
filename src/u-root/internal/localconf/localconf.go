@@ -1,7 +1,8 @@
 // Copyright 2023 - 2023, Nitrokey GmbH
 // SPDX-License-Identifier: EUPL-1.2
 
-package main
+// Package localconf provides local configuration management for NetHSM.
+package localconf
 
 import (
 	"crypto/aes"
@@ -14,6 +15,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -35,14 +38,14 @@ var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 		if key != "" {
 			log.Fatal("tried to set local config key twice")
 		}
-		keyMaterial := append(deviceKey, []byte("local-config")...)
+		keyMaterial := append(deviceKey, []byte(authData)...)
 		hash := sha256.Sum256(keyMaterial)
 		key = string(hash[:]) // 32 bytes for AES-256
 	}
 	return get, set
 }()
 
-type localConf struct {
+type LocalConf struct {
 	TLSCert       string `json:"tls_cert"`
 	TLSKey        string `json:"tls_key"`
 	TLSTrustedCA  string `json:"tls_cluster_ca,omitempty"`
@@ -51,11 +54,33 @@ type localConf struct {
 	NetworkConfig string `json:"network_config"`
 }
 
-var localConfig Observable[localConf]
+// ChangeReq is sent to registered consumers when the local config changes.
+// The consumer must send a result (nil or an error) on Reply.
+type ChangeReq struct {
+	Conf  *LocalConf
+	Reply chan<- error
+}
 
-func loadLocalConfigFromCache() error {
+var (
+	localConfig atomic.Pointer[LocalConf]
+	consumers   []chan<- ChangeReq
+	consumersMu sync.Mutex
+)
+
+// RegisterConsumer registers ch to receive a ChangeReq whenever Set succeeds
+// and the config has changed. Set blocks until all consumers have replied.
+func RegisterConsumer(ch chan<- ChangeReq) {
+	consumersMu.Lock()
+	consumers = append(consumers, ch)
+	consumersMu.Unlock()
+}
+
+func loadFromCache() error {
 	log.Printf("Loading local config from cache file")
-	if c, _ := localConfig.Get(); c != nil {
+
+	var conf LocalConf
+
+	if !localConfig.CompareAndSwap(nil, &conf) {
 		return fmt.Errorf("local config already set")
 	}
 
@@ -79,7 +104,6 @@ func loadLocalConfigFromCache() error {
 	}
 
 	nonceSize := gcm.NonceSize()
-
 	nonce := fileData[:nonceSize]
 	encrypted := fileData[nonceSize:]
 
@@ -88,20 +112,42 @@ func loadLocalConfigFromCache() error {
 		return fmt.Errorf("failed to decrypt: %w", err)
 	}
 
-	var conf localConf
 	if err := json.Unmarshal(plaintext, &conf); err != nil {
 		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	_ = localConfig.Set(&conf)
-
 	return nil
 }
 
-func setLocalConfig(conf *localConf) error {
-	jsonConf, err := json.Marshal(conf)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
+// Init initializes the localconf package
+func Init(key []byte) error {
+	setLocalConfigKey(key)
+	return loadFromCache()
+}
+
+// Get returns a copy of localConfig.
+func Get() LocalConf {
+	lc := localConfig.Load()
+	if lc == nil {
+		log.Fatal("localconf used before initialization")
+	}
+	return *lc
+}
+
+// Set updates the local config from JSON and stores changes to the local cache
+// file. It then notifies all registered consumers concurrently and waits for
+// all of them to reply before returning. Returns nil if the config is unchanged.
+func Set(jsonConf []byte) error {
+	var newConf LocalConf
+	oldConf := Get()
+
+	if err := json.Unmarshal(jsonConf, &newConf); err != nil {
+		return fmt.Errorf("failed to parse local config: %w", err)
+	}
+
+	if oldConf == newConf {
+		log.Printf("No change in local config")
+		return nil
 	}
 
 	block, err := aes.NewCipher(localConfigKey())
@@ -122,17 +168,31 @@ func setLocalConfig(conf *localConf) error {
 	// Encrypt: Seal prepends the nonce to the encrypted data
 	fileData := gcm.Seal(nonce, nonce, jsonConf, []byte(authData))
 
-	err = os.WriteFile(localConfigFile+".tmp", fileData, 0o666)
-	if err != nil {
+	if err := os.WriteFile(localConfigFile+".tmp", fileData, 0o666); err != nil {
 		return fmt.Errorf("create sealed Device Key file: %w", err)
 	}
-	err = os.Rename(localConfigFile+".tmp", localConfigFile)
-	if err != nil {
+	if err := os.Rename(localConfigFile+".tmp", localConfigFile); err != nil {
 		return fmt.Errorf("rename sealed Device Key file: %w", err)
 	}
 	syscall.Sync()
 
-	_ = localConfig.Set(conf)
+	localConfig.Store(&newConf)
 
-	return nil
+	consumersMu.Lock()
+	cs := append([]chan<- ChangeReq(nil), consumers...)
+	consumersMu.Unlock()
+
+	errs := make([]error, len(cs))
+	var wg sync.WaitGroup
+	for i, ch := range cs {
+		wg.Add(1)
+		go func(i int, ch chan<- ChangeReq) {
+			defer wg.Done()
+			reply := make(chan error)
+			ch <- ChangeReq{Conf: &newConf, Reply: reply}
+			errs[i] = <-reply
+		}(i, ch)
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }

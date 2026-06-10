@@ -1,18 +1,20 @@
 // Copyright 2023 - 2023, Nitrokey GmbH
 // SPDX-License-Identifier: EUPL-1.2
 
-package main
+// Package util provides small utility helpers
+package util
 
 import (
 	"log"
 	"os"
 	"os/exec"
 	"runtime/debug"
+	"sync"
 	"syscall"
 )
 
-// Returns the current kernel release (a.k.a. "uname -r").
-func getKernelRelease() string {
+// GetKernelRelease returns the current kernel release (a.k.a. "uname -r").
+func GetKernelRelease() string {
 	toString := func(f [65]int8) string {
 		out := make([]byte, 0, 64)
 		for _, v := range f[:] {
@@ -32,19 +34,19 @@ func getKernelRelease() string {
 	return toString(u.Release)
 }
 
-// Kill all processes except self with sig.
+// KillAll processes except self with sig.
 // Note that this relies on Linux-specific behaviour of kill(2), where sending
 // a signal to PID -1 will idempotently send it to all processes the caller has
 // permission to kill, except the caller itself and init (PID 1). For details
 // see the Linux manual page for the kill system call.
-func killAll(sig os.Signal) {
+func KillAll(sig os.Signal) {
 	if err := syscall.Kill(-1, sig.(syscall.Signal)); err != nil {
 		log.Printf("Error sending kill(-1, %s): %v", sig, err)
 	}
 }
 
-// Extract the CPIO archiveFile in destDir, which must exist and be a directory.
-func extractCpioArchive(archiveFile string, destDir string) (err error) {
+// ExtractCpioArchive extracts the CPIO archiveFile in destDir, which must exist and be a directory.
+func ExtractCpioArchive(archiveFile string, destDir string) (err error) {
 	f, err := os.Open(archiveFile)
 	if err != nil {
 		return err
@@ -63,9 +65,9 @@ func extractCpioArchive(archiveFile string, destDir string) (err error) {
 	return nil
 }
 
-// safeGetenv is like os.Getenv but with a default supplied if the environment
+// SafeGetenv is like os.Getenv but with a default supplied if the environment
 // variable does not exist.
-func safeGetenv(key string, defaultValue string) string {
+func SafeGetenv(key string, defaultValue string) string {
 	value, found := os.LookupEnv(key)
 	if found {
 		return value
@@ -74,19 +76,7 @@ func safeGetenv(key string, defaultValue string) string {
 	}
 }
 
-// Dump network status.
-// Uses global Script context.
-func dumpNetworkStatus() {
-	G.s.Logf("Interfaces:")
-	G.s.Execf("/bbin/ip link")
-	G.s.Logf("Addresses:")
-	G.s.Execf("/bbin/ip addr")
-	G.s.Logf("Routes:")
-	G.s.Execf("/bbin/ip route")
-	G.s.Execf("/bbin/ip -6 route")
-}
-
-func startTask(name string, f func()) {
+func StartTask(name string, f func()) {
 	go func() {
 		log.Printf("%s task started.", name)
 		defer func() {
@@ -99,4 +89,17 @@ func startTask(name string, f func()) {
 		}()
 		f()
 	}()
+}
+
+// MakeNtfyPair creates a 1-to-many pair of a safe one-time-use notify function
+// and a broadcast signal channel.
+func MakeNtfyPair() (func(), <-chan struct{}) {
+	ch := make(chan struct{})
+	var once sync.Once
+	emit := func() {
+		once.Do(func() {
+			close(ch)
+		})
+	}
+	return emit, ch
 }

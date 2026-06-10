@@ -5,7 +5,6 @@ package main
 
 import (
 	"bufio"
-	"container/ring"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,8 +13,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-
-	//"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +20,8 @@ import (
 	"time"
 
 	"nethsm/hw"
+	"nethsm/internal/localconf"
+	. "nethsm/internal/util"
 )
 
 type clusterLogItem = map[string]any
@@ -256,19 +255,17 @@ func platformListener(result chan string) {
 				return nil, err, false
 			}
 			initialCluster := strings.TrimSuffix(param, "\n")
-			args := JoinArgs{initialCluster}
 			log.Printf("[%s] Requested JOIN-CLUSTER (%s).", remoteAddr, initialCluster)
-			// kill previously running etcd and wait until it exits
-			G.killEtcd()
-			<-G.etcdStoppedCh
-			err = startEtcd(EtcdClusterJoin, args)
-			if err != nil {
+			reply := make(chan error, 1)
+			G.etcdSupervisor.SendCmd(EtcdCommand{
+				Kind:     EtcdCmdJoin,
+				JoinArgs: JoinArgs{initialCluster},
+				Reply:    reply,
+			})
+			if err := <-reply; err != nil {
 				return errorResponse(err), err, false
 			}
-			// give some initial time for etcd to start learning from the
-			// cluster
-			time.Sleep(10 * time.Second)
-			return okResponse(""), err, false
+			return okResponse(""), nil, false
 		}
 
 		doDiagnose := func() ([]byte, error, bool) {
@@ -333,19 +330,17 @@ func platformListener(result chan string) {
 
 		doForceNewCluster := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested FORCE-NEW-CLUSTER.", remoteAddr)
-			// kill previously running etcd and wait until it exits
-			G.killEtcd()
-			if G.etcdStoppedCh != nil {
-				<-G.etcdStoppedCh
-			}
-			err = restoreFromSnapshotEtcd()
-			if err != nil {
+			reply := make(chan error, 1)
+			G.etcdSupervisor.SendCmd(EtcdCommand{
+				Kind:  EtcdCmdForceNew,
+				Reply: reply,
+			})
+			if err := <-reply; err != nil {
 				return errorResponse(err), err, false
 			}
-			log.Printf("FORCE-NEW-CLUSTER: Rebooting!")
-			// ask about reboot?
 			return okResponse(""), nil, true
 		}
+
 		// COMMIT-UPDATE
 		doCommitUpdate := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested COMMIT-UPDATE.", remoteAddr)
@@ -382,28 +377,10 @@ func platformListener(result chan string) {
 			if err != nil {
 				return errorResponse(err), err, false
 			}
-			var config localConf
-			err = json.Unmarshal(configJSON, &config)
+			err = localconf.Set(configJSON)
 			if err != nil {
-				err := fmt.Errorf("couldn't parse: '%s'", configJSON)
+				err := fmt.Errorf("couldn't store local config: %w", err)
 				return errorResponse(err), err, false
-			}
-			oldConf, _ := localConfig.Get()
-			if oldConf == nil || *oldConf != config {
-				log.Printf("Local config has changed, storing and restarting etcd")
-				err = setLocalConfig(&config)
-				if err != nil {
-					return errorResponse(err), err, false
-				}
-				// kill previously running etcd and wait until it exits
-				G.killEtcd()
-				<-G.etcdStoppedCh
-				err = startEtcd(EtcdNormal)
-				if err != nil {
-					return errorResponse(err), err, false
-				}
-			} else {
-				log.Printf("No change in local config")
 			}
 			return okResponse(""), nil, false
 		}
@@ -460,264 +437,6 @@ func platformListener(result chan string) {
 			result <- command
 			return
 		}
-	}
-}
-
-type EtcdMode = int
-
-const (
-	/* if /etcd/data empty (on first boot)
-	   create new 1-node cluster ready to accept new members
-		 - cannot fail
-
-	 if /etcd/data exists (after first boot)
-	   use existing cluster and try to connect to existing members if
-	   any were added in the past
-		 - cannot fail if new members were never added
-	   - !! will fail if cluster quorum is not met anymore i.e. if the
-	     majority of other members is unreachable (either they are down or we
-	     are isolated ourselves)
-	*/
-	EtcdNormal EtcdMode = iota
-
-	/* !! will delete /etcd/data !!
-	   create a new node as member of an existing cluster,
-	   assuming the cluster has already added our peer-urls
-
-	   !! will fail for any of the following is true
-	   - the wrong configuration is passed
-	   - the configured peers are not reachable
-	   - the cluster has not previously added this member
-	*/
-	EtcdClusterJoin
-)
-
-var etcdModeName = map[EtcdMode]string{
-	EtcdNormal:      "normal",
-	EtcdClusterJoin: "cluster join",
-}
-
-type JoinArgs struct {
-	initialCluster string // of the form "name1=url1:2380,name2=url2:2380,..."
-}
-
-func setSystemTime(t time.Time) error {
-	tv := syscall.NsecToTimeval(t.UnixNano())
-	return syscall.Settimeofday(&tv)
-}
-
-var rtcTime = func() func() time.Time {
-	t0 := time.Now() // stores RTC wall-time at t0
-	return func() time.Time {
-		return t0.Round(0).Add(time.Since(t0))
-	}
-}()
-
-const etcdBackupJoin = "/data/etcd.backup"
-
-func backupEtcd(dest string) error {
-	// !! remove all previous etcd data before joining a new cluster
-	// !! will get restored if etcd fails to start, but definitely deleted
-	// !! otherwise
-	G.s.Logf("Moving previous etcd data!")
-	if err := os.Rename("/data/etcd", dest); err != nil {
-		return err
-	}
-	if err := os.Mkdir("/data/etcd", 0o700); err != nil {
-		return err
-	}
-	if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
-		return err
-	}
-	return nil
-}
-
-const etcdBackupSnapshot = "/data/etcd.backup.snapshot"
-
-func restoreFromSnapshotEtcd() error {
-	if err := backupEtcd(etcdBackupSnapshot); err != nil {
-		return err
-	}
-
-	// TODO: restore with revision bump?
-	// OCaml client could send additionalData and give the revision value
-	G.s.ClearErr()
-	name := "nethsm"
-	if conf, _ := localConfig.Get(); conf != nil {
-		name = conf.DeviceID
-	}
-	G.s.ExecAsf(G.etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token etcd-%s-recovered --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, name)
-	if origErr := G.s.Err(); origErr != nil {
-		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
-		if err := os.RemoveAll("/data/etcd"); err != nil {
-			return fmt.Errorf("snapshot restore (%e) AND removeall failed: %e ! ", origErr, err)
-		}
-		if err := os.Rename(etcdBackupSnapshot, "/data/etcd"); err != nil {
-			return fmt.Errorf("snapshot restore (%e) AND backup rename failed: %e ! ", origErr, err)
-		}
-		return origErr
-	}
-	return nil
-}
-
-func startEtcd(mode EtcdMode, joinArgs ...JoinArgs) error {
-	G.s.Logf("Starting etcd server in %s mode", etcdModeName[mode])
-
-	cmd := "/bin/etcd" +
-		" --listen-client-urls=http://169.254.169.2:2379" +
-		" --listen-client-http-urls=http://127.0.0.1:2382" + // disables HTTP on client port
-		" --advertise-client-urls=" +
-		" --data-dir=/data/etcd" +
-		" --peer-skip-client-san-verification=true" +
-		" --auto-compaction-retention=1h" +
-		" --quota-backend-bytes=5694816256" + // should not be more than RAM
-		// --initial-advertise-peer-urls <- set at runtime to the actual keyfender IP
-		// --initial-cluster <- just ourself, expanded at runtime
-		" --max-txn-ops=512" +
-		// " --log-level debug"+
-		""
-
-	initialState := " --initial-cluster-state=new"
-	if mode == EtcdClusterJoin {
-		initialState = " --initial-cluster-state=existing"
-		if len(joinArgs) == 0 {
-			log.Printf("Missing initial cluster state when starting etcd in join mode! Falling back to normal")
-			mode = EtcdNormal
-		} else {
-			cmd += " --initial-cluster=" + strings.TrimSpace(joinArgs[0].initialCluster)
-		}
-	}
-
-	cmd += initialState
-
-	if mode == EtcdClusterJoin {
-		if err := backupEtcd(etcdBackupJoin); err != nil {
-			return err
-		}
-	}
-
-	name := "nethsm"
-
-	if conf, _ := localConfig.Get(); conf != nil {
-		if conf.TLSCert != "" && conf.TLSKey != "" && conf.TLSTrustedCA != "" {
-			G.s.Logf("Using local cache to start etcd with TLS")
-			fn := "/tmp/etcd_tls_cert.pem"
-			os.WriteFile(fn, []byte(conf.TLSCert), 0o666)
-			cmd += " --peer-cert-file=" + fn
-			fn = "/tmp/etcd_tls_key.pem"
-			os.WriteFile(fn, []byte(conf.TLSKey), 0o666)
-			cmd += " --peer-key-file=" + fn
-			fn = "/tmp/etcd_tls_trusted_ca.pem"
-			os.WriteFile(fn, []byte(conf.TLSTrustedCA), 0o666)
-			cmd += " --peer-trusted-ca-file=" + fn
-			cmd += " --peer-client-cert-auth=true"
-			name = conf.DeviceID
-			// Listen over https
-			cmd += " --listen-peer-urls=https://169.254.200.2:2380,https://[fc00:1:200::2]:2380"
-		}
-
-		if conf.TimeOffsetS != 0 {
-			t := rtcTime().Add(time.Duration(conf.TimeOffsetS) * time.Second)
-			G.s.Logf("Setting local time to %v", t)
-			if err := setSystemTime(t); err != nil {
-				log.Printf("Failed to set system time: %v", err)
-			}
-		}
-	}
-	cmd += " --name=" + name
-
-	G.etcdStoppedCh = make(chan bool)
-	aliveCh := make(chan struct{})
-
-	G.s.Logf("now launching: %s", cmd)
-	cancel, logPipe := G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, &G.etcdProcessState, G.etcdUIDGID, "%s", cmd)
-
-	if err := G.s.Err(); err != nil {
-		return fmt.Errorf("couldn't exec etcd: %e", err)
-	}
-
-	G.killEtcd = cancel
-	lastEtcdError := "unknown error"
-	G.etcdLogs = ring.New(1024)
-
-	go func() {
-		logs := bufio.NewReader(logPipe)
-		alive := false
-		for {
-			line, err := logs.ReadString('\n')
-			if err != nil {
-				return
-			}
-			log.Printf("etcd: %s", line)
-			if !alive && strings.Contains(line, "ready to serve client requests") {
-				close(aliveCh)
-				alive = true
-			}
-			if strings.Contains(line, "fatal") || strings.Contains(line, "error") {
-				lastEtcdError = line
-			}
-			var logItem clusterLogItem
-			err = json.Unmarshal([]byte(line), &logItem)
-			if err == nil && logItem != nil {
-				if level, ok := logItem["level"].(string); ok {
-					level := strings.ToLower(level)
-					switch level {
-					case "debug":
-						fallthrough
-					case "info":
-						// SKIP
-					default:
-						// store warn and above
-						// this is safe if new log levels are introduced,
-						// or if etcd changes logger libraries
-						// (we won't miss important logs)
-						G.etcdLogs.Value = logItem
-						G.etcdLogs = G.etcdLogs.Next()
-					}
-				}
-			}
-		}
-	}()
-	select {
-	case <-G.etcdStoppedCh:
-		log.Printf("etcd exited immediately: %s", lastEtcdError)
-		origErr := fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
-		if mode == EtcdClusterJoin {
-			log.Printf("restoring data before join and restarting etcd!")
-			if err := os.RemoveAll("/data/etcd"); err != nil {
-				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
-			}
-			if err := os.Rename(etcdBackupJoin, "/data/etcd"); err != nil {
-				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
-			}
-			if err := startEtcd(EtcdNormal); err != nil {
-				return fmt.Errorf("join failed (%e) AND restore failed: %e ! ", origErr, err)
-			}
-		}
-		return origErr
-	case <-aliveCh:
-		log.Printf("etcd is now serving requests!")
-		if mode == EtcdClusterJoin {
-			log.Printf("join succeeded: removing backed up data")
-			if err := os.RemoveAll(etcdBackupJoin); err != nil {
-				return err
-			}
-		}
-
-		if mode == EtcdNormal {
-			if _, err := os.Stat(etcdBackupSnapshot); os.IsExist(err) {
-				log.Printf("startup succeeded: removing backed up data")
-				if err := os.RemoveAll(etcdBackupSnapshot); err != nil {
-					return err
-				}
-			}
-		}
-		return G.s.Err()
-	case <-time.After(30 * time.Second):
-		log.Printf("etcd took too long to start: %s", lastEtcdError)
-		cancel() // stop etcd and wait for it to stop
-		<-G.etcdStoppedCh
-		return fmt.Errorf("etcd took too long to start: %s", lastEtcdError)
 	}
 }
 
@@ -792,7 +511,7 @@ func setupPlatform() error {
 	const initFile = "/data/initialised-v1"
 	if _, err := os.Stat(initFile); os.IsNotExist(err) {
 		log.Printf("Populating /data")
-		if err := extractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
+		if err := ExtractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
 			return fmt.Errorf("error extracting /data template: %w", err)
 		}
 	}
@@ -818,8 +537,8 @@ func sPlatformActions() {
 	}
 
 	c := make(chan string)
-	startTask("TRNG", trngTask)
-	startTask("Platform Listener", func() { platformListener(c) })
+	StartTask("TRNG", trngTask)
+	StartTask("Platform Listener", func() { platformListener(c) })
 
 	if !hw.IsTesting() {
 		if err := tpmCreatePlatformData(); err != nil {
@@ -829,18 +548,10 @@ func sPlatformActions() {
 		mockCreatePlatformData()
 	}
 
-	etcdStartRetries := 5
-	err := startEtcd(EtcdNormal)
-	for etcdStartRetries > 0 && err != nil {
-		log.Printf("Couldn't start etcd, retrying in 5 seconds: %v", err)
-		etcdStartRetries--
-		time.Sleep(5 * time.Second)
-		err = startEtcd(EtcdNormal)
-	}
-	if err != nil {
-		log.Printf("Couldn't start etcd at all: %v", err)
-		return
-	}
+	StartTask("time", NewTimeTask().Run)
+
+	G.etcdSupervisor = NewEtcdSupervisor()
+	StartTask("etcd supervisor", G.etcdSupervisor.Run)
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
@@ -850,11 +561,13 @@ func sPlatformActions() {
 		return
 	}
 
+	G.etcdSupervisor.Shutdown()
+
 	G.s.Logf("Terminating all processes.")
-	killAll(syscall.Signal(15))
+	KillAll(syscall.Signal(15))
 	time.Sleep(5 * time.Second)
 	G.s.Logf("Killing all remaining processes.")
-	killAll(syscall.Signal(9))
+	KillAll(syscall.Signal(9))
 	G.s.Logf("Unmounting /data")
 	G.s.Execf("/bbin/umount /data")
 

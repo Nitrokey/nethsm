@@ -7,7 +7,11 @@ import (
 
 	"github.com/go-faker/faker/v4"
 	"github.com/google/jsonschema-go/jsonschema"
+
+	"nethsm/internal/localconf"
 )
+
+type localConfType = localconf.LocalConf
 
 func testSchemaWith[T any](t *testing.T, sample T, schemaPath string) {
 	t.Helper()
@@ -79,7 +83,7 @@ var tests = map[string]struct {
 	f (func(t *testing.T, schemaPath string))
 }{
 	"platform_data": {testSchema[platformData]},
-	"local_conf":    {testSchema[localConf]},
+	"local_conf":    {testSchema[localConfType]},
 	"network":       {testSchema[Network]},
 	"diagnose_data": {testSchemaDiagnoseData},
 }

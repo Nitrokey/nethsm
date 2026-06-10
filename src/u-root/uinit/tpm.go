@@ -28,6 +28,7 @@ import (
 	"github.com/canonical/go-tpm2/policyutil"
 
 	"nethsm/hw"
+	"nethsm/internal/localconf"
 )
 
 const (
@@ -111,7 +112,8 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 		objectutil.NewECCAttestationKeyTemplate(
 			objectutil.WithNameAlg(tpm2.HashAlgorithmSHA384),
 			objectutil.WithECCCurve(tpm2.ECCCurveNIST_P384),
-			objectutil.WithECCScheme(tpm2.ECCSchemeECDSA, tpm2.HashAlgorithmSHA384)),
+			objectutil.WithECCScheme(tpm2.ECCSchemeECDSA, tpm2.HashAlgorithmSHA384),
+		),
 		nil, nil, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("create AK384: %w", err)
@@ -162,7 +164,8 @@ func tpmCreatePlatformData() error {
 			objectutil.NewECCStorageKeyTemplate(
 				objectutil.WithNameAlg(tpm2.HashAlgorithmSHA384),
 				objectutil.WithSymmetricScheme(tpm2.SymObjectAlgorithmAES, 256, tpm2.SymModeCFB),
-				objectutil.WithECCCurve(tpm2.ECCCurveNIST_P384)),
+				objectutil.WithECCCurve(tpm2.ECCCurveNIST_P384),
+			),
 			nil, nil, nil)
 		if err != nil {
 			return fmt.Errorf("create SRK: %w", err)
@@ -249,19 +252,19 @@ func tpmCreatePlatformData() error {
 
 		data.DeviceKey = deviceKey
 
-		setLocalConfigKey(deviceKey)
-		if err := loadLocalConfigFromCache(); err != nil {
-			log.Printf("Loading local config cache failed: %v", err)
+		if err := localconf.Init(deviceKey); err != nil {
+			log.Printf("Initializing local config failed: %v", err)
 		}
 
-		if conf, _ := localConfig.Get(); conf != nil && conf.NetworkConfig != "" {
+		lc := localconf.Get()
+		if lc.NetworkConfig != "" {
 			// return stored network config as part of platform data
-			data.NetworkConfig = conf.NetworkConfig
+			data.NetworkConfig = lc.NetworkConfig
 		}
-		if conf, _ := localConfig.Get(); conf != nil && conf.TLSCert != "" && conf.TLSKey != "" {
+		if lc.TLSCert != "" && lc.TLSKey != "" {
 			// return last TLS cert/key if stored, for use if booting in Failed mode
-			data.LastTlsCert = conf.TLSCert
-			data.LastTlsKey = conf.TLSKey
+			data.LastTlsCert = lc.TLSCert
+			data.LastTlsKey = lc.TLSKey
 		}
 
 		platformDataCh <- data
@@ -299,7 +302,7 @@ func mockCreatePlatformData() {
 	platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
 	log.Printf("Fake Platform Data: %v\n", string(platformDataJSON))
 
-	setLocalConfigKey(data.DeviceKey)
+	localconf.Init(data.DeviceKey)
 	platformDataCh <- data
 	close(platformDataCh)
 }

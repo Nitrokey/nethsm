@@ -8,8 +8,8 @@ go 1.25
 require (
 	github.com/canonical/go-tpm2 v1.13.0
 	github.com/go-faker/faker/v4 v4.7.0
-	github.com/google/jsonschema-go v0.4.3
 	github.com/google/go-cmp v0.7.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/nftables v0.3.0
 	github.com/u-root/u-root v0.15.0
 	golang.org/x/sys v0.36.0

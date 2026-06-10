@@ -92,26 +92,19 @@ func (s *Script) Execf(format string, a ...any) {
 	s.ExecAsf(-1, format, a...)
 }
 
-func safeClose[T any](c *chan T) {
-	if c == nil {
-		return
-	}
-
-	ch := *c
-	if ch != nil {
-		close(ch)
-	}
-}
-
 // CancelableBackgroundExecAsf executes a fmt-formatted command in the background. Provision is
 // made for retrieving it's exit status, and the child is reaped and a message is
 // logged on exit. If uidgid is not -1, the command is executed with an UID
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running. It also returns a pointer to the process's exit state.
-func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, processState *atomic.Pointer[os.ProcessState], uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
-	closeCh := exitCh
-	defer safeClose(&closeCh)
+func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *atomic.Pointer[os.ProcessState], uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
+	earlyExitNtfy := exitedNtfy
+	defer func() {
+		if earlyExitNtfy != nil {
+			earlyExitNtfy()
+		}
+	}()
 
 	if processState != nil {
 		processState.Store(nil)
@@ -142,7 +135,7 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, processState *ato
 		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
 	}
 	var logPipe io.ReadCloser
-	if exitCh != nil {
+	if exitedNtfy != nil {
 		var err error
 		logPipe, err = cmd.StderrPipe()
 		if err != nil {
@@ -156,27 +149,24 @@ func (s *Script) CancelableBackgroundExecAsf(exitCh chan bool, processState *ato
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
 		return cancel, nil
 	}
-	go func(child *exec.Cmd) {
-		defer close(exitCh)
-		err := child.Wait()
+	go func() {
+		defer func() {
+			if exitedNtfy != nil {
+				exitedNtfy()
+			}
+		}()
+		err := cmd.Wait()
 		if processState != nil {
 			processState.Store(cmd.ProcessState)
 		}
-		var success bool
 		if err != nil {
 			log.Printf("Background process '%s' exited with status: %v", cmdSplit[0], err)
-			success = false
 		} else {
 			log.Printf("Background process '%s' exited", cmdSplit[0])
-			success = true
 		}
-		if exitCh != nil {
-			exitCh <- success
-		}
-	}(cmd)
-	// we no longer want to close the channel, the goroutine above will do that
-	closeCh = nil
-
+	}()
+	// we no longer want to call exitedNtfy, the goroutine above will do that
+	earlyExitNtfy = nil
 	return cancel, logPipe
 }
 

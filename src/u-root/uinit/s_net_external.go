@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"nethsm/hw"
-	"nethsm/script"
+	"nethsm/internal/script"
+	. "nethsm/internal/util"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -212,7 +213,7 @@ func sNetExternalActions() {
 	setupNFTables()
 
 	ch := make(chan struct{})
-	startTask("networkListener", func() { networkListener(ch) })
+	StartTask("networkListener", func() { networkListener(ch) })
 	<-ch
 }
 
@@ -389,4 +390,16 @@ func setupNFTables() {
 	}
 
 	log.Printf("nftables NAT rules added successfully")
+}
+
+// Dump network status.
+// Uses global Script context.
+func dumpNetworkStatus() {
+	G.s.Logf("Interfaces:")
+	G.s.Execf("/bbin/ip link")
+	G.s.Logf("Addresses:")
+	G.s.Execf("/bbin/ip addr")
+	G.s.Logf("Routes:")
+	G.s.Execf("/bbin/ip route")
+	G.s.Execf("/bbin/ip -6 route")
 }

@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
+
+	. "nethsm/internal/util"
 )
 
 var tests = map[string]struct {
@@ -26,9 +28,9 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 		t.Run(cmd, func(t *testing.T) {
 			t.Parallel()
 			s := New()
-			exitCh := make(chan bool)
+			exitedNtfy, exitedSig := MakeNtfyPair()
 			processState := new(atomic.Pointer[os.ProcessState])
-			cancel, pipe := s.CancelableBackgroundExecAsf(exitCh, processState, -1, "%s", cmd)
+			cancel, pipe := s.CancelableBackgroundExecAsf(exitedNtfy, processState, -1, "%s", cmd)
 			if test.inCancel {
 				t.Logf("Calling cancel()")
 				cancel()
@@ -46,14 +48,7 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 				t.Errorf("started: got %t, wanted %t", started, test.outStarted)
 			}
 
-			var success bool
-			success, ok := <-exitCh
-			if !ok && test.outStarted {
-				t.Errorf("channel closed without providing success value")
-			}
-			if success != test.outSuccess {
-				t.Errorf("%s success: got %t, wanted %t", cmd, success, test.outSuccess)
-			}
+			<-exitedSig
 
 			state := processState.Load()
 			if state == nil && test.outStarted {

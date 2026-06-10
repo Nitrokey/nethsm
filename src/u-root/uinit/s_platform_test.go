@@ -4,6 +4,7 @@
 package main
 
 import (
+	"container/ring"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	. "nethsm/internal/util"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -92,17 +95,15 @@ func TestDiagnose(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("response mismatch (-want +got):\n%s", diff)
 	}
-
-}
-
-func stopEtcd() {
-	G.killEtcd()
-	<-G.etcdStoppedCh
 }
 
 func mockEtcdFail() error {
-	G.etcdStoppedCh = make(chan bool)
-	G.killEtcd, _ = G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, &G.etcdProcessState, -1, "%s", "/bin/false")
+	exitedNtfy, exitedSig := MakeNtfyPair()
+	cancel, _ := G.s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/false")
+	G.etcdSupervisor.stopEtcd = func() {
+		cancel()
+		<-exitedSig
+	}
 	if err := G.s.Err(); err != nil {
 		log.Printf("Cannot launch process")
 		return err
@@ -111,10 +112,14 @@ func mockEtcdFail() error {
 }
 
 func mockEtcdRun() error {
-	G.etcdStoppedCh = make(chan bool)
+	exitedNtfy, exitedSig := MakeNtfyPair()
 	// sleep more than 30s, which is the default deadline, and more than 60, which is the global deadline
 	G.s.ClearErr()
-	G.killEtcd, _ = G.s.CancelableBackgroundExecAsf(G.etcdStoppedCh, &G.etcdProcessState, -1, "%s", "/bin/sleep 80")
+	cancel, _ := G.s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/sleep 80")
+	G.etcdSupervisor.stopEtcd = func() {
+		cancel()
+		<-exitedSig
+	}
 	if err := G.s.Err(); err != nil {
 		log.Printf("Cannot launch process")
 		return err
@@ -123,11 +128,11 @@ func mockEtcdRun() error {
 }
 
 func TestDiagnoseRun(t *testing.T) {
-	stopEtcd()
+	G.etcdSupervisor.stopEtcd()
 	if err := mockEtcdRun(); err != nil {
 		t.Fatalf("Cannot run etcd mock: %s", err)
 	}
-	defer stopEtcd()
+	defer G.etcdSupervisor.stopEtcd()
 
 	// TODO: make snapshot mockable
 
@@ -163,6 +168,8 @@ func TestMain(m *testing.M) {
 
 	G.platListenerAddress = tmpu.Name()
 	G.listenerProtocol = "unix"
+	G.etcdSupervisor = NewEtcdSupervisor()
+	G.etcdLogs = ring.New(1024)
 
 	err = mockEtcdFail()
 	if err != nil {
