@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"nethsm/hw"
@@ -49,7 +50,7 @@ type SNetData struct {
 
 // setProcFsInt writes an integer value to a procfs/sysctl file
 func setProcFsInt(path string, value int) {
-	err := os.WriteFile(path, []byte(fmt.Sprintf("%d", value)), 0o644)
+	err := os.WriteFile(path, []byte(strconv.Itoa(value)), 0o644)
 	if err != nil {
 		log.Printf("Failed to set %s to %d: %v", path, value, err)
 	}
@@ -89,7 +90,7 @@ func configNet(conf Network) error {
 // Due to there being no way to set a listen(2) backlog in Go, >1 connections
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
-func networkListener(_ chan struct{}) {
+func networkListener() {
 	listener, err := net.Listen(listenerProtocol, netListenerAddress)
 	if err != nil {
 		log.Fatalf("Unable to launch listener on %s:%s: %v", listenerProtocol,
@@ -133,24 +134,6 @@ func networkListener(_ chan struct{}) {
 			continue
 		}
 
-		// Returns an OK response, optionally with a message if not empty.
-		okResponse := func(m string) []byte {
-			if m != "" {
-				return []byte("OK " + m + "\n")
-			} else {
-				return []byte("OK\n")
-			}
-		}
-
-		// Returns an ERROR response, optionally with an error message if e is
-		// not nil.
-		errorResponse := func(e error) []byte {
-			if e != nil {
-				return []byte("ERROR " + fmt.Sprintf("%v", e) + "\n")
-			} else {
-				return []byte("ERROR\n")
-			}
-		}
 		var response []byte
 
 		if data.Network != nil {
@@ -212,9 +195,8 @@ func sNetExternalActions() {
 
 	setupNFTables()
 
-	ch := make(chan struct{})
-	StartTask("networkListener", func() { networkListener(ch) })
-	<-ch
+	StartTask("networkListener", networkListener)
+	select {}
 }
 
 func setupNFTables() {

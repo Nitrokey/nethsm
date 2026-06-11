@@ -98,9 +98,7 @@ func gptSwapPartitions(diskDevice string) error {
 
 	// Swap lines[8] with lines[9], and correct the end digits (see
 	// implementation notes above).
-	tmp := lines[8]
-	lines[8] = lines[9]
-	lines[9] = tmp
+	lines[8], lines[9] = lines[9], lines[8]
 	lines[8] = strings.Replace(lines[8], "2 :", "1 :", 1)
 	lines[9] = strings.Replace(lines[9], "1 :", "2 :", 1)
 

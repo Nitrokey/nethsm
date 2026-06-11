@@ -107,6 +107,9 @@ func MakeNtfyPair() (func(), <-chan struct{}) {
 
 // RingCollect returns all non-nil values of type T stored in r.
 func RingCollect[T any](r *ring.Ring) []T {
+	if r == nil {
+		return nil
+	}
 	result := []T{}
 	r.Do(func(v any) {
 		if item, ok := v.(T); ok {

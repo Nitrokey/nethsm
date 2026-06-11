@@ -49,7 +49,7 @@ func triggerMuenEvent(event string) {
 // Requires /muenfs mounted.
 func loadUnikernelNets(s *script.Script) {
 	// Enumerate all channels with a xxx|in and xxx|out pair.
-	channels := []string{}
+	var channels []string
 	channelPaths := s.Glob("/muenfs/*|in")
 	for _, channelPath := range channelPaths {
 		if s.FileExists(strings.ReplaceAll(channelPath, "|in", "|out")) {
@@ -63,15 +63,10 @@ func loadUnikernelNets(s *script.Script) {
 		// (pair), naming the Linux interfaces starting with net0...
 		s.Logf("Loading muennet for channels: %v", channels)
 		index := 0
-		names := []string{}
-		inChannels := []string{}
-		outChannels := []string{}
-		readerProtos := []string{}
-		writerProtos := []string{}
-		flags := []string{}
+		var names, inChannels, outChannels, readerProtos, writerProtos, flags []string
 		for _, channel := range channels {
 			names = append(names, fmt.Sprintf("net%d", index))
-			index += 1
+			index++
 			// xxx|out is our in=, xxx|in is our out=, this is intentional.
 			inChannels = append(inChannels, fmt.Sprintf("%s|out", channel))
 			outChannels = append(outChannels, fmt.Sprintf("%s|in", channel))

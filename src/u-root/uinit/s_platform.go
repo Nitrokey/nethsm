@@ -47,6 +47,22 @@ type diagnoseData struct {
 	ClusterState    clusterState     `json:"clusterState"`
 }
 
+// okResponse returns an OK response, optionally with a message if not empty.
+func okResponse(m string) []byte {
+	if m != "" {
+		return []byte("OK " + m + "\n")
+	}
+	return []byte("OK\n")
+}
+
+// errorResponse returns an ERROR response, optionally with an error message if e is not nil.
+func errorResponse(e error) []byte {
+	if e != nil {
+		return []byte("ERROR " + e.Error() + "\n")
+	}
+	return []byte("ERROR\n")
+}
+
 // getClusterState returns the etcd process's state
 func getClusterState(processState *os.ProcessState) (cs clusterState) {
 	if processState == nil {
@@ -56,23 +72,23 @@ func getClusterState(processState *os.ProcessState) (cs clusterState) {
 	cs.Running = false
 
 	if processState.Exited() {
-		cs.Exited = new(int)
-		*cs.Exited = processState.ExitCode()
+		code := processState.ExitCode()
+		cs.Exited = &code
 		return
 	}
 
 	if sys, ok := processState.Sys().(syscall.WaitStatus); ok {
 		if sys.Exited() {
-			cs.Exited = new(int)
-			*cs.Exited = sys.ExitStatus()
+			code := sys.ExitStatus()
+			cs.Exited = &code
 		}
 		if sys.Signaled() {
-			cs.Signaled = new(int)
-			*cs.Signaled = int(sys.Signal())
+			sig := int(sys.Signal())
+			cs.Signaled = &sig
 		}
 		if sys.Stopped() {
-			cs.Stopped = new(int)
-			*cs.Stopped = int(sys.StopSignal())
+			stopSig := int(sys.StopSignal())
+			cs.Stopped = &stopSig
 		}
 	}
 	return
@@ -134,25 +150,6 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 			continue
 		}
 		command = strings.TrimSuffix(command, "\n")
-
-		// Returns an OK response, optionally with a message if not empty.
-		okResponse := func(m string) []byte {
-			if m != "" {
-				return []byte("OK " + m + "\n")
-			} else {
-				return []byte("OK\n")
-			}
-		}
-
-		// Returns an ERROR response, optionally with an error message if e is
-		// not nil.
-		errorResponse := func(e error) []byte {
-			if e != nil {
-				return []byte("ERROR " + fmt.Sprintf("%v", e) + "\n")
-			} else {
-				return []byte("ERROR\n")
-			}
-		}
 
 		// doXXX() are closures that process the actual command, this makes it
 		// possible to use defer and return errors from within internal loops
@@ -234,7 +231,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 					err := fmt.Errorf("(%d/%d) Short write: %d", block, updateBlocks, wn)
 					return errorResponse(err), err, false
 				}
-				block += 1
+				block++
 			}
 
 			// Enable COMMIT-UPDATE.
@@ -332,10 +329,9 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 
 			if err := gptSwapPartitions(hw.DiskDev); err != nil {
 				return errorResponse(err), err, false
-			} else {
-				haveUpdate = false
-				return okResponse(""), nil, false
 			}
+			haveUpdate = false
+			return okResponse(""), nil, false
 		}
 
 		// SET-LOCAL-CONFIG
@@ -366,8 +362,8 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 			return okResponse(""), nil, false
 		}
 
-		var response []byte = nil
-		var cmdErr error = nil
+		var response []byte
+		var cmdErr error
 		terminalCommand := false
 		switch command {
 		case "PLATFORM-DATA":

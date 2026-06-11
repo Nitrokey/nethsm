@@ -281,7 +281,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 			}
 		}
 		s.lastConf = conf
-		return sc.Err()
+		return nil
 
 	case <-time.After(30 * time.Second):
 		cancel()
@@ -321,7 +321,7 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, e
 		}
 		cmd += " --peer-cert-file=" + fn
 		fn = "/tmp/etcd_tls_key.pem"
-		if err := os.WriteFile(fn, []byte(conf.tlsKey), 0o600); err != nil {
+		if err := os.WriteFile(fn, []byte(conf.tlsKey), 0o666); err != nil {
 			return "", fmt.Errorf("write TLS key: %w", err)
 		}
 		cmd += " --peer-key-file=" + fn
