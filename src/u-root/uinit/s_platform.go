@@ -20,6 +20,7 @@ import (
 
 	"nethsm/hw"
 	"nethsm/internal/localconf"
+	"nethsm/internal/script"
 	. "nethsm/internal/util"
 )
 
@@ -422,7 +423,7 @@ func platformListener(result chan string) {
 	}
 }
 
-func setupPlatform() error {
+func setupPlatform(s *script.Script) error {
 	if hw.IsTesting() {
 		err := os.MkdirAll("/data/etcd", 0o755)
 		check(err)
@@ -433,31 +434,31 @@ func setupPlatform() error {
 
 	// Load TPM kernel modules first, as platformListener needs TPM for
 	// GetDeviceKey().
-	G.s.Logf("Loading TPM driver")
-	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
-	G.s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
+	s.Logf("Loading TPM driver")
+	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
+	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
 
-	mountMuenFs()
+	mountMuenFs(s)
 
-	G.s.Logf("Channels:")
-	G.s.Execf("/bbin/ls -l /muenfs")
+	s.Logf("Channels:")
+	s.Execf("/bbin/ls -l /muenfs")
 
-	mountMuenEvents()
+	mountMuenEvents(s)
 
-	G.s.Logf("Events:")
-	G.s.Execf("/bbin/ls -l /muenevents")
+	s.Logf("Events:")
+	s.Execf("/bbin/ls -l /muenevents")
 
-	loadUnikernelNets()
+	loadUnikernelNets(s)
 
-	G.s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0") // comm with keyfender
-	G.s.Execf("/bbin/ip -6 addr add fc00:1:169::2/120 dev net0")
-	G.s.Execf("/bbin/ip addr add 169.254.200.2/24 dev net1") // comm with router
-	G.s.Execf("/bbin/ip -6 addr add fc00:1:200::2/120 dev net1")
-	G.s.Execf("/bbin/ip link set dev net0 up")
-	G.s.Execf("/bbin/ip link set dev net1 up")
+	s.Execf("/bbin/ip addr add 169.254.169.2/24 dev net0") // comm with keyfender
+	s.Execf("/bbin/ip -6 addr add fc00:1:169::2/120 dev net0")
+	s.Execf("/bbin/ip addr add 169.254.200.2/24 dev net1") // comm with router
+	s.Execf("/bbin/ip -6 addr add fc00:1:200::2/120 dev net1")
+	s.Execf("/bbin/ip link set dev net0 up")
+	s.Execf("/bbin/ip link set dev net1 up")
 	// route etcd peer connections through router
-	G.s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
-	G.s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
+	s.Execf("/bbin/ip route replace default via 169.254.200.1 dev net1")
+	s.Execf("/bbin/ip -6 route replace default via fc00:1:200::1 dev net1")
 
 	for retry := range 20 {
 		net0, err := net.InterfaceByName("net0")
@@ -469,7 +470,7 @@ func setupPlatform() error {
 			return err
 		}
 		if (net0.Flags&net.FlagRunning != 0) && (net1.Flags&net.FlagRunning != 0) {
-			G.s.Logf("interfaces are UP")
+			log.Printf("interfaces are UP")
 			break
 		}
 		if retry >= 19 {
@@ -480,11 +481,11 @@ func setupPlatform() error {
 
 	dumpNetworkStatus()
 
-	G.s.Logf("Mounting /data")
-	G.s.Execf("/bbin/mkdir -p /data")
-	G.s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + hw.DiskPrefix + "3 /data")
+	s.Logf("Mounting /data")
+	s.Execf("/bbin/mkdir -p /data")
+	s.Execf("/bbin/mount -t ext4 -o nodev,noexec,nosuid " + hw.DiskPrefix + "3 /data")
 
-	if err := G.s.Err(); err != nil {
+	if err := s.Err(); err != nil {
 		return fmt.Errorf("script failed: %w", err)
 	}
 
@@ -499,12 +500,12 @@ func setupPlatform() error {
 	}
 
 	// Ensure /bin/etcd and /bin/etcdutl are present and executable
-	G.s.Execf("/bin/etcd --version")
-	if err := G.s.Err(); err != nil {
+	s.Execf("/bin/etcd --version")
+	if err := s.Err(); err != nil {
 		return fmt.Errorf("etcd is not properly installed: %w", err)
 	}
-	G.s.Execf("/bin/etcdutl version")
-	if err := G.s.Err(); err != nil {
+	s.Execf("/bin/etcdutl version")
+	if err := s.Err(); err != nil {
 		return fmt.Errorf("etcdutl is not properly installed: %w", err)
 	}
 
@@ -513,7 +514,8 @@ func setupPlatform() error {
 
 // sPlatformActions are executed for S-Platform.
 func sPlatformActions() {
-	if err := setupPlatform(); err != nil {
+	s := script.New()
+	if err := setupPlatform(s); err != nil {
 		log.Printf("setupPlatform: %v", err)
 		return
 	}
@@ -545,15 +547,16 @@ func sPlatformActions() {
 
 	G.etcdSupervisor.Shutdown()
 
-	G.s.Logf("Terminating all processes.")
+	log.Printf("Terminating all processes.")
 	KillAll(syscall.Signal(15))
 	time.Sleep(5 * time.Second)
-	G.s.Logf("Killing all remaining processes.")
+	log.Printf("Killing all remaining processes.")
 	KillAll(syscall.Signal(9))
-	G.s.Logf("Unmounting /data")
-	G.s.Execf("/bbin/umount /data")
+	log.Printf("Unmounting /data")
+	s = script.New()
+	s.Execf("/bbin/umount /data")
 
-	if err := G.s.Err(); err != nil {
+	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
 		return
 	}
@@ -570,10 +573,11 @@ func sPlatformActions() {
 		time.Sleep(2 * time.Second)
 		triggerMuenEvent("reboot")
 	case "FACTORY-RESET":
-		G.s.Logf("Formatting data partition.")
-		G.s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data " + hw.DiskPrefix + "3")
+		s = script.New()
+		s.Logf("Formatting data partition.")
+		s.Execf("/bin/mke2fs -t ext4 -E discard -F -m0 -L data " + hw.DiskPrefix + "3")
 
-		if err := G.s.Err(); err != nil {
+		if err := s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)
 			return
 		}

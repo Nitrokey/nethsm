@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"nethsm/internal/script"
 	. "nethsm/internal/util"
 
 	"github.com/google/go-cmp/cmp"
@@ -98,13 +99,14 @@ func TestDiagnose(t *testing.T) {
 }
 
 func mockEtcdFail() error {
+	s := script.New()
 	exitedNtfy, exitedSig := MakeNtfyPair()
-	cancel, _ := G.s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/false")
+	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/false")
 	G.etcdSupervisor.stopEtcd = func() {
 		cancel()
 		<-exitedSig
 	}
-	if err := G.s.Err(); err != nil {
+	if err := s.Err(); err != nil {
 		log.Printf("Cannot launch process")
 		return err
 	}
@@ -112,15 +114,15 @@ func mockEtcdFail() error {
 }
 
 func mockEtcdRun() error {
+	s := script.New()
 	exitedNtfy, exitedSig := MakeNtfyPair()
 	// sleep more than 30s, which is the default deadline, and more than 60, which is the global deadline
-	G.s.ClearErr()
-	cancel, _ := G.s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/sleep 80")
+	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/sleep 80")
 	G.etcdSupervisor.stopEtcd = func() {
 		cancel()
 		<-exitedSig
 	}
-	if err := G.s.Err(); err != nil {
+	if err := s.Err(); err != nil {
 		log.Printf("Cannot launch process")
 		return err
 	}

@@ -9,24 +9,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"nethsm/internal/script"
 )
 
 // Load muenfs kernel module and mount /muenfs.
-// Uses global Script context.
-func mountMuenFs() {
-	G.s.Logf("Loading muenfs")
-	G.s.Execf("/bbin/insmod /lib/modules/%s/extra/muenfs.ko", G.kernelRelease)
-	G.s.Execf("/bbin/mkdir -p /muenfs")
-	G.s.Execf("/bbin/mount -t muenfs none /muenfs")
+func mountMuenFs(s *script.Script) {
+	s.Logf("Loading muenfs")
+	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenfs.ko", G.kernelRelease)
+	s.Execf("/bbin/mkdir -p /muenfs")
+	s.Execf("/bbin/mount -t muenfs none /muenfs")
 }
 
 // Load muenevents kernel module and mount /muenevents.
-// Uses global Script context.
-func mountMuenEvents() {
-	G.s.Logf("Loading muenevents")
-	G.s.Execf("/bbin/insmod /lib/modules/%s/extra/muenevents.ko", G.kernelRelease)
-	G.s.Execf("/bbin/mkdir -p /muenevents")
-	G.s.Execf("/bbin/mount -t muenevents none /muenevents")
+func mountMuenEvents(s *script.Script) {
+	s.Logf("Loading muenevents")
+	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenevents.ko", G.kernelRelease)
+	s.Execf("/bbin/mkdir -p /muenevents")
+	s.Execf("/bbin/mount -t muenevents none /muenevents")
 }
 
 // Trigger muen event.
@@ -46,13 +46,13 @@ func triggerMuenEvent(event string) {
 }
 
 // Load muennet kernel module for all unikernel interfaces found on the system.
-// Requires /muenfs mounted, uses global Script context.
-func loadUnikernelNets() {
+// Requires /muenfs mounted.
+func loadUnikernelNets(s *script.Script) {
 	// Enumerate all channels with a xxx|in and xxx|out pair.
 	channels := []string{}
-	channelPaths := G.s.Glob("/muenfs/*|in")
+	channelPaths := s.Glob("/muenfs/*|in")
 	for _, channelPath := range channelPaths {
-		if G.s.FileExists(strings.ReplaceAll(channelPath, "|in", "|out")) {
+		if s.FileExists(strings.ReplaceAll(channelPath, "|in", "|out")) {
 			_, channel := filepath.Split(channelPath)
 			channel = strings.ReplaceAll(channel, "|in", "")
 			channels = append(channels, channel)
@@ -61,7 +61,7 @@ func loadUnikernelNets() {
 	if len(channels) > 0 {
 		// Construct the muennet module options for each unikernel channel
 		// (pair), naming the Linux interfaces starting with net0...
-		G.s.Logf("Loading muennet for channels: %v", channels)
+		s.Logf("Loading muennet for channels: %v", channels)
 		index := 0
 		names := []string{}
 		inChannels := []string{}
@@ -80,7 +80,7 @@ func loadUnikernelNets() {
 			flags = append(flags, "eth_dev")
 		}
 		join := func(a []string) string { return strings.Join(a, ",") }
-		G.s.Execf("/bbin/insmod /lib/modules/"+G.kernelRelease+"/extra/muennet.ko "+
+		s.Execf("/bbin/insmod /lib/modules/"+G.kernelRelease+"/extra/muennet.ko "+
 			"name=%s in=%s out=%s reader_protocol=%s writer_protocol=%s flags=%s",
 			join(names), join(inChannels), join(outChannels),
 			join(readerProtos), join(writerProtos), join(flags))

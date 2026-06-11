@@ -40,7 +40,7 @@ func applyTimeOffset(offsetS int) {
 		return
 	}
 	t := rtcTime().Add(time.Duration(offsetS) * time.Second)
-	G.s.Logf("Setting local time to %v", t)
+	log.Printf("Setting local time to %v", t)
 	if err := setSystemTime(t); err != nil {
 		log.Printf("Failed to set system time: %v", err)
 	}

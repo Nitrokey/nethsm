@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"nethsm/internal/localconf"
+	"nethsm/internal/script"
 	. "nethsm/internal/util"
 )
 
@@ -216,8 +217,7 @@ func (s *etcdSupervisor) launch(mode EtcdMode, conf etcdConf, joinArgs ...JoinAr
 // and returns. On success s.kill and s.etcdExited are updated to reflect the new
 // process; s.lastConf is updated to conf.
 func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) error {
-	G.s.ClearErr()
-	G.s.Logf("Starting etcd in %s mode", etcdModeName[mode])
+	log.Printf("etcd: starting in %s mode", etcdModeName[mode])
 
 	if mode == EtcdClusterJoin {
 		if len(joinArgs) == 0 || strings.TrimSpace(joinArgs[0].InitialCluster) == "" {
@@ -236,9 +236,10 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 	exitedNtfy, exitedSig := MakeNtfyPair()
 	aliveNtfy, aliveSig := MakeNtfyPair()
 
-	G.s.Logf("launching: %s", cmd)
-	cancel, logPipe := G.s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, G.etcdUIDGID, "%s", cmd)
-	if err := G.s.Err(); err != nil {
+	log.Printf("etcd: launching: %s", cmd)
+	sc := script.New()
+	cancel, logPipe := sc.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, G.etcdUIDGID, "%s", cmd)
+	if err := sc.Err(); err != nil {
 		return fmt.Errorf("couldn't exec etcd: %w", err)
 	}
 
@@ -276,7 +277,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 			}
 		}
 		s.lastConf = conf
-		return G.s.Err()
+		return sc.Err()
 
 	case <-time.After(30 * time.Second):
 		cancel()
@@ -309,7 +310,7 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, e
 
 	name := "nethsm"
 	if conf.tlsCert != "" && conf.tlsKey != "" && conf.tlsCA != "" {
-		G.s.Logf("Starting etcd with TLS")
+		log.Printf("Starting etcd with TLS")
 		fn := "/tmp/etcd_tls_cert.pem"
 		if err := os.WriteFile(fn, []byte(conf.tlsCert), 0o666); err != nil {
 			return "", fmt.Errorf("write TLS cert: %w", err)
@@ -368,7 +369,7 @@ func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string
 }
 
 func backupEtcd(dest string) error {
-	G.s.Logf("Moving previous etcd data to %s", dest)
+	log.Printf("Moving previous etcd data to %s", dest)
 	if err := os.Rename("/data/etcd", dest); err != nil {
 		return err
 	}
@@ -393,13 +394,13 @@ func restoreFromSnapshotEtcd(conf etcdConf) error {
 		return err
 	}
 
-	G.s.ClearErr()
 	name := "nethsm"
 	if conf.deviceID != "" {
 		name = conf.deviceID
 	}
-	G.s.ExecAsf(G.etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token etcd-%s-recovered --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, name)
-	if origErr := G.s.Err(); origErr != nil {
+	sc := script.New()
+	sc.ExecAsf(G.etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token etcd-%s-recovered --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, name)
+	if origErr := sc.Err(); origErr != nil {
 		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
 		if err := os.RemoveAll("/data/etcd"); err != nil {
 			return fmt.Errorf("snapshot restore (%w) AND removeall failed: %w", origErr, err)

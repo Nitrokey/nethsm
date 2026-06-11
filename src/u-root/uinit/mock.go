@@ -27,13 +27,16 @@ package main
 
 import (
 	"log"
+
+	"nethsm/internal/script"
 )
 
 // mockActions are executed when testing (run with an argument of "mock").
 func mockActions() {
 	log.Printf("Kernel release is: %s", G.kernelRelease)
-	G.s.BackgroundExecf("sleep 5")
-	if err := G.s.Err(); err != nil {
+	s := script.New()
+	s.BackgroundExecf("sleep 5")
+	if err := s.Err(); err != nil {
 		log.Printf("Script failed: %v", err)
 		return
 	}

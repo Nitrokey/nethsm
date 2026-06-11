@@ -21,18 +21,14 @@ import (
 	"syscall"
 
 	"nethsm/hw"
-	"nethsm/internal/script"
 	. "nethsm/internal/util"
 )
 
 // globalState encapsulates global variables shared across the uinit codebase.
-// With the exception of s, which mutates, all of these are essentially
-// constants intended to be set up once in main(). There are definitely better,
-// cleaner and more idiomatic ways to do this in Go, but as uinit is
-// essentially a "script", this will have to do.
+// All of these are essentially constants intended to be set up once in main().
+// There are definitely better, cleaner and more idiomatic ways to do this in
+// Go, but as uinit is essentially a "script", this will have to do.
 type globalState struct {
-	// s represents our global Script context.
-	s *script.Script
 	// UID and GID that the etcd server is run as. We use 1 (coventionally,
 	// "daemon").
 	etcdUIDGID int
@@ -57,7 +53,6 @@ type globalState struct {
 // way it is at least obvious from the code when it is referring to a variable
 // from globalState, as G.variable.
 var G = &globalState{
-	s:                    script.New(),
 	etcdUIDGID:           1,
 	kernelRelease:        GetKernelRelease(),
 	diskDevice:           hw.DiskDev,
@@ -96,8 +91,7 @@ func main() {
 	// If we get here then we are done with boot-time actions. We don't want to
 	// halt, so just pause forever, rather than exiting which would result in
 	// u-root init's default behaviour of dropping into a shell.
-	G.s.ClearErr()
-	G.s.Logf("Done")
+	log.Printf("Done")
 	for {
 		syscall.Pause()
 	}

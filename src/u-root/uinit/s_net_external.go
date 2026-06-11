@@ -181,28 +181,29 @@ func networkListener(_ chan struct{}) {
 // sNetExternalActions are executed for S-Net-External.
 func sNetExternalActions() {
 	if !hw.IsTesting() {
-		mountMuenFs()
-		G.s.Logf("Channels:")
-		G.s.Execf("/bbin/ls -l /muenfs")
+		s := script.New()
+		mountMuenFs(s)
+		s.Logf("Channels:")
+		s.Execf("/bbin/ls -l /muenfs")
 
-		loadUnikernelNets()
+		loadUnikernelNets(s)
 
-		G.s.Execf("/bbin/ip addr add 169.254.100.1/24 dev %s", intIface)
-		G.s.Execf("/bbin/ip -6 addr add fc00:1:100::1/120 dev %s", intIface)
-		G.s.Execf("/bbin/ip addr add 169.254.200.1/24 dev %s", platIface)
-		G.s.Execf("/bbin/ip -6 addr add fc00:1:200::1/120 dev %s", platIface)
-		G.s.Execf("/bbin/ip link set dev %s up", extIface)
-		G.s.Execf("/bbin/ip link set dev %s up", intIface)
-		G.s.Execf("/bbin/ip link set dev %s up", platIface)
+		s.Execf("/bbin/ip addr add 169.254.100.1/24 dev %s", intIface)
+		s.Execf("/bbin/ip -6 addr add fc00:1:100::1/120 dev %s", intIface)
+		s.Execf("/bbin/ip addr add 169.254.200.1/24 dev %s", platIface)
+		s.Execf("/bbin/ip -6 addr add fc00:1:200::1/120 dev %s", platIface)
+		s.Execf("/bbin/ip link set dev %s up", extIface)
+		s.Execf("/bbin/ip link set dev %s up", intIface)
+		s.Execf("/bbin/ip link set dev %s up", platIface)
 
 		// Enable IP forwarding for NAT to work
-		G.s.WriteFile("/proc/sys/net/ipv4/ip_forward", "1")
-		G.s.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", "1")
+		s.WriteFile("/proc/sys/net/ipv4/ip_forward", "1")
+		s.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", "1")
 
 		// Increase conntrack table size to handle many concurrent connections
-		G.s.WriteFile("/proc/sys/net/netfilter/nf_conntrack_max", "262144")
+		s.WriteFile("/proc/sys/net/netfilter/nf_conntrack_max", "262144")
 
-		if err := G.s.Err(); err != nil {
+		if err := s.Err(); err != nil {
 			log.Printf("Script failed: %v", err)
 			// return
 		}
@@ -393,13 +394,13 @@ func setupNFTables() {
 }
 
 // Dump network status.
-// Uses global Script context.
 func dumpNetworkStatus() {
-	G.s.Logf("Interfaces:")
-	G.s.Execf("/bbin/ip link")
-	G.s.Logf("Addresses:")
-	G.s.Execf("/bbin/ip addr")
-	G.s.Logf("Routes:")
-	G.s.Execf("/bbin/ip route")
-	G.s.Execf("/bbin/ip -6 route")
+	s := script.New()
+	log.Printf("Interfaces:")
+	s.Execf("/bbin/ip link")
+	log.Printf("Addresses:")
+	s.Execf("/bbin/ip addr")
+	log.Printf("Routes:")
+	s.Execf("/bbin/ip route")
+	s.Execf("/bbin/ip -6 route")
 }
