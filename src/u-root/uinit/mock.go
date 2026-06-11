@@ -33,7 +33,7 @@ import (
 
 // mockActions are executed when testing (run with an argument of "mock").
 func mockActions() {
-	log.Printf("Kernel release is: %s", G.kernelRelease)
+	log.Printf("Kernel release is: %s", kernelRelease)
 	s := script.New()
 	s.BackgroundExecf("sleep 5")
 	if err := s.Err(); err != nil {
@@ -42,7 +42,7 @@ func mockActions() {
 	}
 
 	c := make(chan string)
-	go platformListener(c)
+	go platformListener(c, listenerProtocol, platListenerAddress, NewEtcdSupervisor())
 	request := <-c
 	log.Printf("platformListener returned: %s", request)
 	if request == "FACTORY-RESET" {

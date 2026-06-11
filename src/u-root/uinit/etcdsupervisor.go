@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nethsm/internal/localconf"
@@ -97,6 +98,9 @@ type EtcdCommand struct {
 type etcdSupervisor struct {
 	SendCmd  func(EtcdCommand)
 	Shutdown func()
+	// ProcessState and logs are written by startAndWait and read by platformListener.
+	ProcessState atomic.Pointer[os.ProcessState]
+	Logs         atomic.Pointer[ring.Ring]
 	// internal
 	configRcv <-chan localconf.ChangeReq
 	cmdsRcv   <-chan EtcdCommand
@@ -238,7 +242,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 
 	log.Printf("etcd: launching: %s", cmd)
 	sc := script.New()
-	cancel, logPipe := sc.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, G.etcdUIDGID, "%s", cmd)
+	cancel, logPipe := sc.CancelableBackgroundExecAsf(exitedNtfy, &s.ProcessState, etcdUIDGID, "%s", cmd)
 	if err := sc.Err(); err != nil {
 		return fmt.Errorf("couldn't exec etcd: %w", err)
 	}
@@ -248,13 +252,13 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		<-exitedSig
 	}
 	lastEtcdError := "unknown error"
-	G.etcdLogs.Store(ring.New(1024))
+	s.Logs.Store(ring.New(1024))
 
 	var logsDone sync.WaitGroup
 	logsDone.Add(1)
 	go func() {
 		defer logsDone.Done()
-		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError, G.etcdLogs.Load())
+		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError, s.Logs.Load())
 	}()
 
 	select {
@@ -376,7 +380,7 @@ func backupEtcd(dest string) error {
 	if err := os.Mkdir("/data/etcd", 0o700); err != nil {
 		return err
 	}
-	if err := os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID); err != nil {
+	if err := os.Chown("/data/etcd", etcdUIDGID, etcdUIDGID); err != nil {
 		return err
 	}
 	return nil
@@ -399,7 +403,7 @@ func restoreFromSnapshotEtcd(conf etcdConf) error {
 		name = conf.deviceID
 	}
 	sc := script.New()
-	sc.ExecAsf(G.etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token etcd-%s-recovered --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, name)
+	sc.ExecAsf(etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token etcd-%s-recovered --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, name)
 	if origErr := sc.Err(); origErr != nil {
 		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
 		if err := os.RemoveAll("/data/etcd"); err != nil {

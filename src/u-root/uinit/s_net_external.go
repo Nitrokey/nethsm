@@ -90,15 +90,14 @@ func configNet(conf Network) error {
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
 func networkListener(_ chan struct{}) {
-	addr := G.netListenerAddress
-	listener, err := net.Listen(G.listenerProtocol, addr)
+	listener, err := net.Listen(listenerProtocol, netListenerAddress)
 	if err != nil {
-		log.Fatalf("Unable to launch listener on %s:%s: %v", G.listenerProtocol,
-			addr, err)
+		log.Fatalf("Unable to launch listener on %s:%s: %v", listenerProtocol,
+			netListenerAddress, err)
 	}
 	defer listener.Close()
-	log.Printf("networkListener: Listening on %s:%s.", G.listenerProtocol,
-		addr)
+	log.Printf("networkListener: Listening on %s:%s.", listenerProtocol,
+		netListenerAddress)
 
 	var currentNetConf Network
 

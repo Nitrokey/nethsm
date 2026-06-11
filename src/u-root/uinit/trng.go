@@ -112,7 +112,7 @@ func randReader(trng io.Reader) func() []byte {
 }
 
 func trngLoop(trng io.Reader) {
-	keyfender, err := net.Dial("udp", net.JoinHostPort(G.keyfenderIP, G.entropyPort))
+	keyfender, err := net.Dial("udp", net.JoinHostPort(keyfenderEntropyIP, keyfenderEntropyPort))
 	check(err)
 	defer keyfender.Close() // nolint
 

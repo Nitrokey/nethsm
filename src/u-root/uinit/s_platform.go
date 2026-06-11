@@ -88,15 +88,13 @@ func getClusterState(processState *os.ProcessState) (cs clusterState) {
 // Due to there being no way to set a listen(2) backlog in Go, >1 connections
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
-func platformListener(result chan string) {
-	listener, err := net.Listen(G.listenerProtocol, G.platListenerAddress)
+func platformListener(result chan string, proto, addr string, supervisor *etcdSupervisor) {
+	listener, err := net.Listen(proto, addr)
 	if err != nil {
-		log.Fatalf("Unable to launch listener on %s:%s: %v", G.listenerProtocol,
-			G.platListenerAddress, err)
+		log.Fatalf("Unable to launch listener on %s:%s: %v", proto, addr, err)
 	}
 	defer listener.Close()
-	log.Printf("platformListener: Listening on %s:%s.", G.listenerProtocol,
-		G.platListenerAddress)
+	log.Printf("platformListener: Listening on %s:%s.", proto, addr)
 
 	// haveUpdate is set to true if an UPDATE command was successfully
 	// processed in a previous connection and COMMIT-UPDATE should be enabled.
@@ -207,7 +205,7 @@ func platformListener(result chan string) {
 			// order of 3 seconds, 10 seconds for KVM/QEMU.
 			conn.SetDeadline(time.Now().Add(time.Second * 30))
 
-			w, err := os.OpenFile(G.sysInactivePartition, os.O_WRONLY, 0)
+			w, err := os.OpenFile(sysInactivePartition, os.O_WRONLY, 0)
 			if err != nil {
 				return errorResponse(err), err, false
 			}
@@ -241,7 +239,7 @@ func platformListener(result chan string) {
 
 			// Enable COMMIT-UPDATE.
 			log.Printf("[%s] Successfuly wrote UPDATE to %s. (%d blocks)", remoteAddr,
-				G.sysInactivePartition, block-1)
+				sysInactivePartition, block-1)
 			haveUpdate = true
 
 			return okResponse(""), nil, false
@@ -257,7 +255,7 @@ func platformListener(result chan string) {
 			initialCluster := strings.TrimSuffix(param, "\n")
 			log.Printf("[%s] Requested JOIN-CLUSTER (%s).", remoteAddr, initialCluster)
 			reply := make(chan error, 1)
-			G.etcdSupervisor.SendCmd(EtcdCommand{
+			supervisor.SendCmd(EtcdCommand{
 				Kind:     EtcdCmdJoin,
 				JoinArgs: JoinArgs{initialCluster},
 				Reply:    reply,
@@ -271,7 +269,7 @@ func platformListener(result chan string) {
 		doDiagnose := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested DIAGNOSE!", remoteAddr)
 			var data diagnoseData
-			data.ClusterState = getClusterState(G.etcdProcessState.Load())
+			data.ClusterState = getClusterState(supervisor.ProcessState.Load())
 			if !data.ClusterState.Running {
 				log.Printf("DIAGNOSE: Getting etcd snapshot status")
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -300,7 +298,7 @@ func platformListener(result chan string) {
 				}
 			}
 
-			data.ClusterLogs = RingCollect[clusterLogItem](G.etcdLogs.Load())
+			data.ClusterLogs = RingCollect[clusterLogItem](supervisor.Logs.Load())
 
 			json, err := json.Marshal(data)
 			if err != nil {
@@ -314,7 +312,7 @@ func platformListener(result chan string) {
 		doForceNewCluster := func() ([]byte, error, bool) {
 			log.Printf("[%s] Requested FORCE-NEW-CLUSTER.", remoteAddr)
 			reply := make(chan error, 1)
-			G.etcdSupervisor.SendCmd(EtcdCommand{
+			supervisor.SendCmd(EtcdCommand{
 				Kind:  EtcdCmdForceNew,
 				Reply: reply,
 			})
@@ -332,7 +330,7 @@ func platformListener(result chan string) {
 				return errorResponse(err), err, false
 			}
 
-			if err := gptSwapPartitions(G.diskDevice); err != nil {
+			if err := gptSwapPartitions(hw.DiskDev); err != nil {
 				return errorResponse(err), err, false
 			} else {
 				haveUpdate = false
@@ -427,7 +425,7 @@ func setupPlatform(s *script.Script) error {
 	if hw.IsTesting() {
 		err := os.MkdirAll("/data/etcd", 0o755)
 		check(err)
-		err = os.Chown("/data/etcd", G.etcdUIDGID, G.etcdUIDGID)
+		err = os.Chown("/data/etcd", etcdUIDGID, etcdUIDGID)
 		check(err)
 		return nil
 	}
@@ -435,8 +433,8 @@ func setupPlatform(s *script.Script) error {
 	// Load TPM kernel modules first, as platformListener needs TPM for
 	// GetDeviceKey().
 	s.Logf("Loading TPM driver")
-	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", G.kernelRelease)
-	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", G.kernelRelease)
+	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis_core.ko", kernelRelease)
+	s.Execf("/bbin/insmod /lib/modules/%s/kernel/drivers/char/tpm/tpm_tis.ko force=1 interrupts=0", kernelRelease)
 
 	mountMuenFs(s)
 
@@ -521,8 +519,9 @@ func sPlatformActions() {
 	}
 
 	c := make(chan string)
+	supervisor := NewEtcdSupervisor()
 	StartTask("TRNG", trngTask)
-	StartTask("Platform Listener", func() { platformListener(c) })
+	StartTask("Platform Listener", func() { platformListener(c, listenerProtocol, platListenerAddress, supervisor) })
 
 	if !hw.IsTesting() {
 		if err := tpmCreatePlatformData(); err != nil {
@@ -533,9 +532,7 @@ func sPlatformActions() {
 	}
 
 	StartTask("time", NewTimeTask().Run)
-
-	G.etcdSupervisor = NewEtcdSupervisor()
-	StartTask("etcd supervisor", G.etcdSupervisor.Run)
+	StartTask("etcd supervisor", supervisor.Run)
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
@@ -545,7 +542,7 @@ func sPlatformActions() {
 		return
 	}
 
-	G.etcdSupervisor.Shutdown()
+	supervisor.Shutdown()
 
 	log.Printf("Terminating all processes.")
 	KillAll(syscall.Signal(15))

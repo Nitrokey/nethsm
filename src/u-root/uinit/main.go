@@ -13,59 +13,36 @@
 package main
 
 import (
-	"container/ring"
-	_ "embed"
 	"log"
 	"os"
-	"sync/atomic"
 	"syscall"
 
 	"nethsm/hw"
 	. "nethsm/internal/util"
 )
 
-// globalState encapsulates global variables shared across the uinit codebase.
-// All of these are essentially constants intended to be set up once in main().
-// There are definitely better, cleaner and more idiomatic ways to do this in
-// Go, but as uinit is essentially a "script", this will have to do.
-type globalState struct {
-	// UID and GID that the etcd server is run as. We use 1 (coventionally,
-	// "daemon").
-	etcdUIDGID int
-	// Current kernel release.
-	kernelRelease        string
-	diskDevice           string
-	sysActivePartition   string
-	sysInactivePartition string
-	dataPartition        string
-	listenerProtocol     string
-	platListenerAddress  string
-	netListenerAddress   string
-	keyfenderIP          string
-	entropyPort          string
-	deviceID             string
-	etcdSupervisor       *etcdSupervisor
-	etcdProcessState     atomic.Pointer[os.ProcessState]
-	etcdLogs             atomic.Pointer[ring.Ring]
-}
+const (
+	// Both subjects: transport protocol for the platform and network listeners.
+	listenerProtocol = "tcp4"
 
-// G is the actual singleton instance of globalState used throughout. This
-// way it is at least obvious from the code when it is referring to a variable
-// from globalState, as G.variable.
-var G = &globalState{
-	etcdUIDGID:           1,
-	kernelRelease:        GetKernelRelease(),
-	diskDevice:           hw.DiskDev,
-	sysActivePartition:   hw.DiskPrefix + "1",
-	sysInactivePartition: hw.DiskPrefix + "2",
-	dataPartition:        hw.DiskPrefix + "3",
-	listenerProtocol:     "tcp4",
-	platListenerAddress:  "169.254.169.2:1023",
-	netListenerAddress:   "169.254.100.1:1023",
-	keyfenderIP:          "169.254.169.1",
-	entropyPort:          "4444",
-	deviceID:             "",
-}
+	// S-Platform
+	// platform protocol listener address.
+	platListenerAddress = "169.254.169.2:1023"
+	// GPT partition to write firmware updates to.
+	sysInactivePartition = hw.DiskPrefix + "2"
+	// UID/GID for the etcd process (conventionally "daemon").
+	etcdUIDGID = 1
+	// entropy destination on S-Keyfender.
+	keyfenderEntropyIP   = "169.254.169.1"
+	keyfenderEntropyPort = "4444"
+
+	// S-Net-External
+	// network configuration listener address.
+	netListenerAddress = "169.254.100.1:1023"
+)
+
+// Current kernel version; used when loading kernel modules (muen.go, s_platform.go).
+var kernelRelease = GetKernelRelease()
 
 func main() {
 	// We expect a hostname to be passed in via the kernel's boot parameters,

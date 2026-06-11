@@ -16,7 +16,7 @@ import (
 // Load muenfs kernel module and mount /muenfs.
 func mountMuenFs(s *script.Script) {
 	s.Logf("Loading muenfs")
-	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenfs.ko", G.kernelRelease)
+	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenfs.ko", kernelRelease)
 	s.Execf("/bbin/mkdir -p /muenfs")
 	s.Execf("/bbin/mount -t muenfs none /muenfs")
 }
@@ -24,7 +24,7 @@ func mountMuenFs(s *script.Script) {
 // Load muenevents kernel module and mount /muenevents.
 func mountMuenEvents(s *script.Script) {
 	s.Logf("Loading muenevents")
-	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenevents.ko", G.kernelRelease)
+	s.Execf("/bbin/insmod /lib/modules/%s/extra/muenevents.ko", kernelRelease)
 	s.Execf("/bbin/mkdir -p /muenevents")
 	s.Execf("/bbin/mount -t muenevents none /muenevents")
 }
@@ -80,7 +80,7 @@ func loadUnikernelNets(s *script.Script) {
 			flags = append(flags, "eth_dev")
 		}
 		join := func(a []string) string { return strings.Join(a, ",") }
-		s.Execf("/bbin/insmod /lib/modules/"+G.kernelRelease+"/extra/muennet.ko "+
+		s.Execf("/bbin/insmod /lib/modules/"+kernelRelease+"/extra/muennet.ko "+
 			"name=%s in=%s out=%s reader_protocol=%s writer_protocol=%s flags=%s",
 			join(names), join(inChannels), join(outChannels),
 			join(readerProtos), join(writerProtos), join(flags))

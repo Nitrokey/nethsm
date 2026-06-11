@@ -24,6 +24,12 @@ import (
 // See write_platform in s_keyfender/unikernel.ml
 const commandDeadline = 30 * time.Second
 
+var (
+	testSupervisor *etcdSupervisor
+	testProto      string
+	testAddr       string
+)
+
 func send(t *testing.T, conn net.Conn, data string) {
 	t.Helper()
 	n, err := conn.Write([]byte(data))
@@ -41,7 +47,7 @@ func command(t *testing.T, cmd string, additionalData string) (bool, string) {
 
 	deadline := time.Now().Add(commandDeadline)
 	t.Logf("Connecting to platform")
-	conn, err := net.DialTimeout(G.listenerProtocol, G.platListenerAddress, commandDeadline)
+	conn, err := net.DialTimeout(testProto, testAddr, commandDeadline)
 	if err != nil {
 		t.Fatalf("Failed to connect to platformListener: %s", err)
 	}
@@ -101,8 +107,8 @@ func TestDiagnose(t *testing.T) {
 func mockEtcdFail() error {
 	s := script.New()
 	exitedNtfy, exitedSig := MakeNtfyPair()
-	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/false")
-	G.etcdSupervisor.stopEtcd = func() {
+	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &testSupervisor.ProcessState, -1, "%s", "/bin/false")
+	testSupervisor.stopEtcd = func() {
 		cancel()
 		<-exitedSig
 	}
@@ -117,8 +123,8 @@ func mockEtcdRun() error {
 	s := script.New()
 	exitedNtfy, exitedSig := MakeNtfyPair()
 	// sleep more than 30s, which is the default deadline, and more than 60, which is the global deadline
-	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &G.etcdProcessState, -1, "%s", "/bin/sleep 80")
-	G.etcdSupervisor.stopEtcd = func() {
+	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &testSupervisor.ProcessState, -1, "%s", "/bin/sleep 80")
+	testSupervisor.stopEtcd = func() {
 		cancel()
 		<-exitedSig
 	}
@@ -130,11 +136,11 @@ func mockEtcdRun() error {
 }
 
 func TestDiagnoseRun(t *testing.T) {
-	G.etcdSupervisor.stopEtcd()
+	testSupervisor.stopEtcd()
 	if err := mockEtcdRun(); err != nil {
 		t.Fatalf("Cannot run etcd mock: %s", err)
 	}
-	defer G.etcdSupervisor.stopEtcd()
+	defer testSupervisor.stopEtcd()
 
 	// TODO: make snapshot mockable
 
@@ -168,18 +174,18 @@ func TestMain(m *testing.M) {
 	}
 	os.Remove(tmpu.Name())
 
-	G.platListenerAddress = tmpu.Name()
-	G.listenerProtocol = "unix"
-	G.etcdSupervisor = NewEtcdSupervisor()
-	G.etcdLogs.Store(ring.New(1024))
+	testProto = "unix"
+	testAddr = tmpu.Name()
+	testSupervisor = NewEtcdSupervisor()
+	testSupervisor.Logs.Store(ring.New(1024))
 
 	err = mockEtcdFail()
 	if err != nil {
 		panic(err)
 	}
 
-	go platformListener(c)
-	fmt.Printf("Using unix socket: %v\n", G.platListenerAddress)
+	go platformListener(c, testProto, testAddr, testSupervisor)
+	fmt.Printf("Using unix socket: %v\n", testAddr)
 	time.Sleep(1 * time.Second)
 	m.Run()
 }
