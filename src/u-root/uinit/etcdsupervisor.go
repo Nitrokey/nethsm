@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"nethsm/internal/localconf"
@@ -150,13 +151,22 @@ func (s *etcdSupervisor) Run() {
 			return
 
 		case req := <-s.configRcv:
-			if etcdConfOf(req.Conf) == s.lastConf {
+			newConf := etcdConfOf(req.Conf)
+			if newConf == s.lastConf {
 				req.Reply <- nil
 				continue
 			}
 			s.stopEtcd()
-			err := s.launch(EtcdNormal, etcdConfOf(req.Conf))
-			req.Reply <- err
+			if err := s.launch(EtcdNormal, newConf); err != nil {
+				log.Printf("etcd: config update failed (%v), reverting to previous config", err)
+				if restartErr := s.launch(EtcdNormal, s.lastConf); restartErr != nil {
+					req.Reply <- fmt.Errorf("config update failed (%w) and rollback failed: %w", err, restartErr)
+				} else {
+					req.Reply <- err
+				}
+			} else {
+				req.Reply <- nil
+			}
 
 		case cmd := <-s.cmdsRcv:
 			s.stopEtcd()
@@ -210,6 +220,9 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 	G.s.Logf("Starting etcd in %s mode", etcdModeName[mode])
 
 	if mode == EtcdClusterJoin {
+		if len(joinArgs) == 0 || strings.TrimSpace(joinArgs[0].InitialCluster) == "" {
+			return fmt.Errorf("EtcdClusterJoin requires a non-empty InitialCluster")
+		}
 		if err := backupEtcd(etcdBackupJoin); err != nil {
 			return err
 		}
@@ -233,10 +246,16 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 	lastEtcdError := "unknown error"
 	G.etcdLogs = ring.New(1024)
 
-	go readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError)
+	var logsDone sync.WaitGroup
+	logsDone.Add(1)
+	go func() {
+		defer logsDone.Done()
+		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError)
+	}()
 
 	select {
 	case <-exitedSig:
+		logsDone.Wait()
 		log.Printf("etcd: exited immediately: %s", lastEtcdError)
 		return fmt.Errorf("etcd exited immediately: %s", lastEtcdError)
 
@@ -257,9 +276,10 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		return G.s.Err()
 
 	case <-time.After(30 * time.Second):
-		log.Printf("etcd: startup timed out: %s", lastEtcdError)
 		cancel()
 		<-exitedSig
+		logsDone.Wait()
+		log.Printf("etcd: startup timed out: %s", lastEtcdError)
 		return fmt.Errorf("etcd took too long to start: %s", lastEtcdError)
 	}
 }

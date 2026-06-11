@@ -65,6 +65,7 @@ var (
 	localConfig atomic.Pointer[LocalConf]
 	consumers   []chan<- ChangeReq
 	consumersMu sync.Mutex
+	setMu       sync.Mutex
 )
 
 // RegisterConsumer registers ch to receive a ChangeReq whenever Set succeeds
@@ -78,44 +79,47 @@ func RegisterConsumer(ch chan<- ChangeReq) {
 func loadFromCache() error {
 	log.Printf("Loading local config from cache file")
 
-	var conf LocalConf
-
-	if !localConfig.CompareAndSwap(nil, &conf) {
+	if localConfig.Load() != nil {
 		return fmt.Errorf("local config already set")
 	}
+
+	var conf LocalConf
 
 	fileData, err := os.ReadFile(localConfigFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("No local config cache file found")
-			return nil
+		} else {
+			return fmt.Errorf("cannot read %s: %w", localConfigFile, err)
 		}
-		return fmt.Errorf("cannot read %s: %w", localConfigFile, err)
+	} else {
+		block, err := aes.NewCipher(localConfigKey())
+		if err != nil {
+			return fmt.Errorf("failed to create cipher: %w", err)
+		}
+
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return fmt.Errorf("failed to create GCM: %w", err)
+		}
+
+		nonceSize := gcm.NonceSize()
+		nonce := fileData[:nonceSize]
+		encrypted := fileData[nonceSize:]
+
+		plaintext, err := gcm.Open(nil, nonce, encrypted, []byte(authData))
+		if err != nil {
+			return fmt.Errorf("failed to decrypt: %w", err)
+		}
+
+		if err := json.Unmarshal(plaintext, &conf); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON: %w", err)
+		}
 	}
 
-	block, err := aes.NewCipher(localConfigKey())
-	if err != nil {
-		return fmt.Errorf("failed to create cipher: %w", err)
+	if !localConfig.CompareAndSwap(nil, &conf) {
+		return fmt.Errorf("local config already set")
 	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return fmt.Errorf("failed to create GCM: %w", err)
-	}
-
-	nonceSize := gcm.NonceSize()
-	nonce := fileData[:nonceSize]
-	encrypted := fileData[nonceSize:]
-
-	plaintext, err := gcm.Open(nil, nonce, encrypted, []byte(authData))
-	if err != nil {
-		return fmt.Errorf("failed to decrypt: %w", err)
-	}
-
-	if err := json.Unmarshal(plaintext, &conf); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
 	return nil
 }
 
@@ -139,11 +143,14 @@ func Get() LocalConf {
 // all of them to reply before returning. Returns nil if the config is unchanged.
 func Set(jsonConf []byte) error {
 	var newConf LocalConf
-	oldConf := Get()
-
 	if err := json.Unmarshal(jsonConf, &newConf); err != nil {
 		return fmt.Errorf("failed to parse local config: %w", err)
 	}
+
+	setMu.Lock()
+	defer setMu.Unlock()
+
+	oldConf := Get()
 
 	if oldConf == newConf {
 		log.Printf("No change in local config")
