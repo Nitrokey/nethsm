@@ -50,7 +50,7 @@ type globalState struct {
 	deviceID             string
 	etcdSupervisor       *etcdSupervisor
 	etcdProcessState     atomic.Pointer[os.ProcessState]
-	etcdLogs             *ring.Ring
+	etcdLogs             atomic.Pointer[ring.Ring]
 }
 
 // G is the actual singleton instance of globalState used throughout. This

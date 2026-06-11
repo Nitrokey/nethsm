@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -26,21 +27,21 @@ const (
 )
 
 var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
-	var key string
+	var key []byte
 	get := func() []byte {
-		if key == "" {
+		if key == nil {
 			log.Fatal("localConfigKey is unset")
 		}
-		return []byte(key)
+		return key
 	}
 	// Derive the encryption key: SHA256(device-key + "local-config")
 	set := func(deviceKey []byte) {
-		if key != "" {
+		if key != nil {
 			log.Fatal("tried to set local config key twice")
 		}
-		keyMaterial := append(deviceKey, []byte(authData)...)
+		keyMaterial := slices.Concat(deviceKey, []byte(authData))
 		hash := sha256.Sum256(keyMaterial)
-		key = string(hash[:]) // 32 bytes for AES-256
+		key = hash[:] // 32 bytes for AES-256
 	}
 	return get, set
 }()
@@ -104,6 +105,9 @@ func loadFromCache() error {
 		}
 
 		nonceSize := gcm.NonceSize()
+		if len(fileData) < nonceSize {
+			return fmt.Errorf("local config file too short (%d bytes)", len(fileData))
+		}
 		nonce := fileData[:nonceSize]
 		encrypted := fileData[nonceSize:]
 
@@ -176,10 +180,10 @@ func Set(jsonConf []byte) error {
 	fileData := gcm.Seal(nonce, nonce, jsonConf, []byte(authData))
 
 	if err := os.WriteFile(localConfigFile+".tmp", fileData, 0o666); err != nil {
-		return fmt.Errorf("create sealed Device Key file: %w", err)
+		return fmt.Errorf("write local config file: %w", err)
 	}
 	if err := os.Rename(localConfigFile+".tmp", localConfigFile); err != nil {
-		return fmt.Errorf("rename sealed Device Key file: %w", err)
+		return fmt.Errorf("rename local config file: %w", err)
 	}
 	syscall.Sync()
 

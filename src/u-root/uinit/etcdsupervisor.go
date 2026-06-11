@@ -228,7 +228,10 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		}
 	}
 
-	cmd := buildEtcdCmd(mode, conf, joinArgs...)
+	cmd, err := buildEtcdCmd(mode, conf, joinArgs...)
+	if err != nil {
+		return err
+	}
 
 	exitedNtfy, exitedSig := MakeNtfyPair()
 	aliveNtfy, aliveSig := MakeNtfyPair()
@@ -244,13 +247,13 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		<-exitedSig
 	}
 	lastEtcdError := "unknown error"
-	G.etcdLogs = ring.New(1024)
+	G.etcdLogs.Store(ring.New(1024))
 
 	var logsDone sync.WaitGroup
 	logsDone.Add(1)
 	go func() {
 		defer logsDone.Done()
-		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError)
+		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError, G.etcdLogs.Load())
 	}()
 
 	select {
@@ -286,7 +289,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 
 // buildEtcdCmd constructs the etcd command string for the given mode and
 // config. As a side effect it writes TLS credentials to /tmp if configured.
-func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) string {
+func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, error) {
 	cmd := "/bin/etcd" +
 		" --listen-client-urls=http://169.254.169.2:2379" +
 		" --listen-client-http-urls=http://127.0.0.1:2382" + // disables HTTP on client port
@@ -308,13 +311,19 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) string {
 	if conf.tlsCert != "" && conf.tlsKey != "" && conf.tlsCA != "" {
 		G.s.Logf("Starting etcd with TLS")
 		fn := "/tmp/etcd_tls_cert.pem"
-		os.WriteFile(fn, []byte(conf.tlsCert), 0o666)
+		if err := os.WriteFile(fn, []byte(conf.tlsCert), 0o666); err != nil {
+			return "", fmt.Errorf("write TLS cert: %w", err)
+		}
 		cmd += " --peer-cert-file=" + fn
 		fn = "/tmp/etcd_tls_key.pem"
-		os.WriteFile(fn, []byte(conf.tlsKey), 0o666)
+		if err := os.WriteFile(fn, []byte(conf.tlsKey), 0o600); err != nil {
+			return "", fmt.Errorf("write TLS key: %w", err)
+		}
 		cmd += " --peer-key-file=" + fn
 		fn = "/tmp/etcd_tls_trusted_ca.pem"
-		os.WriteFile(fn, []byte(conf.tlsCA), 0o666)
+		if err := os.WriteFile(fn, []byte(conf.tlsCA), 0o666); err != nil {
+			return "", fmt.Errorf("write TLS CA: %w", err)
+		}
 		cmd += " --peer-trusted-ca-file=" + fn
 		cmd += " --peer-client-cert-auth=true"
 		cmd += " --listen-peer-urls=https://169.254.200.2:2380,https://[fc00:1:200::2]:2380"
@@ -324,12 +333,12 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) string {
 	}
 
 	cmd += " --name=" + name
-	return cmd
+	return cmd, nil
 }
 
 // readEtcdLogs reads etcd's log output, fires aliveNtfy when etcd is ready,
-// and stores warn/error entries in the G.etcdLogs ring buffer.
-func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string) {
+// and stores warn/error entries in the provided ring buffer.
+func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string, logRing *ring.Ring) {
 	logs := bufio.NewReader(logPipe)
 	for {
 		line, err := logs.ReadString('\n')
@@ -350,8 +359,8 @@ func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string
 				case "debug", "info":
 					// skip
 				default:
-					G.etcdLogs.Value = logItem
-					G.etcdLogs = G.etcdLogs.Next()
+					logRing.Value = logItem
+					logRing = logRing.Next()
 				}
 			}
 		}

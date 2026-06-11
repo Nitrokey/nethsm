@@ -299,7 +299,7 @@ func platformListener(result chan string) {
 				}
 			}
 
-			data.ClusterLogs = RingCollect[clusterLogItem](G.etcdLogs)
+			data.ClusterLogs = RingCollect[clusterLogItem](G.etcdLogs.Load())
 
 			json, err := json.Marshal(data)
 			if err != nil {

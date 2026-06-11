@@ -169,7 +169,7 @@ func TestMain(m *testing.M) {
 	G.platListenerAddress = tmpu.Name()
 	G.listenerProtocol = "unix"
 	G.etcdSupervisor = NewEtcdSupervisor()
-	G.etcdLogs = ring.New(1024)
+	G.etcdLogs.Store(ring.New(1024))
 
 	err = mockEtcdFail()
 	if err != nil {
