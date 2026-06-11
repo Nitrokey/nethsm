@@ -116,14 +116,18 @@ func trngLoop(trng io.Reader) {
 	check(err)
 	defer keyfender.Close() // nolint
 
+	var devRand *os.File
+	if !hw.IsTesting() {
+		var err error
+		devRand, err = os.OpenFile("/dev/random", os.O_WRONLY, 0)
+		check(err)
+		defer devRand.Close() // nolint
+	}
+
 	fullySeeded := false
 	seed := func(buf []byte) {
-		if !hw.IsTesting() {
-			devRand, err := os.OpenFile("/dev/random", os.O_WRONLY, 0)
-			check(err)
-			defer devRand.Close() // nolint
-
-			_, err = devRand.Write(buf)
+		if devRand != nil {
+			_, err := devRand.Write(buf)
 			check(err)
 		}
 		if !fullySeeded && len(buf) == totalRandSize {

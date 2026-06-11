@@ -13,7 +13,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -72,7 +71,7 @@ func getClusterState(processState *os.ProcessState) (cs clusterState) {
 		}
 		if sys.Stopped() {
 			cs.Stopped = new(int)
-			*cs.Signaled = int(sys.StopSignal())
+			*cs.Stopped = int(sys.StopSignal())
 		}
 	}
 	return
@@ -274,9 +273,9 @@ func platformListener(result chan string) {
 			data.ClusterState = getClusterState(G.etcdProcessState.Load())
 			if !data.ClusterState.Running {
 				log.Printf("DIAGNOSE: Getting etcd snapshot status")
-				context, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(context, "/bin/etcdutl", "snapshot", "status", "/data/etcd/member/snap/db", "-w", "json")
+				cmd := exec.CommandContext(ctx, "/bin/etcdutl", "snapshot", "status", "/data/etcd/member/snap/db", "-w", "json")
 				result := make(chan []byte)
 				go func() {
 					defer close(result)
@@ -287,37 +286,20 @@ func platformListener(result chan string) {
 						result <- output
 					}
 				}()
-				select {
-				case out, ok := <-result:
-					if ok {
-						clusterSnapshot := new(clusterSnapshot)
-						if err := json.Unmarshal(out, &clusterSnapshot); err != nil {
-							log.Printf("DIAGNOSE: snapshot status: %s", out)
-							log.Printf("DIAGNOSE: Failed to parse snapshot status: %s", err)
-						} else {
-							data.ClusterSnapshot = clusterSnapshot
-						}
+				if out, ok := <-result; ok {
+					clusterSnapshot := new(clusterSnapshot)
+					if err := json.Unmarshal(out, &clusterSnapshot); err != nil {
+						log.Printf("DIAGNOSE: snapshot status: %s", out)
+						log.Printf("DIAGNOSE: Failed to parse snapshot status: %s", err)
 					} else {
-						log.Printf("DIAGNOSE: channel closed")
+						data.ClusterSnapshot = clusterSnapshot
 					}
-				case <-time.After(3 * time.Second):
-					log.Printf("DIAGNOSE: snapshot status took too long")
+				} else {
+					log.Printf("DIAGNOSE: snapshot status failed or timed out")
 				}
 			}
 
-			// TODO : how to use generics and more idiomatic code here?
-			clusterLogs := make([]clusterLogItem, G.etcdLogs.Len())
-			var i int
-			i = 0
-			G.etcdLogs.Do(func(entry any) {
-				if logItem, ok := entry.(clusterLogItem); ok {
-					clusterLogs[i] = logItem
-				}
-				i = i + 1
-			})
-			data.ClusterLogs = slices.DeleteFunc(clusterLogs, func(entry clusterLogItem) bool {
-				return entry == nil
-			})
+			data.ClusterLogs = RingCollect[clusterLogItem](G.etcdLogs)
 
 			json, err := json.Marshal(data)
 			if err != nil {

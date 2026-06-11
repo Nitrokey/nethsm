@@ -5,6 +5,7 @@
 package util
 
 import (
+	"container/ring"
 	"log"
 	"os"
 	"os/exec"
@@ -102,4 +103,15 @@ func MakeNtfyPair() (func(), <-chan struct{}) {
 		})
 	}
 	return emit, ch
+}
+
+// RingCollect returns all non-nil values of type T stored in r.
+func RingCollect[T any](r *ring.Ring) []T {
+	result := []T{}
+	r.Do(func(v any) {
+		if item, ok := v.(T); ok {
+			result = append(result, item)
+		}
+	})
+	return result
 }

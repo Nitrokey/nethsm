@@ -152,7 +152,7 @@ func networkListener(_ chan struct{}) {
 				return []byte("ERROR\n")
 			}
 		}
-		var response []byte = nil
+		var response []byte
 
 		if data.Network != nil {
 			err := configNet(*data.Network)

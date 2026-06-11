@@ -8,7 +8,6 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
-	crand "crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base32"
@@ -192,7 +191,7 @@ func tpmCreatePlatformData() error {
 		}
 		if len(deviceKey) == 0 {
 			deviceKey = make([]byte, 32)
-			_, err = crand.Read(deviceKey)
+			_, err = rand.Read(deviceKey)
 			if err != nil {
 				return fmt.Errorf("creating new Device Key failed: %w", err)
 			}
