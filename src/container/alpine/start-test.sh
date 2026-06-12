@@ -96,3 +96,6 @@ trap _signal_termination SIGINT
 
 wait "$KEYFENDER_PID"
 [ $ETCD_PID ] && wait "$ETCD_PID"
+
+# don't remove container networking too quickly
+sleep 1
