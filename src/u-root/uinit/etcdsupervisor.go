@@ -203,26 +203,6 @@ func (s *etcdSupervisor) Run() {
 // it restores the backup and falls back to EtcdNormal, returning the original
 // join error so the caller can report it.
 func (s *etcdSupervisor) launch(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) error {
-	err := s.startAndWait(mode, conf, joinArgs...)
-	if err != nil && mode == EtcdClusterJoin {
-		log.Printf("etcd: join failed (%v), restoring backup", err)
-		if restoreErr := restoreJoinBackup(); restoreErr != nil {
-			return fmt.Errorf("join failed (%w) and restore failed: %w", err, restoreErr)
-		}
-		if normalErr := s.startAndWait(EtcdNormal, conf); normalErr != nil {
-			return fmt.Errorf("join failed (%w) and normal restart failed: %w", err, normalErr)
-		}
-		return err // report the join error even though etcd is now running normally
-	}
-	return err
-}
-
-// startAndWait launches etcd, waits for it to become ready (or fail/timeout),
-// and returns. On success s.kill and s.etcdExited are updated to reflect the new
-// process; s.lastConf is updated to conf.
-func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) error {
-	log.Printf("etcd: starting in %s mode", etcdModeName[mode])
-
 	if mode == EtcdClusterJoin {
 		if len(joinArgs) == 0 || strings.TrimSpace(joinArgs[0].InitialCluster) == "" {
 			return fmt.Errorf("EtcdClusterJoin requires a non-empty InitialCluster")
@@ -230,7 +210,31 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		if err := backupEtcd(etcdBackupJoin); err != nil {
 			return err
 		}
+		err := s.startAndWait(EtcdClusterJoin, conf, joinArgs...)
+		if err != nil {
+			log.Printf("etcd: join failed (%v), restoring backup", err)
+			if restoreErr := restoreJoinBackup(); restoreErr != nil {
+				return fmt.Errorf("join failed (%w) and restore failed: %w", err, restoreErr)
+			}
+			if normalErr := s.startAndWait(EtcdNormal, conf); normalErr != nil {
+				return fmt.Errorf("join failed (%w) and normal restart failed: %w", err, normalErr)
+			}
+			return err // report the join error even though etcd is now running normally
+		}
+		log.Printf("etcd: join succeeded, removing backup")
+		if err := os.RemoveAll(etcdBackupJoin); err != nil {
+			return err
+		}
+		return nil
 	}
+	return s.startAndWait(mode, conf, joinArgs...)
+}
+
+// startAndWait launches etcd, waits for it to become ready (or fail/timeout),
+// and returns. On success s.kill and s.etcdExited are updated to reflect the new
+// process; s.lastConf is updated to conf.
+func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) error {
+	log.Printf("etcd: starting in %s mode", etcdModeName[mode])
 
 	cmd, err := buildEtcdCmd(mode, conf, joinArgs...)
 	if err != nil {
@@ -269,12 +273,6 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 
 	case <-aliveSig:
 		log.Printf("etcd: ready")
-		if mode == EtcdClusterJoin {
-			log.Printf("etcd: join succeeded, removing backup")
-			if err := os.RemoveAll(etcdBackupJoin); err != nil {
-				return err
-			}
-		}
 		if mode == EtcdNormal {
 			if err := os.RemoveAll(etcdBackupSnapshot); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
