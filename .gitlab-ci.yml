@@ -179,6 +179,24 @@ commit_container_test_image:
         docker push $REGISTRY/$IMAGE_NAME:${IMAGE_TAG}-${tag}
       done
 
+commit_container_production_image:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
+  stage: commit
+  image: docker:cli
+  needs: []
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - >
+      if docker image inspect ${CI_REGISTRY_IMAGE}/production:${CI_COMMIT_SHORT_SHA} >/dev/null 2>&1 ; then
+      docker tag ${CI_REGISTRY_IMAGE}/production:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}/production:latest &&
+      docker push ${CI_REGISTRY_IMAGE}/production:${CI_COMMIT_SHORT_SHA} &&
+      docker push ${CI_REGISTRY_IMAGE}/production:latest ;
+      fi
+
 validate_api_spec_swagger:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
