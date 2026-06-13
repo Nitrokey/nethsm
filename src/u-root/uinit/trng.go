@@ -11,7 +11,8 @@ import (
 	"os"
 	"time"
 
-	"nethsm/hw"
+	"nethsm/internal/hw"
+	"nethsm/internal/util"
 
 	"github.com/u-root/u-root/pkg/termios"
 )
@@ -51,7 +52,7 @@ func check(err error) {
 func trngTask() {
 	f, err := os.Open(hw.TRNGDev)
 	check(err)
-	defer f.Close()
+	defer util.Close(f)
 
 	if !hw.IsTesting() {
 		settings, err := termios.GetTermios(f.Fd())
@@ -114,14 +115,14 @@ func randReader(trng io.Reader) func() []byte {
 func trngLoop(trng io.Reader) {
 	keyfender, err := net.Dial("udp", net.JoinHostPort(keyfenderEntropyIP, keyfenderEntropyPort))
 	check(err)
-	defer keyfender.Close() // nolint
+	defer util.Close(keyfender) // nolint
 
 	var devRand *os.File
 	if !hw.IsTesting() {
 		var err error
 		devRand, err = os.OpenFile("/dev/random", os.O_WRONLY, 0)
 		check(err)
-		defer devRand.Close() // nolint
+		defer util.Close(devRand) // nolint
 	}
 
 	fullySeeded := false

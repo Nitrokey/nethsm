@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"nethsm/internal/script"
-	. "nethsm/internal/util"
+	"nethsm/internal/util"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -51,8 +51,11 @@ func command(t *testing.T, cmd string, additionalData string) (bool, string) {
 	if err != nil {
 		t.Fatalf("Failed to connect to platformListener: %s", err)
 	}
-	defer conn.Close()
-	conn.SetDeadline(deadline)
+	defer util.Close(conn)
+	err = conn.SetDeadline(deadline)
+	if err != nil {
+		log.Printf("Failed to set deadline: %v", err)
+	}
 
 	t.Logf("Sending command to platform")
 	send(t, conn, cmd+"\n")
@@ -106,7 +109,7 @@ func TestDiagnose(t *testing.T) {
 
 func mockEtcdFail() error {
 	s := script.New()
-	exitedNtfy, exitedSig := MakeNtfyPair()
+	exitedNtfy, exitedSig := util.MakeNtfyPair()
 	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &testSupervisor.ProcessState, -1, "%s", "/bin/false")
 	testSupervisor.stopEtcd = func() {
 		cancel()
@@ -121,7 +124,7 @@ func mockEtcdFail() error {
 
 func mockEtcdRun() error {
 	s := script.New()
-	exitedNtfy, exitedSig := MakeNtfyPair()
+	exitedNtfy, exitedSig := util.MakeNtfyPair()
 	// sleep more than 30s, which is the default deadline, and more than 60, which is the global deadline
 	cancel, _ := s.CancelableBackgroundExecAsf(exitedNtfy, &testSupervisor.ProcessState, -1, "%s", "/bin/sleep 80")
 	testSupervisor.stopEtcd = func() {
@@ -172,7 +175,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	os.Remove(tmpu.Name())
+	_ = os.Remove(tmpu.Name())
 
 	testProto = "unix"
 	testAddr = tmpu.Name()

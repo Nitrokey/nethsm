@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"nethsm/internal/script"
+	"nethsm/internal/util"
 )
 
 // Load muenfs kernel module and mount /muenfs.
@@ -36,7 +37,7 @@ func triggerMuenEvent(event string) {
 		log.Printf("Error triggering event '%s': %v", event, err)
 		return
 	}
-	defer f.Close()
+	defer util.Close(f)
 
 	_, err = f.Write([]byte{1})
 	if err != nil {

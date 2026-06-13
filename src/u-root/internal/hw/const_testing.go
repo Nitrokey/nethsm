@@ -4,6 +4,7 @@ package hw
 
 import "github.com/canonical/go-tpm2"
 
+// constants
 const (
 	Version    = "testing"
 	DiskDev    = ""
@@ -15,6 +16,7 @@ func init() {
 	isTesting = true
 }
 
+// MeasuredPCRs ...
 func MeasuredPCRs() tpm2.PCRSelect {
 	return tpm2.PCRSelect{}
 }

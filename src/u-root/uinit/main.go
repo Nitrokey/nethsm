@@ -15,10 +15,9 @@ package main
 import (
 	"log"
 	"os"
-	"syscall"
 
-	"nethsm/hw"
-	. "nethsm/internal/util"
+	"nethsm/internal/hw"
+	"nethsm/internal/util"
 )
 
 const (
@@ -42,7 +41,7 @@ const (
 )
 
 // Current kernel version; used when loading kernel modules (muen.go, s_platform.go).
-var kernelRelease = GetKernelRelease()
+var kernelRelease = util.GetKernelRelease()
 
 func main() {
 	// We expect a hostname to be passed in via the kernel's boot parameters,
@@ -69,7 +68,5 @@ func main() {
 	// halt, so just pause forever, rather than exiting which would result in
 	// u-root init's default behaviour of dropping into a shell.
 	log.Printf("Done")
-	for {
-		syscall.Pause()
-	}
+	select {}
 }

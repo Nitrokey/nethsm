@@ -20,7 +20,7 @@ import (
 
 	"nethsm/internal/localconf"
 	"nethsm/internal/script"
-	. "nethsm/internal/util"
+	"nethsm/internal/util"
 )
 
 type EtcdMode = int
@@ -115,7 +115,7 @@ type etcdSupervisor struct {
 func NewEtcdSupervisor() *etcdSupervisor {
 	configCh := make(chan localconf.ChangeReq)
 	cmdCh := make(chan EtcdCommand)
-	stopNtfy, stopSig := MakeNtfyPair()
+	stopNtfy, stopSig := util.MakeNtfyPair()
 	s := &etcdSupervisor{
 		configRcv: configCh,
 		cmdsRcv:   cmdCh,
@@ -241,8 +241,8 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		return err
 	}
 
-	exitedNtfy, exitedSig := MakeNtfyPair()
-	aliveNtfy, aliveSig := MakeNtfyPair()
+	exitedNtfy, exitedSig := util.MakeNtfyPair()
+	aliveNtfy, aliveSig := util.MakeNtfyPair()
 
 	log.Printf("etcd: launching: %s", cmd)
 	sc := script.New()
@@ -259,11 +259,9 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 	s.Logs.Store(ring.New(1024))
 
 	var logsDone sync.WaitGroup
-	logsDone.Add(1)
-	go func() {
-		defer logsDone.Done()
+	logsDone.Go(func() {
 		readEtcdLogs(logPipe, aliveNtfy, &lastEtcdError, s.Logs.Load())
-	}()
+	})
 
 	select {
 	case <-exitedSig:

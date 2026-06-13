@@ -9,13 +9,11 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
-	"strconv"
 	"time"
 
-	"nethsm/hw"
+	"nethsm/internal/hw"
 	"nethsm/internal/script"
-	. "nethsm/internal/util"
+	"nethsm/internal/util"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -33,27 +31,22 @@ const (
 	platformIPv6  = "fc00:1:200::2" // us: fc00:1:200::1
 )
 
-// keep in sync with network in keyfender/json.ml
+// NetworkConfig must be in sync with network in keyfender/json.ml
 type NetworkConfig struct {
 	Cidr    string `json:"cidr"`
 	Gateway string `json:"gateway"`
 }
+
+// Network must be in sync with network in keyfender/json.ml
+// because the JSON model contains nested network data.
 type Network struct {
 	V4 NetworkConfig `json:"ipv4"`
-	V6 NetworkConfig `json:"ipv6,omitempty"`
+	V6 NetworkConfig `json:"ipv6"`
 }
 
-// keep in sync with s_net_data in s_keyfender/unikernel.ml
+// SNetData must be in sync with s_net_data in s_keyfender/unikernel.ml
 type SNetData struct {
 	Network *Network `json:"network,omitempty"`
-}
-
-// setProcFsInt writes an integer value to a procfs/sysctl file
-func setProcFsInt(path string, value int) {
-	err := os.WriteFile(path, []byte(strconv.Itoa(value)), 0o644)
-	if err != nil {
-		log.Printf("Failed to set %s to %d: %v", path, value, err)
-	}
 }
 
 func configNet(conf Network) error {
@@ -96,7 +89,7 @@ func networkListener() {
 		log.Fatalf("Unable to launch listener on %s:%s: %v", listenerProtocol,
 			netListenerAddress, err)
 	}
-	defer listener.Close()
+	defer util.Close(listener)
 	log.Printf("networkListener: Listening on %s:%s.", listenerProtocol,
 		netListenerAddress)
 
@@ -114,7 +107,10 @@ func networkListener() {
 		// All requests except for UPDATE (see below) must complete within 5
 		// seconds, otherwise an i/o timeout will be reported and the
 		// connection will be shut down.
-		conn.SetDeadline(time.Now().Add(time.Second * 5))
+		err = conn.SetDeadline(time.Now().Add(time.Second * 5))
+		if err != nil {
+			log.Printf("Failed to set deadline: %v", err)
+		}
 
 		// Wrap conn in a LimitedReader (lr) to ensure that we can't be DoS'ed
 		// / run out of memory when doing operations such as ReadString().
@@ -130,7 +126,7 @@ func networkListener() {
 		err = json.NewDecoder(lr).Decode(&data)
 		if err != nil {
 			log.Printf("[%s] Error decoding JSON: %v", remoteAddr, err)
-			conn.Close()
+			util.Close(conn)
 			continue
 		}
 
@@ -156,7 +152,7 @@ func networkListener() {
 			}
 		}
 
-		conn.Close()
+		util.Close(conn)
 	}
 }
 
@@ -195,7 +191,7 @@ func sNetExternalActions() {
 
 	setupNFTables()
 
-	StartTask("networkListener", networkListener)
+	util.StartTask("networkListener", networkListener)
 	select {}
 }
 

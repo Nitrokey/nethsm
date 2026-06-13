@@ -18,10 +18,10 @@ import (
 	"syscall"
 	"time"
 
-	"nethsm/hw"
+	"nethsm/internal/hw"
 	"nethsm/internal/localconf"
 	"nethsm/internal/script"
-	. "nethsm/internal/util"
+	"nethsm/internal/util"
 )
 
 type clusterLogItem = map[string]any
@@ -109,7 +109,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 	if err != nil {
 		log.Fatalf("Unable to launch listener on %s:%s: %v", proto, addr, err)
 	}
-	defer listener.Close()
+	defer util.Close(listener)
 	log.Printf("platformListener: Listening on %s:%s.", proto, addr)
 
 	// haveUpdate is set to true if an UPDATE command was successfully
@@ -129,7 +129,10 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 		// All requests except for UPDATE (see below) must complete within 5
 		// seconds, otherwise an i/o timeout will be reported and the
 		// connection will be shut down.
-		conn.SetDeadline(time.Now().Add(time.Second * 5))
+		err = conn.SetDeadline(time.Now().Add(time.Second * 5))
+		if err != nil {
+			log.Printf("Failed to set deadline: %v", err)
+		}
 
 		// Wrap conn in a LimitedReader (lr) to ensure that we can't be DoS'ed
 		// / run out of memory when doing operations such as ReadString().
@@ -146,7 +149,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 		command, err := r.ReadString('\n')
 		if err != nil {
 			log.Printf("[%s] Error reading from connection: %v", remoteAddr, err)
-			conn.Close()
+			util.Close(conn)
 			continue
 		}
 		command = strings.TrimSuffix(command, "\n")
@@ -200,13 +203,16 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 			// This is more than enough for current size of the update image;
 			// actual times to stream the image on real hardware are on the
 			// order of 3 seconds, 10 seconds for KVM/QEMU.
-			conn.SetDeadline(time.Now().Add(time.Second * 30))
+			err = conn.SetDeadline(time.Now().Add(time.Second * 30))
+			if err != nil {
+				log.Printf("Failed to set deadline: %v", err)
+			}
 
 			w, err := os.OpenFile(sysInactivePartition, os.O_WRONLY, 0)
 			if err != nil {
 				return errorResponse(err), err, false
 			}
-			defer w.Close()
+			defer util.Close(w)
 
 			// Raise limit of lr to expected amount of data to read plus some
 			// slack.
@@ -244,7 +250,10 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 
 		// JOIN-CLUSTER
 		doJoinCluster := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 150))
+			err = conn.SetDeadline(time.Now().Add(time.Second * 150))
+			if err != nil {
+				log.Printf("Failed to set deadline: %v", err)
+			}
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -295,7 +304,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 				}
 			}
 
-			data.ClusterLogs = RingCollect[clusterLogItem](supervisor.Logs.Load())
+			data.ClusterLogs = util.RingCollect[clusterLogItem](supervisor.Logs.Load())
 
 			json, err := json.Marshal(data)
 			if err != nil {
@@ -336,7 +345,10 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 
 		// SET-LOCAL-CONFIG
 		doSetLocalConfig := func() ([]byte, error, bool) {
-			conn.SetDeadline(time.Now().Add(time.Second * 50))
+			err = conn.SetDeadline(time.Now().Add(time.Second * 50))
+			if err != nil {
+				log.Printf("Failed to set deadline: %v", err)
+			}
 			param, err := r.ReadString('\n')
 			if err != nil {
 				return nil, err, false
@@ -409,7 +421,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 			}
 		}
 
-		conn.Close()
+		util.Close(conn)
 		if terminalCommand {
 			result <- command
 			return
@@ -488,7 +500,7 @@ func setupPlatform(s *script.Script) error {
 	const initFile = "/data/initialised-v1"
 	if _, err := os.Stat(initFile); os.IsNotExist(err) {
 		log.Printf("Populating /data")
-		if err := ExtractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
+		if err := util.ExtractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
 			return fmt.Errorf("error extracting /data template: %w", err)
 		}
 	}
@@ -516,8 +528,8 @@ func sPlatformActions() {
 
 	c := make(chan string)
 	supervisor := NewEtcdSupervisor()
-	StartTask("TRNG", trngTask)
-	StartTask("Platform Listener", func() { platformListener(c, listenerProtocol, platListenerAddress, supervisor) })
+	util.StartTask("TRNG", trngTask)
+	util.StartTask("Platform Listener", func() { platformListener(c, listenerProtocol, platListenerAddress, supervisor) })
 
 	if !hw.IsTesting() {
 		if err := tpmCreatePlatformData(); err != nil {
@@ -527,8 +539,8 @@ func sPlatformActions() {
 		mockCreatePlatformData()
 	}
 
-	StartTask("time", NewTimeTask().Run)
-	StartTask("etcd supervisor", supervisor.Run)
+	util.StartTask("time", NewTimeTask().Run)
+	util.StartTask("etcd supervisor", supervisor.Run)
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-c
@@ -541,10 +553,10 @@ func sPlatformActions() {
 	supervisor.Shutdown()
 
 	log.Printf("Terminating all processes.")
-	KillAll(syscall.Signal(15))
+	util.KillAll(syscall.Signal(15))
 	time.Sleep(5 * time.Second)
 	log.Printf("Killing all remaining processes.")
-	KillAll(syscall.Signal(9))
+	util.KillAll(syscall.Signal(9))
 	log.Printf("Unmounting /data")
 	s = script.New()
 	s.Execf("/bbin/umount /data")

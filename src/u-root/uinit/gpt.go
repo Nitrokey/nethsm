@@ -6,8 +6,10 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"nethsm/internal/util"
 	"os/exec"
 	"strings"
 )
@@ -79,11 +81,17 @@ func gptSwapPartitions(diskDevice string) error {
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	if scanner.Err() != nil {
-		stdout.Close()
-		cmd.Wait()
-		return fmt.Errorf("parse error reading GPT: %v", scanner.Err())
+	err = cmd.Wait()
+	if err != nil {
+		err = fmt.Errorf("sfdisk failed to read GPT: %w", err)
 	}
+	if scanner.Err() != nil {
+		err = errors.Join(err, fmt.Errorf("parse error reading GPT: %v", scanner.Err()))
+	}
+	if err != nil {
+		return err
+	}
+
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("sfdisk failed to read GPT: %w", err)
 	}
@@ -117,7 +125,7 @@ func gptSwapPartitions(diskDevice string) error {
 	cerr := make(chan error)
 	go func() {
 		defer close(cerr)
-		defer stdin.Close()
+		defer util.Close(stdin)
 		for _, l := range lines {
 			s := l + "\n"
 			n, err := io.WriteString(stdin, s)

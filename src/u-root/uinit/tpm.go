@@ -26,8 +26,9 @@ import (
 	"github.com/canonical/go-tpm2/objectutil"
 	"github.com/canonical/go-tpm2/policyutil"
 
-	"nethsm/hw"
+	"nethsm/internal/hw"
 	"nethsm/internal/localconf"
+	"nethsm/internal/util"
 )
 
 const (
@@ -51,8 +52,8 @@ type platformData struct {
 	HardwareVersion string            `json:"hardwareVersion"`
 	FirmwareVersion string            `json:"firmwareVersion"`
 	NetworkConfig   string            `json:"networkConfig,omitempty"`
-	LastTlsCert     string            `json:"lastTlsCert,omitempty"`
-	LastTlsKey      string            `json:"lastTlsKey,omitempty"`
+	LastTLSCert     string            `json:"lastTlsCert,omitempty"`
+	LastTLSKey      string            `json:"lastTlsKey,omitempty"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -88,6 +89,13 @@ func tpmRand() (buf []byte, err error) {
 // encoding without I, O, 0, 1
 const base32Chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+func flushContext(tpm *tpm2.TPMContext, ctx tpm2.HandleContext) {
+	err := tpm.FlushContext(ctx)
+	if err != nil {
+		log.Printf("Failed to flush TPM context: %v", err)
+	}
+}
+
 func getIDFromAk(akPub *tpm2.Public) string {
 	akName := akPub.Name().Digest()
 	return base32.NewEncoding(base32Chars).EncodeToString(akName[:7])[:10]
@@ -100,7 +108,7 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("create AK256: %w", err)
 	}
-	defer tpm.FlushContext(ak256Ctx)
+	defer flushContext(tpm, ak256Ctx)
 
 	ak256Der, err := x509.MarshalPKIXPublicKey(ak256Pub.Public())
 	if err != nil {
@@ -117,7 +125,7 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("create AK384: %w", err)
 	}
-	defer tpm.FlushContext(ak384Ctx)
+	defer flushContext(tpm, ak384Ctx)
 
 	ak384Der, err := x509.MarshalPKIXPublicKey(ak384Pub.Public())
 	if err != nil {
@@ -140,7 +148,7 @@ var platformDataCh = make(chan platformData, 1)
 // created.
 func tpmCreatePlatformData() error {
 	log.Printf("Initializing platform data")
-	var pcrIdxs tpm2.PCRSelect = hw.MeasuredPCRs()
+	var pcrIdxs = hw.MeasuredPCRs()
 
 	// this must be called before withTPMContext(), because seeding also uses a
 	// TPMContext
@@ -169,7 +177,7 @@ func tpmCreatePlatformData() error {
 		if err != nil {
 			return fmt.Errorf("create SRK: %w", err)
 		}
-		defer tpm.FlushContext(srkCtx)
+		defer flushContext(tpm, srkCtx)
 
 		// Select PCR indexes in the SHA256 bank
 		pcrSelection := tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: pcrIdxs}}
@@ -214,9 +222,12 @@ func tpmCreatePlatformData() error {
 
 		// cap PCRs afterwards to inhibit unsealing the Device Key again
 		for _, i := range pcrIdxs {
-			tpm.PCRExtend(tpm.PCRHandleContext(i),
+			err = tpm.PCRExtend(tpm.PCRHandleContext(i),
 				tpm2.TaggedHashList{tpm2.MakeTaggedHash(tpm2.HashAlgorithmSHA256, zeros)},
 				nil)
+			if err != nil {
+				return fmt.Errorf("extending PCR value failed: %w", err)
+			}
 		}
 
 		_, newPCRValues, err := tpm.PCRRead(pcrSelection)
@@ -262,8 +273,8 @@ func tpmCreatePlatformData() error {
 		}
 		if lc.TLSCert != "" && lc.TLSKey != "" {
 			// return last TLS cert/key if stored, for use if booting in Failed mode
-			data.LastTlsCert = lc.TLSCert
-			data.LastTlsKey = lc.TLSKey
+			data.LastTLSCert = lc.TLSCert
+			data.LastTLSKey = lc.TLSKey
 		}
 
 		platformDataCh <- data
@@ -301,7 +312,7 @@ func mockCreatePlatformData() {
 	platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
 	log.Printf("Fake Platform Data: %v\n", string(platformDataJSON))
 
-	localconf.Init(data.DeviceKey)
+	_ = localconf.Init(data.DeviceKey)
 	platformDataCh <- data
 	close(platformDataCh)
 }
@@ -346,7 +357,7 @@ func sealDeviceKey(
 	if err != nil {
 		return err
 	}
-	defer tpm.FlushContext(encSession)
+	defer flushContext(tpm, encSession)
 
 	// Create the sealed object
 	priv, pub, _, _, _, err := tpm.Create(srk, sensitive, template, nil, nil, nil, encSession)
@@ -382,7 +393,7 @@ func unsealDeviceKey(tpm *tpm2.TPMContext, srk tpm2.ResourceContext) ([]byte, er
 		}
 		return nil, fmt.Errorf("cannot open sealed device key file: %w", err)
 	}
-	defer f.Close()
+	defer util.Close(f)
 
 	// Decode the sealed object
 	var priv tpm2.Private
@@ -397,20 +408,20 @@ func unsealDeviceKey(tpm *tpm2.TPMContext, srk tpm2.ResourceContext) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	defer tpm.FlushContext(object)
+	defer flushContext(tpm, object)
 
 	encSession, err := encryptionSession(tpm, srk, encryptResponse)
 	if err != nil {
 		return nil, err
 	}
-	defer tpm.FlushContext(encSession)
+	defer flushContext(tpm, encSession)
 
 	// Start a policy policySession with PCR assertion.
 	policySession, err := tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA384)
 	if err != nil {
 		return nil, err
 	}
-	defer tpm.FlushContext(policySession)
+	defer flushContext(tpm, policySession)
 
 	if err := tpm.PolicyPCR(policySession, nil, pcrSelection); err != nil {
 		return nil, err

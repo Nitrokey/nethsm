@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"nethsm/hw"
+	"nethsm/internal/hw"
 )
 
 func main() {
@@ -132,7 +132,7 @@ func partitionDisk(partitions, device string) {
 	if err != nil {
 		fmt.Printf("Error partitioning disk %s: %v\n", device, err)
 	}
-	exec.Command("sync").Run()
+	_ = exec.Command("sync").Run()
 }
 
 func writeToPartition(file, partition string) {
@@ -149,8 +149,8 @@ func formatDataPartition(partition string) {
 	if err != nil {
 		fmt.Printf("Error formatting data partition %s: %v\n", partition, err)
 	}
-	exec.Command("sync").Run()
-	exec.Command("sync").Run()
+	_ = exec.Command("sync").Run()
+	_ = exec.Command("sync").Run()
 }
 
 func readFile(path string) string {

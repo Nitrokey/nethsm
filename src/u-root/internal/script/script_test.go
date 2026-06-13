@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	. "nethsm/internal/util"
+	"nethsm/internal/util"
 )
 
 var tests = map[string]struct {
@@ -28,7 +28,7 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 		t.Run(cmd, func(t *testing.T) {
 			t.Parallel()
 			s := New()
-			exitedNtfy, exitedSig := MakeNtfyPair()
+			exitedNtfy, exitedSig := util.MakeNtfyPair()
 			processState := new(atomic.Pointer[os.ProcessState])
 			cancel, pipe := s.CancelableBackgroundExecAsf(exitedNtfy, processState, -1, "%s", cmd)
 			if test.inCancel {

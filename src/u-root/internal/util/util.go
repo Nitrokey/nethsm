@@ -6,6 +6,7 @@ package util
 
 import (
 	"container/ring"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -52,7 +53,7 @@ func ExtractCpioArchive(archiveFile string, destDir string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer Close(f)
 
 	cmd := exec.Command("/bbin/cpio", "i")
 	cmd.Stdin = f
@@ -77,6 +78,7 @@ func SafeGetenv(key string, defaultValue string) string {
 	}
 }
 
+// StartTask starts a goroutine that executes function f and logs its lifecycle.
 func StartTask(name string, f func()) {
 	go func() {
 		log.Printf("%s task started.", name)
@@ -117,4 +119,13 @@ func RingCollect[T any](r *ring.Ring) []T {
 		}
 	})
 	return result
+}
+
+// Close closes the provided Closer and logs any error encountered.
+func Close(c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		log.Printf("failed to close: %v", err)
+		log.Print("stacktrace:\n" + string(debug.Stack()))
+	}
 }

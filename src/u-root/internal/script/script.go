@@ -32,6 +32,7 @@ import (
 	"syscall"
 )
 
+// Script type
 type Script struct {
 	err error
 }
@@ -170,10 +171,12 @@ func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *at
 	return cancel, logPipe
 }
 
+// BackgroundExecAsf ...
 func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...any) {
 	_, _ = s.CancelableBackgroundExecAsf(nil, nil, -1, format, a...)
 }
 
+// BackgroundExecf ...
 func (s *Script) BackgroundExecf(format string, a ...any) {
 	s.BackgroundExecAsf(-1, format, a...)
 }
