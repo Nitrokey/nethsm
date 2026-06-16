@@ -77,7 +77,7 @@ struct
         let ok (key : Json.private_key_req) =
           let namespace = Endpoint.get_namespace rd in
           Hsm.Key.add_json ~namespace hsm_state ~id key.mechanisms key.typ
-            key.priv key.restrictions
+            key.priv key.restrictions key.label
           >>= function
           | Ok () ->
               let cc hdr =
@@ -107,12 +107,12 @@ struct
             let params, pem = if x < y then (p1, p2) else (p2, p1) in
             match Json.(decode private_key_multipart_req_of_yojson params) with
             | Error e -> Endpoint.respond_error (Bad_request, e) rd
-            | Ok { mechanisms; restrictions } -> (
+            | Ok { mechanisms; restrictions; label } -> (
                 (* must succeed since we set it ourselves, and webmachine ensures that it already happened. *)
                 let id = Option.get new_id in
                 let namespace = Endpoint.get_namespace rd in
                 Hsm.Key.add_pem ~namespace hsm_state ~id mechanisms pem
-                  restrictions
+                  restrictions label
                 >>= function
                 | Ok () ->
                     let cc hdr =
@@ -183,7 +183,7 @@ struct
           in
           let namespace = Endpoint.get_namespace rd in
           Hsm.Key.generate ~namespace hsm_state ~id key.typ key.mechanisms
-            ~length:key.length key.restrictions
+            ~length:key.length key.restrictions key.label
           >>= function
           | Ok () ->
               let cc hdr =
@@ -412,7 +412,7 @@ struct
         let ok id (key : Json.private_key_req) =
           let namespace = Endpoint.get_namespace rd in
           Hsm.Key.add_json ~namespace hsm_state ~id key.mechanisms key.typ
-            key.priv key.restrictions
+            key.priv key.restrictions key.label
           >>= function
           | Ok () -> Wm.continue true rd
           | Error e -> Endpoint.respond_error e rd
@@ -432,11 +432,11 @@ struct
             let params, pem = if x < y then (p1, p2) else (p2, p1) in
             match Json.(decode private_key_multipart_req_of_yojson params) with
             | Error e -> Endpoint.respond_error (Bad_request, e) rd
-            | Ok { mechanisms; restrictions } ->
+            | Ok { mechanisms; restrictions; label } ->
                 let ok id =
                   let namespace = Endpoint.get_namespace rd in
                   Hsm.Key.add_pem ~namespace hsm_state ~id mechanisms pem
-                    restrictions
+                    restrictions label
                   >>= function
                   | Ok () -> Wm.continue true rd
                   | Error e -> Endpoint.respond_error e rd

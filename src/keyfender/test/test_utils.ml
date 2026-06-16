@@ -233,18 +233,19 @@ let test_key =
   | _ -> assert false
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
+let no_label = None
 
 let hsm_with_key ?platform ?mbox ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =
   let state = operational_mock ?platform ?mbox () in
   Lwt_main.run
     ( Hsm.Key.add_pem state mechanisms ~namespace:None ~id:"keyID" test_key_pem
-        no_restrictions
+        no_restrictions no_label
     >>= function
       | Ok () when and_namespace = None -> Lwt.return state
       | Ok () -> (
           Hsm.Key.add_pem ~namespace:and_namespace state mechanisms
-            ~id:"subKeyID" test_key_pem no_restrictions
+            ~id:"subKeyID" test_key_pem no_restrictions no_label
           >|= function
           | Ok () -> state
           | Error _ -> assert false)

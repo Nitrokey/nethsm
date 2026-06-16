@@ -2241,7 +2241,7 @@ let system_backup_and_restore_operational ~unattended ~changed_devkey
     Lwt_main.run
       (let mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1) in
        Hsm.Key.add_pem hsm_state mechanisms ~namespace:None ~id:"newKeyID"
-         test_key_pem no_restrictions)
+         test_key_pem no_restrictions no_label)
     |> Result.get_ok;
     (* do the same with namespaces *)
     let* hsm_state =
@@ -4594,7 +4594,7 @@ let hsm_with_ed25519_key () =
   Lwt_main.run
     ( Hsm.Key.add_pem hsm_state
         Keyfender.Json.(MS.singleton EdDSA_Signature)
-        ~namespace:None ~id:"keyID" ed25519_priv_pem no_restrictions
+        ~namespace:None ~id:"keyID" ed25519_priv_pem no_restrictions no_label
     >|= function
       | Ok () -> hsm_state
       | Error _ -> assert false )
@@ -4695,7 +4695,7 @@ let add_generic state ~id ms key =
   match
     Lwt_main.run
       (Hsm.Key.add_json ~namespace:None ~id state ms Generic json_key
-         no_restrictions)
+         no_restrictions no_label)
   with
   | Ok () -> ()
   | Error _ -> assert false
@@ -4824,7 +4824,7 @@ let hsm_with_tags ?namespace () =
   let tags = Keyfender.Json.TagSet.singleton "berlin" in
   Lwt_main.run
     (Hsm.Key.generate ~namespace ~id:"keyID" hsm_state RSA ms ~length:1024
-       { tags })
+       { tags } no_label)
   |> Result.get_ok;
   hsm_state
 
@@ -5658,7 +5658,7 @@ let rsa2048_pub =
 let add_pem state ~id ms key =
   match
     Lwt_main.run
-      (Hsm.Key.add_pem ~namespace:None ~id state ms key no_restrictions)
+      (Hsm.Key.add_pem ~namespace:None ~id state ms key no_restrictions no_label)
   with
   | Ok () -> ()
   | Error _ -> assert false

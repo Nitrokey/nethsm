@@ -522,12 +522,22 @@ type ec_public_key = { data : string } [@@deriving to_yojson]
 type restrictions = { tags : (TagSet.t[@default TagSet.empty]) }
 [@@deriving yojson, jsonschema]
 
+module Label : sig
+  type label = private string [@@deriving yojson]
+
+  val label_jsonschema : [> `Assoc of (string * [> `String of string ]) list ]
+end = struct
+  (* TODO validate UTF-8 content on deserialization *)
+  type label = string [@@deriving yojson, jsonschema]
+end
+
 type public_key = {
   mechanisms : MS.t;
   typ : key_type; [@key "type"]
   operations : int;
   public : (Yojson.Safe.t[@default `Null]);
   restrictions : restrictions;
+  label : Label.label option; [@default None]
 }
 [@@deriving to_yojson]
 
@@ -536,12 +546,14 @@ type private_key_req = {
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
   typ : key_type; [@key "type"]
   priv : private_key; [@key "private"]
+  label : Label.label option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 
 type private_key_multipart_req = {
   mechanisms : MS.t;
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
+  label : Label.label option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 
@@ -632,6 +644,7 @@ type generate_key_req = {
   length : (int[@default 0]);
   id : (string[@default ""]);
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
+  label : Label.label option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 

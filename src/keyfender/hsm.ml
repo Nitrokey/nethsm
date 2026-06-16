@@ -189,6 +189,7 @@ module type S = sig
       Json.key_type ->
       Json.private_key ->
       Json.restrictions ->
+      Json.Label.label option ->
       (unit, error) result Lwt.t
 
     val add_pem :
@@ -198,6 +199,7 @@ module type S = sig
       Json.MS.t ->
       string ->
       Json.restrictions ->
+      Json.Label.label option ->
       (unit, error) result Lwt.t
 
     val generate :
@@ -208,6 +210,7 @@ module type S = sig
       Json.MS.t ->
       length:int ->
       Json.restrictions ->
+      Json.Label.label option ->
       (unit, error) result Lwt.t
 
     val remove :
@@ -729,6 +732,7 @@ module Make (KV : Kv_ext.Platform) = struct
         cert : (string * string) option;
         operations : int;
         restrictions : Json.restrictions;
+        label : Json.Label.label option; [@default None]
       }
       [@@deriving yojson]
     end
@@ -1616,7 +1620,7 @@ module Make (KV : Kv_ext.Platform) = struct
           internal_server_error Write "Write key" Key_store.pp_write_error
             (Key_store.set store kv_key key))
 
-    let add ~namespace ~id t mechanisms priv restrictions =
+    let add ~namespace ~id t mechanisms priv restrictions label =
       let open Lwt_result.Infix in
       let store = key_store t in
       let key = make_store_key ~namespace id in
@@ -1628,7 +1632,14 @@ module Make (KV : Kv_ext.Platform) = struct
             (Error (Bad_request, "Key with id " ^ id ^ " already exists"))
       | None ->
           encode_and_write t ~namespace id
-            { mechanisms; priv; cert = None; operations = 0; restrictions }
+            {
+              mechanisms;
+              priv;
+              cert = None;
+              operations = 0;
+              restrictions;
+              label;
+            }
           >|= fun () ->
           Access.info (fun f -> f "created (%s)" id);
           if not (Json.TagSet.is_empty restrictions.tags) then
@@ -1639,7 +1650,7 @@ module Make (KV : Kv_ext.Platform) = struct
     open Stores.Key_info
 
     let add_json ~namespace ~id t mechanisms typ (key : Json.private_key)
-        restrictions =
+        restrictions label =
       let b64err msg ctx data =
         Rresult.R.error_msgf
           "Invalid base64 encoded value (error: %s) in %S: %s" msg ctx data
@@ -1679,12 +1690,13 @@ module Make (KV : Kv_ext.Platform) = struct
         | BrainpoolP512 -> prv `BrainpoolP512
       with
       | Error (`Msg e) -> Lwt.return (Error (Bad_request, e))
-      | Ok priv -> add ~namespace ~id t mechanisms priv restrictions
+      | Ok priv -> add ~namespace ~id t mechanisms priv restrictions label
 
-    let add_pem ~namespace ~id t mechanisms data restrictions =
+    let add_pem ~namespace ~id t mechanisms data restrictions label =
       match X509.Private_key.decode_pem data with
       | Error (`Msg m) -> Lwt.return (Error (Bad_request, m))
-      | Ok priv -> add ~namespace ~id t mechanisms (X509 priv) restrictions
+      | Ok priv ->
+          add ~namespace ~id t mechanisms (X509 priv) restrictions label
 
     let generate_x509 typ ~length =
       let open Rresult in
@@ -1715,11 +1727,11 @@ module Make (KV : Kv_ext.Platform) = struct
       | BrainpoolP384 -> gen `BrainpoolP384
       | BrainpoolP512 -> gen `BrainpoolP512
 
-    let generate ~namespace ~id t typ mechanisms ~length restrictions =
+    let generate ~namespace ~id t typ mechanisms ~length restrictions label =
       let open Lwt_result.Infix in
       Lwt.return (generate_key typ ~length) >>= fun priv ->
       Metrics.key_op `Generate;
-      add ~namespace ~id t mechanisms priv restrictions
+      add ~namespace ~id t mechanisms priv restrictions label
 
     let remove ~namespace t ~id =
       let open Lwt_result.Infix in
@@ -1859,6 +1871,7 @@ module Make (KV : Kv_ext.Platform) = struct
           operations = pkey.operations;
           public;
           restrictions = pkey.restrictions;
+          label = pkey.label;
         }
 
     let get_pem ~namespace t ~id =
