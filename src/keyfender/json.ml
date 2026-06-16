@@ -524,11 +524,18 @@ type restrictions = { tags : (TagSet.t[@default TagSet.empty]) }
 
 module Label : sig
   type label = private string [@@deriving yojson]
+  (** a valid UTF-8 string *)
 
   val label_jsonschema : [> `Assoc of (string * [> `String of string ]) list ]
+  val of_string : string -> (label, string) result
 end = struct
-  (* TODO validate UTF-8 content on deserialization *)
   type label = string [@@deriving yojson, jsonschema]
+
+  let of_string str =
+    if String.is_valid_utf_8 str then Ok str
+    else Error "Label is not valid UTF-8"
+
+  let label_of_yojson json = Result.bind (label_of_yojson json) of_string
 end
 
 type public_key = {
