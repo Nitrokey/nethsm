@@ -3965,6 +3965,53 @@ let keys_generate_ed25519_fail =
       | Some _ -> false)
   | _ -> false
 
+let rec iter_valid_utf8 f start =
+  f start;
+  if start < Uchar.max then (iter_valid_utf8 [@tailcall]) f (Uchar.succ start)
+
+let iter_valid_utf8 f = iter_valid_utf8 f Uchar.min
+
+let keys_generate_labels_ok_small =
+  Alcotest.test_case "POST on /keys/generate with a small valid label succeeds"
+    `Quick
+  @@ fun () ->
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, label: "LABEL" }|}
+  in
+  let expect = info "created (xxxx)" in
+  admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  |> returns_string ~with_status:`Created
+  |> ignore
+
+let keys_generate_labels_ok =
+  Alcotest.test_case "POST on /keys/generate with a valid label succeeds" `Quick
+  @@ fun () ->
+  let b = Buffer.create 65536 in
+  iter_valid_utf8 (fun c ->
+      (* TODO: emit the full JSON string spec *)
+      if c <> Uchar.of_char '"' && c <> Uchar.of_char '\\' then
+        Buffer.add_utf_8_uchar b c);
+  let label = Buffer.contents b in
+  (*  TODO: split this, we'll need to add a limit on the label length *)
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, label: "|}
+    ^ label ^ "\"}"
+  in
+  let expect = info "created (xxxx)" in
+  admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
+  |> returns_string ~with_status:`Created
+  |> ignore
+
+let keys_generate_labels_fail =
+  Alcotest.test_case "POST on /keys/generate with a bad label succeeds" `Quick
+  @@ fun () ->
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, label: "\xc0\xaf"}|}
+  in
+  admin_post_request ~body:(`String generate_json) "/keys/generate"
+  |> returns_string ~with_status:`Bad_request
+  |> ignore
+
 let keys_generate_generic =
   "POST on /keys/generate with Generic succeeds" @? fun () ->
   let generate_generic =
@@ -6222,6 +6269,9 @@ let () =
           keys_generate_ed25519_fail;
           keys_generate_generic;
           keys_generate_generic_fail;
+          keys_generate_labels_ok_small;
+          keys_generate_labels_ok;
+          keys_generate_labels_fail;
         ] );
       ( "/keys/keyID",
         [
