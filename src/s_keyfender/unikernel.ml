@@ -269,13 +269,13 @@ struct
       first_package
 
   let pp_platform_err ppf = function
-    | `Write err -> Format.fprintf ppf "write error %s" err
-    | `Read err -> Format.fprintf ppf "read error %s" err
+    | `Write err -> Format.fprintf ppf "write error: %s" err
+    | `Read err -> Format.fprintf ppf "read error: %s" err
     | `Create err ->
-        Format.fprintf ppf "error %s while establishing connection" err
+        Format.fprintf ppf "error while establishing connection: %s" err
     | `Eof -> Format.fprintf ppf "received eof"
-    | `Remote err -> Format.fprintf ppf "received error %s" err
-    | `Parse err -> Format.fprintf ppf "couldn't decode message %s" err
+    | `Remote err -> Format.fprintf ppf "received error: %s" err
+    | `Parse err -> Format.fprintf ppf "couldn't decode message: %s" err
     | `Timeout -> Format.fprintf ppf "timeout"
     | `Additional err -> Format.fprintf ppf "additional data: %s" err
 
