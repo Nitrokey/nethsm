@@ -269,14 +269,14 @@ func tpmCreatePlatformData() error {
 		}
 
 		lc := localconf.Get()
-		if lc.NetworkConfig != "" {
+		if nc := derefStr(lc.NetworkConfig); nc != "" {
 			// return stored network config as part of platform data
-			data.NetworkConfig = lc.NetworkConfig
+			data.NetworkConfig = nc
 		}
-		if lc.TLSCert != "" && lc.TLSKey != "" {
+		if tlsCert, tlsKey := derefStr(lc.TLSCert), derefStr(lc.TLSKey); tlsCert != "" && tlsKey != "" {
 			// return last TLS cert/key if stored, for use if booting in Failed mode
-			data.LastTLSCert = lc.TLSCert
-			data.LastTLSKey = lc.TLSKey
+			data.LastTLSCert = tlsCert
+			data.LastTLSKey = tlsKey
 		}
 		data.FailedUnlockSalt = lc.FailedUnlockSalt
 		data.FailedUnlockDigest = lc.FailedUnlockDigest

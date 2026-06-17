@@ -366,7 +366,7 @@ func platformListener(result chan string, proto, addr string, supervisor *etcdSu
 			if err != nil {
 				return errorResponse(err), err, false
 			}
-			err = localconf.Set(configJSON)
+			err = localconf.Set(configJSON, setTimeAndUpdateOffset)
 			if err != nil {
 				err := fmt.Errorf("couldn't store local config: %w", err)
 				return errorResponse(err), err, false

@@ -28,6 +28,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Time_offset : Ptime.span k
     | Unattended_boot : bool k
     | Pending_unlock_migrations : migrations k
+    | Ntp_ip : string k
+    | Nts_name : string k
     | Restore_in_progress : unit k (* if key exists, then restore in progress *)
 
   let name : type a. a k -> string = function
@@ -43,6 +45,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Time_offset -> "time-offset"
     | Unattended_boot -> "unattended-boot"
     | Pending_unlock_migrations -> "pending-unlock-migrations"
+    | Ntp_ip -> "ntp-ip"
+    | Nts_name -> "nts-name"
     | Restore_in_progress -> "restore-in-progress"
 
   type packed_k = P : _ k -> packed_k
@@ -60,6 +64,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | "time-offset" -> Some (P Time_offset)
     | "unattended-boot" -> Some (P Unattended_boot)
     | "pending-unlock-migrations" -> Some (P Pending_unlock_migrations)
+    | "ntp-ip" -> Some (P Ntp_ip)
+    | "nts-name" -> Some (P Nts_name)
     | "restore-in-progress" -> Some (P Restore_in_progress)
     | _ -> None
 
@@ -96,6 +102,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Unattended_boot, b -> if b then "1" else "0"
     | Pending_unlock_migrations, l ->
         migrations_to_yojson l |> Yojson.Safe.to_string
+    | Ntp_ip, s -> s
+    | Nts_name, s -> s
     | Restore_in_progress, () -> ""
 
   let guard p err = if p then Ok () else Error (`Msg err)
@@ -154,6 +162,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Pending_unlock_migrations ->
         Json.decode migrations_of_yojson data
         |> Result.map_error (fun s -> `Msg s)
+    | Ntp_ip -> Ok data
+    | Nts_name -> Ok data
     | Restore_in_progress -> Ok ()
 
   (* global configs are shared by all nodes in a cluster
@@ -166,7 +176,7 @@ module Make (KV : Kv_ext.Platform) = struct
         true
     | Time_offset (* offset might be different for different hardware *)
     | Unlock_salt | Certificate | Private_key | Ip_config | Log_config
-    | Unattended_boot | Pending_unlock_migrations ->
+    | Unattended_boot | Pending_unlock_migrations | Ntp_ip | Nts_name ->
         false
 
   (* "early" configs cannot be encrypted with the domain key, as they are
@@ -178,7 +188,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Ip_config (* needed for clients to talk to us *)
     | Log_config (* used at boot, though could be late if needed *)
     | Unattended_boot (* needed at boot *)
-    | Time_offset (* needed by (at least) web server *)
+    | Time_offset (* kept early so the boot-time migration can read it before unlock *)
     | Version (* needed immediately at boot for migrations *)
     | Restore_in_progress (* no associated value *)
     | Pending_unlock_migrations
@@ -186,7 +196,8 @@ module Make (KV : Kv_ext.Platform) = struct
       ->
         true
     | Backup_salt | Backup_key (* not used in Unprovisioned mode *)
-    | Cluster_CA (* needed by etcd but cached on platform *) ->
+    | Cluster_CA (* needed by etcd but cached on platform *)
+    | Ntp_ip | Nts_name (* needed by S-Platform, not Keyfender; S-Platform caches them *) ->
         false
 
   type error = [ `Kv of KV.error | `Msg of string | `Missing_domain_key ]
@@ -398,6 +409,8 @@ module Make (KV : Kv_ext.Platform) = struct
     log_config : Json.log option;
     time_offset : Ptime.span option;
     unattended_boot : bool option;
+    ntp_ip : string option;
+    nts_name : string option;
         (* pending_unlock_migrations has never a reason to be backed up itself *)
   }
 
@@ -417,6 +430,8 @@ module Make (KV : Kv_ext.Platform) = struct
     let* () = remove t Time_offset in
     let* () = remove t Unattended_boot in
     let* () = remove t Pending_unlock_migrations in
+    let* () = remove t Ntp_ip in
+    let* () = remove t Nts_name in
     Lwt_result.return ()
 
   (* lenient: does not fail on error *)
@@ -443,6 +458,8 @@ module Make (KV : Kv_ext.Platform) = struct
           log_config = None;
           time_offset = None;
           unattended_boot = None;
+          ntp_ip = None;
+          nts_name = None;
         }
     else
       let* certificate = get_opt' t Certificate in
@@ -451,6 +468,8 @@ module Make (KV : Kv_ext.Platform) = struct
       let* log_config = get_opt' t Log_config in
       let* time_offset = get_opt' t Time_offset in
       let* unattended_boot = get_opt' t Unattended_boot in
+      let* ntp_ip = get_opt' t Ntp_ip in
+      let* nts_name = get_opt' t Nts_name in
       Lwt_result.return
         {
           unlock_salt;
@@ -460,6 +479,8 @@ module Make (KV : Kv_ext.Platform) = struct
           log_config;
           time_offset;
           unattended_boot;
+          ntp_ip;
+          nts_name;
         }
 
   let set_opt t k = function
@@ -479,6 +500,8 @@ module Make (KV : Kv_ext.Platform) = struct
         let* () = set_opt t Log_config b.log_config in
         let* () = set_opt t Time_offset b.time_offset in
         let* () = set_opt t Unattended_boot b.unattended_boot in
+        let* () = set_opt t Ntp_ip b.ntp_ip in
+        let* () = set_opt t Nts_name b.nts_name in
         Lwt_result.return ())
 
   (* Migrate stored v0 configs from:

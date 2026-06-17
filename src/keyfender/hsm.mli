@@ -118,6 +118,8 @@ module type S = sig
 
     val time : t -> Ptime.t Lwt.t
     val set_time : t -> Ptime.t -> (unit, error) result Lwt.t
+    val ntp : t -> Json.ntp_config Lwt.t
+    val set_ntp : t -> Json.ntp_config -> (unit, error) result Lwt.t
   end
 
   module System : sig

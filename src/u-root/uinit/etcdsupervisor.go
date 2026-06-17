@@ -76,10 +76,10 @@ func etcdConfOf(c *localconf.LocalConf) etcdConf {
 		return etcdConf{}
 	}
 	return etcdConf{
-		tlsCert:  c.TLSCert,
-		tlsKey:   c.TLSKey,
-		tlsCA:    c.TLSTrustedCA,
-		deviceID: c.DeviceID,
+		tlsCert:  derefStr(c.TLSCert),
+		tlsKey:   derefStr(c.TLSKey),
+		tlsCA:    derefStr(c.TLSTrustedCA),
+		deviceID: derefStr(c.DeviceID),
 	}
 }
 
@@ -157,7 +157,8 @@ func (s *etcdSupervisor) Run() {
 			return
 
 		case req := <-s.configRcv:
-			newConf := etcdConfOf(req.Conf)
+			full := localconf.Get()
+			newConf := etcdConfOf(&full)
 			if newConf == s.lastConf {
 				req.Reply <- nil
 				continue

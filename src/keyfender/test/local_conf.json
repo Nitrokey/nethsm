@@ -1,17 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$defs": { "network_config": { "type": "string" } },
+  "$defs": {
+    "network_config": {
+      "type": "string"
+    }
+  },
   "type": "object",
   "properties": {
-    "failed_unlock_digest": { "type": "string" },
-    "failed_unlock_salt": { "type": "string" },
-    "network_config": { "$ref": "#/$defs/network_config" },
-    "time_offset_s": { "type": "integer" },
-    "device_id": { "type": "string" },
-    "tls_cluster_ca": { "type": "string" },
-    "tls_key": { "type": "string" },
-    "tls_cert": { "type": "string" }
+    "failed_unlock_digest": {
+      "type": "string"
+    },
+    "failed_unlock_salt": {
+      "type": "string"
+    },
+    "time_ms": {
+      "type": "integer"
+    },
+    "nts_name": {
+      "type": "string"
+    },
+    "ntp_ip": {
+      "type": "string"
+    },
+    "network_config": {
+      "$ref": "#/$defs/network_config"
+    },
+    "device_id": {
+      "type": "string"
+    },
+    "tls_cluster_ca": {
+      "type": "string"
+    },
+    "tls_key": {
+      "type": "string"
+    },
+    "tls_cert": {
+      "type": "string"
+    }
   },
-  "required": [ "time_offset_s", "device_id", "tls_key", "tls_cert" ],
+  "required": [],
   "additionalProperties": false
 }

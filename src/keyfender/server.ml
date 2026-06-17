@@ -59,6 +59,7 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ("/config/logging", fun () -> new Config.logging hsm_state ip);
         ( "/config/backup-passphrase",
           fun () -> new Config.backup_passphrase hsm_state ip );
+        ("/config/ntp", fun () -> new Config.ntp hsm_state ip);
         ("/config/time", fun () -> new Config.time hsm_state ip);
         ("/users", fun () -> new Users.handler_users hsm_state ip);
         ( "/users/:id/passphrase",

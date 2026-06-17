@@ -906,21 +906,53 @@ let network_config_to_string = function
       let payload = network_to_yojson net |> Yojson.Safe.to_string in
       `String payload
 
-(* must be in sync with localConf in src/u-root/uinit/local_conf.go *)
+(* Wire format for SET-LOCAL-CONFIG. All fields are optional so that absent
+   fields keep their existing value on the S-Platform side. time_offset_s is
+   absent because S-Platform owns it. time_ms is only set when forwarding a
+   PUT /config/time request. Must be in sync with localConfUpdate in
+   src/u-root/internal/localconf/localconf.go *)
 type local_conf = {
-  tls_cert : string;
-  tls_key : string;
+  tls_cert : string option; [@default None] [@key "tls_cert"]
+  tls_key : string option; [@default None] [@key "tls_key"]
   tls_cluster_ca : string option; [@default None]
-  device_id : string;
-  time_offset_s : int; (* 0 is unset *)
+  device_id : string option; [@default None] [@key "device_id"]
   network_config : network option;
       [@default None]
       [@to_yojson network_config_to_string]
       [@ref "network_config"]
   failed_unlock_salt : string option; [@default None]
   failed_unlock_digest : string option; [@default None]
+  ntp_ip : string option; [@default None] [@key "ntp_ip"]
+  nts_name : string option; [@default None] [@key "nts_name"]
+  time_ms : int64 option; [@default None] [@key "time_ms"]
 }
 [@@deriving yojson, jsonschema]
+
+type ntp_config = {
+  ntpIP : string option; [@default None]
+  ntsName : string option; [@default None]
+}
+[@@deriving yojson, jsonschema]
+
+(* Convert an optional config value for a SET-LOCAL-CONFIG update: Some v → Some v
+   (set the field), None → Some "" (tell S-Platform to unset the field).
+   Never returns None — that would omit the field and leave the old value intact. *)
+let set_or_clear = Option.fold ~none:(Some "") ~some:Option.some
+
+(* All-None local_conf for use as a base with record update syntax *)
+let empty_local_conf =
+  {
+    tls_cert = None;
+    tls_key = None;
+    tls_cluster_ca = None;
+    device_id = None;
+    network_config = None;
+    failed_unlock_salt = None;
+    failed_unlock_digest = None;
+    ntp_ip = None;
+    nts_name = None;
+    time_ms = None;
+  }
 
 let parse_platform_data s = decode platform_data_of_yojson s
 let parse_diagnose_data s = decode diagnose_data_of_yojson s

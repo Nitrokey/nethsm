@@ -118,6 +118,8 @@ module type S = sig
 
     val time : t -> Ptime.t Lwt.t
     val set_time : t -> Ptime.t -> (unit, error) result Lwt.t
+    val ntp : t -> Json.ntp_config Lwt.t
+    val set_ntp : t -> Json.ntp_config -> (unit, error) result Lwt.t
   end
 
   module System : sig
@@ -912,12 +914,6 @@ module Make (KV : Kv_ext.Platform) = struct
           Log.err (fun m -> m "Error while writing to key-value store: %s" txt);
           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
 
-  let set_time_offset kv timestamp =
-    Hsm_clock.set timestamp;
-    let span = Hsm_clock.get_offset () in
-    internal_server_error Write "Write time offset" Config_store.pp_write_error
-      (Config_store.set kv Time_offset span)
-
   let decrypt_with_pass_key encrypted ~pass_key =
     let key = Crypto.GCM.of_secret pass_key in
     let adata = "passphrase" in
@@ -1096,19 +1092,32 @@ module Make (KV : Kv_ext.Platform) = struct
       (Config_store.get kv Certificate)
     >|= fun (cert, chain) -> (cert, chain, priv)
 
+  (* Returns (state, migration_time) where migration_time is the wall-clock
+     time reconstructed from a deprecated Time_offset key, to be forwarded to
+     S-Platform by the caller. The key is deleted here regardless. *)
   let boot_config_store ~cache_settings config_store device_key =
-    let open Lwt_result.Infix in
-    lwt_error_fatal "get time offset" ~pp_error:Config_store.pp_error
-      ( Config_store.get_opt config_store Time_offset >|= function
-        | None -> ()
-        | Some span -> (
-            let (`Raw now_raw) = Hsm_clock.now_raw () in
-            match Ptime.add_span now_raw span with
-            | None ->
-                Log.warn (fun m ->
-                    m "time offset from config store out of range")
-            | Some ts -> Hsm_clock.set ts) )
+    let open Lwt.Infix in
+    Config_store.get_opt config_store Time_offset >>= fun time_offset_r ->
+    let migration_time =
+      match time_offset_r with
+      | Error _ | Ok None -> None
+      | Ok (Some span) -> (
+          Log.info (fun m -> m "migrating deprecated time-offset to S-Platform");
+          let (`Raw now_raw) = Hsm_clock.now_raw () in
+          match Ptime.add_span now_raw span with
+          | None ->
+              Log.warn (fun m ->
+                  m "stored time offset out of range, skipping migration");
+              None
+          | Some ts -> Some ts)
+    in
+    (match time_offset_r with
+      | Ok (Some _) ->
+          Log.debug (fun m -> m "removed deprecated time-offset key");
+          Config_store.remove config_store Time_offset >|= ignore
+      | _ -> Lwt.return_unit)
     >>= fun () ->
+    let open Lwt_result.Infix in
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
       (Config_store.get config_store Unlock_salt)
     >>= fun _ ->
@@ -1123,13 +1132,13 @@ module Make (KV : Kv_ext.Platform) = struct
         unlock_with_device_key ~cache_settings ~domain_store ~config_store
           ~device_key ()
         >|= function
-        | Ok s -> Ok s
+        | Ok s -> Ok (s, migration_time)
         | Error (_, msg) ->
             Log.err (fun m -> m "unattended boot failed with %s" msg);
-            Ok Locked)
+            Ok (Locked, migration_time))
     | None | Some false ->
         Config_store.forget_config_domain_key config_store;
-        Lwt.return (Ok Locked)
+        Lwt.return (Ok (Locked, migration_time))
 
   let info t = t.info
   let own_cert t = `Single (t.cert :: t.chain, t.key)
@@ -2455,25 +2464,25 @@ module Make (KV : Kv_ext.Platform) = struct
           let cert = X509.Certificate.encode_pem x in
           Some cert
 
-    let set_local_config t =
+    (* Send a (possibly partial) local_conf to S-Platform. Absent fields (None)
+       keep their existing values on the platform side. *)
+    let push_local_config conf t =
+      let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
+      Logs.debug (fun f -> f "caching config to the platform");
+      let+ () = Lwt_mvar.put t.mbox (Set_local_config conf) in
+      Lwt_mvar.take t.res_mbox
+      |> Lwt_result.map_error (fun msg ->
+          Log.warn (fun m -> m "setting local config failed: %s" msg);
+          (Bad_request, "setting local config failed: " ^ msg))
+      |> Lwt_result.map ignore
+
+    (* Full sync: reads all known fields and sends them. Used at provisioning,
+       join-cluster, restore, and other operations that establish the full
+       platform state. time_ms is forwarded to S-Platform to set its clock. *)
+    let set_local_config ?(time_ms = None) t =
       let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
       let+ tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
-      let** time_offset_opt =
-        internal_server_error Read "Read time offset" Config_store.pp_error
-          (Config_store.get_opt t.config_store Time_offset)
-      in
-      let** time_offset_s =
-        match time_offset_opt with
-        | Some time_offset ->
-            Ptime.Span.to_int_s time_offset
-            |> Option.to_result
-                 ~none:
-                   ( Internal_server_error,
-                     "time offset is too big for an integer" )
-            |> Lwt.return
-        | None -> Lwt_result.return 0
-      in
       (* let time_offset_s =
         now () |> Ptime.to_span |> Ptime.Span.to_int_s
         |> Option.value ~default:0
@@ -2481,28 +2490,32 @@ module Make (KV : Kv_ext.Platform) = struct
       let+ tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
       let** network_config =
-        internal_server_error Read "Read cluster CA" Config_store.pp_error
+        internal_server_error Read "Read network config" Config_store.pp_error
           Config_store.(get_opt t.config_store Ip_config)
+      in
+      let** ntp_ip =
+        internal_server_error Read "Read NTP IP" Config_store.pp_error
+          Config_store.(get_opt t.config_store Ntp_ip)
+      in
+      let** nts_name =
+        internal_server_error Read "Read NTS name" Config_store.pp_error
+          Config_store.(get_opt t.config_store Nts_name)
       in
       let local_config =
         {
-          Json.device_id;
-          tls_cert;
+          Json.device_id = Some device_id;
+          tls_cert = Some tls_cert;
           tls_cluster_ca;
-          tls_key;
-          time_offset_s;
+          tls_key = Some tls_key;
           network_config;
           failed_unlock_salt = None;
           failed_unlock_digest = None;
+          ntp_ip = Json.set_or_clear ntp_ip;
+          nts_name = Json.set_or_clear nts_name;
+          time_ms;
         }
       in
-      Logs.debug (fun f -> f "caching config to the platform");
-      let+ () = Lwt_mvar.put t.mbox (Set_local_config local_config) in
-      Lwt_mvar.take t.res_mbox
-      |> Lwt_result.map_error (fun msg ->
-          Log.warn (fun m -> m "setting local config failed: %s" msg);
-          (Bad_request, "setting local config failed: " ^ msg))
-      |> Lwt_result.map ignore
+      push_local_config local_config t
 
     let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
       match t.state with
@@ -2582,7 +2595,11 @@ module Make (KV : Kv_ext.Platform) = struct
               internal_server_error Write "Write cluster CA"
                 Config_store.pp_write_error
                 (Config_store.set t.config_store Cluster_CA cert))
-          >>= fun () -> set_local_config t
+          >>= fun () ->
+          let ca_pem = X509.Certificate.encode_pem cert in
+          push_local_config
+            { Json.empty_local_conf with tls_cluster_ca = Some ca_pem }
+            t
 
     let set_tls_cert_pem t cert_data =
       (* validate the incoming chain (we'll use it for the TLS server):
@@ -2650,7 +2667,18 @@ module Make (KV : Kv_ext.Platform) = struct
                 t.chain <- chain;
                 Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
                 >>= fun () ->
-                set_local_config t >|= fun () -> r)
+                let cert_pem =
+                  X509.Certificate.encode_pem_multiple (cert :: chain)
+                in
+                let key_pem = X509.Private_key.encode_pem t.key in
+                push_local_config
+                  {
+                    Json.empty_local_conf with
+                    tls_cert = Some cert_pem;
+                    tls_key = Some key_pem;
+                  }
+                  t
+                >|= fun () -> r)
           else
             Lwt.return
             @@ Error
@@ -2701,7 +2729,15 @@ module Make (KV : Kv_ext.Platform) = struct
           t.chain <- [];
           (* notify server *)
           Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
-          set_local_config t
+          let cert_pem = X509.Certificate.encode_pem cert in
+          let key_pem = X509.Private_key.encode_pem key in
+          push_local_config
+            {
+              Json.empty_local_conf with
+              tls_cert = Some cert_pem;
+              tls_key = Some key_pem;
+            }
+            t
 
     let network t =
       let open Lwt.Infix in
@@ -2730,7 +2766,10 @@ module Make (KV : Kv_ext.Platform) = struct
             Config_store.(set t.config_store Ip_config network))
       >>= fun r ->
       Lwt_result.ok (Lwt_mvar.put t.mbox (Network network)) >>= fun () ->
-      set_local_config t >|= fun () -> r
+      push_local_config
+        { Json.empty_local_conf with network_config = Some network }
+        t
+      >|= fun () -> r
 
     let network_digest t =
       let open Lwt.Infix in
@@ -2811,10 +2850,40 @@ module Make (KV : Kv_ext.Platform) = struct
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      let** () =
-        with_write_lock (fun () -> set_time_offset t.config_store time)
+      let time_ms = Some (Int64.of_float (Ptime.to_float_s time *. 1000.0)) in
+      push_local_config { Json.empty_local_conf with time_ms } t
+
+    let ntp t =
+      let open Lwt.Infix in
+      Config_store.get_opt t.config_store Ntp_ip >>= fun ntp_ip_r ->
+      Config_store.get_opt t.config_store Nts_name >>= fun nts_name_r ->
+      let ntp_ip = Result.value ~default:None ntp_ip_r in
+      let nts_name = Result.value ~default:None nts_name_r in
+      Lwt.return { Json.ntpIP = ntp_ip; ntsName = nts_name }
+
+    let set_ntp t (cfg : Json.ntp_config) =
+      let open Lwt_result.Infix in
+      let set_or_remove k = function
+        | Some v ->
+            internal_server_error Write "Write NTP config"
+              Config_store.pp_write_error
+              (Config_store.set t.config_store k v)
+        | None ->
+            internal_server_error Write "Remove NTP config"
+              Config_store.pp_write_error
+              (Config_store.remove t.config_store k)
       in
-      set_local_config t
+      with_write_lock (fun () ->
+          set_or_remove Ntp_ip cfg.ntpIP >>= fun () ->
+          set_or_remove Nts_name cfg.ntsName)
+      >>= fun () ->
+      push_local_config
+        {
+          Json.empty_local_conf with
+          ntp_ip = Json.set_or_clear cfg.ntpIP;
+          nts_name = Json.set_or_clear cfg.ntsName;
+        }
+        t
   end
 
   let unlock_with_passphrase t ~passphrase =
@@ -2950,7 +3019,10 @@ module Make (KV : Kv_ext.Platform) = struct
               (Config_store.set b Unlock_salt unlock_salt)
             >>= fun () ->
             let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
-            set_time_offset b time >>= fun () -> Config.set_local_config t))
+            let time_ms =
+              Some (Int64.of_float (Ptime.to_float_s time *. 1000.0))
+            in
+            Config.set_local_config ~time_ms t))
 
   module System = struct
     let system_info t = t.system_info
@@ -3153,7 +3225,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           Log.info (fun m -> m "joining cluster OK! locking now");
           KV.clear_watches t.kv;
-          let** new_state =
+          let** new_state, _ =
             boot_config_store ~cache_settings:t.cache_settings t.config_store
               t.device_key
           in
@@ -3970,7 +4042,7 @@ module Make (KV : Kv_ext.Platform) = struct
                        config_values))
           in
 
-          let** _boot_config_store =
+          let** migration_time_opt =
             if (not is_operational) || dk_rewritten then (
               (* If the restore was
                   - unprovisioned, or
@@ -3978,13 +4050,13 @@ module Make (KV : Kv_ext.Platform) = struct
                  the end state after restore is locked.
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
-              let** new_state =
+              let** new_state, migration_time_opt =
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
               in
               t.state <- new_state;
-              Lwt_result.return ())
-            else Lwt_result.return ()
+              Lwt_result.return migration_time_opt)
+            else Lwt_result.return None
           in
 
           let** _set_state =
@@ -3996,19 +4068,28 @@ module Make (KV : Kv_ext.Platform) = struct
             | _ -> ());
             let (`Raw stop_ts) = Hsm_clock.now_raw () in
             match new_time with
-            | None -> Lwt.return_ok ()
             | Some new_time -> (
                 let elapsed = Ptime.diff stop_ts start_ts in
                 match Ptime.add_span new_time elapsed with
                 | Some ts ->
-                    let** () = set_time_offset t.config_store ts in
-                    Config.set_local_config t
+                    let time_ms =
+                      Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+                    in
+                    Config.set_local_config ~time_ms t
                 | None ->
                     t.state <- initial_state;
                     Lwt.return
                     @@ Error
                          (Bad_request, "Invalid system time in restore request")
                 )
+            | None -> (
+                match migration_time_opt with
+                | None -> Lwt.return_ok ()
+                | Some ts ->
+                    let time_ms =
+                      Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+                    in
+                    Config.set_local_config ~time_ms t)
           in
           if is_backup_truncated then
             Lwt_result.fail
@@ -4065,18 +4146,18 @@ module Make (KV : Kv_ext.Platform) = struct
         let state = Unprovisioned
         and cert, key = generate_cert priv
         and chain = [] in
-        Lwt_result.return (state, cert, key, chain)
+        Lwt_result.return (state, cert, key, chain, None)
     | Some version ->
         (* provisioned device, look at store to figure out state *)
         let** () =
           System.apply_config_and_domain_migrations ~config_store kv
             ~device_id:system_info.deviceId version
         in
-        let** state =
+        let** state, migration_time =
           boot_config_store ~cache_settings config_store device_key
         in
         let** cert, chain, key = certificate_chain config_store in
-        Lwt_result.return (state, cert, key, chain)
+        Lwt_result.return (state, cert, key, chain, migration_time)
 
   let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
     (* minimum amount of time the store has to be continuously unhealthy for the HSM to go into Failed state *)
@@ -4119,7 +4200,7 @@ module Make (KV : Kv_ext.Platform) = struct
           | Error (`Msg msg) ->
               Log.err (fun f -> f "boot failed again: %s" msg);
               Lwt.return None
-          | Ok (state, cert, key, chain) ->
+          | Ok (state, cert, key, chain, _) ->
               t.state <- state;
               t.cert <- cert;
               t.key <- key;
@@ -4199,7 +4280,7 @@ module Make (KV : Kv_ext.Platform) = struct
       boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
         ~config_store
     in
-    let** state, cert, key, chain =
+    let** state, cert, key, chain, migration_time =
       let* healthy = check_store_healthy kv in
       (* check is store is healthy (reachable), and obtain normal boot state if so *)
       if healthy then (
@@ -4214,7 +4295,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 f
                   "store unhealthy! booting into Failed state with recovered \
                    certificate");
-            Lwt_result.return (state, cert, key, chain)
+            Lwt_result.return (state, cert, key, chain, None)
         | _ ->
             (* if not, boot into Failed state to make recovery available *)
             Log.warn (fun f ->
@@ -4223,7 +4304,7 @@ module Make (KV : Kv_ext.Platform) = struct
                    certificate");
             let priv = X509.Private_key.generate `P256 in
             let cert, key = generate_cert priv and chain = [] in
-            Lwt_result.return (state, cert, key, chain)
+            Lwt_result.return (state, cert, key, chain, None)
     in
     let t =
       {
@@ -4265,6 +4346,16 @@ module Make (KV : Kv_ext.Platform) = struct
       discard ()
     in
     Lwt.async discard_old_rate_limits;
+    Option.iter
+      (fun ts ->
+        Lwt.async (fun () ->
+            let open Lwt.Infix in
+            let time_ms =
+              Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+            in
+            Config.push_local_config { Json.empty_local_conf with time_ms } t
+            >|= ignore))
+      migration_time;
     Lwt_result.return (t, t.mbox, t.res_mbox)
 
   let boot ?cache_settings ?default_net ~platform software_update_key kv =

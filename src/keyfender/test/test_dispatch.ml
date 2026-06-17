@@ -866,10 +866,14 @@ let system_restore_v0_backup_unattended ~changed_devkey =
     if changed_devkey then
       expect ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
+      ^ info "migrating deprecated time-offset to S-Platform"
+      ^ debug "removed deprecated time-offset key"
       ^ error "unattended boot failed with not authenticated"
       ^ debug "caching config to the platform"
     else
       expect
+      ^ info "migrating deprecated time-offset to S-Platform"
+      ^ debug "removed deprecated time-offset key"
       ^ info "Applying post unlock migrations"
       ^ info "migrating /config/backup-key"
       ^ info "migrating /config/backup-salt"
@@ -995,8 +999,14 @@ let system_restore_v0_backup ~changed_devkey =
     if changed_devkey then
       expect ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
+      ^ info "migrating deprecated time-offset to S-Platform"
+      ^ debug "removed deprecated time-offset key"
       ^ debug "caching config to the platform"
-    else expect ^ debug "caching config to the platform"
+    else
+      expect
+      ^ info "migrating deprecated time-offset to S-Platform"
+      ^ debug "removed deprecated time-offset key"
+      ^ debug "caching config to the platform"
   in
   let hsm_state =
     if changed_devkey then
@@ -1377,13 +1387,11 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
       ^ debug "restoring /local/0000000001/config/unlock-salt"
       ^ debug "restoring /local/0000000001/config/certificate"
       ^ debug "restoring /local/0000000001/config/private-key"
-      ^ debug "restoring /local/0000000001/config/time-offset"
     else
       info "device has been reset: re-encrypting local configs"
       ^ debug "restoring /local/0000000000/config/unlock-salt"
       ^ debug "restoring /local/0000000000/config/certificate"
       ^ debug "restoring /local/0000000000/config/private-key"
-      ^ debug "restoring /local/0000000000/config/time-offset"
   in
   let expect =
     multipart_log ^ info "Device Key changed."
@@ -1545,14 +1553,12 @@ let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
       ^ debug "restoring /local/0000000001/config/unlock-salt"
       ^ debug "restoring /local/0000000001/config/certificate"
       ^ debug "restoring /local/0000000001/config/private-key"
-      ^ debug "restoring /local/0000000001/config/time-offset"
       ^ debug "restoring /local/0000000001/config/unattended-boot"
     else
       info "device has been reset: re-encrypting local configs"
       ^ debug "restoring /local/0000000000/config/unlock-salt"
       ^ debug "restoring /local/0000000000/config/certificate"
       ^ debug "restoring /local/0000000000/config/private-key"
-      ^ debug "restoring /local/0000000000/config/time-offset"
       ^ debug "restoring /local/0000000000/config/unattended-boot"
   in
   let* hsm_state =
@@ -1773,7 +1779,7 @@ let boot_device_key_change_fails =
         }
       in
       Alcotest.check_raises "boot fails"
-        (Invalid_argument "fatal in get time offset not authenticated")
+        (Invalid_argument "fatal in get unlock-salt not authenticated")
         (fun () ->
           Lwt_main.run
             (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
@@ -2741,6 +2747,39 @@ let config_time_set_fail =
   "PUT with invalid timestamp on /config/time fails" @? fun () ->
   let new_time = {|{time: "1234"}|} in
   match admin_put_request ~body:(`String new_time) "/config/time" with
+  | _, Some (`Bad_request, _, _, _) -> true
+  | _ -> false
+
+let config_ntp_ok =
+  Alcotest.test_case "GET on /config/ntp succeeds" `Quick (fun () ->
+      let body =
+        request ~hsm_state:(operational_mock ()) ~meth:`GET
+          ~headers:admin_headers "/config/ntp"
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "default ntp config" "{}" body)
+
+let config_ntp_set_ok =
+  "PUT on /config/ntp succeeds" @? fun () ->
+  let new_ntp = {|{"ntpIP":"192.168.1.1","ntsName":"nts.example.com"}|} in
+  let hsm_state = operational_mock_with_mbox () in
+  match
+    admin_put_request ~hsm_state
+      ~expect:(debug "caching config to the platform")
+      ~body:(`String new_ntp) "/config/ntp"
+  with
+  | hsm_state, Some (`No_content, _, _, _) -> (
+      match
+        request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/ntp"
+      with
+      | _, Some (`OK, _, `String body, _) -> String.equal body new_ntp
+      | _ -> false)
+  | _ -> false
+
+let config_ntp_set_fail =
+  "PUT with invalid body on /config/ntp fails" @? fun () ->
+  let new_ntp = {|{"ntpIP":12345}|} in
+  match admin_put_request ~body:(`String new_ntp) "/config/ntp" with
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
@@ -5679,7 +5718,6 @@ let cluster_join =
         ^ debug "restoring /local/0000000000/config/unlock-salt"
         ^ debug "restoring /local/0000000000/config/certificate"
         ^ debug "restoring /local/0000000000/config/private-key"
-        ^ debug "restoring /local/0000000000/config/time-offset"
         ^ info "joining cluster OK! locking now"
       in
       (* finally, join *)
@@ -6377,6 +6415,8 @@ let () =
         [ config_logging_ok; config_logging_set_ok; config_logging_set_fail ] );
       ( "/config/time",
         [ config_time_ok; config_time_set_ok; config_time_set_fail ] );
+      ( "/config/ntp",
+        [ config_ntp_ok; config_ntp_set_ok; config_ntp_set_fail ] );
       ( "/config/backup-passphrase",
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);

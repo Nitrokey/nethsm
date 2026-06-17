@@ -2575,6 +2575,68 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
+  /config/ntp:
+    get:
+      responses:
+        "200":
+          description: Successful retrieval of NTP/NTS configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NtpConfig"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Get NTP/NTS configuration.
+        Returns the NTP server IP address and optional NTS server name used for
+        time synchronisation.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    put:
+      responses:
+        "204":
+          description: Successful update of NTP/NTS configuration.
+        "400":
+          description: Bad request - invalid input format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Configure NTP server IP address and optional NTS server name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NtpConfig"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
   /config/time:
     get:
       responses:
@@ -3809,6 +3871,18 @@ components:
         backup_file:
           type: string
           format: binary
+    NtpConfig:
+      example:
+        ntpIP: 192.168.1.1
+        ntsName: nts.example.com
+      type: object
+      properties:
+        ntpIP:
+          type: string
+          description: IP address (v4 or v6) of the NTP server.
+        ntsName:
+          type: string
+          description: Hostname of the NTS server (enables Network Time Security).
     TimeConfig:
       example:
         time: "2018-10-30T11:20:50Z"

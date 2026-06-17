@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 const (
@@ -46,22 +47,28 @@ var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 	return get, set
 }()
 
-// LocalConf type
+// LocalConf is the stored and wire format for local configuration.
+// All fields are optional pointers: nil means absent, omitted from JSON.
+// TimeOffsetS is owned by S-Platform and never present in wire messages.
+// TimeMs is wire-only and never stored.
 type LocalConf struct {
-	TLSCert            string `json:"tls_cert"`
-	TLSKey             string `json:"tls_key"`
-	TLSTrustedCA       string `json:"tls_cluster_ca,omitempty"`
-	DeviceID           string `json:"device_id"`
-	TimeOffsetS        int    `json:"time_offset_s"` // 0 if unknown
-	NetworkConfig      string `json:"network_config"`
-	FailedUnlockSalt   string `json:"failed_unlock_salt,omitempty"`
-	FailedUnlockDigest string `json:"failed_unlock_digest,omitempty"`
+	TLSCert            *string `json:"tls_cert,omitempty"`
+	TLSKey             *string `json:"tls_key,omitempty"`
+	TLSTrustedCA       *string `json:"tls_cluster_ca,omitempty"`
+	DeviceID           *string `json:"device_id,omitempty"`
+	NetworkConfig      *string `json:"network_config,omitempty"`
+	FailedUnlockSalt   string  `json:"failed_unlock_salt,omitempty"`
+	FailedUnlockDigest string  `json:"failed_unlock_digest,omitempty"`
+	NtpIP              *string `json:"ntp_ip,omitempty"`
+	NtsName            *string `json:"nts_name,omitempty"`
+	TimeOffsetS        *int    `json:"time_offset_s,omitempty"` // storage only
+	TimeMs             *int64  `json:"time_ms,omitempty"`       // wire only
 }
 
-// ChangeReq is sent to registered consumers when the local config changes.
-// The consumer must send a result (nil or an error) on Reply.
+// ChangeReq is the notification dispatched to registered consumers sent after a
+// SET-LOCAL-CONFIG update from Keyfender. Reply is set by notifyConsumers
+// before dispatch; consumers MUST send on it.
 type ChangeReq struct {
-	Conf  *LocalConf
 	Reply chan<- error
 }
 
@@ -142,26 +149,15 @@ func Get() LocalConf {
 	if lc == nil {
 		log.Fatal("localconf used before initialization")
 	}
+	lc.TimeMs = nil
 	return *lc
 }
 
-// Set updates the local config from JSON and stores changes to the local cache
-// file. It then notifies all registered consumers concurrently and waits for
-// all of them to reply before returning. Returns nil if the config is unchanged.
-func Set(jsonConf []byte) error {
-	var newConf LocalConf
-	if err := json.Unmarshal(jsonConf, &newConf); err != nil {
-		return fmt.Errorf("failed to parse local config: %w", err)
-	}
-
-	setMu.Lock()
-	defer setMu.Unlock()
-
-	oldConf := Get()
-
-	if oldConf == newConf {
-		log.Printf("No change in local config")
-		return nil
+// saveConf encrypts and atomically writes conf to disk. Must be called with setMu held.
+func saveConf(conf *LocalConf) error {
+	jsonData, err := json.Marshal(conf)
+	if err != nil {
+		return fmt.Errorf("failed to marshal local config: %w", err)
 	}
 
 	block, err := aes.NewCipher(localConfigKey())
@@ -180,7 +176,7 @@ func Set(jsonConf []byte) error {
 	}
 
 	// Encrypt: Seal prepends the nonce to the encrypted data
-	fileData := gcm.Seal(nonce, nonce, jsonConf, []byte(authData))
+	fileData := gcm.Seal(nonce, nonce, jsonData, []byte(authData))
 
 	if err := os.WriteFile(localConfigFile+".tmp", fileData, 0o666); err != nil {
 		return fmt.Errorf("write local config file: %w", err)
@@ -189,9 +185,10 @@ func Set(jsonConf []byte) error {
 		return fmt.Errorf("rename local config file: %w", err)
 	}
 	syscall.Sync()
+	return nil
+}
 
-	localConfig.Store(&newConf)
-
+func notifyConsumers() error {
 	consumersMu.Lock()
 	cs := append([]chan<- ChangeReq(nil), consumers...)
 	consumersMu.Unlock()
@@ -203,10 +200,97 @@ func Set(jsonConf []byte) error {
 		go func(i int, ch chan<- ChangeReq) {
 			defer wg.Done()
 			reply := make(chan error)
-			ch <- ChangeReq{Conf: &newConf, Reply: reply}
+			ch <- ChangeReq{Reply: reply}
 			errs[i] = <-reply
 		}(i, ch)
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// Set updates the local config from a SET-LOCAL-CONFIG message and stores changes to the local
+// cache file. Fields absent from jsonConf keep their existing values;
+// TimeOffsetS is always preserved (S-Platform owns it). Notifies all registered
+// consumers when the config changes or TimeMs is non-nil, and waits for replies.
+func Set(jsonConf []byte, setTime func(time.Duration) error) error {
+	var upd LocalConf
+	if err := json.Unmarshal(jsonConf, &upd); err != nil {
+		return fmt.Errorf("failed to parse local config: %w", err)
+	}
+
+	var errs []error
+	// Handle manual time set forwarded from PUT /config/time.
+	if upd.TimeMs != nil && setTime != nil {
+		// Convert to a monotonic offset immediately so scheduling delays
+		// between here and the syscall don't accumulate into the correction.
+		clockOffset := time.Until(time.UnixMilli(*upd.TimeMs))
+		if setErr := setTime(clockOffset); setErr != nil {
+			log.Printf("Failed to set system time from Keyfender: %v", setErr)
+			errs = append(errs, setErr)
+		}
+	}
+	upd.TimeMs = nil
+
+	confChanged := false
+	update := func(old **string, upd *string) {
+		if *old == nil {
+			*old = new(string) // make sure the field is populated
+		}
+		if upd != nil && **old != *upd {
+			*old = upd
+			confChanged = true
+		}
+	}
+
+	setMu.Lock()
+	conf := Get()
+	// Apply each present field, tracking whether anything actually changed.
+	// TimeOffsetS is never in the wire message; TimeMs is wire-only, not stored.
+	update(&conf.TLSCert, upd.TLSCert)
+	update(&conf.TLSKey, upd.TLSKey)
+	update(&conf.TLSTrustedCA, upd.TLSTrustedCA)
+	update(&conf.DeviceID, upd.DeviceID)
+	update(&conf.NetworkConfig, upd.NetworkConfig)
+	update(&conf.NtpIP, upd.NtpIP)
+	update(&conf.NtsName, upd.NtsName)
+
+	var saveErr error
+	if confChanged {
+		saveErr = saveAndStore(&conf)
+		errs = append(errs, saveErr)
+	} else {
+		log.Printf("No change in local config")
+	}
+	setMu.Unlock()
+
+	if confChanged && saveErr == nil {
+		err := notifyConsumers()
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+// UpdateTimeOffset updates the stored TimeOffsetS without notifying consumers.
+// Safe to call from within a ChangeReq handler (avoids deadlock).
+func UpdateTimeOffset(offsetS int) error {
+	setMu.Lock()
+	defer setMu.Unlock()
+
+	conf := Get()
+	if conf.TimeOffsetS != nil && *conf.TimeOffsetS == offsetS {
+		return nil
+	}
+	conf.TimeOffsetS = &offsetS
+	return saveAndStore(&conf)
+}
+
+// saveAndStore requires locked setMu
+func saveAndStore(conf *LocalConf) error {
+	conf.TimeMs = nil // never persist
+	if err := saveConf(conf); err != nil {
+		return err
+	}
+	localConfig.Store(conf)
+	return nil
 }

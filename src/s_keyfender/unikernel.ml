@@ -214,17 +214,36 @@ struct
       let trng = RNG.Entropy.register_source "trng" in
       let (`Acc feed_entropy) = RNG.accumulate None trng in
       let trng_block_len = 4096 in
+      let time_suffix_len = 8 in
       let pools = RNG.pools None in
       let platform_ip = Args.platform () in
       let first_package, first_package_notify = Lwt.wait () in
       let chan, push = Lwt_stream.create () in
-      let split_data data =
+      (* Split packet into (trng_data, tpm_data, time_bytes option).
+         The last 8 bytes are the platform timestamp (big-endian int64 ms). *)
+      let split_tpm_and_time data =
         let len = String.length data in
-        if len < trng_block_len then (String.empty, data)
+        if len < trng_block_len then (String.empty, data, None)
         else
-          String.
-            ( sub data 0 trng_block_len,
-              sub data trng_block_len (len - trng_block_len) )
+          let tail = String.sub data trng_block_len (len - trng_block_len) in
+          let tail_len = String.length tail in
+          if tail_len >= time_suffix_len then
+            let tpm_end = tail_len - time_suffix_len in
+            let tpm_data = String.sub tail 0 tpm_end in
+            let time_bytes = String.sub tail tpm_end time_suffix_len in
+            (String.sub data 0 trng_block_len, tpm_data, Some time_bytes)
+          else (String.sub data 0 trng_block_len, tail, None)
+      in
+      let apply_platform_time time_bytes =
+        (* Parse big-endian int64 milliseconds and set Keyfender's wall clock. *)
+        let ms =
+          let b = Bytes.of_string time_bytes in
+          Int64.to_int (Bytes.get_int64_be b 0)
+        in
+        match Ptime.of_float_s (Float.of_int ms /. 1000.0) with
+        | None ->
+            Log.warn (fun m -> m "Platform timestamp out of range: %d ms" ms)
+        | Some t -> Keyfender.Hsm_clock.set t
       in
       Internal_stack.UDP.listen (Internal_stack.udp stack) ~port
         (fun ~src ~dst:_ ~src_port:_ data ->
@@ -245,7 +264,9 @@ struct
               Log.err (fun m -> m "%s" msg);
               Lwt.fail_with msg );
             ( Lwt_stream.get chan >|= fun data ->
-              let trng_data, tpm_data = split_data (Option.get data) in
+              let trng_data, tpm_data, time_bytes_opt =
+                split_tpm_and_time (Option.get data)
+              in
               if String.length trng_data = trng_block_len then (
                 Log.debug (fun m ->
                     m "Received %d bytes of data from TRNG: %a ..."
@@ -260,7 +281,8 @@ struct
                   Lwt.wakeup_later first_package_notify ())
               else Log.err (fun m -> m "Receiving no entropy from TRNG!");
               if String.length tpm_data > 0 then feed_entropy tpm_data
-              else Log.err (fun m -> m "Receiving no entropy from TPM!") );
+              else Log.err (fun m -> m "Receiving no entropy from TPM!");
+              Option.iter apply_platform_time time_bytes_opt );
           ]
         >>= fun () -> (loop [@tailcall]) ()
       in

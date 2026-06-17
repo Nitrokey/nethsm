@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"io"
 	"log"
 	"math"
@@ -138,7 +139,12 @@ func trngLoop(trng io.Reader) {
 	}
 
 	send := func(buf []byte) {
-		_, err = keyfender.Write(buf)
+		// Append current time as big-endian int64 milliseconds.
+		// Keyfender reads this to keep its wall clock in sync.
+		var ts [8]byte
+		binary.BigEndian.PutUint64(ts[:], uint64(time.Now().UnixMilli()))
+		packet := append(buf, ts[:]...)
+		_, err = keyfender.Write(packet)
 		if err != nil {
 			log.Printf("Sending entropy failed: %v", err)
 		}

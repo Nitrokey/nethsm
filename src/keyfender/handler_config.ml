@@ -299,6 +299,36 @@ struct
         Json.decode_passphrase_change json |> Endpoint.err_to_bad_request ok rd
     end
 
+  class ntp hsm_state ip =
+    object (self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.r_role hsm_state `Administrator ip
+
+      method private get rd =
+        Hsm.Config.ntp hsm_state >>= fun cfg ->
+        let json = Json.ntp_config_to_yojson cfg in
+        Wm.continue (`String (Yojson.Safe.to_string json)) rd
+
+      method private set rd =
+        let body = rd.Webmachine.Rd.req_body in
+        Cohttp_lwt.Body.to_string body >>= fun content ->
+        match Json.decode Json.ntp_config_of_yojson content with
+        | Error e -> Endpoint.respond_error (Bad_request, e) rd
+        | Ok cfg -> (
+            Hsm.Config.set_ntp hsm_state cfg >>= function
+            | Ok () -> Wm.continue true rd
+            | Error e -> Endpoint.respond_error e rd)
+
+      method! allowed_methods = Wm.continue [ `GET; `PUT ]
+
+      method content_types_provided =
+        Wm.continue [ ("application/json", self#get) ]
+
+      method content_types_accepted =
+        Wm.continue [ ("application/json", self#set) ]
+    end
+
   class time hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
