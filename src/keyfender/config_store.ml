@@ -30,55 +30,6 @@ module Make (KV : Kv_ext.Platform) = struct
     | Pending_unlock_migrations : migrations k
     | Restore_in_progress : unit k (* if key exists, then restore in progress *)
 
-  module K = struct
-    type 'a t = 'a k
-
-    let compare : type a b. a t -> b t -> (a, b) Gmap.Order.t =
-     fun t t' ->
-      let open Gmap.Order in
-      match (t, t') with
-      | Unlock_salt, Unlock_salt -> Eq
-      | Unlock_salt, _ -> Lt
-      | _, Unlock_salt -> Gt
-      | Certificate, Certificate -> Eq
-      | Certificate, _ -> Lt
-      | _, Certificate -> Gt
-      | Cluster_CA, Cluster_CA -> Eq
-      | Cluster_CA, _ -> Lt
-      | _, Cluster_CA -> Gt
-      | Private_key, Private_key -> Eq
-      | Private_key, _ -> Lt
-      | _, Private_key -> Gt
-      | Version, Version -> Eq
-      | Version, _ -> Lt
-      | _, Version -> Gt
-      | Ip_config, Ip_config -> Eq
-      | Ip_config, _ -> Lt
-      | _, Ip_config -> Gt
-      | Backup_salt, Backup_salt -> Eq
-      | Backup_salt, _ -> Lt
-      | _, Backup_salt -> Gt
-      | Backup_key, Backup_key -> Eq
-      | Backup_key, _ -> Lt
-      | _, Backup_key -> Gt
-      | Log_config, Log_config -> Eq
-      | Log_config, _ -> Lt
-      | _, Log_config -> Gt
-      | Time_offset, Time_offset -> Eq
-      | Time_offset, _ -> Lt
-      | _, Time_offset -> Gt
-      | Unattended_boot, Unattended_boot -> Eq
-      | Unattended_boot, _ -> Lt
-      | _, Unattended_boot -> Gt
-      | Pending_unlock_migrations, Pending_unlock_migrations -> Eq
-      | Pending_unlock_migrations, _ -> Lt
-      | _, Pending_unlock_migrations -> Gt
-      | Restore_in_progress, Restore_in_progress -> Eq
-    (* | Restore_in_progress, _ -> Lt | _, Restore_in_progress -> Gt *)
-  end
-
-  include Gmap.Make (K)
-
   let name : type a. a k -> string = function
     | Unlock_salt -> "unlock-salt"
     | Certificate -> "certificate"

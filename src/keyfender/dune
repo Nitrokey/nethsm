@@ -25,7 +25,6 @@
   tls
   x509
   hex
-  gmap
   ipaddr
   metrics
   metrics-lwt
