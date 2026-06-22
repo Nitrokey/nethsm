@@ -65,7 +65,7 @@ func applyTimeOffset(offsetS int) {
 	rtc, _ := rtcAndNow()
 	t := rtc.Add(time.Duration(offsetS) * time.Second)
 	err := setSystemTime(t)
-	log.Printf("Setting local time to %v", t)
+	log.Printf("Setting system time to %v", t)
 	if err != nil {
 		log.Printf("Failed to set system time: %v", err)
 	}
@@ -170,6 +170,7 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 func (t *timeTask) Run() {
 	conf := localconf.Get()
 	if conf.TimeOffsetS != nil {
+		log.Printf("Initialize system time with offset %v from local config cache", *conf.TimeOffsetS)
 		applyTimeOffset(*conf.TimeOffsetS)
 	}
 	t.lastConf = timeConfOf(&conf)
