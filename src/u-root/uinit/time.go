@@ -15,12 +15,15 @@ import (
 
 	"nethsm/internal/hw"
 	"nethsm/internal/localconf"
+	"nethsm/internal/util"
 )
 
 const (
 	defaultNTPInterval = 64 * time.Second
 	kodNTPInterval     = time.Hour
 )
+
+var timeInizializedNtfy, TimeInitializedSig = util.MakeNtfyPair()
 
 type timeConf struct {
 	ntpIP   string
@@ -176,6 +179,8 @@ func (t *timeTask) Run() {
 			log.Printf("Initial NTP sync failed: %v", err)
 		}
 	}
+
+	timeInizializedNtfy()
 
 	for req := range t.configCh {
 		var err error

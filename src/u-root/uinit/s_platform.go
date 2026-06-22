@@ -538,8 +538,12 @@ func sPlatformActions() {
 	} else {
 		mockCreatePlatformData()
 	}
+	// now localconf is initialized
 
 	util.StartTask("time", NewTimeTask().Run)
+
+	<-TimeInitializedSig // wait for initial NTP attempt before starting etcd
+
 	util.StartTask("etcd supervisor", supervisor.Run)
 
 	// At this point we wait for a terminal request result from platformListener.
