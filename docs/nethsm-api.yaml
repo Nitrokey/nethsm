@@ -311,6 +311,11 @@ paths:
           description: Only return keys that can be used by the requester, according to restrictions, if this parameter is set to any value.
           schema:
             type: string
+        - name: label
+          in: query
+          description: Only return keys that have a matching label, if this parameter is set to any value.
+          schema:
+            type: string
       security:
         - basic: []
       x-annotation-role:
@@ -672,6 +677,72 @@ paths:
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
       description: Delete a pair of public and private key.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
+      x-test-value-KeyID: myKey1
+    parameters:
+      - name: KeyID
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
+  /keys/{KeyID}/label:
+    put:
+      responses:
+        "204":
+          description: Key label successfully changed
+        "304":
+          description: Label is already present for this key with the same value.
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Set or change the label for {KeyID}. The label is provided as a UTF-8 JSON string,
+        and it cannot be longer than 32 bytes.
+        By default keys have the empty string as a label.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyLabel"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+        - Namespaced
+      x-test-value-KeyID: myKey1
+    delete:
+      responses:
+        "204":
+          description: Successful deletion of key label.
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Key for KeyID not found in namespace.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: |
+        Delete the key's label.
+        This operation is idempotent and succeeds if the key doesn't have a label already.
       security:
         - basic: []
       x-annotation-role:
@@ -3157,6 +3228,8 @@ components:
           $ref: "#/components/schemas/KeyPrivateData"
         restrictions:
           $ref: "#/components/schemas/KeyRestrictions"
+        label:
+          $ref: "#/components/schemas/KeyLabel"
       required:
         - mechanisms
         - type
@@ -3192,6 +3265,14 @@ components:
           $ref: "#/components/schemas/Base64"
         data:
           $ref: "#/components/schemas/Base64"
+    KeyLabel:
+      example: '"etestlabel✓"'
+      description: A valid UTF-8 string. For interoperability with PKCS#11 its length shouldn't exceed 32 bytes.
+      type: string
+      properties:
+        length:
+          minimum: 0
+          maximum: 32
     PublicKey:
       example:
         mechanisms:
@@ -3204,6 +3285,7 @@ components:
           modulus: FhJQl11CiY0ifRHXeAqFh4rdSl6
           publicExponent: FhJQl11CiY0ifRHXeAqFh4rdSl6
         operations: 242
+        label:
       type: object
       properties:
         mechanisms:
@@ -3216,6 +3298,8 @@ components:
           $ref: "#/components/schemas/KeyPublicData"
         operations:
           type: integer
+        label:
+          $ref: "#/components/schemas/KeyLabel"
       required:
         - mechanisms
         - type
