@@ -268,6 +268,19 @@ module type S = sig
       id:string ->
       (Json.restrictions, error) result Lwt.t
 
+    val get_label :
+      namespace:string option ->
+      t ->
+      id:string ->
+      (Json.Label.label option, error) result Lwt.t
+
+    val set_label :
+      namespace:string option ->
+      t ->
+      id:string ->
+      label:Json.Label.label option ->
+      (bool, error) result Lwt.t
+
     val add_restriction_tags :
       namespace:string option ->
       t ->

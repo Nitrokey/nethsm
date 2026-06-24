@@ -262,6 +262,19 @@ module type S = sig
       id:string ->
       (Json.restrictions, error) result Lwt.t
 
+    val get_label :
+      namespace:string option ->
+      t ->
+      id:string ->
+      (Json.Label.label option, error) result Lwt.t
+
+    val set_label :
+      namespace:string option ->
+      t ->
+      id:string ->
+      label:Json.Label.label option ->
+      (bool, error) result Lwt.t
+
     val add_restriction_tags :
       namespace:string option ->
       t ->
@@ -1929,6 +1942,23 @@ module Make (KV : Kv_ext.Platform) = struct
     let get_restrictions ~namespace t ~id =
       let open Lwt_result.Infix in
       get_key t ~namespace id >|= fun key -> key.restrictions
+
+    let get_label ~namespace t ~id =
+      let open Lwt_result.Syntax in
+      let+ key = get_key t ~namespace id in
+      key.label
+
+    let set_label ~namespace t ~id ~(label : Json.Label.label option) =
+      let open Lwt_result.Syntax in
+      let** key = get_key t ~namespace id in
+      Access.info (fun f ->
+          f "update (%s): label is now %a" id
+            Fmt.(option string)
+            (label :> string option));
+      if key.label <> label then
+        let+ () = encode_and_write t ~namespace id { key with label } in
+        true
+      else Lwt.return_ok false
 
     let add_restriction_tags ~namespace t ~id ~tag =
       let open Lwt_result.Infix in

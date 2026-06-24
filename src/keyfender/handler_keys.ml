@@ -784,6 +784,67 @@ struct
       method! is_authorized = Access.is_authorized hsm_state ip
     end
 
+  class handler_label hsm_state ip =
+    object (_self)
+      inherit Endpoint.base_with_body_length
+      inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+
+      (* ? role, key owner *)
+      inherit! Endpoint.role hsm_state `Administrator ip
+      inherit! Endpoint.no_cache
+      inherit! Endpoint.put_json
+      method! allowed_methods rd = Wm.continue [ `PUT; `DELETE ] rd
+
+      method! resource_exists rd =
+        let ok_key_id id =
+          let namespace = Endpoint.get_namespace rd in
+          Hsm.Key.exists hsm_state ~namespace ~id >>= function
+          | Ok exists -> Wm.continue exists rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Endpoint.lookup_path_info ok_key_id "id" rd
+
+      method private of_json body rd =
+        match body with
+        | `String label ->
+            let ok_label ~id =
+              let namespace = Endpoint.get_namespace rd in
+              match Json.Label.of_string label with
+              | Error e -> Endpoint.respond_error (Bad_request, e) rd
+              | Ok label -> (
+                  Hsm.Key.set_label hsm_state ~namespace ~id ~label:(Some label)
+                  >>= function
+                  | Ok true -> Wm.continue true rd
+                  | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
+                  | Error e -> Endpoint.respond_error e rd)
+            in
+            let ok_key_id id =
+              let namespace = Endpoint.get_namespace rd in
+              Hsm.Key.exists hsm_state ~namespace ~id >>= function
+              | Ok true -> ok_label ~id
+              | Ok false ->
+                  Endpoint.respond_status (`Not_found, "key not found") rd
+              | Error e -> Endpoint.respond_error e rd
+            in
+            Endpoint.lookup_path_info ok_key_id "id" rd
+        | _ -> Endpoint.respond_error (Bad_request, "JSON string expected") rd
+
+      method! delete_resource rd =
+        let ok_key_id id =
+          let namespace = Endpoint.get_namespace rd in
+          Hsm.Key.set_label hsm_state ~namespace ~id ~label:None >>= function
+          | Ok _ ->
+              (* whether we had any labels before or not, it is all gone now,
+                 and therefore the delete succeeded
+               *)
+              Wm.continue true rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        Endpoint.lookup_path_info ok_key_id "id" rd
+
+      method! is_authorized = Access.is_authorized hsm_state ip
+    end
+
   class handler_restrictions_tags hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
