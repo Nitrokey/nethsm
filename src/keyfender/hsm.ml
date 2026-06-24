@@ -273,6 +273,7 @@ module type S = sig
       namespace:string option ->
       t ->
       id:string ->
+      user_nid:Nid.t ->
       label:Json.Label.t ->
       (bool, error) result Lwt.t
 
@@ -1965,16 +1966,6 @@ module Make (KV : Kv_ext.Platform) = struct
       let+ key = get_key t ~namespace id in
       key.label
 
-    let set_label ~namespace t ~id ~(label : Json.Label.t) =
-      let open Lwt_result.Syntax in
-      let** key = get_key t ~namespace id in
-      Access.info (fun f ->
-          f "update (%s): label is now %s" id (label :> string));
-      if key.label <> label then
-        let+ () = encode_and_write t ~namespace id { key with label } in
-        true
-      else Lwt.return_ok false
-
     let add_restriction_tags ~namespace t ~id ~tag =
       let open Lwt_result.Infix in
       get_key t ~namespace id >>= fun key ->
@@ -2016,6 +2007,17 @@ module Make (KV : Kv_ext.Platform) = struct
         else validate_restrictions ~user_info key_data.restrictions
       in
       Result.map (fun () -> key_data) validation |> Lwt.return
+
+    let set_label ~namespace t ~id ~user_nid ~(label : Json.Label.t) =
+      let open Lwt_result.Syntax in
+      let** key = get_key t ~namespace id in
+      let** key = validate_restrictions t ~user_nid key in
+      Access.info (fun f ->
+          f "update (%s): label is now '%s'" id (label :> string));
+      if key.label <> label then
+        let+ () = encode_and_write t ~namespace id { key with label } in
+        true
+      else Lwt.return_ok false
 
     let decrypt t ~namespace ~id ~user_nid ~iv decrypt_mode data =
       let open Lwt_result.Infix in

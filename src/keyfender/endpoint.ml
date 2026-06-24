@@ -151,6 +151,18 @@ struct
           Access.forbidden hsm_state role rd >>= fun auth -> Wm.continue auth rd
     end
 
+  class role_admin_or_operator hsm_state ip =
+    object
+      method is_authorized : (Wm.auth, body) Wm.op =
+        Access.is_authorized hsm_state ip
+
+      method forbidden : (bool, body) Wm.op =
+        fun rd ->
+          Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
+          Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
+          Wm.continue (not_an_admin && not_an_operator) rd
+    end
+
   class role_operator_get hsm_state ip =
     object
       method is_authorized : (Wm.auth, body) Wm.op =

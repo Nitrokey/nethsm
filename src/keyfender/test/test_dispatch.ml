@@ -4922,7 +4922,7 @@ let keys_key_label_put_no_label =
     ~body:(`String generate_json) "/keys/generate"
   |> returns_string ~with_status:`Created
   |> ignore;
-  let expect = info "update (keyID): label is now labeltest\226\156\147" in
+  let expect = info "update (keyID): label is now 'labeltest\226\156\147'" in
   admin_put_request ~expect ~hsm_state ~body:(`String label) "/keys/keyID/label"
   |> returns_empty ~with_status:`No_content
 
@@ -4936,7 +4936,7 @@ let keys_key_label_put_label =
     Buffer.clear b;
     let label = Yojson.Safe.to_string (`String label_str) in
     let expect =
-      info (Printf.sprintf "update (keyID): label is now %s" label_str)
+      info (Printf.sprintf "update (keyID): label is now '%s'" label_str)
     in
     admin_put_request ~expect ~hsm_state ~body:(`String label)
       "/keys/keyID/label"
@@ -4952,9 +4952,62 @@ let keys_key_label_put_label =
       end);
   flush ()
 
+let keys_key_label_put_label_namespaced_operator =
+  Alcotest.test_case
+    "PUT on namespaced /keys/keyIDn1o1t1/label succeeds only for admin" `Quick
+  @@ fun () ->
+  let hsm_state = operational_mock () in
+  let tag1 = "tag1" in
+  let tag2 = "tag2" in
+  let namespace = "namespace1" in
+  let key1 = "keyIDn1o1t1" in
+  let key2 = "keyIDn1o1t2" in
+  let open Lwt.Syntax in
+  Lwt_main.run
+    (let* _ =
+       Hsm.User.add_tag hsm_state (user ~namespace "suboperator") ~tag:tag1
+     in
+     let ms =
+       Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
+     in
+     let* _ =
+       Hsm.Key.generate ~namespace:(Some namespace) ~id:key1 hsm_state RSA ms
+         ~length:1024
+         { tags = Keyfender.Json.TagSet.singleton tag1 }
+         no_label
+     in
+     let+ _ =
+       Hsm.Key.generate ~namespace:(Some namespace) ~id:key2 hsm_state RSA ms
+         ~length:1024
+         { tags = Keyfender.Json.TagSet.singleton tag2 }
+         no_label
+     in
+     ());
+  let label_str = "label1" in
+  let label = Yojson.Safe.to_string (`String label_str) in
+  let expect =
+    info (Printf.sprintf "update (%s): label is now '%s'" key2 label_str)
+  in
+  request ~expect ~meth:`PUT ~hsm_state ~headers:subadmin_headers
+    ~body:(`String label)
+    (Printf.sprintf "/keys/%s/label" key2)
+  |> returns_empty ~with_status:`No_content;
+  request ~meth:`PUT ~hsm_state ~headers:suboperator_headers
+    ~body:(`String label)
+    (Printf.sprintf "/keys/%s/label" key1)
+  |> returns_empty ~with_status:`Forbidden;
+  request ~meth:`PUT ~hsm_state ~headers:suboperator2_headers
+    ~body:(`String label)
+    (Printf.sprintf "/keys/%s/label" key1)
+  |> returns_empty ~with_status:`Forbidden;
+  request ~meth:`PUT ~hsm_state ~headers:suboperator_headers
+    ~body:(`String label)
+    (Printf.sprintf "/keys/%s/label" key2)
+  |> returns_empty ~with_status:`Forbidden
+
 let keys_key_label_delete =
   Alcotest.test_case "DELETE on /keys/keyID/label succeeds" `Quick @@ fun () ->
-  let expect = info "update (keyID): label is now " in
+  let expect = info "update (keyID): label is now ''" in
   request ~expect ~headers:admin_headers ~meth:`DELETE
     ~hsm_state:(hsm_with_label ()) "/keys/keyID/label"
   |> returns_empty ~with_status:`No_content
@@ -6396,6 +6449,7 @@ let () =
         [
           keys_key_label_put_no_label;
           keys_key_label_put_label;
+          keys_key_label_put_label_namespaced_operator;
           keys_key_label_delete;
         ] );
       ( "/keys/keyID/restrictions/tags",

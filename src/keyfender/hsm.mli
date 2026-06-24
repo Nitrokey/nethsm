@@ -279,6 +279,7 @@ module type S = sig
       namespace:string option ->
       t ->
       id:string ->
+      user_nid:Nid.t ->
       label:Json.Label.t ->
       (bool, error) result Lwt.t
 

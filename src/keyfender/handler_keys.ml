@@ -505,6 +505,7 @@ struct
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
+      inherit! Endpoint.role_admin_or_operator hsm_state ip
 
       method private get_pem rd =
         let ok id =
@@ -530,12 +531,6 @@ struct
         Wm.continue [ ("application/x-pem-file", self#get_pem) ] rd
 
       method content_types_accepted rd = Wm.continue [] rd
-      method! is_authorized = Access.is_authorized hsm_state ip
-
-      method! forbidden rd =
-        Access.forbidden hsm_state `Administrator rd >>= fun not_an_admin ->
-        Access.forbidden hsm_state `Operator rd >>= fun not_an_operator ->
-        Wm.continue (not_an_admin && not_an_operator) rd
 
       method! generate_etag rd =
         let id = Webmachine.Rd.lookup_path_info_exn "id" rd in
@@ -800,8 +795,6 @@ struct
     object (_self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
-
-      (* ? role, key owner *)
       inherit! Endpoint.role hsm_state `Administrator ip
       inherit! Endpoint.no_cache
       inherit! Endpoint.put_json
@@ -824,7 +817,9 @@ struct
               match Json.Label.of_string label with
               | Error e -> Endpoint.respond_error (Bad_request, e) rd
               | Ok label -> (
-                  Hsm.Key.set_label hsm_state ~namespace ~id ~label >>= function
+                  let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
+                  Hsm.Key.set_label hsm_state ~namespace ~id ~user_nid ~label
+                  >>= function
                   | Ok true -> Wm.continue true rd
                   | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
                   | Error e -> Endpoint.respond_error e rd)
@@ -843,7 +838,9 @@ struct
       method! delete_resource rd =
         let ok_key_id id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.set_label hsm_state ~namespace ~id ~label:Json.Label.empty
+          let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
+          Hsm.Key.set_label hsm_state ~namespace ~id ~user_nid
+            ~label:Json.Label.empty
           >>= function
           | Ok _ ->
               (* whether we had any labels before or not, it is all gone now,
