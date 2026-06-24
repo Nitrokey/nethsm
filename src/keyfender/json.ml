@@ -6,7 +6,7 @@ open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err
 
-type err = { message : string } [@@deriving yojson, jsonschema]
+type err = { message : string } [@@deriving to_yojson, jsonschema]
 
 let error message = Yojson.Safe.to_string (err_to_yojson { message })
 
@@ -39,7 +39,7 @@ type subject_req = {
   emailAddress : (string[@default ""]);
   subjectAltNames : (string list option[@default None]);
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 let decode_subject json =
   decode subject_req_of_yojson json >>= fun subject ->
@@ -89,7 +89,7 @@ type passphrase_change_req = {
   newPassphrase : string;
   currentPassphrase : string;
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 let decode_passphrase_change json =
   to_ocaml passphrase_change_req_of_yojson json >>= fun passphrase ->
@@ -101,7 +101,7 @@ type provision_req = {
   adminPassphrase : string;
   systemTime : string;
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 let decode_provision_req json =
   to_ocaml provision_req_of_yojson json >>= fun b ->
@@ -358,7 +358,7 @@ type log = {
 }
 [@@deriving yojson, jsonschema]
 
-type random_req = { length : int } [@@deriving yojson, jsonschema]
+type random_req = { length : int } [@@deriving of_yojson, jsonschema]
 
 let random_req_of_yojson x =
   random_req_of_yojson x >>= fun rr ->
@@ -372,7 +372,7 @@ type private_key = {
   publicExponent : (string[@default ""]);
   data : (string[@default ""]);
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 type mechanism =
   | RSA_Decryption_RAW
@@ -559,14 +559,14 @@ type private_key_req = {
   priv : private_key; [@key "private"]
   label : Label.label; [@default Label.empty]
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 type private_key_multipart_req = {
   mechanisms : MS.t;
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
   label : Label.label; [@default Label.empty]
 }
-[@@deriving yojson, jsonschema]
+[@@deriving of_yojson, jsonschema]
 
 type decrypt_mode =
   | RAW
