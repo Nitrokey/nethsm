@@ -529,13 +529,17 @@ module Label : sig
   val t_jsonschema : [> `Assoc of (string * [> `String of string ]) list ]
   val of_string : string -> (t, string) result
   val empty : t
+  val max_length_bytes : int
 end = struct
   type t = string [@@deriving yojson, jsonschema]
 
   let empty = ""
+  let max_length_bytes = 32
 
   let of_string str =
-    if String.is_valid_utf_8 str then Ok str
+    if String.length str > max_length_bytes then
+      Fmt.error "Label is too long, max %d bytes" max_length_bytes
+    else if String.is_valid_utf_8 str then Ok str
     else Error "Label is not valid UTF-8"
 
   let of_yojson json = Result.bind (of_yojson json) of_string

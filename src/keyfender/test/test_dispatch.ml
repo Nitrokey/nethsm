@@ -3986,18 +3986,10 @@ let keys_generate_labels_ok_small =
 let keys_generate_labels_ok =
   Alcotest.test_case "POST on /keys/generate with a valid label succeeds" `Quick
   @@ fun () ->
-  let b = Buffer.create 65536 in
-  iter_valid_utf8 (fun c ->
-      (* TODO: emit the full JSON string spec *)
-      if c <> Uchar.of_char '"' && c <> Uchar.of_char '\\' then
-        Buffer.add_utf_8_uchar b c);
-  let label = Buffer.contents b in
-  (*  TODO: split this, we'll need to add a limit on the label length *)
-  let generate_json =
-    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, label: "|}
-    ^ label ^ "\"}"
-  in
   let expect = info "created (xxxx)" in
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, label: "labeltest✓" }|}
+  in
   admin_post_request ~expect ~body:(`String generate_json) "/keys/generate"
   |> returns_string ~with_status:`Created
   |> ignore
@@ -4935,13 +4927,30 @@ let keys_key_label_put_no_label =
   |> returns_empty ~with_status:`No_content
 
 let keys_key_label_put_label =
-  Alcotest.test_case "PUT on /keys/keyID/label modify succeeds" `Quick
+  Alcotest.test_case "PUT on /keys/keyID/label modify succeeds" `Slow
   @@ fun () ->
-  let label = {|"labeltest✓"|} in
-  let expect = info "update (keyID): label is now labeltest\226\156\147" in
-  admin_put_request ~expect ~hsm_state:(hsm_with_label ()) ~body:(`String label)
-    "/keys/keyID/label"
-  |> returns_empty ~with_status:`No_content
+  let b = Buffer.create Keyfender.Json.Label.max_length_bytes in
+  let hsm_state = hsm_with_label () in
+  let flush () =
+    let label_str = Buffer.contents b in
+    Buffer.clear b;
+    let label = Yojson.Safe.to_string (`String label_str) in
+    let expect =
+      info (Printf.sprintf "update (keyID): label is now %s" label_str)
+    in
+    admin_put_request ~expect ~hsm_state ~body:(`String label)
+      "/keys/keyID/label"
+    |> returns_empty ~with_status:`No_content
+  in
+  iter_valid_utf8 (fun c ->
+      if c <> Uchar.of_char '"' && c <> Uchar.of_char '\\' then begin
+        if
+          Uchar.utf_8_byte_length c + Buffer.length b
+          > Keyfender.Json.Label.max_length_bytes
+        then flush ();
+        Buffer.add_utf_8_uchar b c
+      end);
+  flush ()
 
 let keys_key_label_delete =
   Alcotest.test_case "DELETE on /keys/keyID/label succeeds" `Quick @@ fun () ->
