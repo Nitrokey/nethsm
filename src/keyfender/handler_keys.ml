@@ -13,6 +13,11 @@ struct
   module Access = Access.Make (Wm) (Hsm)
   module Endpoint = Endpoint.Make (Wm) (Hsm)
 
+  let search_label_of rd =
+    match Uri.get_query_param rd.Webmachine.Rd.uri "label" with
+    | None -> Ok None
+    | Some label -> label |> Json.Label.of_string |> Result.map Option.some
+
   class handler_keys hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
@@ -57,15 +62,19 @@ struct
         let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
         let namespace = user_nid.namespace in
         let filter_by_restrictions = self#filter_by_restrictions rd in
-        Hsm.Key.list ~namespace ~filter_by_restrictions ~user_nid hsm_state
-        >>= function
-        | Error e -> Endpoint.respond_error e rd
-        | Ok keys ->
-            let items =
-              tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
-            in
-            let body = Yojson.Safe.to_string (`List items) in
-            Wm.continue (`String body) rd
+        match search_label_of rd with
+        | Error e -> Endpoint.respond_error (Bad_request, e) rd
+        | Ok search_label -> (
+            Hsm.Key.list ~namespace ~filter_by_restrictions ~search_label
+              ~user_nid hsm_state
+            >>= function
+            | Error e -> Endpoint.respond_error e rd
+            | Ok keys ->
+                let items =
+                  tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
+                in
+                let body = Yojson.Safe.to_string (`List items) in
+                Wm.continue (`String body) rd)
 
       method private set_json rd =
         let cc hdr = Cohttp.Header.remove hdr "location" in
@@ -379,16 +388,19 @@ struct
       method private list_keys_prefix prefix rd =
         let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
         let namespace = user_nid.namespace in
-        Hsm.Key.list ~with_prefix:prefix ~namespace
-          ~filter_by_restrictions:false ~user_nid hsm_state
-        >>= function
-        | Error e -> Endpoint.respond_error e rd
-        | Ok keys ->
-            let items =
-              tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
-            in
-            let body = Yojson.Safe.to_string (`List items) in
-            Wm.continue (`String body) rd
+        match search_label_of rd with
+        | Error e -> Endpoint.respond_error (Bad_request, e) rd
+        | Ok search_label -> (
+            Hsm.Key.list ~with_prefix:prefix ~namespace
+              ~filter_by_restrictions:false ~search_label ~user_nid hsm_state
+            >>= function
+            | Error e -> Endpoint.respond_error e rd
+            | Ok keys ->
+                let items =
+                  tailrec_map (fun key -> `Assoc [ ("id", `String key) ]) keys
+                in
+                let body = Yojson.Safe.to_string (`List items) in
+                Wm.continue (`String body) rd)
 
       method private get_json rd =
         let ok id =

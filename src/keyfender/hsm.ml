@@ -178,6 +178,7 @@ module type S = sig
       namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
+      search_label:Json.Label.label option ->
       user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
@@ -1560,7 +1561,8 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       Key_store.list_range store range
 
-    let list ?with_prefix ~namespace t ~filter_by_restrictions ~user_nid =
+    let list ?with_prefix ~namespace t ~filter_by_restrictions ~search_label
+        ~user_nid =
       let open Lwt.Infix in
       efficient_list t ?with_prefix namespace >>= function
       | Error (`Not_found _ | `Kv (`Not_found _)) -> Lwt_result.return []
@@ -1575,23 +1577,37 @@ module Make (KV : Kv_ext.Platform) = struct
           let is_usable (k : Key_info.t) =
             validate_restrictions ~user_info k.restrictions |> Result.is_ok
           in
+          let filter_label id =
+            (* TODO: why namespace: None below? *)
+            get_key t ~namespace:None id >|= function
+            | Ok k when k.label = search_label -> Some id
+            | _ -> None
+          in
+          let maybe_filter_labels lst =
+            if Option.is_none search_label then lst
+            else
+              let open Lwt_result.Syntax in
+              let* lst = lst in
+              Lwt_list.filter_map_s filter_label lst >|= fun l -> Ok l
+          in
           let values_id =
             List.filter_map
               (function
                 | id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None)
               xs
           in
-          if is_admin || not filter_by_restrictions then
-            (* bypass filter *)
-            Lwt.return_ok values_id
-          else
-            (* keep only usable keys *)
-            let filter id =
-              get_key t ~namespace id >|= function
-              | Ok k when is_usable k -> Some id
-              | _ -> None
-            in
-            Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l
+          maybe_filter_labels
+            (if is_admin || not filter_by_restrictions then
+               (* bypass filter *)
+               Lwt.return_ok values_id
+             else
+               (* keep only usable keys *)
+               let filter id =
+                 get_key t ~namespace id >|= function
+                 | Ok k when is_usable k -> Some id
+                 | _ -> None
+               in
+               Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l)
 
     let dump_keys t =
       let open Lwt.Infix in

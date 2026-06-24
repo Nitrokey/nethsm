@@ -184,6 +184,7 @@ module type S = sig
       namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
+      search_label:Json.Label.label option ->
       user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
