@@ -4816,14 +4816,14 @@ let keys_key_put_generic =
   | _, Some (`No_content, _, _, _) -> true
   | _ -> false
 
-let hsm_with_tags () =
+let hsm_with_tags ?namespace () =
   let hsm_state = operational_mock () in
   let ms =
     Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
   in
   let tags = Keyfender.Json.TagSet.singleton "berlin" in
   Lwt_main.run
-    (Hsm.Key.generate ~namespace:None ~id:"keyID" hsm_state RSA ms ~length:1024
+    (Hsm.Key.generate ~namespace ~id:"keyID" hsm_state RSA ms ~length:1024
        { tags })
   |> Result.get_ok;
   hsm_state
@@ -4956,6 +4956,38 @@ let keys_get_restrictions_filtered =
   |> Result.get_ok |> ignore;
   match
     request ~headers:operator_headers ~hsm_state "/keys"
+      ~query:[ ("filter", []) ]
+  with
+  | _, Some (`OK, _, `String body, _) ->
+      Alcotest.(check string)
+        "when operator doesn't have tag: list is empty" body "[]"
+  | _ -> Alcotest.fail "when operator doesn't have tag: didn't return OK"
+
+let keys_get_restrictions_filtered_namespace =
+  Alcotest.test_case
+    "GET on /keys?filter list is filtered by restrictions in a namespace" `Quick
+  @@ fun () ->
+  let namespace = "namespace1" in
+  let hsm_state = hsm_with_tags ~namespace () in
+  let (_ : _ result) =
+    Lwt_main.run
+      (Hsm.User.add_tag hsm_state (user ~namespace "suboperator") ~tag:"berlin")
+  in
+  (match
+     request ~headers:suboperator_headers ~hsm_state "/keys"
+       ~query:[ ("filter", []) ]
+   with
+  | _, Some (`OK, _, `String body, _) ->
+      Alcotest.(check (neg string))
+        "when operator has tag: list isn't empty" body "[]"
+  | _ -> Alcotest.fail "when operator has tag: didn't return OK");
+  Lwt_main.run
+    (Hsm.User.remove_tag hsm_state
+       (user ~namespace "suboperator")
+       ~tag:"berlin")
+  |> Result.get_ok |> ignore;
+  match
+    request ~headers:suboperator_headers ~hsm_state "/keys"
       ~query:[ ("filter", []) ]
   with
   | _, Some (`OK, _, `String body, _) ->
@@ -6166,6 +6198,7 @@ let () =
           keys_get_namespace;
           keys_get_namespace_seq;
           keys_get_restrictions_filtered;
+          keys_get_restrictions_filtered_namespace;
           keys_get_restrictions_unfiltered;
           keys_post_json;
           keys_post_pem;

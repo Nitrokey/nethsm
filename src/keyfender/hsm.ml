@@ -1570,7 +1570,7 @@ module Make (KV : Kv_ext.Platform) = struct
           else
             (* keep only usable keys *)
             let filter id =
-              get_key t ~namespace:None id >|= function
+              get_key t ~namespace id >|= function
               | Ok k when is_usable k -> Some id
               | _ -> None
             in
