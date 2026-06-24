@@ -12,7 +12,7 @@
  (modules test_dispatch test_export_backup test_dispatch_helpers test_utils)
  (preprocessor_deps public.pem)
  (preprocess
-  (pps ppx_blob))
+  (pps ppx_blob ppx_deriving_yojson))
  (deps
   update.bin
   big_100k.bin

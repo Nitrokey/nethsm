@@ -4875,18 +4875,30 @@ let hsm_with_tags ?namespace () =
   |> Result.get_ok;
   hsm_state
 
-let hsm_with_label () =
+let test_label = "testlabelπ/bar"
+
+let hsm_with_labels labels =
   let hsm_state = operational_mock () in
   let ms =
     Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
   in
   let tags = Keyfender.Json.TagSet.empty in
-  let label = Keyfender.Json.Label.of_string "testlabelπ" |> Result.get_ok in
-  Lwt_main.run
-    (Hsm.Key.generate ~namespace:None ~id:"keyID" hsm_state RSA ms ~length:1024
-       { tags } (Some label))
-  |> Result.get_ok;
+  let labels =
+    labels
+    |> List.map @@ fun (k, v) ->
+       (k, v |> Keyfender.Json.Label.of_string |> Result.get_ok)
+  in
+  let () =
+    labels
+    |> List.iter @@ fun (id, label) ->
+       Lwt_main.run
+         (Hsm.Key.generate ~namespace:None ~id hsm_state RSA ms ~length:1024
+            { tags } (Some label))
+       |> Result.get_ok
+  in
   hsm_state
+
+let hsm_with_label () = hsm_with_labels [ ("keyID", test_label) ]
 
 let keys_key_get_with_restrictions =
   "GET on /keys/keyID with restrictions" @? fun () ->
@@ -4908,7 +4920,7 @@ let keys_key_label_put_no_label =
   let generate_json =
     {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "keyID" }|}
   in
-  let label = "labeltest✓" in
+  let label = {|"labeltest✓"|} in
   let expect = info "created (keyID)" in
   request ~expect ~hsm_state ~meth:`POST ~headers:admin_headers
     ~body:(`String generate_json) "/keys/generate"
@@ -4921,7 +4933,7 @@ let keys_key_label_put_no_label =
 let keys_key_label_put_label =
   Alcotest.test_case "PUT on /keys/keyID/label modify succeeds" `Quick
   @@ fun () ->
-  let label = "labeltest✓" in
+  let label = {|"labeltest✓"|} in
   let expect = info "update (keyID): label is now labeltest\226\156\147" in
   admin_put_request ~expect ~hsm_state:(hsm_with_label ()) ~body:(`String label)
     "/keys/keyID/label"
@@ -5032,6 +5044,28 @@ let keys_key_restrictions_tags_sign_fail =
   with
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
+
+type id_json = { id : string } [@@deriving of_yojson]
+type id_list = id_json list [@@deriving of_yojson]
+
+let keys_get_labels =
+  Alcotest.test_case "GET on /keys?label= correctly filters keys" `Quick
+  @@ fun () ->
+  let hsm_state =
+    hsm_with_labels
+      [
+        ("keyID", test_label);
+        ("keyID2", test_label);
+        ("unexpectedID", "unexpected");
+      ]
+  in
+  let actual =
+    request ~expect:"" ~hsm_state ~headers:admin_headers ~meth:`GET "/keys"
+      ~query:[ ("label", [ test_label ]) ]
+    |> returns_json id_list_of_yojson ~with_status:`OK
+    |> List.map (fun { id } -> id)
+  and expected = [ "keyID"; "keyID2" ] in
+  Alcotest.V1.(check' (list string) ~msg:"id list" ~expected ~actual)
 
 let keys_get_restrictions_filtered =
   Alcotest.test_case "GET on /keys?filter list is filtered by restrictions"
@@ -6294,6 +6328,7 @@ let () =
           keys_get_restrictions_filtered;
           keys_get_restrictions_filtered_namespace;
           keys_get_restrictions_unfiltered;
+          keys_get_labels;
           keys_post_json;
           keys_post_pem;
         ] );
