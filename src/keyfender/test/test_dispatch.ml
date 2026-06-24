@@ -4875,6 +4875,19 @@ let hsm_with_tags ?namespace () =
   |> Result.get_ok;
   hsm_state
 
+let hsm_with_label () =
+  let hsm_state = operational_mock () in
+  let ms =
+    Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
+  in
+  let tags = Keyfender.Json.TagSet.empty in
+  let label = Keyfender.Json.Label.of_string "testlabelπ" |> Result.get_ok in
+  Lwt_main.run
+    (Hsm.Key.generate ~namespace:None ~id:"keyID" hsm_state RSA ms ~length:1024
+       { tags } (Some label))
+  |> Result.get_ok;
+  hsm_state
+
 let keys_key_get_with_restrictions =
   "GET on /keys/keyID with restrictions" @? fun () ->
   match
@@ -4887,6 +4900,40 @@ let keys_key_get_with_restrictions =
       |> List.exists (String.equal "berlin")
   | _ -> false
   | exception Yojson.Safe.Util.Type_error _ -> false
+
+let keys_key_label_put_no_label =
+  Alcotest.test_case "PUT on /keys/keyID/label create succeeds" `Quick
+  @@ fun () ->
+  let hsm_state = operational_mock () in
+  let generate_json =
+    {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "keyID" }|}
+  in
+  let label = "labeltest✓" in
+  let expect = info "created (keyID)" in
+  request ~expect ~hsm_state ~meth:`POST ~headers:admin_headers
+    ~body:(`String generate_json) "/keys/generate"
+  |> returns_string ~with_status:`Created
+  |> ignore;
+  let expect = info "update (keyID): label is now labeltest\226\156\147" in
+  admin_put_request ~expect ~hsm_state ~body:(`String label) "/keys/keyID/label"
+  |> returns_empty ~with_status:`No_content
+
+let keys_key_label_put_label =
+  Alcotest.test_case "PUT on /keys/keyID/label modify succeeds" `Quick
+  @@ fun () ->
+  let label = "labeltest✓" in
+  let expect = info "update (keyID): label is now labeltest\226\156\147" in
+  admin_put_request ~expect ~hsm_state:(hsm_with_label ()) ~body:(`String label)
+    "/keys/keyID/label"
+  |> returns_empty ~with_status:`No_content
+
+let keys_key_label_delete =
+  Alcotest.test_case "DELETE on /keys/keyID/label succeeds" `Quick @@ fun () ->
+  let expect = info "update (keyID): label is now " in
+  request ~expect ~headers:admin_headers ~meth:`DELETE
+    ~hsm_state:(hsm_with_label ()) "/keys/keyID/label"
+  |> returns_empty ~with_status:`No_content
+  |> ignore
 
 let keys_key_restrictions_tags_put =
   "PUT on /keys/keyID/restrictions/tags/frankfurt succeeds" @? fun () ->
@@ -6296,6 +6343,12 @@ let () =
           keys_key_glob_invalid;
           keys_key_glob_empty;
           keys_key_glob_ns;
+        ] );
+      ( "/keys/keyID/label",
+        [
+          keys_key_label_put_no_label;
+          keys_key_label_put_label;
+          keys_key_label_delete;
         ] );
       ( "/keys/keyID/restrictions/tags",
         [
