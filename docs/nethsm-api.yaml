@@ -3305,6 +3305,7 @@ components:
         - type
         - restrictions
         - operations
+        - label
     KeyPublicData:
       description: |
         The public key data is either a *modulus* and a *publicExponent* or

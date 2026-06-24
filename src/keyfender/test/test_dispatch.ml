@@ -4151,7 +4151,11 @@ let keys_key_get =
                      && List.length a = 2
                  | _ -> false)
                xs
-          && List.length xs = 5
+          && List.exists
+               (fun (k, v) ->
+                 k = "label" && match v with `String _ -> true | _ -> false)
+               xs
+          && List.length xs = 6
       | _ -> false)
   | _ -> false
 
@@ -4893,7 +4897,7 @@ let hsm_with_labels labels =
     |> List.iter @@ fun (id, label) ->
        Lwt_main.run
          (Hsm.Key.generate ~namespace:None ~id hsm_state RSA ms ~length:1024
-            { tags } (Some label))
+            { tags } label)
        |> Result.get_ok
   in
   hsm_state

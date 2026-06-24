@@ -246,7 +246,7 @@ let test_key =
   | _ -> assert false
 
 let no_restrictions = Keyfender.Json.{ tags = TagSet.empty }
-let no_label = None
+let no_label = Keyfender.Json.Label.empty
 
 let hsm_with_key ?platform ?mbox ?and_namespace
     ?(mechanisms = Keyfender.Json.(MS.singleton RSA_Decryption_PKCS1)) () =

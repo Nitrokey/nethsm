@@ -196,7 +196,7 @@ module type S = sig
       Json.key_type ->
       Json.private_key ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val add_pem :
@@ -206,7 +206,7 @@ module type S = sig
       Json.MS.t ->
       string ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val generate :
@@ -217,7 +217,7 @@ module type S = sig
       Json.MS.t ->
       length:int ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val remove :
@@ -273,13 +273,13 @@ module type S = sig
       namespace:string option ->
       t ->
       id:string ->
-      (Json.Label.label option, error) result Lwt.t
+      (Json.Label.label, error) result Lwt.t
 
     val set_label :
       namespace:string option ->
       t ->
       id:string ->
-      label:Json.Label.label option ->
+      label:Json.Label.label ->
       (bool, error) result Lwt.t
 
     val add_restriction_tags :

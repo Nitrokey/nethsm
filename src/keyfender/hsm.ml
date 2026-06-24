@@ -190,7 +190,7 @@ module type S = sig
       Json.key_type ->
       Json.private_key ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val add_pem :
@@ -200,7 +200,7 @@ module type S = sig
       Json.MS.t ->
       string ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val generate :
@@ -211,7 +211,7 @@ module type S = sig
       Json.MS.t ->
       length:int ->
       Json.restrictions ->
-      Json.Label.label option ->
+      Json.Label.label ->
       (unit, error) result Lwt.t
 
     val remove :
@@ -267,13 +267,13 @@ module type S = sig
       namespace:string option ->
       t ->
       id:string ->
-      (Json.Label.label option, error) result Lwt.t
+      (Json.Label.label, error) result Lwt.t
 
     val set_label :
       namespace:string option ->
       t ->
       id:string ->
-      label:Json.Label.label option ->
+      label:Json.Label.label ->
       (bool, error) result Lwt.t
 
     val add_restriction_tags :
@@ -746,7 +746,7 @@ module Make (KV : Kv_ext.Platform) = struct
         cert : (string * string) option;
         operations : int;
         restrictions : Json.restrictions;
-        label : Json.Label.label option; [@default None]
+        label : Json.Label.label; [@default Json.Label.empty]
       }
       [@@deriving yojson]
     end
@@ -1577,18 +1577,19 @@ module Make (KV : Kv_ext.Platform) = struct
           let is_usable (k : Key_info.t) =
             validate_restrictions ~user_info k.restrictions |> Result.is_ok
           in
-          let filter_label id =
-            (* TODO: why namespace: None below? *)
-            get_key t ~namespace:None id >|= function
-            | Ok k when k.label = search_label -> Some id
-            | _ -> None
-          in
           let maybe_filter_labels lst =
-            if Option.is_none search_label then lst
-            else
-              let open Lwt_result.Syntax in
-              let* lst = lst in
-              Lwt_list.filter_map_s filter_label lst >|= fun l -> Ok l
+            match search_label with
+            | None -> lst
+            | Some search_label ->
+                let filter_label id =
+                  (* TODO: why namespace: None below? *)
+                  get_key t ~namespace:None id >|= function
+                  | Ok k when k.label = search_label -> Some id
+                  | _ -> None
+                in
+                let open Lwt_result.Syntax in
+                let* lst in
+                Lwt_list.filter_map_s filter_label lst >|= fun l -> Ok l
           in
           let values_id =
             List.filter_map
@@ -1964,13 +1965,11 @@ module Make (KV : Kv_ext.Platform) = struct
       let+ key = get_key t ~namespace id in
       key.label
 
-    let set_label ~namespace t ~id ~(label : Json.Label.label option) =
+    let set_label ~namespace t ~id ~(label : Json.Label.label) =
       let open Lwt_result.Syntax in
       let** key = get_key t ~namespace id in
       Access.info (fun f ->
-          f "update (%s): label is now %a" id
-            Fmt.(option string)
-            (label :> string option));
+          f "update (%s): label is now %s" id (label :> string));
       if key.label <> label then
         let+ () = encode_and_write t ~namespace id { key with label } in
         true

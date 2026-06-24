@@ -824,8 +824,7 @@ struct
               match Json.Label.of_string label with
               | Error e -> Endpoint.respond_error (Bad_request, e) rd
               | Ok label -> (
-                  Hsm.Key.set_label hsm_state ~namespace ~id ~label:(Some label)
-                  >>= function
+                  Hsm.Key.set_label hsm_state ~namespace ~id ~label >>= function
                   | Ok true -> Wm.continue true rd
                   | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
                   | Error e -> Endpoint.respond_error e rd)
@@ -844,7 +843,8 @@ struct
       method! delete_resource rd =
         let ok_key_id id =
           let namespace = Endpoint.get_namespace rd in
-          Hsm.Key.set_label hsm_state ~namespace ~id ~label:None >>= function
+          Hsm.Key.set_label hsm_state ~namespace ~id ~label:Json.Label.empty
+          >>= function
           | Ok _ ->
               (* whether we had any labels before or not, it is all gone now,
                  and therefore the delete succeeded
