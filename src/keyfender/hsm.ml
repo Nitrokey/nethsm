@@ -1583,9 +1583,8 @@ module Make (KV : Kv_ext.Platform) = struct
             | None -> lst
             | Some search_label ->
                 let filter_label id =
-                  (* TODO: why namespace: None below? *)
-                  get_key t ~namespace:None id >|= function
-                  | Ok k when k.label = search_label -> Some id
+                  get_key t ~namespace id >|= function
+                  | Ok k when Json.Label.equal k.label search_label -> Some id
                   | _ -> None
                 in
                 let open Lwt_result.Syntax in
@@ -1598,18 +1597,20 @@ module Make (KV : Kv_ext.Platform) = struct
                 | id, `Value -> Some (Mirage_kv.Key.basename id) | _ -> None)
               xs
           in
-          maybe_filter_labels
-            (if is_admin || not filter_by_restrictions then
-               (* bypass filter *)
-               Lwt.return_ok values_id
-             else
-               (* keep only usable keys *)
-               let filter id =
-                 get_key t ~namespace id >|= function
-                 | Ok k when is_usable k -> Some id
-                 | _ -> None
-               in
-               Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l)
+          let result =
+            if is_admin || not filter_by_restrictions then
+              (* bypass filter *)
+              Lwt.return_ok values_id
+            else
+              (* keep only usable keys *)
+              let filter id =
+                get_key t ~namespace id >|= function
+                | Ok k when is_usable k -> Some id
+                | _ -> None
+              in
+              Lwt_list.filter_map_s filter values_id >|= fun l -> Ok l
+          in
+          maybe_filter_labels result
 
     let dump_keys t =
       let open Lwt.Infix in

@@ -530,6 +530,7 @@ module Label : sig
   val of_string : string -> (t, string) result
   val empty : t
   val max_length_bytes : int
+  val equal : t -> t -> bool
 end = struct
   type t = string [@@deriving yojson, jsonschema]
 
@@ -543,6 +544,7 @@ end = struct
     else Error "Label is not valid UTF-8"
 
   let of_yojson json = Result.bind (of_yojson json) of_string
+  let equal = String.equal
 end
 
 (* this is only serialized, never parsed from users *)

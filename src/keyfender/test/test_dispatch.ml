@@ -4873,7 +4873,7 @@ let hsm_with_tags ?namespace () =
 
 let test_label = "testlabelπ/bar"
 
-let hsm_with_labels labels =
+let hsm_with_labels ?namespace labels =
   let hsm_state = operational_mock () in
   let ms =
     Keyfender.Json.(MS.of_list [ RSA_Decryption_RAW; RSA_Signature_PKCS1 ])
@@ -4888,8 +4888,8 @@ let hsm_with_labels labels =
     labels
     |> List.iter @@ fun (id, label) ->
        Lwt_main.run
-         (Hsm.Key.generate ~namespace:None ~id hsm_state RSA ms ~length:1024
-            { tags } label)
+         (Hsm.Key.generate ~namespace ~id hsm_state RSA ms ~length:1024 { tags }
+            label)
        |> Result.get_ok
   in
   hsm_state
@@ -5133,9 +5133,31 @@ let keys_get_labels =
   and expected = [ "keyID"; "keyID2" ] in
   Alcotest.V1.(check' (list string) ~msg:"id list" ~expected ~actual)
 
-let keys_get_restrictions_filtered =
-  Alcotest.test_case "GET on /keys?filter list is filtered by restrictions"
+let keys_get_labels_namespaced =
+  Alcotest.test_case "GET on /keys?label= correctly filters keys in a namespace"
     `Quick
+  @@ fun () ->
+  let namespace = "namespace1" in
+  let hsm_state =
+    hsm_with_labels ~namespace
+      [
+        ("keyID", test_label);
+        ("keyID2", test_label);
+        ("unexpectedID", "unexpected");
+      ]
+  in
+  let actual =
+    request ~expect:"" ~hsm_state ~headers:suboperator_headers ~meth:`GET
+      "/keys"
+      ~query:[ ("label", [ test_label ]) ]
+    |> returns_json id_list_of_yojson ~with_status:`OK
+    |> List.map (fun { id } -> id)
+  and expected = [ "keyID"; "keyID2" ] in
+  Alcotest.V1.(check' (list string) ~msg:"id list" ~expected ~actual)
+
+let keys_get_restrictions_filtered =
+  Alcotest.test_case
+    "GET on /keys?filter list is filtered by restrictions in a namespace" `Quick
   @@ fun () ->
   let hsm_state = hsm_with_tags () in
   (match
@@ -6395,6 +6417,7 @@ let () =
           keys_get_restrictions_filtered_namespace;
           keys_get_restrictions_unfiltered;
           keys_get_labels;
+          keys_get_labels_namespaced;
           keys_post_json;
           keys_post_pem;
         ] );
