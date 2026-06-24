@@ -184,7 +184,7 @@ module type S = sig
       namespace:string option ->
       t ->
       filter_by_restrictions:bool ->
-      search_label:Json.Label.label option ->
+      search_label:Json.Label.t option ->
       user_nid:Nid.t ->
       (string list, error) result Lwt.t
 
@@ -196,7 +196,7 @@ module type S = sig
       Json.key_type ->
       Json.private_key ->
       Json.restrictions ->
-      Json.Label.label ->
+      Json.Label.t ->
       (unit, error) result Lwt.t
 
     val add_pem :
@@ -206,7 +206,7 @@ module type S = sig
       Json.MS.t ->
       string ->
       Json.restrictions ->
-      Json.Label.label ->
+      Json.Label.t ->
       (unit, error) result Lwt.t
 
     val generate :
@@ -217,7 +217,7 @@ module type S = sig
       Json.MS.t ->
       length:int ->
       Json.restrictions ->
-      Json.Label.label ->
+      Json.Label.t ->
       (unit, error) result Lwt.t
 
     val remove :
@@ -273,13 +273,13 @@ module type S = sig
       namespace:string option ->
       t ->
       id:string ->
-      (Json.Label.label, error) result Lwt.t
+      (Json.Label.t, error) result Lwt.t
 
     val set_label :
       namespace:string option ->
       t ->
       id:string ->
-      label:Json.Label.label ->
+      label:Json.Label.t ->
       (bool, error) result Lwt.t
 
     val add_restriction_tags :

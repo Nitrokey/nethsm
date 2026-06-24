@@ -523,14 +523,14 @@ type restrictions = { tags : (TagSet.t[@default TagSet.empty]) }
 [@@deriving yojson, jsonschema]
 
 module Label : sig
-  type label = private string [@@deriving yojson]
+  type t = private string [@@deriving yojson]
   (** a valid UTF-8 string *)
 
-  val label_jsonschema : [> `Assoc of (string * [> `String of string ]) list ]
-  val of_string : string -> (label, string) result
-  val empty : label
+  val t_jsonschema : [> `Assoc of (string * [> `String of string ]) list ]
+  val of_string : string -> (t, string) result
+  val empty : t
 end = struct
-  type label = string [@@deriving yojson, jsonschema]
+  type t = string [@@deriving yojson, jsonschema]
 
   let empty = ""
 
@@ -538,7 +538,7 @@ end = struct
     if String.is_valid_utf_8 str then Ok str
     else Error "Label is not valid UTF-8"
 
-  let label_of_yojson json = Result.bind (label_of_yojson json) of_string
+  let of_yojson json = Result.bind (of_yojson json) of_string
 end
 
 (* this is only serialized, never parsed from users *)
@@ -548,7 +548,7 @@ type public_key = {
   operations : int;
   public : (Yojson.Safe.t[@default `Null]);
   restrictions : restrictions;
-  label : Label.label;
+  label : Label.t;
 }
 [@@deriving to_yojson]
 
@@ -557,14 +557,14 @@ type private_key_req = {
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
   typ : key_type; [@key "type"]
   priv : private_key; [@key "private"]
-  label : Label.label; [@default Label.empty]
+  label : Label.t; [@default Label.empty]
 }
 [@@deriving of_yojson, jsonschema]
 
 type private_key_multipart_req = {
   mechanisms : MS.t;
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
-  label : Label.label; [@default Label.empty]
+  label : Label.t; [@default Label.empty]
 }
 [@@deriving of_yojson, jsonschema]
 
@@ -655,7 +655,7 @@ type generate_key_req = {
   length : (int[@default 0]);
   id : (string[@default ""]);
   restrictions : (restrictions[@default { tags = TagSet.empty }]);
-  label : Label.label; [@default Label.empty]
+  label : Label.t; [@default Label.empty]
 }
 [@@deriving yojson, jsonschema]
 
