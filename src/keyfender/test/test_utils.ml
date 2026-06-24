@@ -2,30 +2,6 @@ open Cohttp
 open Lwt.Infix
 
 let () = Mirage_crypto_rng_unix.use_default ()
-
-module Test_logs = struct
-  let buffer = Buffer.create 1000
-  let fmt = Format.formatter_of_buffer buffer
-  let reporter = Logs.format_reporter ~app:fmt ~dst:fmt ()
-  let tag_regex = Str.regexp {|(\([a-z0-9]+~\)?[a-f0-9]+)|}
-  let sanitize s = Str.global_substitute tag_regex (fun _ -> "(xxxx)") s
-
-  let check ~expect fn =
-    let backup = Logs.reporter () in
-    Fun.protect ~finally:(fun () ->
-        Buffer.clear buffer;
-        Logs.set_reporter backup)
-    @@ fun () ->
-    Logs.set_reporter reporter;
-    let result = fn () in
-    Format.pp_print_flush fmt ();
-    let received = sanitize (Buffer.contents buffer) in
-    let expect = String.split_on_char '\n' expect in
-    let received = String.split_on_char '\n' received in
-    Alcotest.(check (list string) "logs" expect received);
-    result
-end
-
 let debug msg = Fmt.str "test_dispatch.exe: [DEBUG] %s\n" msg
 let info msg = Fmt.str "test_dispatch.exe: [INFO] %s\n" msg
 let warning msg = Fmt.str "test_dispatch.exe: [WARNING] %s\n" msg
@@ -60,6 +36,43 @@ end
 
 module Hsm = Keyfender.Hsm.Make (Kv_platform)
 module Handlers = Keyfender.Server.Make_handlers (Hsm)
+
+module Test_logs = struct
+  let buffer = Buffer.create 1000
+  let fmt = Format.formatter_of_buffer buffer
+  let reporter = Logs.format_reporter ~app:fmt ~dst:fmt ()
+  let tag_regex = Str.regexp {|(\([a-z0-9]+~\)?[a-f0-9]+)|}
+  let sanitize s = Str.global_substitute tag_regex (fun _ -> "(xxxx)") s
+
+  let check ~expect fn =
+    let backup = Logs.reporter () in
+    Fun.protect ~finally:(fun () ->
+        Buffer.clear buffer;
+        Logs.set_reporter backup)
+    @@ fun () ->
+    Logs.set_reporter reporter;
+    let result = fn () in
+    Format.pp_print_flush fmt ();
+    let received = sanitize (Buffer.contents buffer) in
+    let expect = String.split_on_char '\n' expect in
+    let received = String.split_on_char '\n' received in
+    let () =
+      if expect <> received then
+        result
+        |> Option.iter @@ fun (code, header, body, _) ->
+           (* only call this when we're about to fail, otherwise
+              it might move some log messages from the next request earlier,
+              and cause a test failure (e.g. the caching messages)
+            *)
+           let body = Lwt_main.run (Cohttp_lwt.Body.to_string body) in
+           Logs.debug (fun m ->
+               m "[RESP] %s: %a: %s"
+                 Cohttp.Code.(string_of_status code)
+                 Cohttp.Header.pp_hum header body)
+    in
+    Alcotest.(check (list string) "logs" expect received);
+    result
+end
 
 let software_update_key =
   match X509.Public_key.decode_pem [%blob "public.pem"] with
