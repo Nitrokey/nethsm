@@ -547,6 +547,8 @@ end = struct
   let equal = String.equal
 end
 
+type label_req = { label : Label.t } [@@deriving yojson, jsonschema]
+
 (* this is only serialized, never parsed from users *)
 type public_key = {
   mechanisms : MS.t;

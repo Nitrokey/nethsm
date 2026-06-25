@@ -716,7 +716,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/KeyLabel"
+              $ref: "#/components/schemas/KeySetLabel"
         required: true
       security:
         - basic: []
@@ -3273,6 +3273,15 @@ components:
         length:
           minimum: 0
           maximum: 32
+    KeySetLabel:
+      example:
+        label: "labeltoset"
+      type: object
+      properties:
+        label:
+          $ref: "#/components/schemas/KeyLabel"
+      required:
+        - label
     PublicKey:
       example:
         mechanisms:

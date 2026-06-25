@@ -810,19 +810,17 @@ struct
         Endpoint.lookup_path_info ok_key_id "id" rd
 
       method private of_json body rd =
-        match body with
-        | `String label ->
+        match Json.label_req_of_yojson body with
+        | Error e -> Endpoint.respond_error (Bad_request, e) rd
+        | Ok { label } ->
             let ok_label ~id =
               let namespace = Endpoint.get_namespace rd in
-              match Json.Label.of_string label with
-              | Error e -> Endpoint.respond_error (Bad_request, e) rd
-              | Ok label -> (
-                  let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
-                  Hsm.Key.set_label hsm_state ~namespace ~id ~user_nid ~label
-                  >>= function
-                  | Ok true -> Wm.continue true rd
-                  | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
-                  | Error e -> Endpoint.respond_error e rd)
+              let user_nid = Access.get_user rd.Webmachine.Rd.req_headers in
+              Hsm.Key.set_label hsm_state ~namespace ~id ~user_nid ~label
+              >>= function
+              | Ok true -> Wm.continue true rd
+              | Ok false -> Endpoint.respond_status (`Not_modified, "") rd
+              | Error e -> Endpoint.respond_error e rd
             in
             let ok_key_id id =
               let namespace = Endpoint.get_namespace rd in
@@ -833,7 +831,6 @@ struct
               | Error e -> Endpoint.respond_error e rd
             in
             Endpoint.lookup_path_info ok_key_id "id" rd
-        | _ -> Endpoint.respond_error (Bad_request, "JSON string expected") rd
 
       method! delete_resource rd =
         let ok_key_id id =

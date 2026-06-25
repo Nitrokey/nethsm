@@ -4916,7 +4916,7 @@ let keys_key_label_put_no_label =
   let generate_json =
     {|{ mechanisms: [ "RSA_Decryption_PKCS1" ], type: "RSA", length: 2048, id: "keyID" }|}
   in
-  let label = {|"labeltest✓"|} in
+  let label = {|{"label": "labeltest✓"}|} in
   let expect = info "created (keyID)" in
   request ~expect ~hsm_state ~meth:`POST ~headers:admin_headers
     ~body:(`String generate_json) "/keys/generate"
@@ -4934,7 +4934,10 @@ let keys_key_label_put_label =
   let flush () =
     let label_str = Buffer.contents b in
     Buffer.clear b;
-    let label = Yojson.Safe.to_string (`String label_str) in
+    let label =
+      { label = Keyfender.Json.Label.of_string label_str |> Result.get_ok }
+      |> Keyfender.Json.label_req_to_yojson |> Yojson.Safe.to_string
+    in
     let expect =
       info (Printf.sprintf "update (keyID): label is now '%s'" label_str)
     in
@@ -4984,7 +4987,10 @@ let keys_key_label_put_label_namespaced_operator =
      in
      ());
   let label_str = "label1" in
-  let label = Yojson.Safe.to_string (`String label_str) in
+  let label =
+    { label = Keyfender.Json.Label.of_string label_str |> Result.get_ok }
+    |> Keyfender.Json.label_req_to_yojson |> Yojson.Safe.to_string
+  in
   let expect =
     info (Printf.sprintf "update (%s): label is now '%s'" key2 label_str)
   in
