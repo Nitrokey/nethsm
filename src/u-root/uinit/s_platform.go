@@ -104,7 +104,12 @@ func getClusterState(processState *os.ProcessState) (cs clusterState) {
 // Due to there being no way to set a listen(2) backlog in Go, >1 connections
 // will be accepted but only served one at a time, in the order that the OS
 // queues them.
-func platformListener(result chan string, proto, addr string, supervisor *etcdSupervisor) {
+func platformListener(
+	result chan string,
+	platformDataCh <-chan platformData,
+	proto, addr string,
+	supervisor *etcdSupervisor,
+) {
 	listener, err := net.Listen(proto, addr)
 	if err != nil {
 		log.Fatalf("Unable to launch listener on %s:%s: %v", proto, addr, err)
@@ -526,19 +531,30 @@ func sPlatformActions() {
 		return
 	}
 
-	c := make(chan string)
+	terminalCh := make(chan string)
+	platformDataCh := make(chan platformData)
+
 	supervisor := NewEtcdSupervisor()
 	util.StartTask("TRNG", trngTask)
-	util.StartTask("Platform Listener", func() { platformListener(c, listenerProtocol, platListenerAddress, supervisor) })
+	util.StartTask("Platform Listener", func() {
+		platformListener(
+			terminalCh,
+			platformDataCh,
+			listenerProtocol,
+			platListenerAddress,
+			supervisor,
+		)
+	})
 
 	if !hw.IsTesting() {
-		if err := tpmCreatePlatformData(); err != nil {
+		if err := tpmCreatePlatformData(platformDataCh); err != nil {
 			log.Printf("Creating platform data failed: %v", err)
 		}
 	} else {
-		mockCreatePlatformData()
+		mockCreatePlatformData(platformDataCh)
 	}
-	// now localconf is initialized
+
+	// now localconf is initialized and platformData has been read by keyfender
 
 	util.StartTask("time", NewTimeTask().Run)
 
@@ -547,7 +563,7 @@ func sPlatformActions() {
 	util.StartTask("etcd supervisor", supervisor.Run)
 
 	// At this point we wait for a terminal request result from platformListener.
-	request := <-c
+	request := <-terminalCh
 
 	if hw.IsTesting() {
 		log.Printf("received terminal command, exiting: %s", request)

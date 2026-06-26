@@ -130,8 +130,9 @@ func syncTime(ntpIP, ntsName string) (time.Duration, error) {
 }
 
 // startNTP stops any running NTP loop and starts a new background loop that
-// syncs immediately on its first iteration. Blocks until that first sync
-// completes and returns its error; the loop continues running regardless.
+// syncs immediately on its first iteration. Blocks until a sync succeeds or
+// 10 attempts have failed (or a kiss-of-death is received); returns nil on
+// success or the last error otherwise. The loop continues running regardless.
 func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 	if t.cancelNTP != nil {
 		t.cancelNTP()
@@ -141,21 +142,30 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 	t.cancelNTP = cancel
 	firstErr := make(chan error)
 	go func(firstErr chan<- error) {
-		interval := defaultNTPInterval
+		const maxInitialAttempts = 10
+		interval := time.Second
+		attempt := 0
 		for {
 			pollInterval, err := syncTime(ntpIP, ntsName)
 			if err != nil {
 				log.Printf("NTP sync failed: %v", err)
 			}
 			if firstErr != nil {
-				firstErr <- err
-				firstErr = nil
+				attempt++
+				if err == nil || err == ntp.ErrKissOfDeath || attempt >= maxInitialAttempts {
+					firstErr <- err
+					firstErr = nil
+				}
 			}
-			switch err {
-			case ntp.ErrKissOfDeath:
-				interval = kodNTPInterval
-			case nil:
-				interval = pollInterval
+			if firstErr == nil {
+				switch err {
+				case ntp.ErrKissOfDeath:
+					interval = kodNTPInterval
+				case nil:
+					interval = pollInterval
+				default:
+					interval = defaultNTPInterval
+				}
 			}
 			select {
 			case <-ctx.Done():

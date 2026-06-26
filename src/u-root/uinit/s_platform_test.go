@@ -171,6 +171,8 @@ func TestDiagnoseRun(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	c := make(chan string)
+	platformDataCh := make(chan platformData, 1)
+
 	tmpu, err := os.CreateTemp("", "test.*.unix")
 	if err != nil {
 		panic(err)
@@ -187,7 +189,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	go platformListener(c, testProto, testAddr, testSupervisor)
+	go platformListener(c, platformDataCh, testProto, testAddr, testSupervisor)
 	fmt.Printf("Using unix socket: %v\n", testAddr)
 	time.Sleep(1 * time.Second)
 	m.Run()

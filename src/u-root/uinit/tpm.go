@@ -141,14 +141,12 @@ func tpmGetAKData(tpm *tpm2.TPMContext) (string, map[string][]byte, error) {
 	return deviceID, akPub, nil
 }
 
-var platformDataCh = make(chan platformData, 1)
-
 // tpmCreatePlatformData returns TPM derived data of the NetHSM.
 //
 // The Device Key is sealed against PCR-0 and PCR-2 with an SRK on the TPM and
 // stored on the harddisk. If the Device Key does not exist, a new one is
 // created.
-func tpmCreatePlatformData() error {
+func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 	log.Printf("Initializing platform data")
 	var pcrIdxs = hw.MeasuredPCRs()
 
@@ -290,7 +288,7 @@ func tpmCreatePlatformData() error {
 }
 
 // mockCreatePlatformData returns fake data
-func mockCreatePlatformData() {
+func mockCreatePlatformData(platformDataCh chan<- platformData) {
 	log.Printf("Creating mock platform data")
 
 	// this must be called before withTPMContext(), because seeding also uses a
