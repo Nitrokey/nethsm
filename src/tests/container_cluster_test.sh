@@ -41,10 +41,31 @@ echo "join req: $join_req"
 NETHSM_URL="$N2/api"
 source ./common_functions.sh
 
+join()
+{
 echo "attempt to join, this may take some time"
-POST_admin /v1/cluster/join <<EOF
+(POST_admin /v1/cluster/join <<EOF
 $join_req
 EOF
+)&
+
+N_id=$(echo "${join_req}" | jq -r ".members[] | select(.learner==true) | .id")
+JOINER_URL=${NETHSM_URL}
+NETHSM_URL="${1}/api"
+
+echo "attempt to promote ${N_id} via ${1}"
+while ! (POST_admin /v1/cluster/members/${N_id}/promote </dev/null); do
+    echo "Promotion failed, retry.."; sleep 1;
+done;
+echo "promoted ${N_id}";
+
+NETHSM_URL="${JOINER_URL}";
+
+echo "Waiting for join to complete";
+wait
+}
+
+join "${N1}"
 
 test $(GET /v1/health/state | jq -r .state) = "Locked"
 
@@ -100,9 +121,7 @@ NETHSM_URL="$N3/api"
 source ./common_functions.sh
 
 echo "attempt to join again, this may take some time"
-POST_admin /v1/cluster/join <<EOF
-$join_req
-EOF
+join "${N1}"
 
 while ! (
     POST_admin /v1/unlock <<EOF
@@ -210,9 +229,7 @@ NETHSM_URL="$N4/api"
 source ./common_functions.sh
 
 echo "attempt to join, this may take some time"
-POST_admin /v1/cluster/join <<EOF
-$join_req
-EOF
+join "${N3}"
 
 test $(GET /v1/health/state | jq -r .state) = "Locked"
 test $(GET /v1/health/diagnose | jq -r .clusterState.running) = "true"

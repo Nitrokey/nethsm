@@ -2367,7 +2367,7 @@ module Make (KV : Kv_ext.Platform) = struct
         |> Yojson.Safe.to_string |> Base64.encode_string
       in
       let** member_list =
-        member_add ~urls ~learner:false t.kv >|= to_hsm_error
+        member_add ~urls ~learner:true t.kv >|= to_hsm_error
       in
       Lwt_result.return
         {
