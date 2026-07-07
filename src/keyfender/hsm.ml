@@ -2351,7 +2351,9 @@ module Make (KV : Kv_ext.Platform) = struct
         Json.joiner_kit_to_yojson joiner_kit
         |> Yojson.Safe.to_string |> Base64.encode_string
       in
-      let** member_list = member_add ~urls t.kv >|= to_hsm_error in
+      let** member_list =
+        member_add ~urls ~learner:false t.kv >|= to_hsm_error
+      in
       Lwt_result.return
         {
           Json.joiner_kit;

@@ -115,7 +115,10 @@ module type Clustered = sig
     (member list, cluster_error) result Lwt.t
 
   val member_add :
-    urls:string list -> t -> (member list, cluster_error) result Lwt.t
+    urls:string list ->
+    learner:bool ->
+    t ->
+    (member list, cluster_error) result Lwt.t
 end
 
 type event = { kind : [ `Put | `Delete ]; key : Mirage_kv.key }
@@ -193,7 +196,7 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
 
     let member_remove ~id:_ _ = not_etcd
     let member_update ~id:_ ~urls:_ _ = not_etcd
-    let member_add ~urls:_ _ = not_etcd
+    let member_add ~urls:_ ~learner:_ _ = not_etcd
   end
 end
 

@@ -850,8 +850,10 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           Ok
             (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
 
-    let member_add ~urls t =
-      let request = MemberAddRequest.make ~peerURLs:urls () in
+    let member_add ~urls ~learner t =
+      let request =
+        MemberAddRequest.make ~peerURLs:urls ~isLearner:learner ()
+      in
       etcd_try t (fun () ->
           Etcd.member_add t.stack ~request >|= fun resp ->
           Ok (List.map cluster_member_of_member resp.MemberAddResponse.members))
