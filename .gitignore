@@ -8,9 +8,16 @@ serial.out
 src/container/alpine/data
 src/keyfender/buildTag
 src/keyfender/softwareVersion
+src/s_keyfender/htdocs/api_docs/
+src/s_keyfender/dune-workspace
+src/s_keyfender/update_key_store/key.pem
 src/muen/policy/xml/component_unikernel.xml
 src/u-root/bin
 src/u-root/src/**/.bb/
+src/tests/CA.*
+src/tests/backup.bin
+src/tests/nethsm.csr
+src/tests/*.pem
 *.coverage
 cache/
 *~
