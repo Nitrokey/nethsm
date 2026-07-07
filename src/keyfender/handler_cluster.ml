@@ -128,6 +128,28 @@ struct
         decode_id ok rd
     end
 
+  class handler_member_promote hsm_state ip =
+    object (_self)
+      inherit common hsm_state ip
+      inherit! Endpoint.post
+
+      method! resource_exists rd =
+        let ok id =
+          Hsm.Cluster.member_exists ~id hsm_state >>= function
+          | Ok does_exist -> Wm.continue does_exist rd
+          | Error e -> Endpoint.respond_error e rd
+        in
+        decode_id ok rd
+
+      method! private process_post rd =
+        let ok id =
+          Hsm.Cluster.member_promote ~id hsm_state >>= function
+          | Error e -> Endpoint.respond_error e rd
+          | Ok _new_members -> Wm.continue true rd
+        in
+        decode_id ok rd
+    end
+
   class handler_force_new hsm_state _ip =
     object
       inherit Endpoint.base_with_body_length

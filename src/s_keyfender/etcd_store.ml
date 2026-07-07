@@ -430,6 +430,24 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
     update_revision r.header;
     Lwt.return r
 
+  let member_promote stack ~(request : MemberPromoteRequest.t) :
+      MemberPromoteResponse.t Lwt.t =
+    let request =
+      MemberPromoteRequest.to_proto request |> Etcd_client.Writer.contents
+    in
+    let decode = function
+      | None -> Ok None
+      | Some s ->
+          Etcd_client.Reader.create s
+          |> MemberPromoteResponse.from_proto |> Result.map Option.some
+    in
+    let* r =
+      do_grpc_unary ~stack ~service:"etcdserverpb.Cluster" ~rpc:"MemberPromote"
+        ~request ~decode
+    in
+    update_revision r.header;
+    Lwt.return r
+
   let member_update stack ~(request : MemberUpdateRequest.t) :
       MemberUpdateResponse.t Lwt.t =
     let request =
@@ -855,6 +873,14 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
           Etcd.member_update t.stack ~request >|= fun resp ->
           Ok
             (List.map cluster_member_of_member resp.MemberUpdateResponse.members))
+
+    let member_promote ~id t =
+      let request = MemberPromoteRequest.make ~iD:id () in
+      etcd_try t (fun () ->
+          Etcd.member_promote t.stack ~request >|= fun resp ->
+          Ok
+            (List.map cluster_member_of_member
+               resp.MemberPromoteResponse.members))
 
     let member_add ~urls ~learner t =
       let request =

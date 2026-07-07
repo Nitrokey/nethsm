@@ -121,6 +121,9 @@ module type Clustered = sig
     t ->
     (member list, cluster_error) result Lwt.t
 
+  val member_promote :
+    id:int64 -> t -> (member list, cluster_error) result Lwt.t
+
   val member_add :
     urls:string list ->
     learner:bool ->
@@ -211,6 +214,7 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
     let member_remove ~id:_ _ = not_etcd
     let member_update ~id:_ ~urls:_ _ = not_etcd
     let member_add ~urls:_ ~learner:_ _ = not_etcd
+    let member_promote ~id:_ _ = not_etcd
   end
 end
 

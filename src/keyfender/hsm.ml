@@ -360,6 +360,8 @@ module type S = sig
     val member_update :
       id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
 
+    val member_promote : id:int64 -> t -> (member list, error) result Lwt.t
+
     val member_add :
       urls:string list -> t -> (Json.join_req, error) result Lwt.t
 
@@ -2255,9 +2257,15 @@ module Make (KV : Kv_ext.Platform) = struct
     include KV.Cluster
     open Lwt.Infix
 
-    let to_hsm_error =
-      Result.map_error (function `Cluster_error s ->
-          (Bad_request, "cluster error: " ^ s))
+    let to_hsm_error t =
+      Result.map_error
+        (function
+          | `Cluster_error
+              ("etcdserver: too many learner members in cluster" as s) ->
+              (Conflict, "cluster has learners: " ^ s)
+          | `Precondition_failed msg -> (Precondition_failed, msg)
+          | `Cluster_error s -> (Bad_request, "cluster error: " ^ s))
+        t
 
     let diagnose t =
       (* TODO: health events with timestamps? *)
@@ -2301,6 +2309,8 @@ module Make (KV : Kv_ext.Platform) = struct
 
     let member_update ~id ~urls t =
       member_update ~id ~urls t.kv >|= to_hsm_error
+
+    let member_promote ~id t = member_promote ~id t.kv >|= to_hsm_error
 
     let member_add ~urls t =
       (* prepare a joiner kit for the new node to be able to

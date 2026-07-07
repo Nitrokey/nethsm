@@ -366,6 +366,8 @@ module type S = sig
     val member_update :
       id:int64 -> urls:string list -> t -> (member list, error) result Lwt.t
 
+    val member_promote : id:int64 -> t -> (member list, error) result Lwt.t
+
     val member_add :
       urls:string list -> t -> (Json.join_req, error) result Lwt.t
 
