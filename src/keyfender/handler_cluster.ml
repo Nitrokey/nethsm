@@ -33,6 +33,7 @@ struct
     id : int64; [@to_yojson encode_id] [@of_yojson decode_id_yojson]
     name : string;
     urls : string list;
+    learner : bool;
   }
   [@@deriving yojson]
 

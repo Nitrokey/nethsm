@@ -345,7 +345,12 @@ module type S = sig
   end
 
   module Cluster : sig
-    type member = { id : int64; name : string; urls : string list }
+    type member = {
+      id : int64;
+      name : string;
+      urls : string list;
+      learner : bool;
+    }
 
     val force_new : t -> (unit, error) result Lwt.t
     val member_list : t -> (member list, error) result Lwt.t

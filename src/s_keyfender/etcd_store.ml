@@ -816,11 +816,17 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
     get t k >|= fun v -> Digestif.SHA256.(to_hex (digest_string v))
 
   module Cluster = struct
-    type member = { id : int64; name : string; urls : string list }
+    type member = {
+      id : int64;
+      name : string;
+      urls : string list;
+      learner : bool;
+    }
+
     type cluster_error = [ `Cluster_error of string ]
 
     let cluster_member_of_member (t : Member.t) =
-      { id = t.iD; name = t.name; urls = t.peerURLs }
+      { id = t.iD; name = t.name; urls = t.peerURLs; learner = t.isLearner }
 
     let etcd_try t f =
       etcd_try t f

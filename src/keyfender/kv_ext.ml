@@ -101,7 +101,14 @@ end
 
 module type Clustered = sig
   type t
-  type member = { id : int64; name : string; urls : string list }
+
+  type member = {
+    id : int64;
+    name : string;
+    urls : string list;
+    learner : bool;
+  }
+
   type cluster_error = [ `Cluster_error of string ]
 
   val my_id : t -> int64 option
@@ -185,14 +192,21 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
     set t k v |> Lwt_result.map (fun () -> true)
 
   module Cluster = struct
-    type member = { id : int64; name : string; urls : string list }
+    type member = {
+      id : int64;
+      name : string;
+      urls : string list;
+      learner : bool;
+    }
+
     type cluster_error = [ `Cluster_error of string ]
 
     let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
     let my_id _ = None
 
     let member_list _ =
-      Lwt_result.return [ { id = 0xdeadbeefL; name = "mock"; urls = [] } ]
+      Lwt_result.return
+        [ { id = 0xdeadbeefL; name = "mock"; urls = []; learner = false } ]
 
     let member_remove ~id:_ _ = not_etcd
     let member_update ~id:_ ~urls:_ _ = not_etcd

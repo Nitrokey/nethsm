@@ -3113,6 +3113,7 @@ components:
           name: default
           urls:
             - https://192.168.1.1:2380
+          learner: false
       type: array
       items:
         $ref: "#/components/schemas/ClusterMember"
@@ -3122,6 +3123,7 @@ components:
         name: default
         urls:
           - https://192.168.1.1:2380
+        learner: false
       type: object
       properties:
         id:
@@ -3130,10 +3132,13 @@ components:
           type: string
         urls:
           $ref: "#/components/schemas/PeerURLs"
+        learner:
+          type: boolean
       required:
         - id
         - name
         - urls
+        - learner
     ClusterState:
       description: |
         Status of etcd cluster process on the local node.
