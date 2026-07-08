@@ -3101,7 +3101,7 @@ components:
         members:
           type: array
           items:
-            $ref: "#/components/schemas/ClusterInitialMember"
+            $ref: "#/components/schemas/ClusterMember"
         joinerKit:
           type: string
       required:

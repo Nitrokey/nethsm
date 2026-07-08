@@ -11,26 +11,18 @@ struct
       inherit! Endpoint.r_role hsm_state `Administrator ip
     end
 
-  let encode_id (t : Int64.t) = `String (Fmt.str "%Lx" t)
-
-  let decode_id' t =
-    try Scanf.sscanf t "%Lx" (fun x -> Ok x)
-    with e -> Error (Printexc.to_string e)
-
   let decode_id ok rd =
     let decode t =
-      match decode_id' t with
+      match Json.decode_cluster_member_id t with
       | Ok id -> ok id
       | Error e -> Endpoint.respond_error (Hsm.Bad_request, e) rd
     in
     Endpoint.lookup_path_info decode "id" rd
 
-  let decode_id_yojson t =
-    let id = Yojson.Safe.to_string t in
-    decode_id' id
-
   type member = Hsm.Cluster.member = {
-    id : int64; [@to_yojson encode_id] [@of_yojson decode_id_yojson]
+    id : int64;
+        [@to_yojson Json.encode_cluster_member_id]
+        [@of_yojson Json.decode_cluster_member_id_yojson]
     name : string;
     urls : string list;
     learner : bool;

@@ -248,7 +248,36 @@ type joiner_kit = {
 }
 [@@deriving yojson, jsonschema]
 
-type join_req_member = { name : string; urls : string list }
+let encode_cluster_member_id (t : Int64.t) = `String (Fmt.str "%Lx" t)
+
+let decode_cluster_member_id t =
+  try Scanf.sscanf t "%Lx" (fun x -> Ok x)
+  with e ->
+    let msg = Printexc.to_string e in
+    Logs.warn (fun m ->
+        m "decode_cluster_member_id: could not parse %S: %s" t msg);
+    Error msg
+
+let decode_cluster_member_id_yojson = function
+  | `String s -> decode_cluster_member_id s
+  | _ -> Error "decode_cluster_member_id_yojson: expected JSON string"
+
+let encode_cluster_member_id_opt = function
+  | None -> `Null
+  | Some id -> encode_cluster_member_id id
+
+let decode_cluster_member_id_yojson_opt j =
+  j |> decode_cluster_member_id_yojson |> Result.map Option.some
+
+type join_req_member = {
+  id : int64 option;
+      [@to_yojson encode_cluster_member_id_opt]
+      [@of_yojson decode_cluster_member_id_yojson_opt]
+      [@default None]
+  name : string;
+  urls : string list;
+  learner : bool; [@default false]
+}
 [@@deriving yojson, jsonschema]
 
 type join_req = {

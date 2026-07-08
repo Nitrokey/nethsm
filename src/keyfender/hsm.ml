@@ -2364,7 +2364,13 @@ module Make (KV : Kv_ext.Platform) = struct
           Json.joiner_kit;
           members =
             List.map
-              (fun m : Json.join_req_member -> { name = m.name; urls = m.urls })
+              (fun m : Json.join_req_member ->
+                {
+                  name = m.name;
+                  urls = m.urls;
+                  id = Some m.id;
+                  learner = m.learner;
+                })
               member_list;
           backup_passphrase = None;
         }
