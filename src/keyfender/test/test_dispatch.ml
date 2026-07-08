@@ -5628,6 +5628,8 @@ let cluster_join =
         ^ info
             "join-cluster \
              (0000000000=https://192.168.1.1:2380,node2=https://192.168.1.2:2380,node2=https://[::1]:2380)"
+        ^ info "Waiting for node promotion (exit learner mode)"
+        ^ info "Node has been promoted, finishing join"
         ^ debug "restoring /local/0000000000/config/unlock-salt"
         ^ debug "restoring /local/0000000000/config/certificate"
         ^ debug "restoring /local/0000000000/config/private-key"

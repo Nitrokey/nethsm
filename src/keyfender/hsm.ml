@@ -2975,6 +2975,27 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       Lwt_result.return (unlock_salt, locked_domain_key)
 
+    let is_learner t =
+      let* members_result = KV.Cluster.member_list t.kv in
+      match (Cluster.my_id t.kv, members_result) with
+      | _, Error (`Precondition_failed _) -> Lwt_result.return true
+      | _, Error (`Cluster_error msg) ->
+          Lwt_result.fail (Internal_server_error, "etcd error: " ^ msg)
+      | None, _ -> Lwt_result.return false (* unit test mode *)
+      | Some id, Ok members -> (
+          match List.find_opt (fun m -> m.Cluster.id = id) members with
+          | None ->
+              Lwt_result.fail
+                (Internal_server_error, "Cannot find myself in the member list")
+          | Some self -> Lwt_result.return self.learner)
+
+    let rec wait_promote t =
+      let** learner = is_learner t in
+      if learner then
+        let* () = Mirage_sleep.ns (Duration.of_ms 100) in
+        (wait_promote [@tailcall]) t
+      else Lwt_result.return ()
+
     let join_cluster t (join_req : Json.join_req) =
       (* parse the join request *)
       let** backup_passphrase =
@@ -3048,6 +3069,11 @@ module Make (KV : Kv_ext.Platform) = struct
             |> Lwt_result.map ignore
           in
           (* we are now on the other side *)
+          (* write operations will only work after we are no longer in learner mode *)
+          Logs.info (fun m ->
+              m "Waiting for node promotion (exit learner mode)");
+          let** () = wait_promote t in
+          Logs.info (fun m -> m "Node has been promoted, finishing join");
           let** version =
             internal_server_error Read "Fetch version after join"
               Config_store.pp_error
