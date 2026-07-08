@@ -1,4 +1,5 @@
 src/container/alpine/Dockerfile
 _opam
+.jj/
 **/_build
 **/duniverse
