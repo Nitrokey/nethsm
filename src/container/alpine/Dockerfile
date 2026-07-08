@@ -4,18 +4,18 @@ FROM ${distro_version} AS builder
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   apk add curl openssl rsync git mercurial make gcc patch musl-dev \
     linux-headers pkgconfig gmp-dev libseccomp-dev m4 protobuf protobuf-dev \
-    coreutils unzip bubblewrap sudo openssh-client bash
-  cd /tmp
-  curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh -s -- --download-only
+    coreutils unzip bubblewrap sudo openssh-client bash &&
+  cd /tmp &&
+  curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh -s -- --download-only &&
   install opam-2* /usr/local/bin/opam
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  adduser -D opam
-  chown -R opam:opam /home/opam
-  echo 'opam ALL=(ALL:ALL) NOPASSWD:ALL' > /etc/sudoers.d/opam
-  chmod 440 /etc/sudoers.d/opam
-  chown root:root /etc/sudoers.d/opam
+  adduser -D opam &&
+  chown -R opam:opam /home/opam &&
+  echo 'opam ALL=(ALL:ALL) NOPASSWD:ALL' > /etc/sudoers.d/opam &&
+  chmod 440 /etc/sudoers.d/opam &&
+  chown root:root /etc/sudoers.d/opam &&
   sed -i.bak 's/^Defaults.*requiretty//g' /etc/sudoers
 EOF
 
@@ -27,7 +27,7 @@ EOF
 
 ARG ocaml_version="ocaml-variants.4.14.2+options ocaml-options-only-flambda"
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
-  OPAMJOBS=$(nproc) opam switch create default ${ocaml_version}
+  OPAMJOBS=$(nproc) opam switch create default ${ocaml_version} &&
   opam switch set default
 EOF
 
@@ -35,19 +35,19 @@ EOF
 ENV DUNE_CACHE="enabled" DUNE_CACHE_STORAGE_MODE="copy"
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
-  opam update
+  opam update &&
   OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage=4.9.0
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
-  git config --global --add safe.directory /repo
+  git config --global --add safe.directory /repo &&
   git clone --depth=1 /repo /home/opam/nethsm
 EOF
 
 WORKDIR /home/opam/nethsm
 
 RUN <<EOF
-  mkdir -p -m 0700 ~/.ssh
+  mkdir -p -m 0700 ~/.ssh &&
   ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
 EOF
 
@@ -56,22 +56,22 @@ EOF
 # EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked  <<EOF
-  OPAMJOBS=$(nproc) opam pin add -y -n keyfender.dev src/keyfender
-  make src/keyfender/softwareVersion src/keyfender/buildTag src/s_keyfender/update_key_store/key.pem
+  OPAMJOBS=$(nproc) opam pin add -y -n keyfender.dev src/keyfender &&
+  make src/keyfender/softwareVersion src/keyfender/buildTag src/s_keyfender/update_key_store/key.pem &&
   make ${PWD}/src/s_keyfender/htdocs/api_docs
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
-  export OPAMJOBS=$(nproc)
-  cd src/s_keyfender
-  opam exec -- mirage configure --no-depext -t unix --no-platform --single-interface
+  export OPAMJOBS=$(nproc) &&
+  cd src/s_keyfender &&
+  opam exec -- mirage configure --no-depext -t unix --no-platform --single-interface &&
   opam exec -- make -j$(nproc) depends
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
-  cd src/s_keyfender
-  opam exec -- make -j$(nproc) build
+  cd src/s_keyfender &&
+  opam exec -- make -j$(nproc) build &&
   cp dist/keyfender dist/keyfender.unix
 EOF
 
@@ -83,15 +83,15 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
-  cd src/s_keyfender
-  opam exec -- mirage configure --no-depext -t unix --internal-net=direct --external-net=direct
+  cd src/s_keyfender &&
+  opam exec -- mirage configure --no-depext -t unix --internal-net=direct --external-net=direct &&
   opam exec -- make -j$(nproc) depends
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 <<EOF
   export OPAMJOBS=$(nproc)
-  cd src/s_keyfender
-  opam exec -- make -j$(nproc) build
+  cd src/s_keyfender &&
+  opam exec -- make -j$(nproc) build &&
   cp dist/keyfender dist/keyfender.tap
 EOF
 
@@ -138,10 +138,10 @@ FROM alpine AS nethsm_test
 COPY Makefile.sub /Makefile
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
-  apk add --no-cache gmp make curl
-  cd / && make -f /Makefile //etcd-download # really needs to be '//'
-  mv /etcd-download/etcd /bin
-  mv /etcd-download/etcdutl /bin
+  apk add --no-cache gmp make curl &&
+  cd / && make -f /Makefile //etcd-download && # really needs to be '//'
+  mv /etcd-download/etcd /bin &&
+  mv /etcd-download/etcdutl /bin &&
   rm -r /Makefile /etcd-download
 EOF
 
