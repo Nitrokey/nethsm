@@ -2260,7 +2260,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let to_hsm_error t =
       Result.map_error
         (function
-          | `Cluster_error
+          | `Precondition_failed
               ("etcdserver: too many learner members in cluster" as s) ->
               (Conflict, "cluster has learners: " ^ s)
           | `Precondition_failed msg -> (Precondition_failed, msg)

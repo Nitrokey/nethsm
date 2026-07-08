@@ -109,7 +109,8 @@ module type Clustered = sig
     learner : bool;
   }
 
-  type cluster_error = [ `Cluster_error of string ]
+  type cluster_error =
+    [ `Cluster_error of string | `Precondition_failed of string ]
 
   val my_id : t -> int64 option
   val member_list : t -> (member list, cluster_error) result Lwt.t
@@ -143,7 +144,8 @@ module type Ranged = sig
   val create_watch : t -> Range.t -> (event -> unit Lwt.t) -> unit
 end
 
-type conn_error = [ Tcpip.Tcp.error | `Msg of string ]
+type conn_error =
+  [ Tcpip.Tcp.error | `Msg of string | `Precondition_failed of string ]
 
 module type Platform = sig
   include Ranged
@@ -202,7 +204,8 @@ module Mock_platform (KV : RW) : Platform with type t = KV.t = struct
       learner : bool;
     }
 
-    type cluster_error = [ `Cluster_error of string ]
+    type cluster_error =
+      [ `Cluster_error of string | `Precondition_failed of string ]
 
     let not_etcd = Lwt.return (Error (`Cluster_error "backend is not etcd"))
     let my_id _ = None

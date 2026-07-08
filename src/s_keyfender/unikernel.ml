@@ -410,7 +410,7 @@ struct
     let align_peer_urls store (network : Keyfender.Json.network) =
       (* if needed, update how S-Platform's etcd advertise its IP *)
       KV_store.Cluster.member_list store >>= function
-      | Error (`Cluster_error s) ->
+      | Error (`Cluster_error s | `Precondition_failed s) ->
           Logs.err (fun m ->
               m "could not check if our etcd peer url is up to date: %s" s);
           Lwt.return_unit
@@ -449,7 +449,7 @@ struct
                   store
                 >|= function
                 | Ok _ -> Logs.info (fun m -> m "etcd peer urls updated!")
-                | Error (`Cluster_error s) ->
+                | Error (`Cluster_error s | `Precondition_failed s) ->
                     Logs.err (fun m -> m "couldn't update peer url: %s" s)))
     in
     let reconfigure_external_network (network : Keyfender.Json.network) =

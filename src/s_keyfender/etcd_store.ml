@@ -21,6 +21,7 @@ exception Etcd_error of etcd_error
 
 let pp_conn_error ppf = function
   | `Msg s -> Fmt.string ppf s
+  | `Precondition_failed s -> Fmt.pf ppf "Failed precondition: %s" s
   | #Tcpip.Tcp.error as e -> Tcpip.Tcp.pp_error ppf e
 
 let pp_etcd_error ppf = function
@@ -269,7 +270,7 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       | Ok None, status -> (
           let open Grpc.Status in
           let code = code status in
-          let message = message status in
+          let message = message status |> Option.map Uri.pct_decode in
           match code with
           | Unavailable ->
               Log.warn (fun f ->
@@ -280,6 +281,9 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
                     message);
               Mirage_sleep.ns (Duration.of_sec 1) >>= fun () ->
               do_grpc_unary ~retries_left ~stack ~service ~rpc ~request ~decode
+          | Failed_precondition ->
+              let message = Option.value ~default:"" message in
+              etcd_err (`Disconnected (`Precondition_failed message))
           | _ ->
               let err =
                 Fmt.str "no response! status = (code: %a, msg: %a)" pp_code code
@@ -841,16 +845,19 @@ module KV_RO (Stack : Tcpip.Stack.V4V6) = struct
       learner : bool;
     }
 
-    type cluster_error = [ `Cluster_error of string ]
+    type cluster_error =
+      [ `Cluster_error of string | `Precondition_failed of string ]
 
     let cluster_member_of_member (t : Member.t) =
       { id = t.iD; name = t.name; urls = t.peerURLs; learner = t.isLearner }
 
     let etcd_try t f =
       etcd_try t f
-      >|= Result.map_error (fun e ->
-          let msg = Fmt.str "%a" pp_error e in
-          `Cluster_error msg)
+      >|= Result.map_error (function
+        | `Disconnected (`Precondition_failed _ as f) -> f
+        | e ->
+            let msg = Fmt.str "%a" pp_error e in
+            `Cluster_error msg)
 
     let my_id _t = !Etcd.own_id
 
