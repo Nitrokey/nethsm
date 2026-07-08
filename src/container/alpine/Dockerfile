@@ -39,16 +39,16 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/do
   OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage=4.9.0
 EOF
 
-RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
-  git config --global --add safe.directory /repo &&
-  git clone --depth=1 /repo /home/opam/nethsm
-EOF
-
 WORKDIR /home/opam/nethsm
 
 RUN <<EOF
   mkdir -p -m 0700 ~/.ssh &&
   ssh-keyscan git.nitrokey.com >> ~/.ssh/known_hosts
+EOF
+
+RUN --mount=type=tmpfs,target=/tmp --mount=type=bind,source=.git,target=/repo <<EOF
+  git config --global --add safe.directory /repo &&
+  git clone --depth=1 /repo /home/opam/nethsm
 EOF
 
 # RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
