@@ -118,8 +118,13 @@ function wait_join() {
 
 echo "- wait for join to complete"
 sleep 20 # wait for join to complete
-while ! curl -s http://127.0.0.1:2379/readyz; do sleep 1; done # wait for etcd to start
+x=0
+while ! curl -s http://127.0.0.1:2379/readyz; do
+    ((x++>240)) && echo "etcd is not ready yet while waiting to join!" && exit 1
+    sleep 1
+done # wait for etcd to start
 
+echo "- waiting for /v1/health/state != Failed"
 # Give time for the heartbeat to find that etcd is now alive again
 x=0
 while test "$(GET /v1/health/state | jq -r .state)" == "Failed"; do
