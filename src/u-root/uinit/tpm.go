@@ -156,8 +156,9 @@ func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 		return fmt.Errorf("waiting for TRNG seeding timed out")
 	}
 
+	var data platformData
+	var deviceKey []byte
 	err := withTPMContext(func(tpm *tpm2.TPMContext) error {
-		var data platformData
 		resetDA := func() {
 			err := tpm.DictionaryAttackLockReset(tpm.LockoutHandleContext(), nil)
 			if err != nil {
@@ -193,7 +194,7 @@ func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 			}
 		}
 
-		deviceKey, err := unsealDeviceKey(tpm, srkCtx)
+		deviceKey, err = unsealDeviceKey(tpm, srkCtx)
 		if err != nil {
 			return fmt.Errorf("unsealing Device Key failed: %w", err)
 		}
@@ -252,39 +253,42 @@ func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 		if err != nil {
 			return fmt.Errorf("getting AK data failed: %w", err)
 		}
-
-		data.FirmwareVersion = getFirmwareVersion(data.PCR)
-
-		data.HardwareVersion = hw.Version
-
-		platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
-		log.Printf("Platform Data: %v\n", string(platformDataJSON))
-
-		data.DeviceKey = deviceKey
-
-		if err := localconf.Init(deviceKey); err != nil {
-			log.Printf("Initializing local config failed: %v", err)
-		}
-
-		lc := localconf.Get()
-		if nc := derefStr(lc.NetworkConfig); nc != "" {
-			// return stored network config as part of platform data
-			data.NetworkConfig = nc
-		}
-		if tlsCert, tlsKey := derefStr(lc.TLSCert), derefStr(lc.TLSKey); tlsCert != "" && tlsKey != "" {
-			// return last TLS cert/key if stored, for use if booting in Failed mode
-			data.LastTLSCert = tlsCert
-			data.LastTLSKey = tlsKey
-		}
-		data.FailedUnlockSalt = lc.FailedUnlockSalt
-		data.FailedUnlockDigest = lc.FailedUnlockDigest
-
-		platformDataCh <- data
-		close(platformDataCh)
-
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	data.FirmwareVersion = getFirmwareVersion(data.PCR)
+
+	data.HardwareVersion = hw.Version
+
+	platformDataJSON, _ := json.MarshalIndent(data, "", "    ")
+	log.Printf("Platform Data: %v\n", string(platformDataJSON))
+
+	data.DeviceKey = deviceKey
+
+	if err := localconf.Init(deviceKey); err != nil {
+		log.Printf("Initializing local config failed: %v", err)
+	}
+
+	lc := localconf.Get()
+	if nc := derefStr(lc.NetworkConfig); nc != "" {
+		// return stored network config as part of platform data
+		data.NetworkConfig = nc
+	}
+	if tlsCert, tlsKey := derefStr(lc.TLSCert), derefStr(lc.TLSKey); tlsCert != "" && tlsKey != "" {
+		// return last TLS cert/key if stored, for use if booting in Failed mode
+		data.LastTLSCert = tlsCert
+		data.LastTLSKey = tlsKey
+	}
+	data.FailedUnlockSalt = lc.FailedUnlockSalt
+	data.FailedUnlockDigest = lc.FailedUnlockDigest
+
+	platformDataCh <- data
+	close(platformDataCh)
+
+	return nil
 }
 
 // mockCreatePlatformData returns fake data

@@ -532,7 +532,7 @@ func sPlatformActions() {
 	}
 
 	terminalCh := make(chan string)
-	platformDataCh := make(chan platformData)
+	platformDataCh := make(chan platformData, 1)
 
 	supervisor := NewEtcdSupervisor()
 	util.StartTask("TRNG", trngTask)
