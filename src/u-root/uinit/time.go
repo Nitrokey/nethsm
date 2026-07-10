@@ -144,13 +144,15 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 	t.cancelNTP = cancel
 	firstErr := make(chan error)
 	go func(firstErr chan<- error) {
-		const maxInitialAttempts = 10
+		const maxInitialAttempts = 4
 		interval := time.Second
 		attempt := 0
 		for {
 			pollInterval, err := syncTime(ntpIP, ntsName)
 			if err != nil {
-				log.Printf("NTP sync failed: %v", err)
+				log.Printf("NTP sync with %s(%s) failed: %v", ntpIP, ntsName, err)
+			} else {
+				log.Printf("NTP sync with %s(%s) successful", ntpIP, ntsName)
 			}
 			if firstErr != nil {
 				attempt++
