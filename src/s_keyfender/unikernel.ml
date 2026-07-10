@@ -524,6 +524,9 @@ struct
              potential cluster. http/https is not yet activated *)
     Log.info (fun f -> f "setting up initial network");
     let* () = reconfigure_external_network initial_network in
+    (* wait for NTP attempt do be finished and etcd started
+       TODO: etcd should be polled instead for a while *)
+    let* () = Mirage_sleep.ns (Duration.of_sec 5) in
     let store = KV_store.connect internal_stack in
     let* hsm_state, mvar, res_mvar =
       Hsm.boot ~cache_settings ?default_net ~platform update_key store
