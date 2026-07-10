@@ -6415,8 +6415,7 @@ let () =
         [ config_logging_ok; config_logging_set_ok; config_logging_set_fail ] );
       ( "/config/time",
         [ config_time_ok; config_time_set_ok; config_time_set_fail ] );
-      ( "/config/ntp",
-        [ config_ntp_ok; config_ntp_set_ok; config_ntp_set_fail ] );
+      ("/config/ntp", [ config_ntp_ok; config_ntp_set_ok; config_ntp_set_fail ]);
       ( "/config/backup-passphrase",
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);

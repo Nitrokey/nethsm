@@ -60,6 +60,7 @@ module type S = sig
   val lock : t -> unit
   val own_cert : t -> Tls.Config.own_cert
   val network_configuration : t -> Json.network Lwt.t
+  val default_network_configuration : string -> Json.network
 
   val provision :
     t -> unlock:string -> admin:string -> Ptime.t -> (unit, error) result Lwt.t

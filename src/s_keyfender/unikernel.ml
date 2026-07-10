@@ -268,7 +268,7 @@ struct
                 split_tpm_and_time (Option.get data)
               in
               if String.length trng_data = trng_block_len then (
-                Log.debug (fun m ->
+                Log.info (fun m ->
                     m "Received %d bytes of data from TRNG: %a ..."
                       trng_block_len Hex.pp
                       (Hex.of_string (String.sub trng_data 0 8)));
@@ -510,22 +510,21 @@ struct
       in
       Lwt.return http
     in
-    let* () =
+    let default_net = Args.default_net () in
+    let initial_network =
+      let def_net =
+        Option.value default_net ~default:"192.168.1.1/24,192.168.1.100"
+      in
       match platform.networkConfig with
-      | None -> Lwt.return_unit
-      | Some network ->
-          (* if the platform has stored a network config, use it to
+      | None -> Hsm.default_network_configuration def_net
+      | Some nw -> nw
+    in
+    (* if the platform has stored a network config, use it to
              initially configure the network, so that etcd can connect to a
              potential cluster. http/https is not yet activated *)
-          Log.warn (fun f ->
-              f
-                "platform has stored network config: setting up initial \
-                 network with it");
-          let* _ = reconfigure_external_network network in
-          Lwt.return_unit
-    in
+    Log.info (fun f -> f "setting up initial network");
+    let* () = reconfigure_external_network initial_network in
     let store = KV_store.connect internal_stack in
-    let default_net = Args.default_net () in
     let* hsm_state, mvar, res_mvar =
       Hsm.boot ~cache_settings ?default_net ~platform update_key store
     in

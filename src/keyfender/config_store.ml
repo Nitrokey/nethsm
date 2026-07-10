@@ -188,7 +188,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Ip_config (* needed for clients to talk to us *)
     | Log_config (* used at boot, though could be late if needed *)
     | Unattended_boot (* needed at boot *)
-    | Time_offset (* kept early so the boot-time migration can read it before unlock *)
+    | Time_offset
+      (* kept early so the boot-time migration can read it before unlock *)
     | Version (* needed immediately at boot for migrations *)
     | Restore_in_progress (* no associated value *)
     | Pending_unlock_migrations
@@ -197,7 +198,9 @@ module Make (KV : Kv_ext.Platform) = struct
         true
     | Backup_salt | Backup_key (* not used in Unprovisioned mode *)
     | Cluster_CA (* needed by etcd but cached on platform *)
-    | Ntp_ip | Nts_name (* needed by S-Platform, not Keyfender; S-Platform caches them *) ->
+    | Ntp_ip
+    | Nts_name (* needed by S-Platform, not Keyfender; S-Platform caches them *)
+      ->
         false
 
   type error = [ `Kv of KV.error | `Msg of string | `Missing_domain_key ]
