@@ -238,11 +238,21 @@ struct
         (* Parse big-endian int64 milliseconds and set Keyfender's wall clock. *)
         let ms =
           let b = Bytes.of_string time_bytes in
-          Int64.to_int (Bytes.get_int64_be b 0)
+          Bytes.get_int64_be b 0
         in
-        match Ptime.of_float_s (Float.of_int ms /. 1000.0) with
+        let ptime_of_ms ms =
+          match
+            Ptime.Span.of_d_ps
+              Int64.
+                ( to_int (div ms 86_400_000L),
+                  mul (rem ms 86_400_000L) 1_000_000_000L )
+          with
+          | None -> None
+          | Some span -> Ptime.of_span span
+        in
+        match ptime_of_ms ms with
         | None ->
-            Log.warn (fun m -> m "Platform timestamp out of range: %d ms" ms)
+            Log.warn (fun m -> m "Platform timestamp out of range: %Ld ms" ms)
         | Some t -> Keyfender.Hsm_clock.set t
       in
       Internal_stack.UDP.listen (Internal_stack.udp stack) ~port
@@ -268,7 +278,7 @@ struct
                 split_tpm_and_time (Option.get data)
               in
               if String.length trng_data = trng_block_len then (
-                Log.info (fun m ->
+                Log.debug (fun m ->
                     m "Received %d bytes of data from TRNG: %a ..."
                       trng_block_len Hex.pp
                       (Hex.of_string (String.sub trng_data 0 8)));

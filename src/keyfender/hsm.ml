@@ -915,6 +915,10 @@ module Make (KV : Kv_ext.Platform) = struct
           Log.err (fun m -> m "Error while writing to key-value store: %s" txt);
           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
 
+  let ptime_to_ms_int64 t =
+    let (d, ps) = Ptime.(Span.to_d_ps (to_span t)) in
+    Int64.(add (mul (of_int d) 86_400_000L) (div ps 1_000_000_000L))
+
   let decrypt_with_pass_key encrypted ~pass_key =
     let key = Crypto.GCM.of_secret pass_key in
     let adata = "passphrase" in
@@ -2851,7 +2855,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let time _t = Lwt.return (now ())
 
     let set_time t time =
-      let time_ms = Some (Int64.of_float (Ptime.to_float_s time *. 1000.0)) in
+      let time_ms = Some (ptime_to_ms_int64 time) in
       push_local_config { Json.empty_local_conf with time_ms } t
 
     let ntp t =
@@ -3021,7 +3025,7 @@ module Make (KV : Kv_ext.Platform) = struct
             >>= fun () ->
             let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
             let time_ms =
-              Some (Int64.of_float (Ptime.to_float_s time *. 1000.0))
+              Some (ptime_to_ms_int64 time)
             in
             Config.set_local_config ~time_ms t))
 
@@ -4074,7 +4078,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 match Ptime.add_span new_time elapsed with
                 | Some ts ->
                     let time_ms =
-                      Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+                      Some (ptime_to_ms_int64 ts)
                     in
                     Config.set_local_config ~time_ms t
                 | None ->
@@ -4088,7 +4092,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 | None -> Lwt.return_ok ()
                 | Some ts ->
                     let time_ms =
-                      Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+                      Some (ptime_to_ms_int64 ts)
                     in
                     Config.set_local_config ~time_ms t)
           in
@@ -4352,7 +4356,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt.async (fun () ->
             let open Lwt.Infix in
             let time_ms =
-              Some (Int64.of_float (Ptime.to_float_s ts *. 1000.0))
+              Some (ptime_to_ms_int64 ts)
             in
             Config.push_local_config { Json.empty_local_conf with time_ms } t
             >|= ignore))
