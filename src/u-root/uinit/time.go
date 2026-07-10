@@ -16,6 +16,8 @@ import (
 	"nethsm/internal/hw"
 	"nethsm/internal/localconf"
 	"nethsm/internal/util"
+
+	_ "golang.org/x/crypto/x509roots/fallback" // Embeds fallback root"
 )
 
 const (

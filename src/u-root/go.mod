@@ -3,7 +3,7 @@
 
 module nethsm
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/beevik/ntp v1.5.0
@@ -14,6 +14,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/nftables v0.3.0
 	github.com/u-root/u-root v0.15.0
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20260709184058-243e02a382f8
 	golang.org/x/sys v0.36.0
 )
 
