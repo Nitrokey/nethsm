@@ -916,7 +916,7 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return (Error (Internal_server_error, "Could not write to disk.")))
 
   let ptime_to_ms_int64 t =
-    let (d, ps) = Ptime.(Span.to_d_ps (to_span t)) in
+    let d, ps = Ptime.(Span.to_d_ps (to_span t)) in
     Int64.(add (mul (of_int d) 86_400_000L) (div ps 1_000_000_000L))
 
   let decrypt_with_pass_key encrypted ~pass_key =
@@ -3024,9 +3024,7 @@ module Make (KV : Kv_ext.Platform) = struct
               (Config_store.set b Unlock_salt unlock_salt)
             >>= fun () ->
             let time = Option.get Ptime.(add_span time (diff (now ()) start)) in
-            let time_ms =
-              Some (ptime_to_ms_int64 time)
-            in
+            let time_ms = Some (ptime_to_ms_int64 time) in
             Config.set_local_config ~time_ms t))
 
   module System = struct
@@ -4077,9 +4075,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 let elapsed = Ptime.diff stop_ts start_ts in
                 match Ptime.add_span new_time elapsed with
                 | Some ts ->
-                    let time_ms =
-                      Some (ptime_to_ms_int64 ts)
-                    in
+                    let time_ms = Some (ptime_to_ms_int64 ts) in
                     Config.set_local_config ~time_ms t
                 | None ->
                     t.state <- initial_state;
@@ -4091,9 +4087,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 match migration_time_opt with
                 | None -> Lwt.return_ok ()
                 | Some ts ->
-                    let time_ms =
-                      Some (ptime_to_ms_int64 ts)
-                    in
+                    let time_ms = Some (ptime_to_ms_int64 ts) in
                     Config.set_local_config ~time_ms t)
           in
           if is_backup_truncated then
@@ -4355,9 +4349,7 @@ module Make (KV : Kv_ext.Platform) = struct
       (fun ts ->
         Lwt.async (fun () ->
             let open Lwt.Infix in
-            let time_ms =
-              Some (ptime_to_ms_int64 ts)
-            in
+            let time_ms = Some (ptime_to_ms_int64 ts) in
             Config.push_local_config { Json.empty_local_conf with time_ms } t
             >|= ignore))
       migration_time;
