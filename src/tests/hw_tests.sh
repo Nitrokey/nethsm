@@ -37,11 +37,11 @@ echo "- configure an IPv6 for the HSM"
 
 # in subshell because may fail if the stack is reconfigured before the server
 # can answer
-(PUT_admin /v1/config/network <<EOM)
+( PUT_admin /v1/config/network <<EOM )
 {
     "ipAddress": "192.168.1.1",
     "netmask": "255.255.255.0",
-    "gateway": "0.0.0.0",
+    "gateway": "192.168.1.100",
     "ipv6": {
         "cidr": "fc00:22:1::2/48",
         "gateway": null
@@ -61,6 +61,26 @@ ping -6 -c1 -w10 -q 'fc00:22:1::2' || exit 1
 export NETHSM_URL="https://[fc00:22:1::2]/api"
 source "$(dirname $0)/common_functions.sh"
 
+echo "NetHSM time before NTP config:"
+GET_admin /v1/config/time
+SYSTEM_TIME="$(date -u +%FT%TZ)"
+echo "SYSTEM_TIME: $SYSTEM_TIME"
+
+PUT_admin /v1/config/ntp <<EOM
+{
+  "ntpIP": "162.159.200.1",
+  "ntsName": "time.cloudflare.com"
+}
+EOM
+
+# make sure new time arrived in Keyfender
+sleep 2
+
+echo "NetHSM time after NTP config:"
+GET_admin /v1/config/time
+SYSTEM_TIME="$(date -u +%FT%TZ)"
+echo "SYSTEM_TIME: $SYSTEM_TIME"
+
 # test that IPv6 is working
 echo "- check that keyfender answers over IPv6"
 GET /v1/health/state
@@ -78,11 +98,11 @@ EOM
 
 make -f cert.make witness.pem
 
-# ensure no clock drift
-SYSTEM_TIME="$(date -u +%FT%TZ)"
-PUT_admin /v1/config/time << EOM
-{"time": "$SYSTEM_TIME"}
-EOM
+# # ensure no clock drift
+# SYSTEM_TIME="$(date -u +%FT%TZ)"
+# PUT_admin /v1/config/time << EOM
+# {"time": "$SYSTEM_TIME"}
+# EOM
 
 sleep 2
 
@@ -198,6 +218,11 @@ echo "- unlock"
 POST /v1/unlock <<EOM
 { "passphrase": "UnlockPassphrase" }
 EOM
+
+echo "NetHSM time after reboot:"
+GET_admin /v1/config/time
+SYSTEM_TIME="$(date -u +%FT%TZ)"
+echo "SYSTEM_TIME: $SYSTEM_TIME"
 
 echo "- creating backup"
 POST /v1/system/backup --user backup:BackupBackup -o cluster_backup.bin <<EOF

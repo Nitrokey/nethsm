@@ -37,6 +37,7 @@ let skip_endpoints =
 
 let skip_body_endpoints =
   [
+    "/config/ntp";
     "/config/time";
     "/config/tls/cert.pem";
     "/config/tls/csr.pem";
