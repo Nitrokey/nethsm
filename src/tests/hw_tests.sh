@@ -119,7 +119,7 @@ function wait_join() {
 echo "- wait for join to complete"
 sleep 20 # wait for join to complete
 x=0
-while ! curl -s http://127.0.0.1:2379/readyz; do
+while ! curl -sf http://127.0.0.1:2379/readyz; do
     ((x++>240)) && echo "etcd is not ready yet while waiting to join!" && exit 1
     sleep 1
 done # wait for etcd to start
