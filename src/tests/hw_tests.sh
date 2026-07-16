@@ -131,7 +131,15 @@ ETCD_PID=$!
 function wait_join() {
 
 echo "- wait for join to complete"
-sleep 20 # wait for join to complete
+sleep 2 # wait for join to complete
+
+N_id=$(jq -r ".members[] | select(.learner==true) | .id" <response.json)
+echo "attempt to promote ${N_id} via ${NETHSM_URL}"
+while ! (POST_admin /v1/cluster/members/${N_id}/promote </dev/null); do
+    echo "Promotion failed, retry.."; sleep 1;
+done;
+echo "promoted ${N_id}";
+
 x=0
 while ! curl -sf http://127.0.0.1:2379/readyz; do
     ((x++>240)) && echo "etcd is not ready yet while waiting to join!" && exit 1
