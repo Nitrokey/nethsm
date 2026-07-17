@@ -73,6 +73,40 @@ services:
       - "data4:/data"
     healthcheck: *nethsm-healthcheck
 
+  nethsm5:
+    hostname: nethsm5
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
+    # this node is used for testing reboots
+    restart: always
+    networks:
+      nethsm:
+        interface_name: eth0
+        ipv4_address: 172.22.1.6
+        ipv6_address: "fc00:22:1::6"
+    # environment: {}
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - "data5:/data"
+    healthcheck: *nethsm-healthcheck
+
+  nethsm6:
+    hostname: nethsm6
+    image: ${NETHSM_IMAGE:-nitrokey/nethsm:testing}
+    # this node is used for testing reboots
+    restart: always
+    networks:
+      nethsm:
+        interface_name: eth0
+        ipv4_address: 172.22.1.7
+        ipv6_address: "fc00:22:1::7"
+    # environment: {}
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - "data6:/data"
+    healthcheck: *nethsm-healthcheck
+
   etcd-witness:
     hostname: etcd-wittness
     image: "quay.io/coreos/etcd:v3.6.13"
@@ -116,6 +150,8 @@ volumes:
   data2:
   data3:
   data4:
+  data5:
+  data6:
   data-witness:
 # secrets:
 #   ca_cert:

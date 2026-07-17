@@ -6,9 +6,11 @@ N1=https://172.22.1.2
 N2=https://172.22.1.3
 N3=https://172.22.1.4
 N4=https://172.22.1.5
+N5=https://172.22.1.6
+N6=https://172.22.1.7
 EW=https://172.22.1.10
 
-# Provision and install cert with same CA in N1, N2, N3, N4
+# Provision and install cert with same CA in N1, N2, N3, N4, N5, N6
 NETHSM_URL="$N1/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
@@ -22,6 +24,14 @@ source ./provision_test.sh
 source ./setup_cluster_ca.sh
 
 NETHSM_URL="$N4/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N5/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N6/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
 
@@ -323,21 +333,73 @@ GET_admin /v1/keys/keyN3 > /dev/null
 
 # join N1 and N2 to N4
 
-# Register N1 in N4
+# Register N5 in N4
 NETHSM_URL="$N4/api"
-echo "- Request to join ${N1} to ${N4} in learner mode"
+echo "- Request to join ${N5} to ${N4} in learner mode"
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N1:2380"] }
+{"urls": ["$N5:2380"] }
 EOF
 )
 
-echo "- Request to join ${N2} to ${N4} (should fail, still have learner)"
+echo "- Request to join ${N6} to ${N4} (should fail, still have learner)"
 ! (POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N2:2380"] }
+{"urls": ["$N6:2380"] }
 EOF
 ) || exit 1 # in subshell because should fail
 
+NETHSM_URL="$N5/api"
+
+echo "Join ${N5} to ${N4} in learner mode"
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+echo "join req: $join_req"
+
+
+echo "- Begin joining ${N5} to ${N6} (needs to wait for promotion)"
+NETHSM_URL="$N5/api"
+(POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+)&
+
+sleep 1
+
+NETHSM_URL="$N4/api"
+echo "- Request to join ${N6} to ${N4} (should still fail, still have learner)"
+! (POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N6:2380"] }
+EOF
+) || exit 1 # in subshell because should fail
+
+NETHSM_URL="$N5/api"
+promote "${N4}"
+wait
+
+NETHSM_URL="$N4/api"
+echo "- Request to join ${N6} to ${N4} (no more learners)"
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N6:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+echo "join req: $join_req"
+
+NETHSM_URL="$N6/api"
+join "${N4}"
+
+echo "- Shutdown ${N6}"
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
+NETHSM_URL="$N5/api"
+echo "- Shutdown ${N5}"
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
 # shutdown the last node
+NETHSM_URL="$N4/api"
+echo "- Shutdown ${N4}"
 POST_admin /v1/system/shutdown <<EOF
 EOF
 

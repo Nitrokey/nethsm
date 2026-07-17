@@ -1,7 +1,7 @@
 .PHONY: rebuild down up logs clean flogs etcd-panic etcd-break
 
 clean:
-	for i in 1 2 3 4 -witness; do docker volume rm -f nethsm-cluster_data$${i}; done
+	for i in 1 2 3 4 5 6 -witness; do docker volume rm -f nethsm-cluster_data$${i}; done
 
 down:
 	docker compose -f ./compose-cluster.yaml down 
