@@ -41,18 +41,12 @@ echo "join req: $join_req"
 NETHSM_URL="$N2/api"
 source ./common_functions.sh
 
-join()
+promote()
 {
-echo "attempt to join, this may take some time"
-(POST_admin /v1/cluster/join <<EOF
-$join_req
-EOF
-)&
-
-N_id=$(echo "${join_req}" | jq -r ".members[] | select(.learner==true) | .id")
 JOINER_URL=${NETHSM_URL}
 NETHSM_URL="${1}/api"
 
+N_id=$(echo "${join_req}" | jq -r ".members[] | select(.learner==true) | .id")
 echo "attempt to promote ${N_id} via ${1}"
 while ! (POST_admin /v1/cluster/members/${N_id}/promote </dev/null); do
     echo "Promotion failed, retry.."; sleep 1;
@@ -63,6 +57,17 @@ NETHSM_URL="${JOINER_URL}";
 
 echo "Waiting for join to complete";
 wait
+}
+
+join()
+{
+echo "attempt to join, this may take some time"
+(POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+)&
+
+promote "$1"
 }
 
 join "${N1}"
@@ -315,6 +320,22 @@ EOF
 
 # N4 still alive and can see old key
 GET_admin /v1/keys/keyN3 > /dev/null
+
+# join N1 and N2 to N4
+
+# Register N1 in N4
+NETHSM_URL="$N4/api"
+echo "- Request to join ${N1} to ${N4} in learner mode"
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N1:2380"] }
+EOF
+)
+
+echo "- Request to join ${N2} to ${N4} (should fail, still have learner)"
+! (POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N2:2380"] }
+EOF
+) || exit 1 # in subshell because should fail
 
 # shutdown the last node
 POST_admin /v1/system/shutdown <<EOF
