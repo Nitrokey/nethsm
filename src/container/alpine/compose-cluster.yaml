@@ -75,7 +75,7 @@ services:
 
   etcd-witness:
     hostname: etcd-wittness
-    image: "quay.io/coreos/etcd:v3.6.5"
+    image: "quay.io/coreos/etcd:v3.6.13"
     networks:
       nethsm:
         interface_name: eth0
