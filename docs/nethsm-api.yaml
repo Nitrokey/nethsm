@@ -1305,6 +1305,8 @@ paths:
           description: Access denied.
         "406":
           description: Content type in Accept header not supported.
+        "409":
+          description: Cluster still has learners, cannot join more nodes.
         "412":
           description: |
             Precondition failed. NetHSM was not *Operational* or no cluster CA
@@ -1320,6 +1322,7 @@ paths:
         'POST /cluster/members' *MUST* have been called on an existing member of the cluster
         beforehand. The data returned by that call must be passed here along with the backup
         passphrase *of the node that registered the new member*.
+        The 'id' of the newly added node is also available in this reply.
 
         On success, the node will end up in a *Locked* stated, unlockable with the unlock passphrase
         *of the node that registered the new member*. All device-specific configuration will be preserved
@@ -1328,6 +1331,13 @@ paths:
         On immediate failure (e.g. if the cluster is not reachable), the NetHSM will attempt to
         reverse the join. **WARNING**. Existing data will be definitely wiped after a first successful
         connection to the cluster. Be sure to backup anything important.
+
+        The new node is added as a learner. Currently there is only 1 learner supported in a NetHSM cluster at a time, attempting to add another will return an HTTP 409 failure.
+        A learner node observes changes in the cluster, but is not part of the quorum yet.
+
+       *WARNING:*  The newly added node needs to be promoted by using the 'POST /cluster/members/{MemberID}/promote' API, where '{MemberID}' is returned by the 'POST /cluster/members' API above.
+        Note that currently this API waits for the promotion to complete before returning, so the promotion API
+        needs to be invoked concurrently with the join API.
       security:
         - basic: []
       requestBody:
@@ -1419,6 +1429,54 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
+  /cluster/members/{MemberID}/promote:
+    parameters:
+      - name: MemberID
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ID"
+    post:
+      responses:
+        "204":
+          description: Member successfully promoted.
+        "400":
+          description: |
+            Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "404":
+          description: Cluster member not found.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*, or the learner node didn't catch up yet).
+      description: |
+        Promote the given cluster member from learner to full member.
+        A new node is added as a learner, and it has to catch up with the changes in the NetHSM cluster before
+        it can be fully promoted. If the learner hasn't caught up yet, then it'll fail with HTTP code 412,
+        and promotion should be attempted again later (the time needed for the learner to catch up will depend on the size of its database and activity).
+        'GET /health/diagnose' can be used to diagnose issues with the learner.
+        If promotion is not possible or desirable anymore, then the learner can also be removed with 'DELETE /cluster/members/{MemberID}'
+
+        *WARNING*: ensure the new learner node has a stable connection. If this makes the cluster
+        lose quorum, the cluster will cease to operate, in which case 'POST /cluster/force-new' needs to be used to recover.
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+      x-test-value-MemberID: 8e9e05c52164694d
+
   /cluster/members/{MemberID}:
     parameters:
       - name: MemberID
