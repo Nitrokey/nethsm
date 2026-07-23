@@ -13,7 +13,9 @@ servers:
       host:
         default: nethsmdemo.nitrokey.com
       version:
-        default: v1
+        enum:
+          - "v1"
+        default: "v1"
 paths:
   /info:
     get:
