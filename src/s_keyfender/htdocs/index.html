@@ -6,19 +6,46 @@
         <style type="text/css" media="all">
             body {
                 font-family: 'Open Sans',Helvetica,Arial,sans-serif;
-                color: #000;
             }
+
             h1 {
                 font-family: 'Teko',sans-serif;
                 font-size: 45px;
                 line-height: 45px;
                 font-weight: 700;
             }
+
             h2 {
                 font-family: 'Teko',sans-serif;
                 font-size: 40px;
                 line-height: 40px;
                 font-weight: 600;
+            }
+
+            :root {
+                color-scheme: light dark;
+            }
+
+            @media (prefers-color-scheme: light) {
+                body {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+
+                a {
+                    color: #0000ee;
+                }
+            }
+
+            @media (prefers-color-scheme: dark) {
+                body {
+                    background-color: #1c2022;
+                    color: #e0e0e0;
+                }
+  
+                a {
+                    color: #8ab4f8;
+                }
             }
         </style>
     </head>
