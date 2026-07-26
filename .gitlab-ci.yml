@@ -395,7 +395,7 @@ test_muen_prodrive_hermes:
   stage: test_hw
   # Normally takes <15m and has a tendency to get stuck.
   # This let us discover the timeout without waiting 1h to retry
-  timeout: 30m
+  timeout: 40m
   retry:
     max: 2
     when:
@@ -463,7 +463,7 @@ test_muen_msi_z790:
   stage: test_hw
   # Normally takes <10m and has a tendency to get stuck.
   # This let us discover the timeout without waiting 1h to retry
-  timeout: 20m
+  timeout: 30m
   retry:
     max: 2
     when:

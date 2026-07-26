@@ -136,12 +136,9 @@ done
 
 wait_join
 
+function check_witness_healthy() {
 echo "- check witness is healthy"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
-
-echo "- check we have synced with HSM"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
-    get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
 
 echo "- check HSM ends up healthy"
 
@@ -151,6 +148,15 @@ while test "$(GET /v1/health/state | jq -r .state)" != "Operational"; do
     sleep 2
 done
 GET_admin /v1/cluster/members
+}
+
+check_witness_healthy
+
+echo "- check we have synced with HSM"
+"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+    get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
+
+
 MEMBERS=$(GET_admin /v1/cluster/members)
 WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
 
@@ -202,12 +208,16 @@ sleep 5
 echo "- check witness cannot see the key anymore"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey"
 
+function stop_witness_clean() {
 echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
 echo "- killing etcd voluntarily"
 pkill etcd
 rm -rf witness.etcd
+}
+
+stop_witness_clean
 
 sleep 10
 
@@ -215,7 +225,6 @@ echo "- check HSM is still healthy"
 GET_admin /v1/cluster/members
 
 echo "- add back witness to the cluster (should succeed)"
-# cluster ID may have changed due to force-new, need to regenerate
 generate_witness_conf
 
 echo "- start etcd"
@@ -223,11 +232,8 @@ echo "- start etcd"
 
 wait_join
 
-echo "- check witness is healthy"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+check_witness_healthy
 
-echo "- check HSM is still healthy again"
-GET_admin /v1/cluster/members
 MEMBERS=$(GET_admin /v1/cluster/members)
 WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
 
@@ -304,10 +310,21 @@ if test "$N" != "1"; then
 	exit 1
 fi
 
-echo "- delete witness"
+echo "- add back witness to the recovered node"
+generate_witness_conf
 
-pkill -9 etcd
-rm -rf witness.etcd
+echo "- start etcd"
+"$etcd_name/etcd" --config-file witness.conf.yml &
+
+wait_join
+
+check_witness_healthy
+
+MEMBERS=$(GET_admin /v1/cluster/members)
+WITNESS_ID=$(echo "$MEMBERS" | jq '.[] | select(.name == "witness") | .id' --raw-output)
+
+stop_witness_clean
+
 sleep 10
 
 GET_admin /v1/config/network
