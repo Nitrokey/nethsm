@@ -895,6 +895,8 @@ type platform_data = {
       [@ref "network_config"]
   lastTlsCert : string option; [@default None]
   lastTlsKey : string option; [@default None]
+  failedUnlockSalt : string option; [@default None]
+  failedUnlockDigest : string option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 
@@ -915,6 +917,8 @@ type local_conf = {
       [@default None]
       [@to_yojson network_config_to_string]
       [@ref "network_config"]
+  failed_unlock_salt : string option; [@default None]
+  failed_unlock_digest : string option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 

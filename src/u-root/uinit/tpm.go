@@ -45,15 +45,17 @@ var (
 
 // must be in sync with platform_data in src/keyfender/json.ml
 type platformData struct {
-	DeviceID        string            `json:"deviceId"`
-	DeviceKey       []byte            `json:"deviceKey"`
-	PCR             map[int]string    `json:"pcr"`
-	AKPub           map[string][]byte `json:"akPub"`
-	HardwareVersion string            `json:"hardwareVersion"`
-	FirmwareVersion string            `json:"firmwareVersion"`
-	NetworkConfig   string            `json:"networkConfig,omitempty"`
-	LastTLSCert     string            `json:"lastTlsCert,omitempty"`
-	LastTLSKey      string            `json:"lastTlsKey,omitempty"`
+	DeviceID           string            `json:"deviceId"`
+	DeviceKey          []byte            `json:"deviceKey"`
+	PCR                map[int]string    `json:"pcr"`
+	AKPub              map[string][]byte `json:"akPub"`
+	HardwareVersion    string            `json:"hardwareVersion"`
+	FirmwareVersion    string            `json:"firmwareVersion"`
+	NetworkConfig      string            `json:"networkConfig,omitempty"`
+	LastTLSCert        string            `json:"lastTlsCert,omitempty"`
+	LastTLSKey         string            `json:"lastTlsKey,omitempty"`
+	FailedUnlockSalt   string            `json:"failedUnlockSalt,omitempty"`
+	FailedUnlockDigest string            `json:"failedUnlockDigest,omitempty"`
 }
 
 func withTPMContext(f func(*tpm2.TPMContext) error) error {
@@ -276,6 +278,8 @@ func tpmCreatePlatformData() error {
 			data.LastTLSCert = lc.TLSCert
 			data.LastTLSKey = lc.TLSKey
 		}
+		data.FailedUnlockSalt = lc.FailedUnlockSalt
+		data.FailedUnlockDigest = lc.FailedUnlockDigest
 
 		platformDataCh <- data
 		close(platformDataCh)

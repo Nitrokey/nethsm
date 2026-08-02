@@ -145,6 +145,7 @@ module type S = sig
     end
 
     val is_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
+    val is_failed_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
     val is_authorized : t -> Nid.t -> Json.role -> bool Lwt.t
     val list : namespace:string option -> t -> (string list, error) result Lwt.t
     val exists : t -> Nid.t -> (bool, error) result Lwt.t
@@ -812,6 +813,8 @@ module Make (KV : Kv_ext.Platform) = struct
     device_key : string;
     cache_settings : Cached_store.settings;
     default_net : string;
+    mutable failed_unlock_salt : string option;
+    mutable failed_unlock_digest : string option;
   }
 
   let state t = to_external_state t.state
@@ -1331,6 +1334,16 @@ module Make (KV : Kv_ext.Platform) = struct
     let get_user t nid =
       let keys = in_store t in
       read keys nid
+
+    let is_failed_authenticated t nid ~passphrase =
+      match (t.state, nid, t.failed_unlock_salt, t.failed_unlock_digest) with
+      | ( Failed _,
+          Nid.{ namespace = None; id = "unlock" },
+          Some salt,
+          Some digest ) ->
+          let pass = Crypto.stored_passphrase ~salt passphrase in
+          Lwt.return (String.equal pass digest)
+      | _ -> Lwt.return_false
 
     let is_authenticated t nid ~passphrase =
       let open Lwt.Infix in
@@ -2387,33 +2400,6 @@ module Make (KV : Kv_ext.Platform) = struct
   end
 
   module Config = struct
-    let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
-      match t.state with
-      | Operational keys ->
-          let open Lwt_result.Infix in
-          check_unlock_passphrase t current_passphrase >>= fun () ->
-          let salt = Mirage_crypto_rng.generate Crypto.salt_len in
-          let pass_key = Crypto.key_of_passphrase ~salt new_passphrase in
-          with_write_lock (fun () ->
-              Config_store.batch t.config_store (fun b ->
-                  internal_server_error Write "Write unlock salt"
-                    Config_store.pp_write_error
-                    (Config_store.set b Unlock_salt salt)
-                  >>= fun () ->
-                  let enc_dk =
-                    encrypt_with_pass_key keys.domain_key ~pass_key
-                  in
-                  let encryption_key = t.device_key in
-                  let domain_store =
-                    Domain_key_store.connect b.kv b.device_id
-                  in
-                  internal_server_error Write "Write passphrase domain key"
-                    KV.pp_write_error
-                    (Domain_key_store.set domain_store Attended enc_dk
-                       ~encryption_key)))
-      | _ -> assert false
-    (* Handler_config.service_available checked that we are operational *)
-
     let unattended_boot t =
       let open Lwt_result.Infix in
       internal_server_error Read "Read unattended boot" Config_store.pp_error
@@ -2518,6 +2504,8 @@ module Make (KV : Kv_ext.Platform) = struct
           tls_key;
           time_offset_s;
           network_config;
+          failed_unlock_salt = None;
+          failed_unlock_digest = None;
         }
       in
       Logs.debug (fun f -> f "caching config to the platform");
@@ -2527,6 +2515,42 @@ module Make (KV : Kv_ext.Platform) = struct
           Log.warn (fun m -> m "setting local config failed: %s" msg);
           (Bad_request, "setting local config failed: " ^ msg))
       |> Lwt_result.map ignore
+
+    let change_unlock_passphrase t ~new_passphrase ~current_passphrase =
+      match t.state with
+      | Operational keys ->
+          let open Lwt_result.Infix in
+          check_unlock_passphrase t current_passphrase >>= fun () ->
+          let salt = Mirage_crypto_rng.generate Crypto.salt_len in
+          let pass_key = Crypto.key_of_passphrase ~salt new_passphrase in
+          let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+          let failed_unlock_digest =
+            Crypto.stored_passphrase ~salt:failed_unlock_salt new_passphrase
+          in
+          with_write_lock (fun () ->
+              Config_store.batch t.config_store (fun b ->
+                  internal_server_error Write "Write unlock salt"
+                    Config_store.pp_write_error
+                    (Config_store.set b Unlock_salt salt)
+                  >>= fun () ->
+                  let enc_dk =
+                    encrypt_with_pass_key keys.domain_key ~pass_key
+                  in
+                  let encryption_key = t.device_key in
+                  let domain_store =
+                    Domain_key_store.connect b.kv b.device_id
+                  in
+                  internal_server_error Write "Write passphrase domain key"
+                    KV.pp_write_error
+                    (Domain_key_store.set domain_store Attended enc_dk
+                       ~encryption_key)))
+          >>= fun () ->
+          t.failed_unlock_salt <- Some failed_unlock_salt;
+          t.failed_unlock_digest <- Some failed_unlock_digest;
+          set_local_config t >>= fun () ->
+          Lwt_result.return ()
+      | _ -> assert false
+    (* Handler_config.service_available checked that we are operational *)
 
     let check_ca_signs_cert t ~chain ~ca =
       let is_mock = t.system_info.hardwareVersion = "N/A" in
@@ -2815,6 +2839,12 @@ module Make (KV : Kv_ext.Platform) = struct
     assert (state t = `Unprovisioned);
     let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
+    let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+    let failed_unlock_digest =
+      Crypto.stored_passphrase ~salt:failed_unlock_salt unlock
+    in
+    t.failed_unlock_digest <- Some failed_unlock_digest;
+    t.failed_unlock_salt <- Some failed_unlock_salt;
     let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
     let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
@@ -4200,6 +4230,8 @@ module Make (KV : Kv_ext.Platform) = struct
         device_key;
         cache_settings;
         default_net;
+        failed_unlock_salt = platform.failedUnlockSalt;
+        failed_unlock_digest = platform.failedUnlockDigest;
       }
     in
     Lwt.async (fun () ->

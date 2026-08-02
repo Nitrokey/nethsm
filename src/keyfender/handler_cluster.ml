@@ -150,10 +150,10 @@ struct
         decode_id ok rd
     end
 
-  class handler_force_new hsm_state _ip =
+  class handler_force_new hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
-      inherit! Endpoint.input_state_validated hsm_state [ `Failed ]
+      inherit! Endpoint.failed_only hsm_state ip
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 

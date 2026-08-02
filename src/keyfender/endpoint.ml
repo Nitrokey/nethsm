@@ -309,6 +309,17 @@ struct
         else respond_error (Precondition_failed, "Service not available")
     end
 
+  class failed_only hsm_state ip =
+    object
+      inherit no_namespace () as namespace
+      inherit input_state_validated hsm_state [ `Failed ]
+
+      method is_authorized : (Wm.auth, body) Wm.op =
+        Access.is_authorized ~use_failed_unlock:true hsm_state ip
+
+      method! forbidden : (bool, body) Wm.op = fun rd -> namespace#forbidden rd
+    end
+
   class virtual get_json =
     object (self)
       method virtual private to_json : body Wm.provider

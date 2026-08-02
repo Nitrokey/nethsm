@@ -147,6 +147,7 @@ module type S = sig
     end
 
     val is_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
+    val is_failed_authenticated : t -> Nid.t -> passphrase:string -> bool Lwt.t
     val is_authorized : t -> Nid.t -> Json.role -> bool Lwt.t
 
     val list : namespace:string option -> t -> (string list, error) result Lwt.t

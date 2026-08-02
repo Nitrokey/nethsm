@@ -1793,8 +1793,10 @@ let change_unlock_passphrase =
     {|{ "newPassphrase" : "new passphrase", "currentPassphrase" : "unlockPassphrase" }|}
   in
   let unlock_passphrase = {|{ "passphrase" : "new passphrase" }|} in
+  let hsm_state = operational_mock_with_mbox () in
   match
-    admin_put_request ~body:(`String change_passphrase)
+    admin_put_request ~hsm_state ~body:(`String change_passphrase)
+      ~expect:(debug "caching config to the platform")
       "/config/unlock-passphrase"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
@@ -5513,7 +5515,8 @@ let cluster_force_new_ok =
     "a request for /cluster/force-new in the failed state produces 204" `Quick
   @@ fun () ->
   let hsm_state = failed_mock () in
-  request ~meth:`POST ~hsm_state "/cluster/force-new"
+  let headers = auth_header "unlock" "unlockPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`No_content
 
 let cluster_member_ops_not_etcd =

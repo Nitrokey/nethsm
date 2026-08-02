@@ -91,6 +91,8 @@ let platform =
     networkConfig = None;
     lastTlsCert = None;
     lastTlsKey = None;
+    failedUnlockSalt = None;
+    failedUnlockDigest = None;
   }
 
 let request ?(expect = "") ?hsm_state ?(body = `Empty) ?(meth = `GET)

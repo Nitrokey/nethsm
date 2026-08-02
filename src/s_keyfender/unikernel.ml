@@ -299,6 +299,8 @@ struct
       networkConfig = None;
       lastTlsKey = None;
       lastTlsCert = None;
+      failedUnlockSalt = None;
+      failedUnlockDigest = None;
     }
 
   let start update_key_store assets internal_stack ext_stack

@@ -3,6 +3,8 @@
   "$defs": { "network_config": { "type": "string" } },
   "type": "object",
   "properties": {
+    "failedUnlockDigest": { "type": "string" },
+    "failedUnlockSalt": { "type": "string" },
     "lastTlsKey": { "type": "string" },
     "lastTlsCert": { "type": "string" },
     "networkConfig": { "$ref": "#/$defs/network_config" },

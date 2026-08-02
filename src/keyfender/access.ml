@@ -34,7 +34,7 @@ struct
             | Some (user, password) -> Ok (user, password)))
     | _ -> Error (`Msg ("invalid auth header " ^ auth))
 
-  let is_authorized hsm_state ip rd =
+  let is_authorized ?(use_failed_unlock = false) hsm_state ip rd =
     match get_authorization rd.Webmachine.Rd.req_headers with
     | None -> Wm.continue (`Basic "NetHSM") rd
     | Some auth -> (
@@ -56,7 +56,9 @@ struct
               match Hsm.Nid.of_string username with
               | Error msg -> err msg
               | Ok nid ->
-                  Hsm.User.is_authenticated hsm_state nid ~passphrase
+                  (if use_failed_unlock then Hsm.User.is_failed_authenticated
+                   else Hsm.User.is_authenticated)
+                    hsm_state nid ~passphrase
                   >>= fun auth ->
                   if auth then
                     let rd' =

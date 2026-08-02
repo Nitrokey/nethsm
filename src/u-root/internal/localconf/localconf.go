@@ -48,12 +48,14 @@ var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 
 // LocalConf type
 type LocalConf struct {
-	TLSCert       string `json:"tls_cert"`
-	TLSKey        string `json:"tls_key"`
-	TLSTrustedCA  string `json:"tls_cluster_ca,omitempty"`
-	DeviceID      string `json:"device_id"`
-	TimeOffsetS   int    `json:"time_offset_s"` // 0 if unknown
-	NetworkConfig string `json:"network_config"`
+	TLSCert            string `json:"tls_cert"`
+	TLSKey             string `json:"tls_key"`
+	TLSTrustedCA       string `json:"tls_cluster_ca,omitempty"`
+	DeviceID           string `json:"device_id"`
+	TimeOffsetS        int    `json:"time_offset_s"` // 0 if unknown
+	NetworkConfig      string `json:"network_config"`
+	FailedUnlockSalt   string `json:"failed_unlock_salt,omitempty"`
+	FailedUnlockDigest string `json:"failed_unlock_digest,omitempty"`
 }
 
 // ChangeReq is sent to registered consumers when the local config changes.

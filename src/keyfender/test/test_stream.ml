@@ -42,6 +42,8 @@ let platform =
     networkConfig = None;
     lastTlsCert = None;
     lastTlsKey = None;
+    failedUnlockSalt = None;
+    failedUnlockDigest = None;
   }
 
 let unprovisioned_mock () =
