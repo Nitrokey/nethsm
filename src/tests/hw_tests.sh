@@ -297,7 +297,7 @@ fi
 
 echo "- recover HSM into single node mode"
 
-POST /v1/cluster/force-new <<EOF
+POST /v1/cluster/force-new --user unlock:UnlockPassphrase <<EOF
 EOF
 
 echo "- wait for HSM to complete reboot"

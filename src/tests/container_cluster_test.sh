@@ -319,7 +319,7 @@ done
 # a race condition in the test, so only fetch the diagnostic
 GET /v1/health/diagnose
 
-POST /v1/cluster/force-new <<EOF || true
+POST /v1/cluster/force-new --user unlock:UnlockPassphrase <<EOF || true
 EOF
 
 echo "waiting for N4 to finish rebooting..."
