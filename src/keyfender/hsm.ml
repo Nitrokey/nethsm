@@ -2547,8 +2547,7 @@ module Make (KV : Kv_ext.Platform) = struct
           >>= fun () ->
           t.failed_unlock_salt <- Some failed_unlock_salt;
           t.failed_unlock_digest <- Some failed_unlock_digest;
-          set_local_config t >>= fun () ->
-          Lwt_result.return ()
+          set_local_config t >>= fun () -> Lwt_result.return ()
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
