@@ -8,9 +8,11 @@ N3=https://172.22.1.4
 N4=https://172.22.1.5
 N5=https://172.22.1.6
 N6=https://172.22.1.7
+N7=https://172.22.1.8
+N8=https://172.22.1.9
 EW=https://172.22.1.10
 
-# Provision and install cert with same CA in N1, N2, N3, N4, N5, N6
+# Provision and install cert with same CA in N1, N2, N3, N4, N5, N6, N7, N8
 NETHSM_URL="$N1/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
@@ -32,6 +34,14 @@ source ./provision_test.sh
 source ./setup_cluster_ca.sh
 
 NETHSM_URL="$N6/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N7/api"
+source ./provision_test.sh
+source ./setup_cluster_ca.sh
+
+NETHSM_URL="$N8/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
 
@@ -388,6 +398,57 @@ echo "join req: $join_req"
 NETHSM_URL="$N6/api"
 join "${N4}"
 
+NETHSM_URL="$N4/api"
+echo "- Request joining ${N7} to ${N4} and begin joining"
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N7:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+echo "join req: $join_req"
+
+NETHSM_URL="$N7/api"
+(POST_admin /v1/cluster/join <<EOF
+$join_req
+EOF
+)& # subshell because it is expected to fail
+
+# allow the node to catch up on the raft log, but don't promote it
+sleep 5
+
+echo "- Not promoting ${N7}, and cancelling the join to ${N4}"
+
+NETHSM_URL="$N4/api"
+N_id=$(echo "${join_req}" | jq -r ".members[] | select(.learner==true) | .id")
+DELETE_admin "/v1/cluster/members/$N_id"
+
+echo "- Wait for the join of ${N7} to fail"
+wait
+
+NETHSM_URL="$N4/api"
+echo "- Request to join ${N8} to ${N4} (after deleting a learner)"
+resp=$(POST_admin /v1/cluster/members <<EOF
+{"urls": ["$N8:2380"] }
+EOF
+)
+
+join_req=$(echo "$resp" | jq '.+={"backupPassphrase": "backupPassphrase"}')
+echo "join req: $join_req"
+
+NETHSM_URL="$N8/api"
+join "${N4}"
+
+echo "- Shutdown ${N8}"
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
+NETHSM_URL="$N7/api"
+echo "- Shutdown ${N7}"
+POST_admin /v1/system/shutdown <<EOF
+EOF
+
+NETHSM_URL="$N6/api"
 echo "- Shutdown ${N6}"
 POST_admin /v1/system/shutdown <<EOF
 EOF
