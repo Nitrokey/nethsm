@@ -299,8 +299,13 @@ struct
       networkConfig = None;
       lastTlsKey = None;
       lastTlsCert = None;
-      failedUnlockSalt = None;
-      failedUnlockDigest = None;
+      failedUnlockSalt = Some "AAAAAAAAAAAAAAAA";
+      failedUnlockDigest =
+        Some
+          (Keyfender.Crypto.stored_passphrase ~salt:"AAAAAAAAAAAAAAAA"
+             "UnlockPassphrase");
+      (* for the sake of Failed mode API tests, pre-load "UnlockPassphrase" as
+           a known unlock passphrase *)
     }
 
   let start update_key_store assets internal_stack ext_stack

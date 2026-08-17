@@ -125,6 +125,7 @@ let auth_header (user, pass) =
 
 let passphrase = function
   | "Administrator" -> ("admin", "Administrator")
+  | "FailedUnlock" -> ("unlock", "UnlockPassphrase")
   | "Operator" -> ("operator", "OperatorOperator")
   | "Metrics" -> ("metrics", "MetricsMetrics")
   | "Backup" -> ("backup", "BackupBackup")
@@ -230,6 +231,8 @@ let make_req_data req meth =
   let role, auth_header =
     match roles with
     | [ "Public" ] -> (None, "")
+    | [ "FailedUnlock" ] ->
+        (Some "unlock", auth_header (passphrase "FailedUnlock"))
     | "Administrator" :: _ ->
         (Some "Administrator", auth_header (passphrase "Administrator"))
     | "Operator" :: _ -> (Some "Operator", auth_header (passphrase "Operator"))

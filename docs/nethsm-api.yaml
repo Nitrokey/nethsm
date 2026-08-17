@@ -1275,6 +1275,8 @@ paths:
       responses:
         "204":
           description: About to reboot NetHSM.
+        "401":
+          description: Authentication required but none provided (see description).
         "412":
           description: Precondition failed (NetHSM was not *Failed*).
       description:
@@ -1282,8 +1284,9 @@ paths:
         **WARNING** this will restore data only up to the last snapshot, and will result in data loss for any unconfirmed writes, or writes that occured on other NetHSM nodes that are now unreachable.
         This call is unauthenticated and available only in the Failed state. Before using this command it is recommended that you attempt to heal the cluster's network connectivity first and restore quorum.
         To that end, use the /health/diagnose endpoint to understand to cause of the current failure.
+        As it is potentially destructive, this operation requires authentication even in *Failed* state, which differs from *Operational* authentication. The user *MUST* be `unlock` and the password *MUST* be the last known unlock passphrase.
       x-annotation-role:
-        - Public
+        - FailedUnlock
       x-annotation-state:
         - Failed
       x-annotation-caller-namespace:
