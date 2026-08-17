@@ -152,7 +152,8 @@ let random_error_bad_length =
   | _, Some (`Bad_request, _, _, _) -> true
   | _ -> false
 
-let operational_mock_with_mbox'' ?(platform = platform) f =
+let unprovisioned_mock_with_mbox ?(continuation = fun _ -> Lwt_result.return ())
+    ?(platform = platform) f =
   Lwt_main.run
     ( Kv_mem.connect () >>= fun kv ->
       Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
@@ -162,6 +163,12 @@ let operational_mock_with_mbox'' ?(platform = platform) f =
             Lwt_mvar.put m (Ok (f cb)) >>= fun () -> go ()
           in
           go ());
+      continuation state >|= fun _ ->
+      enable_access_log_debug ();
+      (kv, state) )
+
+let operational_mock_with_mbox'' =
+  unprovisioned_mock_with_mbox ~continuation:(fun state ->
       Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
         Ptime.epoch
       >>= fun _ ->
@@ -170,10 +177,7 @@ let operational_mock_with_mbox'' ?(platform = platform) f =
       >>= fun _ ->
       Hsm.User.add_tag state (user "operator") ~tag:"berlin" >>= fun _ ->
       Hsm.User.add state (user "backup") ~role:`Backup
-        ~passphrase:"backupUserPassphrase" ~name:"backup"
-      >|= fun _ ->
-      enable_access_log_debug ();
-      (kv, state) )
+        ~passphrase:"backupUserPassphrase" ~name:"backup")
 
 let operational_mock_with_mbox' ?platform f =
   operational_mock_with_mbox'' ?platform f |> snd
@@ -223,8 +227,11 @@ let mock_diagnose_failed = function
   | Hsm.Diagnose -> Hsm.DiagnoseResult mock_diagnose_error
   | _ -> Hsm.EmptyResult
 
-let failed_mock () =
-  let kv, t = operational_mock_with_mbox'' mock_diagnose_failed in
+let failed_mock ?(provisioned = true) () =
+  let kv, t =
+    if provisioned then operational_mock_with_mbox'' mock_diagnose_failed
+    else unprovisioned_mock_with_mbox mock_diagnose_failed
+  in
   Lwt_main.run
     (let open Lwt_result.Infix in
      (* sent two failure events separated in time by at least the failure
@@ -5519,6 +5526,31 @@ let cluster_force_new_ok =
   request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`No_content
 
+let cluster_force_new_unauthenticated_fails =
+  Alcotest.test_case
+    "a request for /cluster/force-new in the failed state produces 401 when \
+     not authenticated"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock () in
+  request ~meth:`POST ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`Unauthorized
+
+let cluster_force_new_unprovisioned_unauthenticated_fails =
+  Alcotest.test_case
+    "a request for /cluster/force-new in the failed state produces 401 if \
+     authenticated with 'unlock' user and no password"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock ~provisioned:false () in
+  (* passing no auth at all is still invalid *)
+  request ~meth:`POST ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`Unauthorized;
+  (* passing auth with unlock user and any password fails *)
+  let headers = auth_header "unlock" "" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`Unauthorized
+
 let cluster_member_ops_not_etcd =
   Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
     (fun () ->
@@ -6198,7 +6230,12 @@ let () =
       (* the spaces trigger alcotest to do long line output*)
       ("/                                               ", [ empty ]);
       ("/health/alive", [ health_alive_ok ]);
-      ("/cluster/force-new", [ cluster_force_new_ok ]);
+      ( "/cluster/force-new",
+        [
+          cluster_force_new_ok;
+          cluster_force_new_unauthenticated_fails;
+          cluster_force_new_unprovisioned_unauthenticated_fails;
+        ] );
       ( "/health/diagnose",
         [
           health_diagnose_operational_ok;

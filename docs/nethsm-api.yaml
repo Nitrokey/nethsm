@@ -1284,7 +1284,7 @@ paths:
         **WARNING** this will restore data only up to the last snapshot, and will result in data loss for any unconfirmed writes, or writes that occured on other NetHSM nodes that are now unreachable.
         This call is unauthenticated and available only in the Failed state. Before using this command it is recommended that you attempt to heal the cluster's network connectivity first and restore quorum.
         To that end, use the /health/diagnose endpoint to understand to cause of the current failure.
-        As it is potentially destructive, this operation requires authentication even in *Failed* state, which differs from *Operational* authentication. The user *MUST* be `unlock` and the password *MUST* be the last known unlock passphrase. If the NetHSM has not been provisioned yet or the unlock passphrase has not been changed after an update to 5.0, authentication is not needed.
+        As it is potentially destructive, this operation requires authentication even in *Failed* state, which differs from *Operational* authentication. The user *MUST* be `unlock` and the password *MUST* be the last known unlock passphrase. When upgrading to v5.0, this will only work after having unlocked the HSM at least once.
       x-annotation-role:
         - FailedUnlock
       x-annotation-state:
