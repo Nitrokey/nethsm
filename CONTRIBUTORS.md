@@ -11,4 +11,6 @@
 * Lucas Pluvinage <lucas@tarides.com>
 * Nils Ponsard <nilsponsard@gmail.com>
 * Stefanie Schirmer <sschirme@gmail.com>
+* Virgile Robles <virgile@tarides.com>
+* Edwin Török <edwin@tarides.com>
 * Jan Suhr <jan@nitrokey.com>
