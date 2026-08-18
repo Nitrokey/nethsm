@@ -1011,18 +1011,6 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let unlock_with_device_key kv ~device_key = unlock kv ~device_key
 
-  let unlock_with_passphrase t ~passphrase =
-    let open Lwt_result.Infix in
-    internal_server_error Read "Get passphrase salt" Config_store.pp_error
-      (Config_store.get t.config_store Config_store.Unlock_salt)
-    >>= fun salt ->
-    let pass_key = Crypto.key_of_passphrase ~salt passphrase in
-    let device_key = t.device_key in
-    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
-    unlock ~domain_store ~config_store:t.config_store
-      ~cache_settings:t.cache_settings ~device_key ~pass_key ()
-    >|= fun state' -> t.state <- state'
-
   let check_unlock_passphrase t passphrase =
     let** salt =
       internal_server_error Read "Get passphrase salt" Config_store.pp_error
@@ -2828,6 +2816,31 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       set_local_config t
   end
+
+  let unlock_with_passphrase t ~passphrase =
+    let open Lwt_result.Infix in
+    internal_server_error Read "Get passphrase salt" Config_store.pp_error
+      (Config_store.get t.config_store Config_store.Unlock_salt)
+    >>= fun salt ->
+    let pass_key = Crypto.key_of_passphrase ~salt passphrase in
+    let device_key = t.device_key in
+    let domain_store = Domain_key_store.connect t.kv t.system_info.deviceId in
+    unlock ~domain_store ~config_store:t.config_store
+      ~cache_settings:t.cache_settings ~device_key ~pass_key ()
+    >>= fun state' ->
+    t.state <- state';
+    match (t.failed_unlock_salt, t.failed_unlock_digest) with
+    | Some _, Some _ -> Lwt_result.return ()
+    | None, _ | _, None ->
+        (* if failed_unlock attributes are not set (e.g. after an update
+           from < v5.0, generate a salt and store the passphrase now *)
+        let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
+        let failed_unlock_digest =
+          Crypto.stored_passphrase ~salt:failed_unlock_salt passphrase
+        in
+        t.failed_unlock_salt <- Some failed_unlock_salt;
+        t.failed_unlock_digest <- Some failed_unlock_digest;
+        Config.set_local_config t >>= fun () -> Lwt_result.return ()
 
   let network_configuration = Config.network
 

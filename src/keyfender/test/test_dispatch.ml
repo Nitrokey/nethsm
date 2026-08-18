@@ -770,9 +770,10 @@ let system_backup_and_restore_ok =
       Alcotest.(
         check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
       let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+      let expect = debug "caching config to the platform" in
       let hsm_state'' =
         request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
-          "/unlock"
+          ~expect "/unlock"
         |> returns_empty' ~with_status:`No_content
       in
       Alcotest.(
@@ -899,6 +900,7 @@ let system_restore_v0_backup_unattended ~changed_devkey =
       info "Applying post unlock migrations"
       ^ info "migrating /config/backup-key"
       ^ info "migrating /config/backup-salt"
+      ^ debug "caching config to the platform"
     in
     if changed_devkey then (
       Alcotest.(
@@ -921,8 +923,11 @@ let system_restore_v0_backup_unattended ~changed_devkey =
     request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
     |> returns_empty' ~with_status:`No_content
   in
+  let expect =
+    if not changed_devkey then debug "caching config to the platform" else ""
+  in
   let hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock" ~expect
     |> returns_empty' ~with_status:`No_content
   in
   let headers = auth_header "backup" "backupUserPassphrase" in
@@ -1019,6 +1024,7 @@ let system_restore_v0_backup ~changed_devkey =
     info "Applying post unlock migrations"
     ^ info "migrating /config/backup-key"
     ^ info "migrating /config/backup-salt"
+    ^ debug "caching config to the platform"
   in
   let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
@@ -1392,9 +1398,10 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
   in
   assert (Hsm.state hsm_state' = `Locked);
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  let expect = debug "caching config to the platform" in
   let hsm_state' =
     request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:hsm_state'
-      "/unlock"
+      ~expect "/unlock"
     |> returns_empty' ~with_status:`No_content
   in
   assert (Hsm.state hsm_state' = `Operational);
@@ -1697,9 +1704,10 @@ let unlock_json = {|{ "passphrase": "test1234Passphrase" }|}
 
 let unlock_ok =
   "a request for /unlock unlocks the HSM" @? fun () ->
+  let expect = debug "caching config to the platform" in
   match
     request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ())
-      "/unlock"
+      ~expect "/unlock"
   with
   | hsm_state, Some (`No_content, _, _, _) -> Hsm.state hsm_state = `Operational
   | _ -> false
@@ -1726,9 +1734,10 @@ let unlock_failed_two =
 
 let unlock_twice =
   "the first request for /unlock unlocks the HSM, the second fails" @? fun () ->
+  let expect = debug "caching config to the platform" in
   match
     request ~meth:`POST ~body:(`String unlock_json) ~hsm_state:(locked_mock ())
-      "/unlock"
+      ~expect "/unlock"
   with
   | hsm_state, Some (`No_content, _, _, _) -> (
       match
