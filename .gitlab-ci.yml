@@ -4,7 +4,6 @@ variables:
   USE_CCACHE: 1
   CCACHE_DIR: /downloads/ccache
   GIT_LFS_SKIP_SMUDGE: 1
-  PUSH: "push=true"
   CI_INSTALLER_IMG: DANGER-fast-factory-reset.img
   FF_SCRIPT_SECTIONS: "true"
 
@@ -72,12 +71,13 @@ build_builder_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
-        # PUSH: "push=false"
         NO_CACHE: "--no-cache"
     - if: $BUILDER_TAG != "latest"
   stage: prepare
   needs: []
   image: docker:cli
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
     - >-
       [ -n "$NO_CACHE" ] &&  rm -rf /downloads/*
@@ -87,18 +87,19 @@ build_builder_image:
       -t ${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
       --build-arg COMMIT_ID=${CI_COMMIT_SHORT_SHA}
       src/container/builder/
+    - >-
+      docker push ${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHORT_SHA}
 
 build_container_test_image:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        PUSH: "push=false"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   needs:
     - job: build_builder_image
       optional: true
   stage: build
   image: docker:cli
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
     - >-
       docker build --progress=plain
@@ -106,12 +107,10 @@ build_container_test_image:
       -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
       -f src/container/alpine/Dockerfile
       .
+    - if [ $CI_PIPELINE_SOURCE != "schedule" ]; then docker push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}; fi
 
 build_container_production_image:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        PUSH: "push=false"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   needs:
     - job: build_builder_image
@@ -557,9 +556,6 @@ push_github_mirror:
 
 clustering_test:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        PUSH: "push=false"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   stage: container_tests
   variables:
@@ -587,9 +583,6 @@ clustering_test:
 integration_test_sdk_py:
   allow_failure: true
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        PUSH: "push=false"
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   stage: container_tests
   needs:
