@@ -1,3 +1,6 @@
+# 5.0 (2026-08-18)
+* Pre-release version
+
 # 4.0 (2026-04-25)
 
 * Add IPv6 support
