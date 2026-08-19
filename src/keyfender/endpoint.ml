@@ -19,9 +19,14 @@ struct
     let code = Hsm.error_to_code e in
     respond_error_raw (code, msg) rd
 
+  (* RFC 9110: 1xx, 204 and 304 responses must not carry a message body. *)
+  let status_allows_body code =
+    not (code = 204 || code = 304 || (code >= 100 && code < 200))
+
   let respond_status (e, msg) rd =
     let code = Cohttp.Code.code_of_status e in
-    respond_error_raw (code, msg) rd
+    if status_allows_body code then respond_error_raw (code, msg) rd
+    else Wm.respond ~body:`Empty code rd
 
   let err_to_bad_request ok rd = function
     | Error m -> respond_error (Bad_request, m) rd
