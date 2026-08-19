@@ -4161,11 +4161,13 @@ let keys_key_get =
                      && List.length a = 2
                  | _ -> false)
                xs
-          && List.exists
+          && List.for_all
                (fun (k, v) ->
-                 k = "label" && match v with `String _ -> true | _ -> false)
+                 k <> "label" || match v with `String _ -> true | _ -> false)
                xs
-          && List.length xs = 6
+          &&
+          let len = List.length xs in
+          len == 5 || len == 6
       | _ -> false)
   | _ -> false
 

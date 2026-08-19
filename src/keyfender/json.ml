@@ -585,7 +585,7 @@ type public_key = {
   operations : int;
   public : (Yojson.Safe.t[@default `Null]);
   restrictions : restrictions;
-  label : Label.t;
+  label : Label.t; [@default Label.empty]
 }
 [@@deriving to_yojson]
 
