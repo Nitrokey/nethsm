@@ -2,12 +2,25 @@
 
 source "$(dirname $0)/common_functions.sh"
 
+# PID of the etcd instance we start. Tests may run in parallel on the same
+# node, so we must only ever kill the etcd we started ourselves, never other
+# etcd processes belonging to concurrent test runs.
+ETCD_PID=""
+
+kill_etcd() {
+    local sig="${1:-TERM}"
+    if [ -n "$ETCD_PID" ]; then
+        kill "-$sig" "$ETCD_PID" 2>/dev/null
+        wait "$ETCD_PID" 2>/dev/null
+        ETCD_PID=""
+    fi
+}
+
 echo
 echo "=== Hardware tests - IPv6 ==="
 echo
 
-# make sure there is no remnant etcd polluting the test
-pkill -9 etcd
+# clean up any leftover data dir from a previous run of this test
 rm -rf witness.etcd
 
 STATE=$(GET /v1/health/state)
@@ -105,14 +118,15 @@ tar xf "$etcd_name.tar.gz"
 
 cleanup_etcd() {
     echo "killing etcd due to TRAP"
-    pkill -9 etcd
+    kill_etcd KILL
     rm -rf witness.etcd
 }
 
-trap cleanup_etcd EXIT # stop etcd no matter what at the end
+trap cleanup_etcd EXIT INT TERM # stop etcd no matter what at the end
 
 echo "- start etcd"
 "$etcd_name/etcd" --config-file witness.conf.yml &
+ETCD_PID=$!
 
 function wait_join() {
 
@@ -213,7 +227,7 @@ echo "- remove witness cleanly"
 DELETE_admin "/v1/cluster/members/$WITNESS_ID"
 
 echo "- killing etcd voluntarily"
-pkill etcd
+kill_etcd
 rm -rf witness.etcd
 }
 
@@ -229,6 +243,7 @@ generate_witness_conf
 
 echo "- start etcd"
 "$etcd_name/etcd" --config-file witness.conf.yml &
+ETCD_PID=$!
 
 wait_join
 
@@ -250,7 +265,7 @@ POST_admin /v1/keys/generate <<EOF
 EOF
 
 echo "- simulating failure"
-pkill -9 etcd
+kill_etcd KILL
 rm -rf witness.etcd
 x=0
 while test $(GET /v1/health/state | jq -r .state) != "Failed"; do
@@ -315,6 +330,7 @@ generate_witness_conf
 
 echo "- start etcd"
 "$etcd_name/etcd" --config-file witness.conf.yml &
+ETCD_PID=$!
 
 wait_join
 
@@ -372,6 +388,7 @@ start_etcd () {
         --initial-advertise-peer-urls "https://[fc00:22:1::100]:2380" \
         --listen-peer-urls "https://0.0.0.0:2380" \
         --advertise-client-urls "" --listen-client-urls http://127.0.0.1:2379 &
+    ETCD_PID=$!
 
     while ! curl -s http://127.0.0.1:2379/readyz; do sleep 1; done # wait for etcd to start
 }
@@ -441,7 +458,7 @@ echo "- kill etcd and wait for HSM to fail"
 
 # kill etcd, this should make the HSM unhealthy
 # to avoid race condition with .running below, has to be -9
-pkill -9 etcd
+kill_etcd KILL
 
 GET /v1/health/diagnose >diagnose.out
 RUNNING=$(jq -r .clusterState.running <diagnose.out)
@@ -487,7 +504,7 @@ done
 
 echo "- kill witness again"
 # kill etcd one last time
-pkill etcd
+kill_etcd
 rm -rf witness.etcd
 
 x=0
