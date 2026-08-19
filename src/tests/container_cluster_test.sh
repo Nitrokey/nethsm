@@ -241,7 +241,7 @@ GET_admin /v1/keys/keyN3 > /dev/null
 echo "check the cluster CA cannot be changed during operation, this should fail"
 ! (curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem") || exit 1
-echo 
+echo
 
 # shutdown N3, to simulate a failure in a 2-node cluster. Eventually this should
 # put N4 in Failed mode
@@ -277,7 +277,7 @@ done
 # a race condition in the test, so only fetch the diagnostic
 GET /v1/health/diagnose
 
-POST /v1/cluster/force-new <<EOF
+POST /v1/cluster/force-new <<EOF || true
 EOF
 
 echo "waiting for N4 to finish rebooting..."
