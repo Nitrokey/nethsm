@@ -3548,6 +3548,8 @@ components:
           $ref: "#/components/schemas/ID"
         restrictions:
           $ref: "#/components/schemas/KeyRestrictions"
+        label:
+          $ref: "#/components/schemas/KeyLabel"
       required:
         - mechanisms
         - type
