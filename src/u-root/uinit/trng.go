@@ -146,7 +146,7 @@ func trngLoop(trng io.Reader) {
 		packet := append(buf, ts[:]...)
 		_, err = keyfender.Write(packet)
 		if err != nil {
-			log.Printf("Sending entropy failed: %v", err)
+			log.Printf("Sending entropy + time failed: %v", err)
 		}
 	}
 

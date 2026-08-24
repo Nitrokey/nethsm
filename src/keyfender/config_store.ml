@@ -26,6 +26,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Backup_key : string k
     | Log_config : Json.log k
     | Time_offset : Ptime.span k
+        [@ocaml.deprecated "platform time is now the reference"]
     | Unattended_boot : bool k
     | Pending_unlock_migrations : migrations k
     | Ntp_ip : string k
@@ -42,7 +43,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Backup_salt -> "backup-salt"
     | Backup_key -> "backup-key"
     | Log_config -> "log-config"
-    | Time_offset -> "time-offset"
+    | (Time_offset [@ocaml.warning "-3"]) -> "time-offset"
     | Unattended_boot -> "unattended-boot"
     | Pending_unlock_migrations -> "pending-unlock-migrations"
     | Ntp_ip -> "ntp-ip"
@@ -61,7 +62,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | "backup-salt" -> Some (P Backup_salt)
     | "backup-key" -> Some (P Backup_key)
     | "log-config" -> Some (P Log_config)
-    | "time-offset" -> Some (P Time_offset)
+    | "time-offset" -> Some (P Time_offset [@ocaml.warning "-3"])
     | "unattended-boot" -> Some (P Unattended_boot)
     | "pending-unlock-migrations" -> Some (P Pending_unlock_migrations)
     | "ntp-ip" -> Some (P Ntp_ip)
@@ -95,7 +96,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Backup_key, s -> s
     | Log_config, (log : Json.log) ->
         Json.log_to_yojson log |> Yojson.Safe.to_string
-    | Time_offset, span -> (
+    | (Time_offset [@ocaml.warning "-3"]), span -> (
         match Ptime.Span.to_int_s span with
         | Some s -> string_of_int s
         | None -> "0")
@@ -151,7 +152,7 @@ module Make (KV : Kv_ext.Platform) = struct
     | Log_config ->
         Json.decode Json.log_of_yojson data
         |> Result.map_error (fun s -> `Msg s)
-    | Time_offset -> (
+    | (Time_offset [@ocaml.warning "-3"]) -> (
         try Ok (Ptime.Span.of_int_s (int_of_string data))
         with Failure _ -> Error (`Msg "invalid time offset"))
     | Unattended_boot -> (
@@ -174,9 +175,11 @@ module Make (KV : Kv_ext.Platform) = struct
     | Cluster_CA (* the root CA must be shared to maintain communication *)
     | Backup_key | Backup_salt | Restore_in_progress ->
         true
-    | Time_offset (* offset might be different for different hardware *)
-    | Unlock_salt | Certificate | Private_key | Ip_config | Log_config
-    | Unattended_boot | Pending_unlock_migrations | Ntp_ip | Nts_name ->
+    | (Time_offset
+       [@ocaml.warning "-3"]
+       (* offset might be different for different hardware *)) | Unlock_salt
+    | Certificate | Private_key | Ip_config | Log_config | Unattended_boot
+    | Pending_unlock_migrations | Ntp_ip | Nts_name ->
         false
 
   (* "early" configs cannot be encrypted with the domain key, as they are
@@ -188,8 +191,9 @@ module Make (KV : Kv_ext.Platform) = struct
     | Ip_config (* needed for clients to talk to us *)
     | Log_config (* used at boot, though could be late if needed *)
     | Unattended_boot (* needed at boot *)
-    | Time_offset
-      (* kept early so the boot-time migration can read it before unlock *)
+    | (Time_offset
+       [@ocaml.warning "-3"]
+       (* kept early so the boot-time migration can read it before unlock *))
     | Version (* needed immediately at boot for migrations *)
     | Restore_in_progress (* no associated value *)
     | Pending_unlock_migrations
@@ -430,7 +434,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let* () = remove t Private_key in
     let* () = remove t Ip_config in
     let* () = remove t Log_config in
-    let* () = remove t Time_offset in
+    let* () = (remove t Time_offset [@ocaml.warning "-3"]) in
     let* () = remove t Unattended_boot in
     let* () = remove t Pending_unlock_migrations in
     let* () = remove t Ntp_ip in
@@ -469,7 +473,7 @@ module Make (KV : Kv_ext.Platform) = struct
       let* private_key = get_opt' t Private_key in
       let* ip_config = get_opt' t Ip_config in
       let* log_config = get_opt' t Log_config in
-      let* time_offset = get_opt' t Time_offset in
+      let* time_offset = (get_opt' t Time_offset [@ocaml.warning "-3"]) in
       let* unattended_boot = get_opt' t Unattended_boot in
       let* ntp_ip = get_opt' t Ntp_ip in
       let* nts_name = get_opt' t Nts_name in
@@ -501,7 +505,7 @@ module Make (KV : Kv_ext.Platform) = struct
         let* () = set_opt t Private_key b.private_key in
         let* () = set_opt t Ip_config b.ip_config in
         let* () = set_opt t Log_config b.log_config in
-        let* () = set_opt t Time_offset b.time_offset in
+        let* () = set_opt t (Time_offset [@ocaml.warning "-3"]) b.time_offset in
         let* () = set_opt t Unattended_boot b.unattended_boot in
         let* () = set_opt t Ntp_ip b.ntp_ip in
         let* () = set_opt t Nts_name b.nts_name in
@@ -644,7 +648,7 @@ module Make (KV : Kv_ext.Platform) = struct
         migrate_generic Backup_key >>= fun () ->
         if not partial then
           (* Ip_config and Log_config are migrated and moved at the same time *)
-          migrate_generic Time_offset >>= fun () ->
+          (migrate_generic Time_offset [@ocaml.warning "-3"]) >>= fun () ->
           migrate_generic Certificate >>= fun () ->
           migrate_generic Private_key >>= fun () ->
           migrate_generic Unattended_boot >>= fun () ->

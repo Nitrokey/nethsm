@@ -1338,7 +1338,7 @@ paths:
         The new node is added as a learner. Currently there is only 1 learner supported in a NetHSM cluster at a time, attempting to add another will return an HTTP 409 failure.
         A learner node observes changes in the cluster, but is not part of the quorum yet.
 
-       *WARNING:*  The newly added node needs to be promoted by using the 'POST /cluster/members/{MemberID}/promote' API, where '{MemberID}' is returned by the 'POST /cluster/members' API above.
+        *WARNING:*  The newly added node needs to be promoted by using the 'POST /cluster/members/{MemberID}/promote' API, where '{MemberID}' is returned by the 'POST /cluster/members' API above.
         Note that currently this API waits for the promotion to complete before returning, so the promotion API
         needs to be invoked concurrently with the join API.
       security:
@@ -3156,8 +3156,7 @@ components:
     ClusterLogList:
       description: A list of recent log messages from etcd on the current node.
       example:
-        - 
-          level: "error"
+        - level: "error"
           msg: "Mock: no etcd"
       type: array
       items:
@@ -3185,8 +3184,8 @@ components:
         - totalSize
     ClusterAddReq:
       example:
-          urls:
-            - https://192.168.1.2:2380
+        urls:
+          - https://192.168.1.2:2380
       type: object
       properties:
         urls:
@@ -3521,19 +3520,18 @@ components:
         including the process running state, exit code, and recent logs.
       example:
         clusterLogs:
-          -
-            level: "error"
+          - level: "error"
             msg: "Mock: no etcd"
         clusterState:
-            running: false
+          running: false
       type: object
       properties:
         clusterLogs:
-          $ref: '#/components/schemas/ClusterLogList'
+          $ref: "#/components/schemas/ClusterLogList"
         clusterSnapshot:
-          $ref: '#/components/schemas/ClusterSnapshot'
+          $ref: "#/components/schemas/ClusterSnapshot"
         clusterState:
-          $ref: '#/components/schemas/ClusterState'
+          $ref: "#/components/schemas/ClusterState"
       required:
         - clusterLogs
         - clusterState
@@ -3879,10 +3877,10 @@ components:
       properties:
         ntpIP:
           type: string
-          description: IP address (v4 or v6) of the NTP server.
+          description: IP address (v4 or v6) of the NTP server. If absent, means NTP is not configured.
         ntsName:
           type: string
-          description: Hostname of the NTS server (enables Network Time Security).
+          description: Hostname of the NTS server (enables Network Time Security). If absent, means NTS is not configured.
     TimeConfig:
       example:
         time: "2018-10-30T11:20:50Z"

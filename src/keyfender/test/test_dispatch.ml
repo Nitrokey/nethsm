@@ -2760,28 +2760,27 @@ let config_ntp_ok =
       Alcotest.(check string) "default ntp config" "{}" body)
 
 let config_ntp_set_ok =
-  "PUT on /config/ntp succeeds" @? fun () ->
-  let new_ntp = {|{"ntpIP":"192.168.1.1","ntsName":"nts.example.com"}|} in
-  let hsm_state = operational_mock_with_mbox () in
-  match
-    admin_put_request ~hsm_state
-      ~expect:(debug "caching config to the platform")
-      ~body:(`String new_ntp) "/config/ntp"
-  with
-  | hsm_state, Some (`No_content, _, _, _) -> (
-      match
+  Alcotest.test_case "PUT on /config/ntp succeeds" `Quick (fun () ->
+      let new_ntp = {|{"ntpIP":"192.168.1.1","ntsName":"nts.example.com"}|} in
+      let hsm_state =
+        admin_put_request
+          ~hsm_state:(operational_mock_with_mbox ())
+          ~expect:(debug "caching config to the platform")
+          ~body:(`String new_ntp) "/config/ntp"
+        |> returns_empty' ~with_status:`No_content
+      in
+      let body =
         request ~hsm_state ~meth:`GET ~headers:admin_headers "/config/ntp"
-      with
-      | _, Some (`OK, _, `String body, _) -> String.equal body new_ntp
-      | _ -> false)
-  | _ -> false
+        |> returns_string ~with_status:`OK
+      in
+      Alcotest.(check string) "returned ntp config" new_ntp body)
 
 let config_ntp_set_fail =
-  "PUT with invalid body on /config/ntp fails" @? fun () ->
-  let new_ntp = {|{"ntpIP":12345}|} in
-  match admin_put_request ~body:(`String new_ntp) "/config/ntp" with
-  | _, Some (`Bad_request, _, _, _) -> true
-  | _ -> false
+  Alcotest.test_case "PUT with invalid body on /config/ntp fails" `Quick
+    (fun () ->
+      admin_put_request ~body:(`String {|{"ntpIP":12345}|}) "/config/ntp"
+      |> returns_string ~with_status:`Bad_request
+      |> ignore)
 
 let change_backup_passphrase =
   "set backup passphrase succeeds" @? fun () ->

@@ -1102,10 +1102,16 @@ module Make (KV : Kv_ext.Platform) = struct
      S-Platform by the caller. The key is deleted here regardless. *)
   let boot_config_store ~cache_settings config_store device_key =
     let open Lwt.Infix in
-    Config_store.get_opt config_store Time_offset >>= fun time_offset_r ->
+    Config_store.get_opt config_store (Time_offset [@ocaml.warning "-3"])
+    >>= fun time_offset_r ->
     let migration_time =
       match time_offset_r with
-      | Error _ | Ok None -> None
+      | Error e ->
+          Log.warn (fun m ->
+              m "failed to migrate time-offset config: %a" Config_store.pp_error
+                e);
+          None
+      | Ok None -> None
       | Ok (Some span) -> (
           Log.info (fun m -> m "migrating deprecated time-offset to S-Platform");
           let (`Raw now_raw) = Hsm_clock.now_raw () in
@@ -1119,7 +1125,8 @@ module Make (KV : Kv_ext.Platform) = struct
     (match time_offset_r with
       | Ok (Some _) ->
           Log.debug (fun m -> m "removed deprecated time-offset key");
-          Config_store.remove config_store Time_offset >|= ignore
+          Config_store.remove config_store (Time_offset [@ocaml.warning "-3"])
+          >|= ignore
       | _ -> Lwt.return_unit)
     >>= fun () ->
     let open Lwt_result.Infix in
@@ -2472,9 +2479,8 @@ module Make (KV : Kv_ext.Platform) = struct
     (* Send a (possibly partial) local_conf to S-Platform. Absent fields (None)
        keep their existing values on the platform side. *)
     let push_local_config conf t =
-      let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
       Logs.debug (fun f -> f "caching config to the platform");
-      let+ () = Lwt_mvar.put t.mbox (Set_local_config conf) in
+      let* () = Lwt_mvar.put t.mbox (Set_local_config conf) in
       Lwt_mvar.take t.res_mbox
       |> Lwt_result.map_error (fun msg ->
           Log.warn (fun m -> m "setting local config failed: %s" msg);
@@ -2485,14 +2491,9 @@ module Make (KV : Kv_ext.Platform) = struct
        join-cluster, restore, and other operations that establish the full
        platform state. time_ms is forwarded to S-Platform to set its clock. *)
     let set_local_config ?(time_ms = None) t =
-      let ( let+ ) a = Lwt_result.bind (Lwt_result.ok a) in
-      let+ tls_cluster_ca = tls_cluster_ca t in
+      let* tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
-      (* let time_offset_s =
-        now () |> Ptime.to_span |> Ptime.Span.to_int_s
-        |> Option.value ~default:0
-      in *)
-      let+ tls_cert = tls_cert_pem t in
+      let* tls_cert = tls_cert_pem t in
       let tls_key = t.key |> X509.Private_key.encode_pem in
       let** network_config =
         internal_server_error Read "Read network config" Config_store.pp_error
@@ -2862,19 +2863,29 @@ module Make (KV : Kv_ext.Platform) = struct
       let open Lwt.Infix in
       Config_store.get_opt t.config_store Ntp_ip >>= fun ntp_ip_r ->
       Config_store.get_opt t.config_store Nts_name >>= fun nts_name_r ->
-      let ntp_ip = Result.value ~default:None ntp_ip_r in
-      let nts_name = Result.value ~default:None nts_name_r in
+      let unwrap s = function
+        | Ok x -> x
+        | Error e ->
+            Log.warn (fun m ->
+                m "error %a while getting %s configuration"
+                  Config_store.pp_error e s);
+            None
+      in
+      let ntp_ip = unwrap "Ntp_ip" ntp_ip_r in
+      let nts_name = unwrap "Nts_name" nts_name_r in
       Lwt.return { Json.ntpIP = ntp_ip; ntsName = nts_name }
 
     let set_ntp t (cfg : Json.ntp_config) =
       let open Lwt_result.Infix in
       let set_or_remove k = function
         | Some v ->
-            internal_server_error Write "Write NTP config"
+            internal_server_error Write
+              (Fmt.str "Write %s" (Config_store.name k))
               Config_store.pp_write_error
               (Config_store.set t.config_store k v)
         | None ->
-            internal_server_error Write "Remove NTP config"
+            internal_server_error Write
+              (Fmt.str "Remove %s" (Config_store.name k))
               Config_store.pp_write_error
               (Config_store.remove t.config_store k)
       in

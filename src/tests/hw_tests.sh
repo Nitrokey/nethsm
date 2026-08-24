@@ -98,12 +98,6 @@ EOM
 
 make -f cert.make witness.pem
 
-# # ensure no clock drift
-# SYSTEM_TIME="$(date -u +%FT%TZ)"
-# PUT_admin /v1/config/time << EOM
-# {"time": "$SYSTEM_TIME"}
-# EOM
-
 sleep 2
 
 function generate_witness_conf () {

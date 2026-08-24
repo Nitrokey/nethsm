@@ -912,19 +912,19 @@ let network_config_to_string = function
    PUT /config/time request. Must be in sync with localConfUpdate in
    src/u-root/internal/localconf/localconf.go *)
 type local_conf = {
-  tls_cert : string option; [@default None] [@key "tls_cert"]
-  tls_key : string option; [@default None] [@key "tls_key"]
+  tls_cert : string option; [@default None]
+  tls_key : string option; [@default None]
   tls_cluster_ca : string option; [@default None]
-  device_id : string option; [@default None] [@key "device_id"]
+  device_id : string option; [@default None]
   network_config : network option;
       [@default None]
       [@to_yojson network_config_to_string]
       [@ref "network_config"]
   failed_unlock_salt : string option; [@default None]
   failed_unlock_digest : string option; [@default None]
-  ntp_ip : string option; [@default None] [@key "ntp_ip"]
-  nts_name : string option; [@default None] [@key "nts_name"]
-  time_ms : int64 option; [@default None] [@key "time_ms"]
+  ntp_ip : string option; [@default None]
+  nts_name : string option; [@default None]
+  time_ms : int64 option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 

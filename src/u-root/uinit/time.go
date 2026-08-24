@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"syscall"
 	"time"
@@ -142,8 +143,8 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.cancelNTP = cancel
-	firstErr := make(chan error)
-	go func(firstErr chan<- error) {
+	errCh := make(chan error)
+	go func(firstErrCh chan<- error) {
 		const maxInitialAttempts = 4
 		interval := time.Second
 		attempt := 0
@@ -154,14 +155,14 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 			} else {
 				log.Printf("NTP sync with %s(%s) successful", ntpIP, ntsName)
 			}
-			if firstErr != nil {
+			if firstErrCh != nil {
 				attempt++
 				if err == nil || err == ntp.ErrKissOfDeath || attempt >= maxInitialAttempts {
-					firstErr <- err
-					firstErr = nil
+					firstErrCh <- err
+					firstErrCh = nil
 				}
 			}
-			if firstErr == nil {
+			if firstErrCh == nil {
 				switch err {
 				case ntp.ErrKissOfDeath:
 					interval = kodNTPInterval
@@ -177,8 +178,8 @@ func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 			case <-time.After(interval):
 			}
 		}
-	}(firstErr)
-	return <-firstErr
+	}(errCh)
+	return <-errCh
 }
 
 func (t *timeTask) Run() {
@@ -189,8 +190,8 @@ func (t *timeTask) Run() {
 	}
 	t.lastConf = timeConfOf(&conf)
 
-	if derefStr(conf.NtpIP) != "" {
-		if err := t.startNTP(derefStr(conf.NtpIP), derefStr(conf.NtsName)); err != nil {
+	if t.lastConf.ntpIP != "" {
+		if err := t.startNTP(t.lastConf.ntpIP, t.lastConf.ntsName); err != nil {
 			log.Printf("Initial NTP sync failed: %v", err)
 		}
 	}
@@ -199,16 +200,17 @@ func (t *timeTask) Run() {
 
 	for req := range t.configCh {
 		var err error
-		full := localconf.Get()
+		fullConf := localconf.Get()
 
 		// Handle NTP config change.
-		newConf := timeConfOf(&full)
-		if newConf != t.lastConf {
+		newConf := timeConfOf(&fullConf)
+		if newConf.ntsName != "" && newConf.ntpIP == "" {
+			err = fmt.Errorf("NTS server name requires an NTP server IP to be configured as well")
+		} else if newConf != t.lastConf {
 			t.lastConf = newConf
 			if newConf.ntpIP != "" {
 				if syncErr := t.startNTP(newConf.ntpIP, newConf.ntsName); syncErr != nil {
-					log.Printf("NTP sync after config change failed: %v", syncErr)
-					err = syncErr
+					err = fmt.Errorf("NTP sync after config change failed: %w", syncErr)
 				}
 			} else if t.cancelNTP != nil {
 				t.cancelNTP()

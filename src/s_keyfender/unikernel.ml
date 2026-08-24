@@ -227,12 +227,13 @@ struct
         else
           let tail = String.sub data trng_block_len (len - trng_block_len) in
           let tail_len = String.length tail in
+          let trng_data = String.sub data 0 trng_block_len in
           if tail_len >= time_suffix_len then
             let tpm_end = tail_len - time_suffix_len in
             let tpm_data = String.sub tail 0 tpm_end in
             let time_bytes = String.sub tail tpm_end time_suffix_len in
-            (String.sub data 0 trng_block_len, tpm_data, Some time_bytes)
-          else (String.sub data 0 trng_block_len, tail, None)
+            (trng_data, tpm_data, Some time_bytes)
+          else (trng_data, tail, None)
       in
       let apply_platform_time time_bytes =
         (* Parse big-endian int64 milliseconds and set Keyfender's wall clock. *)
@@ -241,12 +242,11 @@ struct
           Bytes.get_int64_be b 0
         in
         let ptime_of_ms ms =
-          match
-            Ptime.Span.of_d_ps
-              Int64.
-                ( to_int (div ms 86_400_000L),
-                  mul (rem ms 86_400_000L) 1_000_000_000L )
-          with
+          let ms_per_day = 86_400_000L in
+          let ps_per_ms = 1_000_000_000L in
+          let days = Int64.(to_int (div ms ms_per_day)) in
+          let ps = Int64.(mul (rem ms ms_per_day) ps_per_ms) in
+          match Ptime.Span.of_d_ps (days, ps) with
           | None -> None
           | Some span -> Ptime.of_span span
         in
