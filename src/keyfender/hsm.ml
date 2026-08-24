@@ -4126,7 +4126,21 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let check_store_healthy store =
     let open Lwt.Infix in
-    let* baseline_healthy = KV.is_healthy store in
+    (* Don't fall into Failed state as soon as etcd is briefly unreachable at
+       boot (e.g. it is still starting up). Retry the health check quickly for
+       up to [boot_timeout] before giving up, so a slow-starting etcd still
+       results in a normal boot. *)
+    let boot_timeout = Duration.of_sec 5 in
+    let start = Mirage_mtime.elapsed_ns () in
+    let rec wait_healthy () =
+      KV.is_healthy store >>= function
+      | true -> Lwt.return true
+      | false ->
+          if Int64.sub (Mirage_mtime.elapsed_ns ()) start >= boot_timeout then
+            Lwt.return false
+          else Mirage_sleep.ns (Duration.of_ms 250) >>= wait_healthy
+    in
+    let* baseline_healthy = wait_healthy () in
     if not baseline_healthy then Lwt.return false
     else
       let ini = Mirage_kv.Key.v ".initialized" in
