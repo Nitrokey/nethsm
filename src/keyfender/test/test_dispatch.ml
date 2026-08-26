@@ -5197,6 +5197,26 @@ let keys_get_labels =
   and expected = [ "keyID"; "keyID2" ] in
   Alcotest.V1.(check' (list string) ~msg:"id list" ~expected ~actual)
 
+let keys_get_labels_prefix =
+  Alcotest.test_case "GET on /keys?label= correctly filters keys" `Quick
+  @@ fun () ->
+  let hsm_state =
+    hsm_with_labels
+      [
+        ("keyID", test_label);
+        ("keyID2", "unexpected");
+        ("keyID3", test_label);
+        ("unexpectedID", "unexpected");
+      ]
+  in
+  let actual =
+    request ~expect:"" ~hsm_state ~headers:admin_headers ~meth:`GET "/keys"
+      ~query:[ ("label", [ test_label ]) ]
+    |> returns_json id_list_of_yojson ~with_status:`OK
+    |> List.map (fun { id } -> id)
+  and expected = [ "keyID"; "keyID3" ] in
+  Alcotest.V1.(check' (list string) ~msg:"id list" ~expected ~actual)
+
 let keys_get_labels_namespaced =
   Alcotest.test_case "GET on /keys?label= correctly filters keys in a namespace"
     `Quick
@@ -6515,6 +6535,7 @@ let () =
           keys_get_restrictions_filtered_namespace;
           keys_get_restrictions_unfiltered;
           keys_get_labels;
+          keys_get_labels_prefix;
           keys_get_labels_namespaced;
           keys_post_json;
           keys_post_pem;
