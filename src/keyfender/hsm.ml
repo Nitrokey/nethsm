@@ -391,6 +391,12 @@ module Log = (val Logs.src_log hsm_src : Logs.LOG)
 let build_tag = String.trim [%blob "buildTag"]
 let software_version = String.trim [%blob "softwareVersion"]
 
+(* how long to keep retrying the etcd connection at boot before falling into
+   Failed state; shortened by test builds (fast_testing) via [set_boot_timeout]
+   so that etcd-less test cases don't pay the full delay. *)
+let boot_timeout = ref (Duration.of_sec 30)
+let set_boot_timeout t = boot_timeout := t
+
 module Make (KV : Kv_ext.Platform) = struct
   module Metrics = struct
     let db = Hashtbl.create 13
@@ -4141,15 +4147,14 @@ module Make (KV : Kv_ext.Platform) = struct
     let open Lwt.Infix in
     (* Don't fall into Failed state as soon as etcd is briefly unreachable at
        boot (e.g. it is still starting up). Retry the health check quickly for
-       up to [boot_timeout] before giving up, so a slow-starting etcd still
+       up to [!boot_timeout] before giving up, so a slow-starting etcd still
        results in a normal boot. *)
-    let boot_timeout = Duration.of_sec 5 in
     let start = Mirage_mtime.elapsed_ns () in
     let rec wait_healthy () =
       KV.is_healthy store >>= function
       | true -> Lwt.return true
       | false ->
-          if Int64.sub (Mirage_mtime.elapsed_ns ()) start >= boot_timeout then
+          if Int64.sub (Mirage_mtime.elapsed_ns ()) start >= !boot_timeout then
             Lwt.return false
           else Mirage_sleep.ns (Duration.of_ms 250) >>= wait_healthy
     in

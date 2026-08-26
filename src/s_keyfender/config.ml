@@ -76,12 +76,15 @@ let no_platform_key =
   in
   Key.(create "no-platform" Arg.(flag doc))
 
-let no_scrypt_key =
+let fast_testing_key =
   let doc =
-    Key.Arg.info ~doc:"Use fast insecure scrypt parameters for testing."
-      [ "no-scrypt" ]
+    Key.Arg.info
+      ~doc:
+        "Enable fast insecure settings for testing (fast scrypt parameters, \
+         short etcd boot timeout). Do not use in production."
+      [ "fast-testing" ]
   in
-  Key.(create "no-scrypt" Arg.(flag doc))
+  Key.(create "fast-testing" Arg.(flag doc))
 
 let memtrace_key =
   let doc =
@@ -116,7 +119,7 @@ let build_conf =
   in
   impl ~keys ~connect ~dune "Args.Conf.Make"
     (typ () @-> typ () @-> typ () @-> build_args)
-  $ bool_arg no_platform_key $ bool_arg no_scrypt_key
+  $ bool_arg no_platform_key $ bool_arg fast_testing_key
   $ bool_arg single_interface
 
 let main =

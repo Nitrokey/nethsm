@@ -347,7 +347,9 @@ struct
       if not (Args.start ()) then Lwt.fail_with "--start parameter required"
       else Lwt.return_unit
     in
-    if Conf_args.no_scrypt then Keyfender.Crypto.set_test_params ();
+    if Conf_args.fast_testing then (
+      Keyfender.Crypto.set_test_params ();
+      Keyfender.Hsm.set_boot_timeout (Duration.of_sec 1));
     let entropy_port = 4444 in
     let* () = startTrngListener internal_stack entropy_port in
     let* platform =

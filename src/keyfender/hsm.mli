@@ -395,3 +395,7 @@ end
 
 val build_tag : string
 val software_version : string
+
+val set_boot_timeout : int64 -> unit
+(** [set_boot_timeout s] sets the etcd boot connection timeout (see [boot]);
+    shortened by test builds (fast_testing). Must be called before [boot]. *)

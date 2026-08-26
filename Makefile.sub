@@ -102,7 +102,7 @@ KEYFENDER_CONFIG_ARGS ?=
 MAKE_ARGS := GMP_TARGET=kabylake-solo5-none
 else ifeq ($(XMODE),test)
 TARGET := unix
-KEYFENDER_CONFIG_ARGS ?= --no-platform --single-interface --bisect-ppx --no-scrypt
+KEYFENDER_CONFIG_ARGS ?= --no-platform --single-interface --bisect-ppx --fast-testing
 DUNE := OCAMLRUNPARAM=b dune
 DUNE_ARGS := --promote-install-files --instrument-with=bisect_ppx
 MAKE_ARGS := DUNE_INSTRUMENT_WITH=bisect_ppx

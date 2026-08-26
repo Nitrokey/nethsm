@@ -67,16 +67,16 @@ module Conf = struct
 
   module type S = sig
     val no_platform : bool
-    val no_scrypt : bool
+    val fast_testing : bool
     val single_interface : bool
   end
 
   module Make
       (No_platform : Bool)
-      (No_scrypt : Bool)
+      (Fast_testing : Bool)
       (Single_interface : Bool) : S = struct
     let no_platform = No_platform.v
-    let no_scrypt = No_scrypt.v
+    let fast_testing = Fast_testing.v
     let single_interface = Single_interface.v
   end
 end
