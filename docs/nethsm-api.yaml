@@ -459,6 +459,11 @@ paths:
           description: Only return keys that are can be used by the requester, according to restrictions.
           schema:
             type: string
+        - name: label
+          in: query
+          description: Only return keys that have a matching label, if this parameter is set to any value.
+          schema:
+            type: string
       security:
         - basic: []
       x-annotation-role:
