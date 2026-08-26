@@ -2322,21 +2322,41 @@ module Make (KV : Kv_ext.Platform) = struct
       let** list = member_list t in
       Lwt_result.return (List.length list >= 2)
 
+    let assert_cluster_ca_installed t =
+      let** cluster_ca_opt =
+        internal_server_error Read "Read cluster CA" Config_store.pp_error
+          (Config_store.get_opt t.config_store Cluster_CA)
+      in
+      match cluster_ca_opt with
+      | None ->
+          Lwt.return
+            (Error
+               ( Precondition_failed,
+                 "Please install a cluster CA before performing cluster \
+                  operations" ))
+      | Some _ -> Lwt_result.return ()
+
     let member_exists ~id t =
       let open Lwt_result.Infix in
       member_list t >|= fun member_list ->
       List.exists (fun member -> member.KV.Cluster.id = id) member_list
 
-    let member_remove ~id t = member_remove ~id t.kv >|= to_hsm_error
+    let member_remove ~id t =
+      let** () = assert_cluster_ca_installed t in
+      member_remove ~id t.kv >|= to_hsm_error
 
     let member_update ~id ~urls t =
+      let** () = assert_cluster_ca_installed t in
       member_update ~id ~urls t.kv >|= to_hsm_error
 
-    let member_promote ~id t = member_promote ~id t.kv >|= to_hsm_error
+    let member_promote ~id t =
+      let** () = assert_cluster_ca_installed t in
+      member_promote ~id t.kv >|= to_hsm_error
 
     let member_add ~urls t =
       (* prepare a joiner kit for the new node to be able to
          get the domain key *)
+      let** () = assert_cluster_ca_installed t in
       let** unlock_salt =
         internal_server_error Read "Read unlock salt" Config_store.pp_error
           (Config_store.get t.config_store Unlock_salt)
@@ -3146,14 +3166,7 @@ module Make (KV : Kv_ext.Platform) = struct
          configured *)
       with_write_lock (fun () ->
           (* refuse to join if CA is not set *)
-          let** cluster_ca = Lwt_result.ok (Config.tls_cluster_ca t) in
-          let** () =
-            match cluster_ca with
-            | None ->
-                Lwt.return
-                  (Error (Precondition_failed, "cluster-ca.pem must be set"))
-            | Some _cluster_ca -> Lwt_result.return ()
-          in
+          let** () = Cluster.assert_cluster_ca_installed t in
           (* ensure local cache is up to date *)
           let** () = Config.set_local_config t in
           (* backup local config to restore after join *)

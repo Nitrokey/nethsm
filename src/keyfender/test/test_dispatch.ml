@@ -5623,10 +5623,6 @@ let cluster_force_new_unprovisioned_unauthenticated_fails =
 let cluster_member_ops_not_etcd =
   Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
     (fun () ->
-      let check body =
-        Alcotest.(check string)
-          "error" "{\"message\":\"cluster error: backend is not etcd\"}" body
-      in
       let backup_body =
         {|{"newPassphrase" : "testtesttest", "currentPassphrase" : ""}|}
       in
@@ -5641,7 +5637,7 @@ let cluster_member_ops_not_etcd =
            "mock data"
            {|[{"id":"deadbeef","name":"mock","urls":[],"learner":false}]|};
       (* even when not implemented, we still check the JSON payload is
-         well-formed first *)
+         well-formed first, and the cluster CA is installed *)
       request ~meth:`POST ~hsm_state ~headers:admin_headers "/cluster/members"
       |> returns_string ~with_status:`Bad_request
       |> Alcotest.(check string)
@@ -5649,8 +5645,11 @@ let cluster_member_ops_not_etcd =
       let body = `String {|{"urls":["192.168.1.100"]}|} in
       request ~meth:`POST ~body ~hsm_state ~headers:admin_headers
         "/cluster/members"
-      |> returns_string ~with_status:`Bad_request
-      |> check)
+      |> returns_string ~with_status:`Precondition_failed
+      |> Alcotest.(check string)
+           "no CA"
+           "{\"message\":\"Please install a cluster CA before performing \
+            cluster operations\"}")
 
 let cluster_member_ops_admin_only =
   Alcotest.test_case "/cluster/members ops are admin-only" `Quick (fun () ->
@@ -5751,7 +5750,8 @@ let cluster_join_fail_no_ca =
       |> returns_string ~with_status:`Precondition_failed
       |> Alcotest.(
            check string "error msg"
-             "{\"message\":\"cluster-ca.pem must be set\"}"))
+             "{\"message\":\"Please install a cluster CA before performing \
+              cluster operations\"}"))
 
 let cluster_join_fail_invalid =
   Alcotest.test_case "POST /cluster/join fails when payload is invalid" `Quick
