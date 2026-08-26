@@ -3384,6 +3384,8 @@ components:
               $ref: "#/components/schemas/KeyMechanisms"
             restrictions:
               $ref: "#/components/schemas/KeyRestrictions"
+            label:
+              $ref: "#/components/schemas/KeyLabel"
         key_file:
           $ref: "#/components/schemas/PemPrivateKey"
     KeyPrivateData:
