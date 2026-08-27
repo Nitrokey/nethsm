@@ -301,7 +301,7 @@ This is supported on Linux and FreeBSD systems, and to a lesser extent on Mac (`
 
     ```
     opam repo add nethsm-default git+https://github.com/ocaml/opam-repository --dont-select
-    opam switch create nethsm 4.14.2 --repos nethsm-default
+    opam switch create nethsm 4.14.4 --repos nethsm-default
     eval $(opam env)
     ```
 

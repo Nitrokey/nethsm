@@ -27,7 +27,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,shar
   opam init -a --disable-sandboxing --bare
 EOF
 
-ARG ocaml_version="ocaml-variants.4.14.2+options ocaml-options-only-flambda"
+ARG ocaml_version="ocaml-variants.4.14.4+options ocaml-options-only-flambda"
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   OPAMJOBS=$(nproc) opam switch create default ${ocaml_version} &&
   opam switch set default

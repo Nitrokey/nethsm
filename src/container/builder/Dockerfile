@@ -187,7 +187,7 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 <<EOF
   set -ex
-  OPAMJOBS=$(nproc) opam switch create default ocaml-variants.4.14.2+options ocaml-options-only-flambda
+  OPAMJOBS=$(nproc) opam switch create default ocaml-variants.4.14.4+options ocaml-options-only-flambda
   opam switch set default
 EOF
 
