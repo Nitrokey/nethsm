@@ -33,10 +33,9 @@ variables:
 
 workflow:
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+$/
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
       when: never
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
       changes:
         paths: *builder_dep_paths
       variables:
@@ -66,7 +65,6 @@ stages:
   - test_hw
   - container_tests
   - commit
-  - deploy
   - fuzz
 
 build_builder_image:
@@ -94,8 +92,8 @@ build_builder_image:
 
 build_container_test_image:
   rules:
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
   needs:
     - job: build_builder_image
       optional: true
@@ -115,8 +113,8 @@ build_container_test_image:
 build_container_production_image:
   allow_failure: true
   rules:
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
   needs:
     - job: build_builder_image
       optional: true
@@ -136,7 +134,7 @@ commit_builder_image:
   rules:
     # - if: $CI_PIPELINE_SOURCE == "schedule"
     #   when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image: docker:cli
   needs:
@@ -156,7 +154,7 @@ commit_container_test_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   variables:
     IMAGE_NAME: "nitrokey/nethsm"
     IMAGE_TAG: "testing"
@@ -185,7 +183,7 @@ commit_container_production_image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image: docker:cli
   needs: []
@@ -199,37 +197,10 @@ commit_container_production_image:
       docker push ${CI_REGISTRY_IMAGE}/production:latest ;
       fi
 
-deploy_container_production_image:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+$/
-  stage: deploy
-  image:
-    name: quay.io/skopeo/stable:latest
-    entrypoint: [""]
-  variables:
-    DISTRIBUTION_REGISTRY_IMAGE: registry.git.nitrokey.com/distribution/nethsm
-    DISTRIBUTION_IMAGE_NAME: production
-  needs: []
-  script:
-    - >-
-      skopeo copy
-      --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
-      --dest-creds "$DISTRIBUTION_USER:$DISTRIBUTION_PASSWORD"
-      docker://$CI_REGISTRY_IMAGE/production:${CI_COMMIT_SHORT_SHA}
-      docker://$DISTRIBUTION_REGISTRY_IMAGE/$DISTRIBUTION_IMAGE_NAME:$CI_COMMIT_TAG
-    - >-
-      skopeo copy
-      --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
-      --dest-creds "$DISTRIBUTION_USER:$DISTRIBUTION_PASSWORD"
-      docker://$CI_REGISTRY_IMAGE/production:${CI_COMMIT_SHORT_SHA}
-      docker://$DISTRIBUTION_REGISTRY_IMAGE/$DISTRIBUTION_IMAGE_NAME:latest
-
 validate_api_spec_swagger:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     API_SPEC: "docs/nethsm-api.yaml"
     API_SPEC_DEBUG: "/tmp/nethsm-api-debug.log"
@@ -255,7 +226,7 @@ validate_api_spec_swagger:
 validate_api_spec_openapi_generator:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     API_SPEC: "docs/nethsm-api.yaml"
   stage: test
@@ -266,7 +237,7 @@ validate_api_spec_openapi_generator:
 
 test_keyfender:
   rules:
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null || $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   variables:
     MODE: test
   stage: test
@@ -291,7 +262,7 @@ test_keyfender:
 build_dev:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: dev
   stage: build
@@ -305,7 +276,7 @@ build_dev:
 build_muen_prodrive_hermes:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
     MUEN_HARDWARE: prodrive-hermes-1
@@ -330,7 +301,7 @@ build_muen_prodrive_hermes:
 build_muen_msi_z790:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   variables:
     MODE: muen
     MUEN_HARDWARE: msi-z790-1
@@ -376,7 +347,7 @@ build_muen_msi_z790:
 
 build_ci_installer_prodrive_hermes:
   rules:
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null || $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   stage: test_hw
   needs:
     - job: build_muen_prodrive_hermes
@@ -394,7 +365,7 @@ build_ci_installer_prodrive_hermes:
 
 build_ci_installer_msi_z790:
   rules:
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null || $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   stage: test_hw
   needs:
     - job: build_muen_msi_z790
@@ -413,9 +384,9 @@ build_ci_installer_msi_z790:
 test_muen_prodrive_hermes:
   tags:
     - "hermes"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule" || $CI_COMMIT_TAG == null
-      when: never
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     NETHSM_IP: 192.168.1.1
     BMC_IP: 192.168.144.2
@@ -481,9 +452,9 @@ test_muen_prodrive_hermes:
 test_muen_msi_z790:
   tags:
     - "z790"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule" || $CI_COMMIT_TAG
-      when: never
+  except:
+    variables:
+      - ($CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule")
   variables:
     NETHSM_IP: 192.168.1.1
     BMC_IP: 192.168.100.104
@@ -537,7 +508,7 @@ create_artifact_packages:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image:
     name: "${CI_REGISTRY_IMAGE}/builder:latest"
@@ -571,7 +542,7 @@ push_github_mirror:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH == $DEFAULT_BRANCH
   stage: commit
   image:
     name: "${CI_REGISTRY_IMAGE}/builder:latest"
@@ -588,8 +559,7 @@ push_github_mirror:
 
 clustering_test:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   stage: container_tests
   variables:
     NETHSM_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
@@ -616,8 +586,7 @@ clustering_test:
 integration_test_sdk_py:
   allow_failure: true
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH
   stage: container_tests
   needs:
     - job: build_container_test_image
