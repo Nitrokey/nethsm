@@ -1345,7 +1345,7 @@ paths:
         The new node is added as a learner. Currently there is only 1 learner supported in a NetHSM cluster at a time, attempting to add another will return an HTTP 409 failure.
         A learner node observes changes in the cluster, but is not part of the quorum yet.
 
-        *WARNING:*  The newly added node needs to be promoted by using the 'POST /cluster/members/{MemberID}/promote' API, where '{MemberID}' is returned by the 'POST /cluster/members' API above.
+        *WARNING:*  The newly added node needs to be promoted by using the 'POST /cluster/members/{MemberID}/promote' API, where '{MemberID}' is returned by the 'POST /cluster/members' API above (look for the ID of the only learner in the list).
         Note that currently this API waits for the promotion to complete before returning, so the promotion API
         needs to be invoked concurrently with the join API.
       security:
@@ -1415,16 +1415,12 @@ paths:
             Precondition failed. NetHSM was not *Operational* or a backup key
             has not been configured before.
       description: |
-        Declare a new member to the cluster. The response of this call must
-        be passed to a call to '/cluster/join' on the new member to finalize the join,
-        along with the backup passphrase.
-        A backup key must be configured prior to this call.
+        Declare a new member to the cluster. The response of this call (along
+        with the backup passphrase) must be passed to a call to '/cluster/join'
+        on the new member to continue the join, followed by a call to
+        '/cluster/members/{MemberID}/promote' to finalize it.
 
-        *WARNING*: adding a member will change the quorum needed for the cluster
-        to operate. If the quorum is not met anymore (e.g. when adding a second node)
-        to a one-node cluster, the cluster (and hence the HSM) will cease to operate until
-        that new member actually joins. If it doesn't, the NetHSM is lost and must be factory reset.
-        Make sure to backup before this operation.
+        A backup key must be configured prior to this call.
       requestBody:
         content:
           application/json:
