@@ -1,6 +1,6 @@
 # Dockerfile for NetHSM test and production container
 
-ARG distro_version=golang:alpine3.22
+ARG distro_version=golang:alpine
 FROM ${distro_version} AS builder
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF

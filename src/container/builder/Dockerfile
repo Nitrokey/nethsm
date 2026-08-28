@@ -159,13 +159,13 @@ EOF
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.25.1.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.26.7.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/v0.15.0.tar.gz" -o /tmp/u-root.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/v0.16.0.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
