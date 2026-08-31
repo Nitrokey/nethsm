@@ -109,9 +109,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthDiagnoseData"
         "401":
-          description: Authentication required but none provided. Only when outside of the Failed state.
+          description: Authentication required but none provided. Only when in the Operational state.
         "403":
-          description: Access denied. Only when outside the Failed state.
+          description: Access denied. Only when in the Operational state.
         "406":
           description: Content type in Accept header not supported.
       description: Retrieve NetHSM cluster diagnostics. This is always available, requiring authentication when operational, and no authentication otherwise (Locked, Failed, Unprovisioned).
