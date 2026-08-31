@@ -116,7 +116,8 @@ paths:
           description: Content type in Accept header not supported.
       description: Retrieve NetHSM cluster diagnostics. This is always available, requiring authentication when operational, and no authentication otherwise (Locked, Failed, Unprovisioned).
       security:
-        - basic: []
+        - basic: [] # when Operational
+        - {} # when non-Operational
       x-annotation-role:
         - Administrator
         - Public
@@ -1289,9 +1290,11 @@ paths:
       description:
         Rebuild etcd instance with the data on disk, switch to a single node cluster, and reboot.
         **WARNING** this will restore data only up to the last snapshot, and will result in data loss for any unconfirmed writes, or writes that occured on other NetHSM nodes that are now unreachable.
-        This call is unauthenticated and available only in the Failed state. Before using this command it is recommended that you attempt to heal the cluster's network connectivity first and restore quorum.
+        This call is only available in the Failed state. Before using this command it is recommended that you attempt to heal the cluster's network connectivity first and restore quorum.
         To that end, use the /health/diagnose endpoint to understand to cause of the current failure.
         As it is potentially destructive, this operation requires authentication even in *Failed* state, which differs from *Operational* authentication. The user *MUST* be `unlock` and the password *MUST* be the last known unlock passphrase. When upgrading to v5.0, this will only work after having unlocked the HSM at least once.
+      security:
+        - basic: []
       x-annotation-role:
         - FailedUnlock
       x-annotation-state:
