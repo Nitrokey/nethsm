@@ -1,5 +1,9 @@
-# 5.0 (2026-08-18)
-* Pre-release version
+# 5.0 (2026-08-31)
+* Add Failed mode for diagnosis and disaster recovery
+* Add support for key labels
+* Add NTP/NTS support
+* Use learner mode for joining a cluster
+* Fix verification of cluster CA certificate chain
 
 # 4.0 (2026-04-25)
 
