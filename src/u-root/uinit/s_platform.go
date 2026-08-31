@@ -548,7 +548,8 @@ func sPlatformActions() {
 
 	if !hw.IsTesting() {
 		if err := tpmCreatePlatformData(platformDataCh); err != nil {
-			log.Printf("Creating platform data failed: %v", err)
+			log.Printf("ERROR: Creating platform data failed: %v", err)
+			return
 		}
 	} else {
 		mockCreatePlatformData(platformDataCh)
