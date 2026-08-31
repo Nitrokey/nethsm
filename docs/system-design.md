@@ -116,7 +116,7 @@ For each data store, the diagram shows, as a high-level overview, which types of
 
 ![Encryption Architecture](EncryptionArchitecture.svg)
 
-The _Authentication Store_,  _Key Store_ and _Namespace Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the subject **S-Keyfender** has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
+The _Authentication Store_,  _Key Store_ and _Namespace Store_ are persisted to disk and their _contents_ are encrypted and authenticated using the so-called _Domain Key_. Only the subject *S-Keyfender* has decrypted access to these stores. Note that, for the avoidance of doubt, _contents_ in this context refers to only the values of each key-value store, not the keys.
 
 The _Domain Key_ is stored in the _Domain Key Store_, and encrypted using AES256-GCM (i.e. AEAD) with the _Device Key_.
 
@@ -125,7 +125,7 @@ of a cluster (e.g. the _Backup Key_) which are encrypted with the _Domain Key_.
 The other configurations are device-dependent (local) and encrypted with the
 _Device Key_ of the device owning them.
 
-The _Domain Key Store_ contains two "slots" for encrypted _Domain Keys_; which slot is used depends on whether or not the NetHSM is configured for _Unattended Boot_. Specifically, a _Provisioned_ NetHSM (via **S-Keyfender**) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
+The _Domain Key Store_ contains two "slots" for encrypted _Domain Keys_; which slot is used depends on whether or not the NetHSM is configured for _Unattended Boot_. Specifically, a _Provisioned_ NetHSM (via *S-Keyfender*) performs the following steps during boot to transition from the initial _Locked_ state into an _Operational_ state:
 
 |     _State_ = _Locked_
 |     _Domain Key_ = Decrypt\_AES256GCM(_Device Key_, _Slot 1_)
@@ -151,7 +151,7 @@ During _Unattended Boot_, (see Figure 2: Encryption Architecture, right hand sid
 
 During _Attended Boot_, (see Figure 2: Encryption Architecture, left and right hand side), the NetHSM waits for the user (via the `/unlock` endpoint of the REST API) to provide an _Unlock Passphrase_. The _Unlock Key_ is calculated by applying the key derivation function (KDF) to the _Unlock Passphrase_. The _Device Key_ is used to decrypt the encrypted _locked Domain Key_ stored in slot 0. The _Unlock Key_ is then used to decrypt the _Domain Key_ from the _locked Domain Key_. If any decryption step fails (due to the user providing an incorrect _Unlock Passphrase_ or invalid _Device Key_), the NetHSM remains in the _Locked_ state, and continues to await an _Unlock Passphrase_.
 
-For the avoidance of doubt: The act of Enabling _Unattended Boot_ causes **S-Keyfender** to populate slot 1 with a _Domain Key_ encrypted with _only_ the _Device Key_. Conversely, Disabling _Unattended Boot_ causes **S-Keyfender** to erase (overwrite) the contents of slot 1. At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
+For the avoidance of doubt: The act of Enabling _Unattended Boot_ causes *S-Keyfender* to populate slot 1 with a _Domain Key_ encrypted with _only_ the _Device Key_. Conversely, Disabling _Unattended Boot_ causes *S-Keyfender* to erase (overwrite) the contents of slot 1. At no point does the NetHSM persistently store either the _Unlock Passphrase_ or an _Unlock Key_.
 
 Among others, the described hardware binding and encryption prevents that (a copy of) the disk of one device can be decrypted in a different device.
 
@@ -170,22 +170,22 @@ restore with a backup from another device.
 
 NetHSM consists of three Muen subjects, as shown in Figure 3: Muen Subjects. Bidirectional communication channels are drawn as arrows.
 
-The **S-Net-External** subject is a minimized Linux which bridges Ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to **S-Keyfender**. Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in **S-Net-External**, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
+The *S-Net-External* subject is a minimized Linux which bridges Ethernet frames between the physical Ethernet device, which is passed to this subject, and the virtual network interface connected to *S-Keyfender*. Apart from the Ethernet device driver only a minimal amount of Linux "userland" needs to be present in *S-Net-External*, e.g. `brctl` and `ip`, to enable bridging between the two interfaces. Specifically, there is no need for a configured IP address for this subject.
 
-The **S-Platform** subject is a minimized Linux which provides access to hardware components and system services. The physical disk device (SSD), the TPM and the discrete TRNG are passed to this subject. The **S-Platform** subject provides a key-value store for persistently storing all _User Data_. It provides services to update the _System Software_, securely erase all _User Data_, manage the _Device Key_ and other data from the TPM, and shutdown and reboot the device. It utilizes the discrete TRNG to create external entropy and periodically sends datagrams to **S-Keyfender** containing output of the discrete TRNG.
+The *S-Platform* subject is a minimized Linux which provides access to hardware components and system services. The physical disk device (SSD), the TPM and the discrete TRNG are passed to this subject. The *S-Platform* subject provides a key-value store for persistently storing all _User Data_. It provides services to update the _System Software_, securely erase all _User Data_, manage the _Device Key_ and other data from the TPM, and shutdown and reboot the device. It also maintains the system "wall clock" time (synchronizing it via NTP/NTS where configured) and periodically sends datagrams to *S-Keyfender* carrying both external entropy (from the discrete TRNG and TPM) and the current time.
 
-The **S-Keyfender** subject is a MirageOS unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. **S-Keyfender** is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
+The *S-Keyfender* subject is a MirageOS unikernel which provides a HTTPS endpoint for the REST API that handles requests directly or by delegating it to a different subject. *S-Keyfender* is the only subject with decrypted access to the _Authentication Store_ and _Key Store_. This is the only subject exposed to the public network.
 
 ### S-Keyfender
 
-**S-Keyfender** is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers.
+*S-Keyfender* is the core subject of NetHSM, implemented entirely in OCaml as a MirageOS unikernel. It provides a HTTPS endpoint, serving the REST API providing the core NetHSM functionality to consumers.
 
-Additional functionality provided by **S-Keyfender**:
+Additional functionality provided by *S-Keyfender*:
 
 * logging of system events to a remote syslog host (as defined by [RFC 3164](https://tools.ietf.org/html/rfc3164)),
 * an API endpoint for retrieving metrics (e.g. network traffic, memory usage, storage usage, key operations, uptime).
 
-For the avoidance of doubt, a DNS resolver or DHCP client is specifically _not_ provided by **S-Keyfender**. This implies that a NetHSM can only be configured to use a static IPv4 address, and that any external services (such as syslog) need to be configured with an IPv4 address too.
+For the avoidance of doubt, a DNS resolver or DHCP client is specifically _not_ provided by *S-Keyfender*. This implies that a NetHSM can only be configured to use a static IPv4 address, and that any external services (such as syslog) need to be configured with an IPv4 address too.
 
 ### Timekeeping
 
@@ -194,11 +194,11 @@ In order to provide core system functionality, including but not limited to:
 1. Correct responses in HTTP headers (e.g. `Last-Modified`, `Expires`, `Date`)
 2. Meaningful timestamps in log messages
 
-**S-Keyfender** requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
+*S-Keyfender* requires access to "wall clock" time. Muen systems have a built-in time subject which has exclusive access to the RTC and provides system-wide "wall clock" time to all subjects. However, there is currently no support in Muen for _setting_ the system-wide "wall clock" and persisting it to the RTC.
 
-Therefore, a REST endpoint allows an *R-Administrator* to set the "wall clock" time as seen by *S-Keyfender*. *S-Keyfender* will persist the offset between the RTC and "wall clock" time to the _Configuration Store_, allowing *S-Keyfender* to maintain "wall clock" time across reboots. This implies that, in the mean time, other subjects such as *S-Platform* will _not_ share the same view of "wall clock" time as *S-Keyfender*.
+Therefore, *S-Platform* owns and maintains the "wall clock" time. It derives the time from the RTC plus a persisted offset, and, if an NTP (or NTS) server is configured, keeps it synchronized automatically. *S-Platform* regularly propagates the current time to *S-Keyfender* over the same datagram channel used for entropy (see [Entropy](#entropy)), so both subjects share a consistent view of time. Because time is available before the key-value store is started, timestamps used internally (e.g. by `etcd`) are meaningful from early in the boot sequence.
 
-Additionally there might be the possibility to set the system RTC from outside, for example from the BMC, depending on the hardware platform. In this case the offset can be left at 0 by not providing any "wall clock" time.
+A REST endpoint still allows an *R-Administrator* to set the "wall clock" time manually; such a request is forwarded to *S-Platform*, which updates its offset accordingly and persists it. Alternatively, the system RTC may be set from outside (e.g. from the BMC, depending on the hardware platform), in which case the offset is left at 0.
 
 **Note**: There will be no support for timezones. Any time values used in REST API endpoints will use Coordinated Universal Time (UTC) only, i.e. an [RFC 3339](https://tool.ietf.org/html/rfc3339) `time-offset` of `Z`. It is the responsibility of the client to translate to local time, if this is desired.
 
@@ -242,6 +242,10 @@ Some sample sessions:
 
 | C->S: FOO\n
 | S->C: ERROR Unknown command\n
+
+#### Boot Handshake
+
+At boot the two subjects synchronize as follows. *S-Platform* first brings up its network and hardware, starts sending the entropy/time datagrams, and prepares the platform data (including the _Device Key_). In parallel, *S-Keyfender* starts listening for the entropy/time datagrams and requests the platform data from *S-Platform* over the command channel, retrying until it is available. *S-Platform* only starts the key-value store (`etcd`) once time has been initialized, and *S-Keyfender* polls the store until it becomes healthy before completing its boot. This ordering ensures that *S-Keyfender* has entropy, a valid time, the _Device Key_, and a working data store before it transitions out of the initial boot.
 
 ### Linux-based Subjects
 
@@ -341,7 +345,7 @@ The *S-Keyfender* subject uses as cryptographically secure random number generat
 
 The entropy sources used [during startup](https://github.com/mirage/mirage-crypto/blob/master/rng/mirage/mirage_crypto_rng_mirage.ml) are the CPU instruction [RDRAND](https://software.intel.com/content/www/us/en/develop/articles/intel-digital-random-number-generator-drng-software-implementation-guide.html) (executed three times, returning 64 bit each), and once the [Whirlwind](http://www.ieee-security.org/TC/SP2014/papers/Not-So-RandomNumbersinVirtualizedLinuxandtheWhirlwindRNG.pdf) bootstrap algorithm based on timing of instructions that take a variable number of cycles (with l=100 lmax=1024).
 
-During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc. Additionally *S-Keyfender* listens on an UDP port for packages with random data from S-Platform. These packages contain entropy from both discrete TRNG and TPM TRNG and are fed into all 32 pools.
+During normal operation, every second the output of an RDRAND execution is fed into each pool. When an event (wakeup of a sleeper, network read) is executed, a cycle counter (using RDTSC) is taken, and the lower four bytes are fed into the entropy pool. The first event cycle counter is fed into the first entropy pool, the second into the second, etc. Additionally *S-Keyfender* listens on an UDP port for packages that *S-Platform* sends regularly. These packages contain entropy from both the discrete TRNG and the TPM TRNG, which is fed into all 32 pools, as well as the current "wall clock" time (see [Timekeeping](#timekeeping)), which *S-Keyfender* uses to keep its clock in sync with *S-Platform*.
 
 In case during the operation either discrete TRNG or TPM RNG fails, an error message is logged repeatedly in Syslog and the system keeps running. If both of these entropy sources fail, the system stops and ends in a non-operational state.
 
