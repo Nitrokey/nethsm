@@ -434,6 +434,9 @@ func platformListener(
 	}
 }
 
+// dataInitFile marks a properly mounted and populated /data partition.
+const dataInitFile = "/data/initialised-v1"
+
 func setupPlatform(s *script.Script) error {
 	if hw.IsTesting() {
 		err := os.MkdirAll("/data/etcd", 0o755)
@@ -502,8 +505,7 @@ func setupPlatform(s *script.Script) error {
 
 	// If /data/initialised-v1 does NOT exist, assume /data is empty and
 	// populate it from the template CPIO archive included in the initramfs.
-	const initFile = "/data/initialised-v1"
-	if _, err := os.Stat(initFile); os.IsNotExist(err) {
+	if _, err := os.Stat(dataInitFile); os.IsNotExist(err) {
 		log.Printf("Populating /data")
 		if err := util.ExtractCpioArchive("/tmpl/data.cpio", "/data"); err != nil {
 			return fmt.Errorf("error extracting /data template: %w", err)
@@ -523,11 +525,66 @@ func setupPlatform(s *script.Script) error {
 	return nil
 }
 
+func reboot() {
+	log.Printf("System will reboot now.")
+	time.Sleep(2 * time.Second)
+	triggerMuenEvent("reboot")
+}
+
+const autoRebootCounterFile = "/data/auto_reboot_counter"
+const maxAutoReboots = 2
+
+func autoRebootCounter() int {
+	b, err := os.ReadFile(autoRebootCounterFile)
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// setAutoRebootCounter persists the reboot count.
+func setAutoRebootCounter(n int) bool {
+	if _, err := os.Stat(dataInitFile); err != nil {
+		log.Printf("ERROR: /data not mounted, cannot persist reboot counter: %v", err)
+		return false
+	}
+	if err := os.WriteFile(autoRebootCounterFile, []byte(strconv.Itoa(n)), 0o600); err != nil {
+		log.Printf("ERROR: Failed to store reboot counter: %v", err)
+		return false
+	}
+	syscall.Sync()
+	return true
+}
+
+func resetAutoReboot() {
+	if err := os.Remove(autoRebootCounterFile); err != nil && !os.IsNotExist(err) {
+		log.Printf("ERROR: Failed to clear reboot counter: %v", err)
+	}
+}
+
+func autoReboot() {
+	failures := autoRebootCounter() + 1
+	if failures > maxAutoReboots {
+		log.Printf("ERROR: Rebooted %d times in a row, giving up without rebooting.", failures)
+	} else {
+		if setAutoRebootCounter(failures) {
+			// reboot in case it was a temporary hardware glitch
+			reboot()
+			return
+		}
+	}
+}
+
 // sPlatformActions are executed for S-Platform.
 func sPlatformActions() {
 	s := script.New()
 	if err := setupPlatform(s); err != nil {
-		log.Printf("setupPlatform: %v", err)
+		log.Printf("ERROR: setupPlatform: %v", err)
+		autoReboot()
 		return
 	}
 
@@ -549,6 +606,7 @@ func sPlatformActions() {
 	if !hw.IsTesting() {
 		if err := tpmCreatePlatformData(platformDataCh); err != nil {
 			log.Printf("ERROR: Creating platform data failed: %v", err)
+			autoReboot()
 			return
 		}
 	} else {
@@ -562,6 +620,9 @@ func sPlatformActions() {
 	<-TimeInitializedSig // wait for initial NTP attempt before starting etcd
 
 	util.StartTask("etcd supervisor", supervisor.Run)
+
+	// Success: reset the consecutive-failure counter.
+	resetAutoReboot()
 
 	// At this point we wait for a terminal request result from platformListener.
 	request := <-terminalCh
@@ -583,8 +644,7 @@ func sPlatformActions() {
 	s.Execf("/bbin/umount /data")
 
 	if err := s.Err(); err != nil {
-		log.Printf("Script failed: %v", err)
-		return
+		log.Printf("ERROR: Script failed: %v", err)
 	}
 
 	switch request {
@@ -595,9 +655,7 @@ func sPlatformActions() {
 	case "FORCE-NEW-CLUSTER":
 		fallthrough
 	case "REBOOT":
-		log.Printf("System will reboot now.")
-		time.Sleep(2 * time.Second)
-		triggerMuenEvent("reboot")
+		reboot()
 	case "FACTORY-RESET":
 		s = script.New()
 		s.Logf("Formatting data partition.")
@@ -608,9 +666,7 @@ func sPlatformActions() {
 			return
 		}
 
-		log.Printf("System will reboot now.")
-		time.Sleep(2 * time.Second)
-		triggerMuenEvent("reboot")
+		reboot()
 	default:
 		log.Printf("Unknown request, exiting anyway.")
 	}
