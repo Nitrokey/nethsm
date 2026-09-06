@@ -1,18 +1,12 @@
-(* Copyright 2023 - 2023, Nitrokey GmbH
+(* Copyright 2023 - 2026, Nitrokey GmbH
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-let time_offset = ref Ptime.Span.zero
-let get_offset () = !time_offset
-let now_raw () = `Raw (Mirage_ptime.now ())
-
-let now () =
-  let (`Raw hw_clock) = now_raw () in
-  match Ptime.add_span hw_clock !time_offset with
-  | None -> Ptime.epoch
-  | Some ts -> ts
-
-let set timestamp =
-  let (`Raw hw_clock) = now_raw () in
-  let span = Ptime.diff timestamp hw_clock in
-  time_offset := span
+(* The clock itself lives in keyfender.clock (Keyfender_clock), so that the
+   Mirage_ptime implementation of the unikernel can share it. Mirage_ptime.now
+   is expected to be Keyfender_clock.now; it is used here rather than
+   Keyfender_clock.now directly so that the tests can mock it. *)
+let now () = Mirage_ptime.now ()
+let now_raw = Keyfender_clock.now_raw
+let get_offset = Keyfender_clock.get_offset
+let set = Keyfender_clock.set

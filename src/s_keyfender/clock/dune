@@ -1,0 +1,10 @@
+; solo5 implementation of the keyfender.clock virtual library: reads the
+; hardware wall clock via solo5_clock_wall. Selected in config.ml on solo5
+; targets; on unix the default implementation keyfender.clock.unix is used.
+
+(library
+ (name keyfender_clock_solo5)
+ (implements keyfender.clock)
+ (foreign_stubs
+  (language c)
+  (names keyfender_clock_stubs)))

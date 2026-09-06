@@ -1,0 +1,12 @@
+; -opaque: the cmx of Keyfender_clock would otherwise list the virtual
+; Raw_clock as an import, and consumers built without -opaque (release
+; profile) would warn that no cmx exists for it (warning 58).
+
+(library
+ (name keyfender_clock)
+ (public_name keyfender.clock)
+ (libraries ptime)
+ (virtual_modules raw_clock)
+ (default_implementation keyfender.clock.unix)
+ (ocamlopt_flags
+  (:standard -opaque)))

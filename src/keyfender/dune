@@ -12,6 +12,7 @@
   logs
   lwt
   ptime
+  keyfender.clock
   cohttp
   rresult
   mirage-crypto

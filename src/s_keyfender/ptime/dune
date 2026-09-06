@@ -1,0 +1,10 @@
+; NetHSM implementation of the mirage-ptime virtual library: Mirage_ptime.now
+; is the corrected wall clock from keyfender.clock (hardware clock plus the
+; offset set via Keyfender.Hsm_clock.set), so every consumer of
+; Mirage_ptime.now (syslog reporter, console log reporter, TLS, ...) observes
+; the corrected time. Selected in config.ml via `register ~ptime`.
+
+(library
+ (name keyfender_ptime)
+ (implements mirage-ptime)
+ (libraries keyfender.clock))

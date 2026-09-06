@@ -153,8 +153,21 @@ let main =
     "Unikernel.Main"
     (kv_ro @-> kv_ro @-> stackv4v6 @-> stackv4v6 @-> build_args @-> job)
 
+(* Use the NetHSM Mirage_ptime implementation, which applies the wall clock
+   offset set via Keyfender.Hsm_clock.set to every reading of Mirage_ptime.now
+   (log timestamps, TLS, ...). On unix the offset simply stays zero. The raw
+   hardware clock behind it (keyfender.clock) is read via solo5_clock_wall
+   on solo5 targets and via the default implementation (Ptime_clock) on unix. *)
+let ptime =
+  let packages_v =
+    Key.(if_ is_unix)
+      [ package ~libs:[ "keyfender_ptime" ] "ocaml" ]
+      [ package ~libs:[ "keyfender_ptime"; "keyfender_clock_solo5" ] "ocaml" ]
+  in
+  impl ~packages_v "Mirage_ptime" ptime
+
 let () =
-  register "keyfender"
+  register ~ptime "keyfender"
     [
       main $ update_key_store $ htdocs $ internal_stack $ external_stack
       $ build_conf;
