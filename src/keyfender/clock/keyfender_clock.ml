@@ -3,7 +3,6 @@
 *)
 
 let offset = ref Ptime.Span.zero
-let get_offset () = !offset
 let now_raw () = Raw_clock.now ()
 
 let now () =

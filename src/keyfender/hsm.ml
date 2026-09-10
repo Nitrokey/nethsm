@@ -3786,8 +3786,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let restore t json stream =
       let sb = sb_of_stream stream in
       let open Lwt.Infix in
-      let (`Raw start_ts) = Hsm_clock.now_raw () in
-      let initial_state = t.state in
+      let start_ns = Mirage_mtime.elapsed_ns () in
       let is_operational =
         match t.state with Operational _ -> true | _ -> false
       in
@@ -4099,20 +4098,18 @@ module Make (KV : Kv_ext.Platform) = struct
                 Key_store.clear_cache v.key_store;
                 Namespace_store.clear_cache v.namespace_store
             | _ -> ());
-            let (`Raw stop_ts) = Hsm_clock.now_raw () in
             match new_time with
-            | Some new_time -> (
-                let elapsed = Ptime.diff stop_ts start_ts in
-                match Ptime.add_span new_time elapsed with
-                | Some ts ->
-                    let time_ms = Some (ptime_to_ms_int64 ts) in
-                    Config.set_local_config ~time_ms t
-                | None ->
-                    t.state <- initial_state;
-                    Lwt.return
-                    @@ Error
-                         (Bad_request, "Invalid system time in restore request")
-                )
+            | Some new_time ->
+                (* new_time is the wall clock time at the start of the request;
+                   add the time the restore took. *)
+                let elapsed_ms =
+                  Int64.(
+                    div (sub (Mirage_mtime.elapsed_ns ()) start_ns) 1_000_000L)
+                in
+                let time_ms =
+                  Some (Int64.add (ptime_to_ms_int64 new_time) elapsed_ms)
+                in
+                Config.set_local_config ~time_ms t
             | None -> (
                 match migration_time_opt with
                 | None -> Lwt.return_ok ()

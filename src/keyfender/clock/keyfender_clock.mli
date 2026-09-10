@@ -25,9 +25,6 @@ val now_raw : unit -> [ `Raw of Ptime.t ]
 (** [now_raw ()] is the current reading of the hardware wall clock, without the
     offset. *)
 
-val get_offset : unit -> Ptime.Span.t
-(** [get_offset ()] is the offset currently added to the hardware clock. *)
-
 val set : Ptime.t -> unit
 (** [set t] makes [now ()] return [t] right now by storing the difference
     between [t] and the hardware clock. *)

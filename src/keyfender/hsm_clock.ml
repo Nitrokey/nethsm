@@ -8,5 +8,4 @@
    Keyfender_clock.now directly so that the tests can mock it. *)
 let now () = Mirage_ptime.now ()
 let now_raw = Keyfender_clock.now_raw
-let get_offset = Keyfender_clock.get_offset
 let set = Keyfender_clock.set

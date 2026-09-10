@@ -1,9 +1,16 @@
-(* Copyright 2023 - 2023, Nitrokey GmbH
+(* Copyright 2023 - 2026, Nitrokey GmbH
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-val now : unit -> Ptime.t (* hw_clock with offset applied *)
-val now_raw : unit -> [ `Raw of Ptime.t ] (* hw_clock *)
-val get_offset : unit -> Ptime.Span.t
+val now : unit -> Ptime.t
+(** [now ()] is the corrected wall clock time ([Mirage_ptime.now]). *)
+
+val now_raw : unit -> [ `Raw of Ptime.t ]
+(** [now_raw ()] is the uncorrected hardware clock. Only needed to interpret
+    offsets that were stored relative to it (migration of the deprecated
+    time-offset config key); use [Mirage_mtime.elapsed_ns] to measure durations.
+*)
+
 val set : Ptime.t -> unit
-(* input time has offset applied, needs to be translated into offset relative to hw_clock *)
+(** [set t] makes [now ()] return [t] by storing the difference between [t] and
+    the hardware clock. *)
