@@ -91,7 +91,14 @@ func tpmRand() (buf []byte, err error) {
 // encoding without I, O, 0, 1
 const base32Chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+// flushContext flushes ctx from the TPM. Sessions without AttrContinueSession
+// are flushed by the TPM itself after the command that uses them; go-tpm2 then
+// disposes the context and sets its handle to HandleUnassigned. Flushing that
+// would fail with TPM_RC_VALUE, so such contexts are skipped.
 func flushContext(tpm *tpm2.TPMContext, ctx tpm2.HandleContext) {
+	if ctx.Handle() == tpm2.HandleUnassigned {
+		return
+	}
 	err := tpm.FlushContext(ctx)
 	if err != nil {
 		log.Printf("Failed to flush TPM context: %v", err)
