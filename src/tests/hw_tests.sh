@@ -442,6 +442,11 @@ echo
 echo "=== Hardware tests - Cluster join (success) ==="
 echo
 
+# Configure unattended boot. It should be automatically disabled when joining
+PUT_admin /v1/config/unattended-boot <<EOF
+{"status": "on"}
+EOF
+
 echo "- check local etcd is healthy again"
 "$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 echo "- set /config/version to 1 to allow join to complete"

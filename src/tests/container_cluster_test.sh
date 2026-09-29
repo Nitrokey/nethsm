@@ -21,6 +21,11 @@ NETHSM_URL="$N2/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
 
+# Configure unattended boot. It should be automatically disabled when joining
+PUT_admin /v1/config/unattended-boot <<EOF
+{"status": "on"}
+EOF
+
 NETHSM_URL="$N3/api"
 source ./provision_test.sh
 source ./setup_cluster_ca.sh
@@ -92,6 +97,7 @@ promote "$1"
 
 join "${N1}"
 
+# Unattended boot will have been disabled, so we go to Locked after join
 test $(GET /v1/health/state | jq -r .state) = "Locked"
 
 while ! (
@@ -101,6 +107,14 @@ EOF
 ); do echo "retry.."; sleep 1; done
 
 test $(GET /v1/health/state | jq -r .state) = "Operational"
+
+# Check that the unattended mode didn't just fail but was properly disabled
+test $(GET_admin /v1/config/unattended-boot | jq -r .status) = "off"
+
+# We can re-enable it successfully though
+PUT_admin /v1/config/unattended-boot <<EOF
+{"status": "on"}
+EOF
 
 # should be able to see a key from N1
 GET_admin /v1/keys/myKey1 # should not 404
@@ -131,6 +145,7 @@ done
 GET_admin /v1/cluster/members
 
 GET_admin /v1/keys/keyAcrossCluster # should not 404
+
 
 # let's add a third node, from N1
 

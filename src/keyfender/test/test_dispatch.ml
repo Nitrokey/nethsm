@@ -5736,6 +5736,7 @@ let cluster_join =
         ^ debug "restoring /local/0000000000/config/unlock-salt"
         ^ debug "restoring /local/0000000000/config/certificate"
         ^ debug "restoring /local/0000000000/config/private-key"
+        ^ debug "restoring /local/0000000000/config/unattended-boot"
         ^ info "joining cluster OK! locking now"
       in
       (* finally, join *)
