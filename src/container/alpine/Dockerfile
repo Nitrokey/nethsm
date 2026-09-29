@@ -38,7 +38,7 @@ ENV DUNE_CACHE="enabled" DUNE_CACHE_STORAGE_MODE="copy"
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/.opam/download-cache,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/dune,sharing=shared,uid=1000,gid=1000 --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
   opam update &&
-  OPAMJOBS=$(nproc) opam install -y dune opam-monorepo mirage=4.9.0
+  OPAMJOBS=$(nproc) opam install -y dune "opam-monorepo>=0.5.0" mirage=4.9.0
 EOF
 
 WORKDIR /home/opam/nethsm
