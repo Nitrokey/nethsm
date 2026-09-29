@@ -3181,6 +3181,17 @@ module Make (KV : Kv_ext.Platform) = struct
               Config_store.pp_error
               (Config_store.backup_local_config t.config_store)
           in
+          (* Disable unattended boot if on, since it would fail for a new domain *)
+          (match config_backup.unattended_boot with
+          | Some true ->
+              Log.warn (fun m ->
+                  m
+                    "disabling unattended boot, as the stored key would not be \
+                     valid for the new domain")
+          | _ -> ());
+          let config_backup =
+            { config_backup with unattended_boot = Some false }
+          in
           (* to pass multiple peer urls for the same node, etcd simply expects
          to pass name=url multiple times *)
           let peers =
