@@ -54,6 +54,8 @@ type platformData struct {
 	NetworkConfig      string            `json:"networkConfig,omitempty"`
 	LastTLSCert        string            `json:"lastTlsCert,omitempty"`
 	LastTLSKey         string            `json:"lastTlsKey,omitempty"`
+	LastTLSClusterCert string            `json:"lastTlsClusterCert,omitempty"`
+	LastTLSClusterKey  string            `json:"lastTlsClusterKey,omitempty"`
 	FailedUnlockSalt   string            `json:"failedUnlockSalt,omitempty"`
 	FailedUnlockDigest string            `json:"failedUnlockDigest,omitempty"`
 }
@@ -288,6 +290,11 @@ func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 		// return last TLS cert/key if stored, for use if booting in Failed mode
 		data.LastTLSCert = tlsCert
 		data.LastTLSKey = tlsKey
+	}
+	if tlsCert, tlsKey := derefStr(lc.TLSClusterCert), derefStr(lc.TLSClusterKey); tlsCert != "" && tlsKey != "" {
+		// return last TLS cert/key if stored, for use if booting in Failed mode
+		data.LastTLSClusterCert = tlsCert
+		data.LastTLSClusterKey = tlsKey
 	}
 	data.FailedUnlockSalt = lc.FailedUnlockSalt
 	data.FailedUnlockDigest = lc.FailedUnlockDigest

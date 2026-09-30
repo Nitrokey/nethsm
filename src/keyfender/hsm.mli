@@ -2,7 +2,7 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
-type tls_kind = Common
+type tls_kind = Config_store.tls_kind = API | Cluster
 type server_cert
 
 module type S = sig

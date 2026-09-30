@@ -1387,11 +1387,15 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
       ^ debug "restoring /local/0000000001/config/unlock-salt"
       ^ debug "restoring /local/0000000001/config/certificate"
       ^ debug "restoring /local/0000000001/config/private-key"
+      ^ debug "restoring /local/0000000001/config/certificate-cluster"
+      ^ debug "restoring /local/0000000001/config/private-key-cluster"
     else
       info "device has been reset: re-encrypting local configs"
       ^ debug "restoring /local/0000000000/config/unlock-salt"
       ^ debug "restoring /local/0000000000/config/certificate"
       ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/certificate-cluster"
+      ^ debug "restoring /local/0000000000/config/private-key-cluster"
   in
   let expect =
     multipart_log ^ info "Device Key changed."
@@ -1553,12 +1557,16 @@ let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
       ^ debug "restoring /local/0000000001/config/unlock-salt"
       ^ debug "restoring /local/0000000001/config/certificate"
       ^ debug "restoring /local/0000000001/config/private-key"
+      ^ debug "restoring /local/0000000001/config/certificate-cluster"
+      ^ debug "restoring /local/0000000001/config/private-key-cluster"
       ^ debug "restoring /local/0000000001/config/unattended-boot"
     else
       info "device has been reset: re-encrypting local configs"
       ^ debug "restoring /local/0000000000/config/unlock-salt"
       ^ debug "restoring /local/0000000000/config/certificate"
       ^ debug "restoring /local/0000000000/config/private-key"
+      ^ debug "restoring /local/0000000000/config/certificate-cluster"
+      ^ debug "restoring /local/0000000000/config/private-key-cluster"
       ^ debug "restoring /local/0000000000/config/unattended-boot"
   in
   let* hsm_state =
@@ -1886,7 +1894,7 @@ let get_config_tls_cluster_ca_pem =
     (fun () ->
       let headers = admin_headers in
       request ~hsm_state:(operational_mock ()) ~meth:`GET ~headers
-        "/config/tls/cluster-ca.pem"
+        "/cluster/tls/ca.pem"
       |> returns_string ~with_status:`Not_found
       |> Alcotest.(
            check string "expected error"
@@ -1954,7 +1962,7 @@ let put_config_tls_cluster_ca_pem_fail_not_signed =
       (* try to set CA without signing tls cert first *)
       let hsm_state, err_msg =
         request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers
-          ~content_type ~body:(`String test_ca) "/config/tls/cluster-ca.pem"
+          ~content_type ~body:(`String test_ca) "/cluster/tls/ca.pem"
         |> returns_string' ~with_status:`Precondition_failed
       in
       Alcotest.(
@@ -1962,7 +1970,7 @@ let put_config_tls_cluster_ca_pem_fail_not_signed =
           "{\"message\":\"the installed TLS cert is not signed by this CA: no \
            trust anchor found for X.509 certificate")
         (String.sub err_msg 0 104);
-      request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+      request ~hsm_state ~meth:`GET ~headers "/cluster/tls/ca.pem"
       |> returns_string ~with_status:`Not_found
       |> Alcotest.(
            check string "cert matches"
@@ -1973,7 +1981,7 @@ let put_config_tls_cluster_ca_pem_fail_invalid =
       let headers = admin_headers in
       let content_type = "application/x-pem-file" in
       request ~hsm_state:(operational_mock ()) ~meth:`PUT ~headers ~content_type
-        ~body:(`String "this is not a PEM file") "/config/tls/cluster-ca.pem"
+        ~body:(`String "this is not a PEM file") "/cluster/tls/ca.pem"
       |> returns_string ~with_status:`Bad_request
       |> Alcotest.(
            check string "error message" "{\"message\":\"No certificate\"}"))
@@ -2144,7 +2152,7 @@ let setup_cluster_ca hsm_state =
   let headers = admin_headers in
   (* create a self-signed CA and get the NetHSM CSR *)
   let hsm_state, csr_pem =
-    admin_post_request ~hsm_state ~body:(`String subject) "/config/tls/csr.pem"
+    admin_post_request ~hsm_state ~body:(`String subject) "/cluster/tls/csr.pem"
     |> returns_string' ~with_status:`OK
   in
   (* sign the CSR with our CA *)
@@ -2163,14 +2171,14 @@ let setup_cluster_ca hsm_state =
   let hsm_state =
     request ~hsm_state ~meth:`PUT ~headers ~content_type
       ~expect:(debug "caching config to the platform")
-      ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+      ~body:(`String new_cert_pem) "/cluster/tls/cert.pem"
     |> returns_empty' ~with_status:`Created
   in
   (* now set the NetHSM CA *)
   let hsm_state =
     request ~hsm_state ~meth:`PUT ~headers ~content_type
       ~expect:(debug "caching config to the platform")
-      ~body:(`String ca_pem) "/config/tls/cluster-ca.pem"
+      ~body:(`String ca_pem) "/cluster/tls/ca.pem"
     |> returns_empty' ~with_status:`Created
   in
   (hsm_state, ca_pem)
@@ -2183,14 +2191,14 @@ let put_config_tls_cluster_ca_pem =
       let hsm_state, old_cert_pem =
         request ~headers
           ~hsm_state:(operational_mock_with_mbox ())
-          "/config/tls/cert.pem"
+          "/cluster/tls/cert.pem"
         |> returns_string' ~with_status:`OK
       in
       let hsm_state, ca_pem = setup_cluster_ca hsm_state in
 
       (* we should now be able to query the CA, which should match *)
       let hsm_state, ca_pem' =
-        request ~hsm_state ~meth:`GET ~headers "/config/tls/cluster-ca.pem"
+        request ~hsm_state ~meth:`GET ~headers "/cluster/tls/ca.pem"
         |> returns_string' ~with_status:`OK
       in
       Alcotest.(check string "cert matches" ca_pem ca_pem');
@@ -2199,7 +2207,7 @@ let put_config_tls_cluster_ca_pem =
       let content_type = "application/x-pem-file" in
       let err_msg =
         request ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~body:(`String old_cert_pem) "/config/tls/cert.pem"
+          ~body:(`String old_cert_pem) "/cluster/tls/cert.pem"
         |> returns_string ~with_status:`Precondition_failed
       in
       Alcotest.(
@@ -2395,8 +2403,7 @@ let system_backup_and_restore_operational ~unattended ~changed_devkey
     |> Expect.not_found
   in
   (* check that cluster CA deleted or still present, depending when it was set *)
-  request ~headers:admin_headers ~meth:`GET ~hsm_state
-    "/config/tls/cluster-ca.pem"
+  request ~headers:admin_headers ~meth:`GET ~hsm_state "/cluster/tls/ca.pem"
   |> returns_string ~with_status:(if cluster_ca_before then `OK else `Not_found)
   |> ignore;
 
@@ -5689,7 +5696,7 @@ let cluster_join =
       let hsm_state, csr_pem =
         admin_post_request
           ~hsm_state:(operational_mock_with_mbox' log_cb)
-          ~body:(`String subject) "/config/tls/csr.pem"
+          ~body:(`String subject) "/cluster/tls/csr.pem"
         |> returns_string' ~with_status:`OK
       in
       (* sign the CSR with our CA *)
@@ -5708,11 +5715,9 @@ let cluster_join =
       let hsm_state =
         request
           ~expect:
-            (info "tls"
-            ^ debug "caching config to the platform"
-            ^ info "set-local-config")
+            (debug "caching config to the platform" ^ info "set-local-config")
           ~hsm_state ~meth:`PUT ~headers ~content_type
-          ~body:(`String new_cert_pem) "/config/tls/cert.pem"
+          ~body:(`String new_cert_pem) "/cluster/tls/cert.pem"
         |> returns_empty' ~with_status:`Created
       in
       (* now set the NetHSM CA *)
@@ -5721,7 +5726,7 @@ let cluster_join =
           ~expect:
             (debug "caching config to the platform" ^ info "set-local-config")
           ~hsm_state ~meth:`PUT ~headers ~content_type ~body:(`String ca_pem)
-          "/config/tls/cluster-ca.pem"
+          "/cluster/tls/ca.pem"
         |> returns_empty' ~with_status:`Created
       in
       let expect =
@@ -5736,6 +5741,8 @@ let cluster_join =
         ^ debug "restoring /local/0000000000/config/unlock-salt"
         ^ debug "restoring /local/0000000000/config/certificate"
         ^ debug "restoring /local/0000000000/config/private-key"
+        ^ debug "restoring /local/0000000000/config/certificate-cluster"
+        ^ debug "restoring /local/0000000000/config/private-key-cluster"
         ^ debug "restoring /local/0000000000/config/unattended-boot"
         ^ info "joining cluster OK! locking now"
       in
@@ -6402,7 +6409,7 @@ let () =
           put_config_tls_cert_pem;
           put_config_tls_cert_pem_fail;
         ] );
-      ( "/config/tls/cluster-ca.pem",
+      ( "/cluster/tls/ca.pem",
         [
           get_config_tls_cluster_ca_pem;
           put_config_tls_cluster_ca_pem_fail_invalid;

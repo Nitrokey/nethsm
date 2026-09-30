@@ -297,7 +297,7 @@ GET_admin /v1/keys/keyN3 > /dev/null
 
 echo "check the cluster CA cannot be changed during operation, this should fail"
 ! (curl --fail-with-body -sS -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/config/tls/cluster-ca.pem") || exit 1
+    -X PUT --data-binary @./CA.pem -k "${NETHSM_URL}/v1/cluster/tls/ca.pem") || exit 1
 echo
 
 # shutdown N3, to simulate a failure in a 2-node cluster. Eventually this should

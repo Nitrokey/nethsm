@@ -331,6 +331,8 @@ struct
       networkConfig = None;
       lastTlsKey = None;
       lastTlsCert = None;
+      lastTlsClusterKey = None;
+      lastTlsClusterCert = None;
       failedUnlockSalt = Some "AAAAAAAAAAAAAAAA";
       failedUnlockDigest =
         Some

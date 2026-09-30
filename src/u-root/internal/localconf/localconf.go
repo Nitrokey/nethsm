@@ -54,6 +54,8 @@ var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 type LocalConf struct {
 	TLSCert            *string `json:"tls_cert,omitempty"`
 	TLSKey             *string `json:"tls_key,omitempty"`
+	TLSClusterCert     *string `json:"tls_cluster_cert,omitempty"`
+	TLSClusterKey      *string `json:"tls_cluster_key,omitempty"`
 	TLSTrustedCA       *string `json:"tls_cluster_ca,omitempty"`
 	DeviceID           *string `json:"device_id,omitempty"`
 	NetworkConfig      *string `json:"network_config,omitempty"`
@@ -248,6 +250,8 @@ func Set(jsonConf []byte, setTime func(time.Duration) error) error {
 	// TimeOffsetS is never in the wire message; TimeMs is wire-only, not stored.
 	update(&conf.TLSCert, upd.TLSCert)
 	update(&conf.TLSKey, upd.TLSKey)
+	update(&conf.TLSClusterCert, upd.TLSClusterCert)
+	update(&conf.TLSClusterKey, upd.TLSClusterKey)
 	update(&conf.TLSTrustedCA, upd.TLSTrustedCA)
 	update(&conf.DeviceID, upd.DeviceID)
 	update(&conf.NetworkConfig, upd.NetworkConfig)

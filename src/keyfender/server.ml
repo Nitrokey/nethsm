@@ -50,14 +50,20 @@ module Make_handlers (Hsm : Hsm.S) = struct
         ( "/config/unattended-boot",
           fun () -> new Config.unattended_boot hsm_state ip );
         ( "/config/tls/public.pem",
-          fun () -> new Config.tls_public Common hsm_state ip );
-        ( "/config/tls/cert.pem",
-          fun () -> new Config.tls_cert Common hsm_state ip );
-        ("/config/tls/csr.pem", fun () -> new Config.tls_csr Common hsm_state ip);
+          fun () -> new Config.tls_public API hsm_state ip );
+        ("/config/tls/cert.pem", fun () -> new Config.tls_cert API hsm_state ip);
+        ("/config/tls/csr.pem", fun () -> new Config.tls_csr API hsm_state ip);
         ( "/config/tls/generate",
-          fun () -> new Config.tls_generate Common hsm_state ip );
-        ( "/config/tls/cluster-ca.pem",
-          fun () -> new Config.tls_cluster_ca hsm_state ip );
+          fun () -> new Config.tls_generate API hsm_state ip );
+        ( "/cluster/tls/public.pem",
+          fun () -> new Config.tls_public Cluster hsm_state ip );
+        ( "/cluster/tls/cert.pem",
+          fun () -> new Config.tls_cert Cluster hsm_state ip );
+        ( "/cluster/tls/csr.pem",
+          fun () -> new Config.tls_csr Cluster hsm_state ip );
+        ( "/cluster/tls/generate",
+          fun () -> new Config.tls_generate Cluster hsm_state ip );
+        ("/cluster/tls/ca.pem", fun () -> new Config.tls_cluster_ca hsm_state ip);
         ("/config/network", fun () -> new Config.network hsm_state ip);
         ("/config/logging", fun () -> new Config.logging hsm_state ip);
         ( "/config/backup-passphrase",

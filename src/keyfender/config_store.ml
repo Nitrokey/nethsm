@@ -4,7 +4,7 @@
 
 open Lwt.Infix
 
-type tls_kind = Common
+type tls_kind = API | Cluster
 
 (* unencrypted configuration store *)
 (* contains everything that is needed for booting *)
@@ -37,9 +37,11 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let name : type a. a k -> string = function
     | Unlock_salt -> "unlock-salt"
-    | Certificate _ -> "certificate"
+    | Certificate API -> "certificate"
+    | Certificate Cluster -> "certificate-cluster"
     | Cluster_CA -> "cluster-ca"
-    | Private_key _ -> "private-key"
+    | Private_key API -> "private-key"
+    | Private_key Cluster -> "private-key-cluster"
     | Version -> "version"
     | Ip_config -> "ip-config"
     | Backup_salt -> "backup-salt"
@@ -56,9 +58,11 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let of_name : string -> packed_k option = function
     | "unlock-salt" -> Some (P Unlock_salt)
-    | "certificate" -> Some (P (Certificate Common))
+    | "certificate" -> Some (P (Certificate API))
+    | "certificate-cluster" -> Some (P (Certificate Cluster))
     | "cluster-ca" -> Some (P Cluster_CA)
-    | "private-key" -> Some (P (Private_key Common))
+    | "private-key" -> Some (P (Private_key API))
+    | "private-key-cluster" -> Some (P (Private_key Cluster))
     | "version" -> Some (P Version)
     | "ip-config" -> Some (P Ip_config)
     | "backup-salt" -> Some (P Backup_salt)
@@ -413,7 +417,9 @@ module Make (KV : Kv_ext.Platform) = struct
   type local_backup = {
     unlock_salt : string option;
     certificate : (X509.Certificate.t * X509.Certificate.t list) option;
+    certificate_cluster : (X509.Certificate.t * X509.Certificate.t list) option;
     private_key : X509.Private_key.t option;
+    private_key_cluster : X509.Private_key.t option;
     ip_config : Json.network option;
     log_config : Json.log option;
     time_offset : Ptime.span option;
@@ -432,8 +438,13 @@ module Make (KV : Kv_ext.Platform) = struct
   let clear_local_config t =
     let ( let* ) = Lwt_result.bind in
     let* () = remove t Unlock_salt in
-    let* () = remove t (Certificate Common) in
-    let* () = remove t (Private_key Common) in
+    let remove_tls tls_kind =
+      let* () = remove t (Certificate tls_kind) in
+      let* () = remove t (Private_key tls_kind) in
+      Lwt_result.return ()
+    in
+    let* () = remove_tls API in
+    let* () = remove_tls Cluster in
     let* () = remove t Ip_config in
     let* () = remove t Log_config in
     let* () = (remove t Time_offset [@ocaml.warning "-3"]) in
@@ -462,7 +473,9 @@ module Make (KV : Kv_ext.Platform) = struct
         {
           unlock_salt;
           certificate = None;
+          certificate_cluster = None;
           private_key = None;
+          private_key_cluster = None;
           ip_config = None;
           log_config = None;
           time_offset = None;
@@ -471,8 +484,10 @@ module Make (KV : Kv_ext.Platform) = struct
           nts_name = None;
         }
     else
-      let* certificate = get_opt' t (Certificate Common) in
-      let* private_key = get_opt' t (Private_key Common) in
+      let* certificate = get_opt' t (Certificate API) in
+      let* private_key = get_opt' t (Private_key API) in
+      let* certificate_cluster = get_opt' t (Certificate Cluster) in
+      let* private_key_cluster = get_opt' t (Private_key Cluster) in
       let* ip_config = get_opt' t Ip_config in
       let* log_config = get_opt' t Log_config in
       let* time_offset = (get_opt' t Time_offset [@ocaml.warning "-3"]) in
@@ -484,6 +499,8 @@ module Make (KV : Kv_ext.Platform) = struct
           unlock_salt;
           certificate;
           private_key;
+          certificate_cluster;
+          private_key_cluster;
           ip_config;
           log_config;
           time_offset;
@@ -503,8 +520,10 @@ module Make (KV : Kv_ext.Platform) = struct
     let ( let* ) = Lwt_result.bind in
     batch t (fun t ->
         let* () = set_opt t Unlock_salt b.unlock_salt in
-        let* () = set_opt t (Certificate Common) b.certificate in
-        let* () = set_opt t (Private_key Common) b.private_key in
+        let* () = set_opt t (Certificate API) b.certificate in
+        let* () = set_opt t (Private_key API) b.private_key in
+        let* () = set_opt t (Certificate Cluster) b.certificate_cluster in
+        let* () = set_opt t (Private_key Cluster) b.private_key_cluster in
         let* () = set_opt t Ip_config b.ip_config in
         let* () = set_opt t Log_config b.log_config in
         let* () = set_opt t (Time_offset [@ocaml.warning "-3"]) b.time_offset in
@@ -651,8 +670,11 @@ module Make (KV : Kv_ext.Platform) = struct
         if not partial then
           (* Ip_config and Log_config are migrated and moved at the same time *)
           (migrate_generic Time_offset [@ocaml.warning "-3"]) >>= fun () ->
-          migrate_generic (Certificate Common) >>= fun () ->
-          migrate_generic (Private_key Common) >>= fun () ->
+          migrate_generic (Certificate API) >>= fun () ->
+          migrate_generic (Private_key API) >>= fun () ->
+          (* there couldn't have been Cluster certificates in v0, but for consistency *)
+          migrate_generic (Certificate Cluster) >>= fun () ->
+          migrate_generic (Private_key Cluster) >>= fun () ->
           migrate_generic Unattended_boot >>= fun () ->
           migrate_log_config () >>= fun () ->
           migrate_ip_config () >>= fun () ->

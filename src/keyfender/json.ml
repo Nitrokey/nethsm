@@ -895,6 +895,8 @@ type platform_data = {
       [@ref "network_config"]
   lastTlsCert : string option; [@default None]
   lastTlsKey : string option; [@default None]
+  lastTlsClusterCert : string option; [@default None]
+  lastTlsClusterKey : string option; [@default None]
   failedUnlockSalt : string option; [@default None]
   failedUnlockDigest : string option; [@default None]
 }
@@ -914,6 +916,8 @@ let network_config_to_string = function
 type local_conf = {
   tls_cert : string option; [@default None]
   tls_key : string option; [@default None]
+  tls_cluster_cert : string option; [@default None]
+  tls_cluster_key : string option; [@default None]
   tls_cluster_ca : string option; [@default None]
   device_id : string option; [@default None]
   network_config : network option;
@@ -944,6 +948,8 @@ let empty_local_conf =
   {
     tls_cert = None;
     tls_key = None;
+    tls_cluster_cert = None;
+    tls_cluster_key = None;
     tls_cluster_ca = None;
     device_id = None;
     network_config = None;

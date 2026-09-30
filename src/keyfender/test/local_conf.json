@@ -11,6 +11,8 @@
     "network_config": { "$ref": "#/$defs/network_config" },
     "device_id": { "type": "string" },
     "tls_cluster_ca": { "type": "string" },
+    "tls_cluster_key": { "type": "string" },
+    "tls_cluster_cert": { "type": "string" },
     "tls_key": { "type": "string" },
     "tls_cert": { "type": "string" }
   },

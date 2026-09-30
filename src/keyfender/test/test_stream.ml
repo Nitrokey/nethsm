@@ -42,6 +42,8 @@ let platform =
     networkConfig = None;
     lastTlsCert = None;
     lastTlsKey = None;
+    lastTlsClusterCert = None;
+    lastTlsClusterKey = None;
     failedUnlockSalt = None;
     failedUnlockDigest = None;
   }

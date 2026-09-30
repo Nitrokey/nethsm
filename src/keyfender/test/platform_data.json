@@ -5,6 +5,8 @@
   "properties": {
     "failedUnlockDigest": { "type": "string" },
     "failedUnlockSalt": { "type": "string" },
+    "lastTlsClusterKey": { "type": "string" },
+    "lastTlsClusterCert": { "type": "string" },
     "lastTlsKey": { "type": "string" },
     "lastTlsCert": { "type": "string" },
     "networkConfig": { "$ref": "#/$defs/network_config" },

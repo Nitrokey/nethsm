@@ -76,8 +76,8 @@ func etcdConfOf(c *localconf.LocalConf) etcdConf {
 		return etcdConf{}
 	}
 	return etcdConf{
-		tlsCert:  derefStr(c.TLSCert),
-		tlsKey:   derefStr(c.TLSKey),
+		tlsCert:  derefStr(c.TLSClusterCert),
+		tlsKey:   derefStr(c.TLSClusterKey),
 		tlsCA:    derefStr(c.TLSTrustedCA),
 		deviceID: derefStr(c.DeviceID),
 	}

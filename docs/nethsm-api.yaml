@@ -2339,7 +2339,7 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
-  /config/tls/cluster-ca.pem:
+  /cluster/tls/ca.pem:
     get:
       responses:
         "200":

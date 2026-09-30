@@ -12,7 +12,7 @@ if [[ "$STATE" != *Operational* ]] ; then
   exit 1
 fi
 
-csr=$(POST_admin /v1/config/tls/csr.pem <<EOM
+csr=$(POST_admin /v1/cluster/tls/csr.pem <<EOM
 { "countryName": "DE",
   "stateOrProvinceName": "",
   "localityName": "Berlin",
@@ -32,14 +32,16 @@ make -f cert.make new_cert.pem
 
 echo "- install new cert"
 ${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/config/tls/cert.pem" \
+    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/cluster/tls/cert.pem" \
     || exit 1
 
 sleep 3
 
 echo "- install cluster CA"
+# TODO: move the location of this config to /cluster/? or have it in both places,
+# one of them an alias?
 ${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./CA.pem "${NETHSM_URL}/v1/config/tls/cluster-ca.pem" \
+    -X PUT --data-binary @./CA.pem "${NETHSM_URL}/v1/cluster/tls/ca.pem" \
     || exit 1
 echo
 
