@@ -2,6 +2,16 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
+type cert_chain = { cert : X509.Certificate.t; chain : X509.Certificate.t list }
+
+type server_cert = {
+  mutable key : X509.Private_key.t;
+  mutable public : cert_chain;
+}
+
+let own_cert_of t : [< Tls.Config.own_cert ] =
+  `Single (t.public.cert :: t.public.chain, t.key)
+
 module type S = sig
   module Metrics : sig
     val http_status : Cohttp.Code.status_code -> unit
@@ -809,9 +819,7 @@ module Make (KV : Kv_ext.Platform) = struct
   type t = {
     mutable state : internal_state;
     mutable has_changes : string option;
-    mutable key : X509.Private_key.t;
-    mutable cert : X509.Certificate.t;
-    mutable chain : X509.Certificate.t list;
+    tls : server_cert;
     software_update_key : Mirage_crypto_pk.Rsa.pub;
     kv : KV.t;
     info : Json.info;
@@ -826,6 +834,7 @@ module Make (KV : Kv_ext.Platform) = struct
     mutable failed_unlock_digest : string option;
   }
 
+  let tls_of t = t.tls
   let state t = to_external_state t.state
 
   let lock t =
@@ -1159,7 +1168,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt.return (Ok (Locked, migration_time))
 
   let info t = t.info
-  let own_cert t = `Single (t.cert :: t.chain, t.key)
+  let own_cert t = t |> tls_of |> own_cert_of
 
   let default_network_configuration net =
     let net, gateway =
@@ -2481,6 +2490,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error _ -> None
 
     let tls_public_pem t =
+      let t = tls_of t in
       let public = X509.Private_key.public t.key in
       Lwt.return (X509.Public_key.encode_pem public)
 
@@ -2491,7 +2501,8 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error _ -> None
 
     let tls_cert_pem t =
-      let chain = t.cert :: t.chain in
+      let t = tls_of t in
+      let chain = t.public.cert :: t.public.chain in
       Lwt.return (X509.Certificate.encode_pem_multiple chain)
 
     let tls_cluster_ca t =
@@ -2517,10 +2528,11 @@ module Make (KV : Kv_ext.Platform) = struct
        join-cluster, restore, and other operations that establish the full
        platform state. time_ms is forwarded to S-Platform to set its clock. *)
     let set_local_config ?(time_ms = None) t =
+      let tls = tls_of t in
       let* tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
       let* tls_cert = tls_cert_pem t in
-      let tls_key = t.key |> X509.Private_key.encode_pem in
+      let tls_key = tls.key |> X509.Private_key.encode_pem in
       let** network_config =
         internal_server_error Read "Read network config" Config_store.pp_error
           Config_store.(get_opt t.config_store Ip_config)
@@ -2590,6 +2602,7 @@ module Make (KV : Kv_ext.Platform) = struct
       X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None chain
 
     let set_tls_cluster_ca t cert_data =
+      let tls = tls_of t in
       let is_mock = t.system_info.hardwareVersion = "N/A" in
       let time = if is_mock then None else Some (now ()) in
       let open Lwt_result.Infix in
@@ -2614,7 +2627,9 @@ module Make (KV : Kv_ext.Platform) = struct
           >>= fun () ->
           (* check TLS cert is signed by this *)
           Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_chain_error
-            (check_ca_signs_cert t ~chain:(t.cert :: t.chain) ~ca:cert)
+            (check_ca_signs_cert t
+               ~chain:(tls.public.cert :: tls.public.chain)
+               ~ca:cert)
           |> Result.map_error (fun (`Msg msg) ->
               let msg =
                 Fmt.str "the installed TLS cert is not signed by this CA: %s"
@@ -2634,6 +2649,7 @@ module Make (KV : Kv_ext.Platform) = struct
             t
 
     let set_tls_cert_pem t cert_data =
+      let tls = tls_of t in
       (* validate the incoming chain (we'll use it for the TLS server):
          - there's one server certificate at either end (matching our private key)
          - the chain itself is properly signed (i.e. a full chain missing the TA)
@@ -2671,7 +2687,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           if
             key_eq
-              (X509.Private_key.public t.key)
+              (X509.Private_key.public tls.key)
               (X509.Certificate.public_key cert)
           then (
             let valid =
@@ -2695,14 +2711,13 @@ module Make (KV : Kv_ext.Platform) = struct
                       Config_store.pp_write_error
                       (Config_store.set t.config_store Certificate (cert, chain)))
                 >>= fun r ->
-                t.cert <- cert;
-                t.chain <- chain;
+                tls.public <- { cert; chain };
                 Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
                 >>= fun () ->
                 let cert_pem =
                   X509.Certificate.encode_pem_multiple (cert :: chain)
                 in
-                let key_pem = X509.Private_key.encode_pem t.key in
+                let key_pem = X509.Private_key.encode_pem tls.key in
                 push_local_config
                   {
                     Json.empty_local_conf with
@@ -2724,6 +2739,7 @@ module Make (KV : Kv_ext.Platform) = struct
       | Error _ -> None
 
     let tls_csr_pem t subject =
+      let t = tls_of t in
       let dn = Json.to_distinguished_name subject in
       let extensions = create_csr_extensions subject in
       Lwt.return
@@ -2732,6 +2748,7 @@ module Make (KV : Kv_ext.Platform) = struct
         | Error (`Msg m) -> Error (Bad_request, "while creating CSR: " ^ m))
 
     let tls_generate t typ ~length =
+      let tls = tls_of t in
       let open Lwt_result.Infix in
       Lwt_result.ok (Config_store.get t.config_store Cluster_CA) >>= function
       | Ok _ca ->
@@ -2756,9 +2773,8 @@ module Make (KV : Kv_ext.Platform) = struct
                 (Config_store.set kv Certificate (cert, [])))
           >>= fun () ->
           (* update state *)
-          t.key <- key;
-          t.cert <- cert;
-          t.chain <- [];
+          tls.key <- key;
+          tls.public <- { cert; chain = [] };
           (* notify server *)
           Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
           let cert_pem = X509.Certificate.encode_pem cert in
@@ -2956,6 +2972,7 @@ module Make (KV : Kv_ext.Platform) = struct
   let network_configuration = Config.network
 
   let provision t ~unlock ~admin time =
+    let tls = tls_of t in
     let open Lwt_result.Infix in
     (* state already checked in Handler_provision.service_available *)
     let start = now () in
@@ -2985,11 +3002,12 @@ module Make (KV : Kv_ext.Platform) = struct
             >>= fun () ->
             internal_server_error Write "Writing private RSA key"
               Config_store.pp_write_error
-              (Config_store.set b Private_key t.key)
+              (Config_store.set b Private_key tls.key)
             >>= fun () ->
             internal_server_error Write "Writing certificate chain key"
               Config_store.pp_write_error
-              (Config_store.set b Certificate (t.cert, t.chain))
+              (Config_store.set b Certificate
+                 (tls.public.cert, tls.public.chain))
             >>= fun () ->
             let auth_store =
               Encrypted_store.v Authentication ~key:auth_store_key t.kv
@@ -4210,6 +4228,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt_result.return (state, cert, key, chain, migration_time)
 
   let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
+    let tls = tls_of t in
     (* minimum amount of time the store has to be continuously unhealthy for the HSM to go into Failed state *)
     let failure_state_threshold_s = 60 in
     let* event = Lwt_stream.get stream in
@@ -4252,9 +4271,8 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt.return None
           | Ok (state, cert, key, chain, _) ->
               t.state <- state;
-              t.cert <- cert;
-              t.key <- key;
-              t.chain <- chain;
+              tls.key <- key;
+              tls.public <- { cert; chain };
               Lwt.return None)
       | _healthy_state, `Healthy ->
           Option.iter
@@ -4356,13 +4374,12 @@ module Make (KV : Kv_ext.Platform) = struct
             let cert, key = generate_cert priv and chain = [] in
             Lwt_result.return (state, cert, key, chain, None)
     in
+    let tls = { key; public = { cert; chain } } in
     let t =
       {
         state;
         has_changes;
-        key;
-        cert;
-        chain;
+        tls;
         software_update_key;
         kv;
         info;
