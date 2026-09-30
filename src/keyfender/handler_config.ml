@@ -8,14 +8,14 @@ module Make (Wm : Webmachine.S with type +'a io = 'a Lwt.t) (Hsm : Hsm.S) =
 struct
   module Endpoint = Endpoint.Make (Wm) (Hsm)
 
-  class tls_public hsm_state ip =
+  class tls_public tls_kind hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
-        Hsm.Config.tls_public_pem hsm_state >>= fun pk_pem ->
+        Hsm.Config.tls_public_pem hsm_state tls_kind >>= fun pk_pem ->
         Wm.continue (`String pk_pem) rd
 
       method content_types_provided rd =
@@ -24,24 +24,24 @@ struct
       method content_types_accepted rd = Wm.continue [] rd
 
       method! generate_etag rd =
-        Hsm.Config.tls_public_pem_digest hsm_state >>= fun digest ->
+        Hsm.Config.tls_public_pem_digest hsm_state tls_kind >>= fun digest ->
         Wm.continue digest rd
     end
 
-  class tls_cert hsm_state ip =
+  class tls_cert tls_kind hsm_state ip =
     object (self)
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
       inherit! Endpoint.r_role hsm_state `Administrator ip
 
       method private get rd =
-        Hsm.Config.tls_cert_pem hsm_state >>= fun cert_pem ->
+        Hsm.Config.tls_cert_pem hsm_state tls_kind >>= fun cert_pem ->
         Wm.continue (`String cert_pem) rd
 
       method private set rd =
         let body = rd.Webmachine.Rd.req_body in
         Cohttp_lwt.Body.to_string body >>= fun content ->
-        Hsm.Config.set_tls_cert_pem hsm_state content >>= function
+        Hsm.Config.set_tls_cert_pem hsm_state tls_kind content >>= function
         | Ok () ->
             let cc hdr =
               Cohttp.Header.replace hdr "Location" (Uri.path rd.uri)
@@ -59,7 +59,7 @@ struct
       method! allowed_methods = Wm.continue [ `GET; `PUT ]
 
       method! generate_etag rd =
-        Hsm.Config.tls_cert_digest hsm_state >>= fun digest ->
+        Hsm.Config.tls_cert_digest hsm_state tls_kind >>= fun digest ->
         Wm.continue digest rd
     end
 
@@ -98,7 +98,7 @@ struct
       method! allowed_methods = Wm.continue [ `GET; `PUT ]
     end
 
-  class tls_csr hsm_state ip =
+  class tls_csr tls_kind hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
@@ -108,7 +108,7 @@ struct
 
       method private of_json json rd =
         let ok subject =
-          Hsm.Config.tls_csr_pem hsm_state subject >>= function
+          Hsm.Config.tls_csr_pem hsm_state tls_kind subject >>= function
           | Ok csr_pem ->
               let rd' = { rd with resp_body = `String csr_pem } in
               Wm.continue true rd'
@@ -121,7 +121,7 @@ struct
         Wm.continue [ ("application/x-pem-file", Wm.continue `Empty) ]
     end
 
-  class tls_generate hsm_state ip =
+  class tls_generate tls_kind hsm_state ip =
     object
       inherit Endpoint.base_with_body_length
       inherit! Endpoint.input_state_validated hsm_state [ `Operational ]
@@ -148,7 +148,7 @@ struct
                 (Bad_request, Fmt.str "Unsupported key type '%s' for TLS" typ)
                 rd
           | Ok typ -> (
-              Hsm.Config.tls_generate hsm_state typ ~length:key.length
+              Hsm.Config.tls_generate hsm_state tls_kind typ ~length:key.length
               >>= function
               | Ok () -> Wm.continue true rd
               | Error e -> Endpoint.respond_error e rd)

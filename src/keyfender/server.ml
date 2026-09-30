@@ -49,10 +49,13 @@ module Make_handlers (Hsm : Hsm.S) = struct
           fun () -> new Config.unlock_passphrase hsm_state ip );
         ( "/config/unattended-boot",
           fun () -> new Config.unattended_boot hsm_state ip );
-        ("/config/tls/public.pem", fun () -> new Config.tls_public hsm_state ip);
-        ("/config/tls/cert.pem", fun () -> new Config.tls_cert hsm_state ip);
-        ("/config/tls/csr.pem", fun () -> new Config.tls_csr hsm_state ip);
-        ("/config/tls/generate", fun () -> new Config.tls_generate hsm_state ip);
+        ( "/config/tls/public.pem",
+          fun () -> new Config.tls_public Common hsm_state ip );
+        ( "/config/tls/cert.pem",
+          fun () -> new Config.tls_cert Common hsm_state ip );
+        ("/config/tls/csr.pem", fun () -> new Config.tls_csr Common hsm_state ip);
+        ( "/config/tls/generate",
+          fun () -> new Config.tls_generate Common hsm_state ip );
         ( "/config/tls/cluster-ca.pem",
           fun () -> new Config.tls_cluster_ca hsm_state ip );
         ("/config/network", fun () -> new Config.network hsm_state ip);

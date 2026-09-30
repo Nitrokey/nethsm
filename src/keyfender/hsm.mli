@@ -2,6 +2,9 @@
    SPDX-License-Identifier: EUPL-1.2
 *)
 
+type tls_kind = Common
+type server_cert
+
 module type S = sig
   module Metrics : sig
     val http_status : Cohttp.Code.status_code -> unit
@@ -92,17 +95,23 @@ module type S = sig
     val unattended_boot : t -> (bool, error) result Lwt.t
     val set_unattended_boot : t -> bool -> (unit, error) result Lwt.t
     val unattended_boot_digest : t -> string option Lwt.t
-    val tls_public_pem : t -> string Lwt.t
-    val tls_public_pem_digest : t -> string option Lwt.t
-    val tls_cert_pem : t -> string Lwt.t
-    val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_public_pem : t -> tls_kind -> string Lwt.t
+    val tls_public_pem_digest : t -> tls_kind -> string option Lwt.t
+    val tls_cert_pem : t -> tls_kind -> string Lwt.t
+    val set_tls_cert_pem : t -> tls_kind -> string -> (unit, error) result Lwt.t
     val tls_cluster_ca : t -> string option Lwt.t
     val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
-    val tls_cert_digest : t -> string option Lwt.t
-    val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
+    val tls_cert_digest : t -> tls_kind -> string option Lwt.t
+
+    val tls_csr_pem :
+      t -> tls_kind -> Json.subject_req -> (string, error) result Lwt.t
 
     val tls_generate :
-      t -> X509.Key_type.t -> length:int -> (unit, error) result Lwt.t
+      t ->
+      tls_kind ->
+      X509.Key_type.t ->
+      length:int ->
+      (unit, error) result Lwt.t
 
     val network : t -> Json.network Lwt.t
     val set_network : t -> Json.network -> (unit, error) result Lwt.t

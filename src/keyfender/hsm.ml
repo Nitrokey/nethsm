@@ -3,10 +3,12 @@
 *)
 
 type cert_chain = { cert : X509.Certificate.t; chain : X509.Certificate.t list }
+type tls_kind = Config_store.tls_kind = Common
 
 type server_cert = {
   mutable key : X509.Private_key.t;
   mutable public : cert_chain;
+  kind : tls_kind;
 }
 
 let own_cert_of t : [< Tls.Config.own_cert ] =
@@ -102,17 +104,23 @@ module type S = sig
     val unattended_boot : t -> (bool, error) result Lwt.t
     val set_unattended_boot : t -> bool -> (unit, error) result Lwt.t
     val unattended_boot_digest : t -> string option Lwt.t
-    val tls_public_pem : t -> string Lwt.t
-    val tls_public_pem_digest : t -> string option Lwt.t
-    val tls_cert_pem : t -> string Lwt.t
-    val set_tls_cert_pem : t -> string -> (unit, error) result Lwt.t
+    val tls_public_pem : t -> tls_kind -> string Lwt.t
+    val tls_public_pem_digest : t -> tls_kind -> string option Lwt.t
+    val tls_cert_pem : t -> tls_kind -> string Lwt.t
+    val set_tls_cert_pem : t -> tls_kind -> string -> (unit, error) result Lwt.t
     val tls_cluster_ca : t -> string option Lwt.t
     val set_tls_cluster_ca : t -> string -> (unit, error) result Lwt.t
-    val tls_cert_digest : t -> string option Lwt.t
-    val tls_csr_pem : t -> Json.subject_req -> (string, error) result Lwt.t
+    val tls_cert_digest : t -> tls_kind -> string option Lwt.t
+
+    val tls_csr_pem :
+      t -> tls_kind -> Json.subject_req -> (string, error) result Lwt.t
 
     val tls_generate :
-      t -> X509.Key_type.t -> length:int -> (unit, error) result Lwt.t
+      t ->
+      tls_kind ->
+      X509.Key_type.t ->
+      length:int ->
+      (unit, error) result Lwt.t
 
     val network : t -> Json.network Lwt.t
     val set_network : t -> Json.network -> (unit, error) result Lwt.t
@@ -834,7 +842,7 @@ module Make (KV : Kv_ext.Platform) = struct
     mutable failed_unlock_digest : string option;
   }
 
-  let tls_of t = t.tls
+  let tls_of t Common = t.tls
   let state t = to_external_state t.state
 
   let lock t =
@@ -1105,11 +1113,11 @@ module Make (KV : Kv_ext.Platform) = struct
     let open Lwt_result.Infix in
     lwt_error_fatal "get private key from configuration store"
       ~pp_error:Config_store.pp_error
-      (Config_store.get kv Private_key)
+      (Config_store.get kv @@ Private_key Common)
     >>= fun priv ->
     lwt_error_fatal "get certificate from configuration store"
       ~pp_error:Config_store.pp_error
-      (Config_store.get kv Certificate)
+      (Config_store.get kv @@ Certificate Common)
     >|= fun (cert, chain) -> (cert, chain, priv)
 
   (* Returns (state, migration_time) where migration_time is the wall-clock
@@ -1168,7 +1176,7 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt.return (Ok (Locked, migration_time))
 
   let info t = t.info
-  let own_cert t = t |> tls_of |> own_cert_of
+  let own_cert t = tls_of t Common |> own_cert_of
 
   let default_network_configuration net =
     let net, gateway =
@@ -2489,19 +2497,19 @@ module Make (KV : Kv_ext.Platform) = struct
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let tls_public_pem t =
-      let t = tls_of t in
+    let tls_public_pem t tls_kind =
+      let t = tls_of t tls_kind in
       let public = X509.Private_key.public t.key in
       Lwt.return (X509.Public_key.encode_pem public)
 
-    let tls_public_pem_digest t =
+    let tls_public_pem_digest t tls_kind =
       let open Lwt.Infix in
-      Config_store.digest t.config_store Private_key >|= function
+      Config_store.digest t.config_store (Private_key tls_kind) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let tls_cert_pem t =
-      let t = tls_of t in
+    let tls_cert_pem t tls_kind =
+      let t = tls_of t tls_kind in
       let chain = t.public.cert :: t.public.chain in
       Lwt.return (X509.Certificate.encode_pem_multiple chain)
 
@@ -2528,11 +2536,10 @@ module Make (KV : Kv_ext.Platform) = struct
        join-cluster, restore, and other operations that establish the full
        platform state. time_ms is forwarded to S-Platform to set its clock. *)
     let set_local_config ?(time_ms = None) t =
-      let tls = tls_of t in
       let* tls_cluster_ca = tls_cluster_ca t in
       let device_id = t.system_info.deviceId in
-      let* tls_cert = tls_cert_pem t in
-      let tls_key = tls.key |> X509.Private_key.encode_pem in
+      let* tls_cert = tls_cert_pem t Common in
+      let tls_key = (tls_of t Common).key |> X509.Private_key.encode_pem in
       let** network_config =
         internal_server_error Read "Read network config" Config_store.pp_error
           Config_store.(get_opt t.config_store Ip_config)
@@ -2602,7 +2609,7 @@ module Make (KV : Kv_ext.Platform) = struct
       X509.Validation.verify_chain ~anchors:[ ca ] ~time ~host:None chain
 
     let set_tls_cluster_ca t cert_data =
-      let tls = tls_of t in
+      let tls = tls_of t Common in
       let is_mock = t.system_info.hardwareVersion = "N/A" in
       let time = if is_mock then None else Some (now ()) in
       let open Lwt_result.Infix in
@@ -2648,8 +2655,8 @@ module Make (KV : Kv_ext.Platform) = struct
             { Json.empty_local_conf with tls_cluster_ca = Some ca_pem }
             t
 
-    let set_tls_cert_pem t cert_data =
-      let tls = tls_of t in
+    let set_tls_cert_pem t tls_kind cert_data =
+      let tls = tls_of t tls_kind in
       (* validate the incoming chain (we'll use it for the TLS server):
          - there's one server certificate at either end (matching our private key)
          - the chain itself is properly signed (i.e. a full chain missing the TA)
@@ -2709,7 +2716,8 @@ module Make (KV : Kv_ext.Platform) = struct
                 with_write_lock (fun () ->
                     internal_server_error Write "Write certificate"
                       Config_store.pp_write_error
-                      (Config_store.set t.config_store Certificate (cert, chain)))
+                      (Config_store.set t.config_store (Certificate Common)
+                         (cert, chain)))
                 >>= fun r ->
                 tls.public <- { cert; chain };
                 Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
@@ -2732,14 +2740,14 @@ module Make (KV : Kv_ext.Platform) = struct
                  ( Bad_request,
                    "public key in certificate does not match private key." )
 
-    let tls_cert_digest t =
+    let tls_cert_digest t tls_kind =
       let open Lwt.Infix in
-      Config_store.digest t.config_store Certificate >|= function
+      Config_store.digest t.config_store (Certificate tls_kind) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
 
-    let tls_csr_pem t subject =
-      let t = tls_of t in
+    let tls_csr_pem t tls_kind subject =
+      let t = tls_of t tls_kind in
       let dn = Json.to_distinguished_name subject in
       let extensions = create_csr_extensions subject in
       Lwt.return
@@ -2747,8 +2755,8 @@ module Make (KV : Kv_ext.Platform) = struct
         | Ok csr -> Ok (X509.Signing_request.encode_pem csr)
         | Error (`Msg m) -> Error (Bad_request, "while creating CSR: " ^ m))
 
-    let tls_generate t typ ~length =
-      let tls = tls_of t in
+    let tls_generate t tls_kind typ ~length =
+      let tls = tls_of t tls_kind in
       let open Lwt_result.Infix in
       Lwt_result.ok (Config_store.get t.config_store Cluster_CA) >>= function
       | Ok _ca ->
@@ -2766,11 +2774,11 @@ module Make (KV : Kv_ext.Platform) = struct
               Config_store.batch t.config_store @@ fun kv ->
               internal_server_error Write "Write tls private key"
                 Config_store.pp_write_error
-                (Config_store.set kv Private_key key)
+                (Config_store.set kv (Private_key Common) key)
               >>= fun () ->
               internal_server_error Write "Write tls certificate"
                 Config_store.pp_write_error
-                (Config_store.set kv Certificate (cert, [])))
+                (Config_store.set kv (Certificate Common) (cert, [])))
           >>= fun () ->
           (* update state *)
           tls.key <- key;
@@ -2972,7 +2980,7 @@ module Make (KV : Kv_ext.Platform) = struct
   let network_configuration = Config.network
 
   let provision t ~unlock ~admin time =
-    let tls = tls_of t in
+    let tls = tls_of t Common in
     let open Lwt_result.Infix in
     (* state already checked in Handler_provision.service_available *)
     let start = now () in
@@ -3002,11 +3010,11 @@ module Make (KV : Kv_ext.Platform) = struct
             >>= fun () ->
             internal_server_error Write "Writing private RSA key"
               Config_store.pp_write_error
-              (Config_store.set b Private_key tls.key)
+              (Config_store.set b (Private_key Common) tls.key)
             >>= fun () ->
             internal_server_error Write "Writing certificate chain key"
               Config_store.pp_write_error
-              (Config_store.set b Certificate
+              (Config_store.set b (Certificate Common)
                  (tls.public.cert, tls.public.chain))
             >>= fun () ->
             let auth_store =
@@ -4228,7 +4236,6 @@ module Make (KV : Kv_ext.Platform) = struct
         Lwt_result.return (state, cert, key, chain, migration_time)
 
   let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
-    let tls = tls_of t in
     (* minimum amount of time the store has to be continuously unhealthy for the HSM to go into Failed state *)
     let failure_state_threshold_s = 60 in
     let* event = Lwt_stream.get stream in
@@ -4271,6 +4278,7 @@ module Make (KV : Kv_ext.Platform) = struct
               Lwt.return None
           | Ok (state, cert, key, chain, _) ->
               t.state <- state;
+              let tls = tls_of t Common in
               tls.key <- key;
               tls.public <- { cert; chain };
               Lwt.return None)
@@ -4374,7 +4382,7 @@ module Make (KV : Kv_ext.Platform) = struct
             let cert, key = generate_cert priv and chain = [] in
             Lwt_result.return (state, cert, key, chain, None)
     in
-    let tls = { key; public = { cert; chain } } in
+    let tls = { key; public = { cert; chain }; kind = Common } in
     let t =
       {
         state;
