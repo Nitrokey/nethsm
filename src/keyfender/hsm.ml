@@ -1128,38 +1128,12 @@ module Make (KV : Kv_ext.Platform) = struct
       (Config_store.get kv @@ Certificate tls_kind)
     >|= fun (cert, chain) -> (cert, chain, priv)
 
-  (* Returns (state, migration_time) where migration_time is the wall-clock
-     time reconstructed from a deprecated Time_offset key, to be forwarded to
-     S-Platform by the caller. The key is deleted here regardless. *)
+  let remove_deprecated_time_offset config_store =
+    let open Lwt_result.Infix in
+    Config_store.remove config_store (Time_offset [@ocaml.warning "-3"])
+    >|= fun () -> Log.debug (fun m -> m "removed deprecated time-offset key")
+
   let boot_config_store ~cache_settings config_store device_key =
-    let open Lwt.Infix in
-    Config_store.get_opt config_store (Time_offset [@ocaml.warning "-3"])
-    >>= fun time_offset_r ->
-    let migration_time =
-      match time_offset_r with
-      | Error e ->
-          Log.warn (fun m ->
-              m "failed to migrate time-offset config: %a" Config_store.pp_error
-                e);
-          None
-      | Ok None -> None
-      | Ok (Some span) -> (
-          Log.info (fun m -> m "migrating deprecated time-offset to S-Platform");
-          let (`Raw now_raw) = Hsm_clock.now_raw () in
-          match Ptime.add_span now_raw span with
-          | None ->
-              Log.warn (fun m ->
-                  m "stored time offset out of range, skipping migration");
-              None
-          | Some ts -> Some ts)
-    in
-    (match time_offset_r with
-      | Ok (Some _) ->
-          Log.debug (fun m -> m "removed deprecated time-offset key");
-          Config_store.remove config_store (Time_offset [@ocaml.warning "-3"])
-          >|= ignore
-      | _ -> Lwt.return_unit)
-    >>= fun () ->
     let open Lwt_result.Infix in
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
       (Config_store.get config_store Unlock_salt)
@@ -1175,13 +1149,13 @@ module Make (KV : Kv_ext.Platform) = struct
         unlock_with_device_key ~cache_settings ~domain_store ~config_store
           ~device_key ()
         >|= function
-        | Ok s -> Ok (s, migration_time)
+        | Ok s -> Ok s
         | Error (_, msg) ->
             Log.err (fun m -> m "unattended boot failed with %s" msg);
-            Ok (Locked, migration_time))
+            Ok Locked)
     | None | Some false ->
         Config_store.forget_config_domain_key config_store;
-        Lwt.return (Ok (Locked, migration_time))
+        Lwt.return (Ok Locked)
 
   let info t = t.info
   let own_cert t = tls_of t API |> own_cert_of
@@ -3328,7 +3302,7 @@ module Make (KV : Kv_ext.Platform) = struct
           in
           Log.info (fun m -> m "joining cluster OK! locking now");
           KV.clear_watches t.kv;
-          let** new_state, _ =
+          let** new_state =
             boot_config_store ~cache_settings:t.cache_settings t.config_store
               t.device_key
           in
@@ -4143,7 +4117,26 @@ module Make (KV : Kv_ext.Platform) = struct
                        config_values))
           in
 
-          let** migration_time_opt =
+          let** () =
+            (* A deprecated time-offset key from the backup (a v0 backup is
+               migrated into the local config above) is relative to the
+               hardware clock of the machine the backup was taken on. Remove it
+               so that it is not migrated to S-Platform at the next boot. *)
+            let** present =
+              internal_server_error Read "Read deprecated time-offset"
+                Config_store.pp_error
+                (Config_store.exists t.config_store
+                   (Time_offset [@ocaml.warning "-3"]))
+            in
+            match present with
+            | false -> Lwt_result.return ()
+            | true ->
+                internal_server_error Write "Remove deprecated time-offset"
+                  Config_store.pp_write_error
+                  (remove_deprecated_time_offset t.config_store)
+          in
+
+          let** () =
             if (not is_operational) || dk_rewritten then (
               (* If the restore was
                   - unprovisioned, or
@@ -4151,13 +4144,13 @@ module Make (KV : Kv_ext.Platform) = struct
                  the end state after restore is locked.
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
-              let** new_state, migration_time_opt =
+              let** new_state =
                 boot_config_store ~cache_settings:t.cache_settings
                   t.config_store t.device_key
               in
               t.state <- new_state;
-              Lwt_result.return migration_time_opt)
-            else Lwt_result.return None
+              Lwt_result.return ())
+            else Lwt_result.return ()
           in
 
           let** _set_state =
@@ -4179,12 +4172,7 @@ module Make (KV : Kv_ext.Platform) = struct
                   Some (Int64.add (ptime_to_ms_int64 new_time) elapsed_ms)
                 in
                 Config.set_local_config ~time_ms t
-            | None -> (
-                match migration_time_opt with
-                | None -> Lwt.return_ok ()
-                | Some ts ->
-                    let time_ms = Some (ptime_to_ms_int64 ts) in
-                    Config.set_local_config ~time_ms t)
+            | None -> Lwt.return_ok ()
           in
           if is_backup_truncated then
             Lwt_result.fail
@@ -4258,14 +4246,14 @@ module Make (KV : Kv_ext.Platform) = struct
         in
         let api = generate () in
         let cluster = generate () in
-        Lwt_result.return (state, api, cluster, None)
+        Lwt_result.return (state, api, cluster)
     | Some version ->
         (* provisioned device, look at store to figure out state *)
         let** () =
           System.apply_config_and_domain_migrations ~config_store kv
             ~device_id:system_info.deviceId version
         in
-        let** state, migration_time =
+        let** state =
           boot_config_store ~cache_settings config_store device_key
         in
         let** api = certificate_chain config_store API in
@@ -4280,7 +4268,53 @@ module Make (KV : Kv_ext.Platform) = struct
           end
           else certificate_chain config_store Cluster
         in
-        Lwt_result.return (state, api, cluster, migration_time)
+        Lwt_result.return (state, api, cluster)
+
+  (* Before the S-Platform time sync stored the wall clock offset in
+     the config store, relative to the raw hardware clock. Forward the resulting
+     absolute time to S-Platform once and remove the key. *)
+  let migrate_deprecated_time_offset t =
+    let open Lwt.Infix in
+    (* Runs after the caller (boot) has returned, so that the mailboxes
+           are being handled when the time is sent to S-Platform. The absolute
+           time is computed here, right before it is sent. *)
+    let* () = Lwt.pause () in
+    match t.state with
+    | Failed _ ->
+        (* no store; called again when it recovers *)
+        Lwt.return_unit
+    | _ -> (
+        Config_store.get_opt t.config_store (Time_offset [@ocaml.warning "-3"])
+        >>= function
+        | Error e ->
+            Log.warn (fun m ->
+                m "failed to migrate time-offset config: %a"
+                  Config_store.pp_error e);
+            Lwt.return_unit
+        | Ok None -> Lwt.return_unit
+        | Ok (Some span) -> (
+            let* () =
+              remove_deprecated_time_offset t.config_store >|= function
+              | Ok () -> ()
+              | Error e ->
+                  Log.warn (fun m ->
+                      m "failed to remove deprecated time-offset key: %a"
+                        Config_store.pp_write_error e)
+            in
+            Log.info (fun m ->
+                m "migrating deprecated time-offset to S-Platform");
+            let (`Raw now_raw) = Hsm_clock.now_raw () in
+            match Ptime.add_span now_raw span with
+            | None ->
+                Log.warn (fun m ->
+                    m "stored time offset out of range, skipping migration");
+                Lwt.return_unit
+            | Some ts ->
+                let time_ms = Some (ptime_to_ms_int64 ts) in
+                Config.push_local_config
+                  { Json.empty_local_conf with time_ms }
+                  t
+                >|= ignore))
 
   let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
     (* minimum amount of time the store has to be continuously unhealthy for the HSM to go into Failed state *)
@@ -4323,7 +4357,7 @@ module Make (KV : Kv_ext.Platform) = struct
           | Error (`Msg msg) ->
               Log.err (fun f -> f "boot failed again: %s" msg);
               Lwt.return None
-          | Ok (state, (cert, chain, key), (cert', chain', key'), _) ->
+          | Ok (state, (cert, chain, key), (cert', chain', key')) ->
               t.state <- state;
               let tls = tls_of t API in
               tls.key <- key;
@@ -4331,6 +4365,7 @@ module Make (KV : Kv_ext.Platform) = struct
               let tls = tls_of t Cluster in
               tls.key <- key';
               tls.public <- { cert = cert'; chain = chain' };
+              Lwt.async (fun () -> migrate_deprecated_time_offset t);
               Lwt.return None)
       | _healthy_state, `Healthy ->
           Option.iter
@@ -4417,7 +4452,7 @@ module Make (KV : Kv_ext.Platform) = struct
       boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
         ~config_store
     in
-    let** state, (cert, chain, key), (cert', chain', key'), migration_time =
+    let** state, (cert, chain, key), (cert', chain', key') =
       let* healthy = check_store_healthy kv in
       (* check is store is healthy (reachable), and obtain normal boot state if so *)
       if healthy then (
@@ -4453,7 +4488,7 @@ module Make (KV : Kv_ext.Platform) = struct
           decode_or_generate "cluster" platform.lastTlsClusterKey
             platform.lastTlsClusterCert
         in
-        Lwt_result.return (state, api, cluster, None)
+        Lwt_result.return (state, api, cluster)
     in
     let tls = { key; public = { cert; chain }; kind = API } in
     let tls_cluster =
@@ -4498,14 +4533,7 @@ module Make (KV : Kv_ext.Platform) = struct
       discard ()
     in
     Lwt.async discard_old_rate_limits;
-    Option.iter
-      (fun ts ->
-        Lwt.async (fun () ->
-            let open Lwt.Infix in
-            let time_ms = Some (ptime_to_ms_int64 ts) in
-            Config.push_local_config { Json.empty_local_conf with time_ms } t
-            >|= ignore))
-      migration_time;
+    Lwt.async (fun () -> migrate_deprecated_time_offset t);
     Lwt_result.return (t, t.mbox, t.res_mbox)
 
   let boot ?cache_settings ?default_net ~platform software_update_key kv =

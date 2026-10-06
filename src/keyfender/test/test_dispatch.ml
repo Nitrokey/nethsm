@@ -851,13 +851,11 @@ let system_restore_v0_backup_unattended ~changed_devkey =
     if changed_devkey then
       expect ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
-      ^ info "migrating deprecated time-offset to S-Platform"
       ^ debug "removed deprecated time-offset key"
       ^ error "unattended boot failed with not authenticated"
       ^ debug "caching config to the platform"
     else
       expect
-      ^ info "migrating deprecated time-offset to S-Platform"
       ^ debug "removed deprecated time-offset key"
       ^ info "Applying post unlock migrations"
       ^ info "migrating /config/backup-key"
@@ -984,12 +982,10 @@ let system_restore_v0_backup ~changed_devkey =
     if changed_devkey then
       expect ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
-      ^ info "migrating deprecated time-offset to S-Platform"
       ^ debug "removed deprecated time-offset key"
       ^ debug "caching config to the platform"
     else
       expect
-      ^ info "migrating deprecated time-offset to S-Platform"
       ^ debug "removed deprecated time-offset key"
       ^ debug "caching config to the platform"
   in
@@ -1323,13 +1319,39 @@ let system_backup_and_restore_no_backuppassphrase_fails =
       | _ -> false)
   | _ -> false
 
-let system_backup_and_restore_changed_devkey ~also_change_devid =
+(* Plant a deprecated time-offset key as firmware before the S-Platform time
+   sync stored it: the offset in seconds, encrypted with the early config store
+   key. Returns the key. *)
+let plant_time_offset ~(platform : Keyfender.Json.platform_data) store offset_s
+    =
+  let key =
+    Mirage_kv.Key.(
+      empty / "local" / platform.deviceId / "config" / "time-offset")
+  in
+  let data =
+    let device_key = Base64.decode_exn platform.deviceKey in
+    let config_device_key =
+      Digestif.SHA256.(
+        digest_string (device_key ^ "early_config_store") |> to_raw_string)
+    in
+    Keyfender.Crypto.encrypt Mirage_crypto_rng.generate
+      ~key:(Keyfender.Crypto.GCM.of_secret config_device_key)
+      ~adata:(Mirage_kv.Key.to_string key)
+      (string_of_int offset_s)
+  in
+  Lwt_main.run (Kv_mem.set store key data) |> Result.get_ok;
+  key
+
+let system_backup_and_restore_changed_devkey ~with_time_offset
+    ~also_change_devid =
   let backup_passphrase = "backup passphrase" in
   let passphrase =
     Printf.sprintf "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
       backup_passphrase
   in
-  let hsm_state = operational_mock_with_mbox () in
+  let kv, hsm_state = operational_mock_with_mbox'' (fun _ -> Hsm.EmptyResult) in
+  (* a backup taken on firmware before the S-Platform time sync *)
+  if with_time_offset then ignore (plant_time_offset ~platform kv 3600);
   let hsm_state =
     admin_put_request ~hsm_state ~body:(`String passphrase)
       "/config/backup-passphrase"
@@ -1361,32 +1383,32 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
     if also_change_devid then { platform with deviceId = "0000000001" }
     else platform
   in
+  let kv_2 = Lwt_main.run (Kv_mem.connect ()) in
   let hsm_state_2 =
     Lwt_main.run
-      ( Kv_mem.connect () >>= Hsm.boot ~platform software_update_key
-      >>= fun (y, o, m) ->
+      ( Hsm.boot ~platform software_update_key kv_2 >>= fun (y, o, m) ->
         happy_mbox o m >|= fun () -> y )
   in
   let expect_change =
-    if also_change_devid then
-      info
-        "different device: importing + re-encrypting local configs from device \
-         0000000000"
-      ^ info
-          "different device: removing all /local/0000000000/config keys before \
-           writing in /local/0000000001/config"
-      ^ debug "restoring /local/0000000001/config/unlock-salt"
-      ^ debug "restoring /local/0000000001/config/certificate"
-      ^ debug "restoring /local/0000000001/config/private-key"
-      ^ debug "restoring /local/0000000001/config/certificate-cluster"
-      ^ debug "restoring /local/0000000001/config/private-key-cluster"
-    else
-      info "device has been reset: re-encrypting local configs"
-      ^ debug "restoring /local/0000000000/config/unlock-salt"
-      ^ debug "restoring /local/0000000000/config/certificate"
-      ^ debug "restoring /local/0000000000/config/private-key"
-      ^ debug "restoring /local/0000000000/config/certificate-cluster"
-      ^ debug "restoring /local/0000000000/config/private-key-cluster"
+    let id = if also_change_devid then "0000000001" else "0000000000" in
+    (if also_change_devid then
+       info
+         "different device: importing + re-encrypting local configs from \
+          device 0000000000"
+       ^ info
+           "different device: removing all /local/0000000000/config keys \
+            before writing in /local/0000000001/config"
+     else info "device has been reset: re-encrypting local configs")
+    ^ debug ("restoring /local/" ^ id ^ "/config/unlock-salt")
+    ^ debug ("restoring /local/" ^ id ^ "/config/certificate")
+    ^ debug ("restoring /local/" ^ id ^ "/config/private-key")
+    ^ debug ("restoring /local/" ^ id ^ "/config/certificate-cluster")
+    ^ debug ("restoring /local/" ^ id ^ "/config/private-key-cluster")
+    ^
+    if with_time_offset then
+      debug ("restoring /local/" ^ id ^ "/config/time-offset")
+      ^ debug "removed deprecated time-offset key"
+    else ""
   in
   let expect =
     multipart_log ^ info "Device Key changed."
@@ -1400,6 +1422,13 @@ let system_backup_and_restore_changed_devkey ~also_change_devid =
     |> returns_empty' ~with_status:`No_content
   in
   assert (Hsm.state hsm_state' = `Locked);
+  (* the backup's time offset is not carried over to the restored device *)
+  assert (
+    Lwt_main.run
+      (Kv_mem.exists kv_2
+         Mirage_kv.Key.(
+           empty / "local" / platform.deviceId / "config" / "time-offset"))
+    = Ok None);
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
   let expect = debug "caching config to the platform" in
   let hsm_state' =
@@ -1425,13 +1454,70 @@ let system_backup_and_restore_changed_all =
     "/system/restore with changed device key and changed device ID + unlock -> \
      operational"
     `Quick (fun () ->
-      system_backup_and_restore_changed_devkey ~also_change_devid:true)
+      system_backup_and_restore_changed_devkey ~with_time_offset:false
+        ~also_change_devid:true)
+
+let system_backup_and_restore_changed_devkey_time_offset =
+  Alcotest.test_case
+    "/system/restore with changed device key and a deprecated time-offset in \
+     the backup + unlock -> operational"
+    `Quick (fun () ->
+      system_backup_and_restore_changed_devkey ~with_time_offset:true
+        ~also_change_devid:false)
+
+let system_backup_and_restore_changed_all_time_offset =
+  Alcotest.test_case
+    "/system/restore with changed device key and device ID and a deprecated \
+     time-offset in the backup + unlock -> operational"
+    `Quick (fun () ->
+      system_backup_and_restore_changed_devkey ~with_time_offset:true
+        ~also_change_devid:true)
 
 let system_backup_and_restore_changed_devkey =
   Alcotest.test_case
     "/system/restore with changed device key + unlock -> operational" `Quick
     (fun () ->
-      system_backup_and_restore_changed_devkey ~also_change_devid:false)
+      system_backup_and_restore_changed_devkey ~with_time_offset:false
+        ~also_change_devid:false)
+
+let boot_migrates_deprecated_time_offset =
+  "boot forwards a deprecated time-offset to S-Platform and removes it"
+  @? fun () ->
+  let store = Lwt_main.run (Kv_mem.connect ()) in
+  let offset_s = 3600 in
+  let key = plant_time_offset ~platform store offset_s in
+  let received = ref None in
+  let f = function
+    | Hsm.Set_local_config conf -> received := conf.time_ms
+    | _ -> ()
+  in
+  let key_present =
+    Lwt_main.run
+      ( Hsm.boot ~platform software_update_key store >>= fun (_, o, m) ->
+        (* the mailboxes are only handled after boot returned, like in the
+           unikernel; the migration must not block boot on them *)
+        happy_mbox ~f o m >>= fun () ->
+        let rec wait n =
+          if n = 0 || Option.is_some !received then Lwt.return_unit
+          else Lwt.pause () >>= fun () -> wait (n - 1)
+        in
+        wait 100 >>= fun () ->
+        Lwt.pause () >>= fun () ->
+        Kv_mem.exists store key >|= function Ok None -> false | _ -> true )
+  in
+  let expected_ms =
+    Int64.of_float (Unix.gettimeofday () *. 1000.)
+    |> Int64.add (Int64.of_int (offset_s * 1000))
+  in
+  (match !received with
+  | None -> Alcotest.fail "no time sent to S-Platform"
+  | Some ms ->
+      let drift = Int64.abs (Int64.sub ms expected_ms) in
+      Alcotest.(check bool)
+        (Printf.sprintf "time sent to S-Platform is now + offset (drift %Ld ms)"
+           drift)
+        true (drift < 5_000L));
+  not key_present
 
 let system_backup_and_restore_unattended =
   Alcotest.test_case "/system/restore with unattended mode -> operational"
@@ -6513,10 +6599,13 @@ let () =
         [
           system_backup_and_restore_ok;
           system_backup_and_restore_no_backuppassphrase_fails;
+          boot_migrates_deprecated_time_offset;
           system_backup_and_restore_unattended;
           system_backup_and_restore_unattended_changed_devkey;
           system_backup_and_restore_unattended_changed_all;
           system_backup_and_restore_changed_devkey;
+          system_backup_and_restore_changed_devkey_time_offset;
+          system_backup_and_restore_changed_all_time_offset;
           system_backup_and_restore_changed_all;
           system_backup_and_restore_operational;
           system_backup_and_restore_operational_changed_devkey;
