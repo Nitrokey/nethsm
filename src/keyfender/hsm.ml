@@ -4262,7 +4262,17 @@ module Make (KV : Kv_ext.Platform) = struct
           boot_config_store ~cache_settings config_store device_key
         in
         let** api = certificate_chain config_store API in
-        let** cluster = certificate_chain config_store Cluster in
+        let* cluster_opt =
+          Config_store.get_opt config_store (Private_key Cluster)
+        in
+        let** cluster =
+          if cluster_opt = Ok None then begin
+            Logs.info (fun f ->
+                f "missing cluster key/certificate, using API key/certificate");
+            Lwt_result.return api
+          end
+          else certificate_chain config_store Cluster
+        in
         Lwt_result.return (state, api, cluster, migration_time)
 
   let rec store_health_watcher ?first_failure_timestamp ~retry_boot t stream =
