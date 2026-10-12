@@ -18,8 +18,6 @@ let ( @? ) name fn =
   Alcotest.test_case name `Quick (fun () ->
       Alcotest.(check bool) "OK" true (fn ()))
 
-let http_status = Alcotest.testable Http.Status.pp ( = )
-
 let jsonable to_yojson =
   let pp = Fmt.using to_yojson Yojson.Safe.pretty_print in
   Alcotest.testable pp ( = )
@@ -27,49 +25,6 @@ let jsonable to_yojson =
 let get_ok_result topic = function
   | Ok x -> x
   | Error (`Msg err) -> Alcotest.failf "%s: %s" topic err
-
-let msg_with_body body msg =
-  let body =
-    match body with
-    | `Empty -> "empty"
-    | `String str -> str
-    | _ -> "not empty but not string"
-  in
-  Fmt.str "%s (body was: %s)" msg body
-
-let returns_empty' ~with_status = function
-  | new_state, Some (status, _, body, _) ->
-      let err = msg_with_body body "incorrect return code" in
-      Alcotest.(check http_status) err with_status status;
-      begin match body with
-      | `Empty -> new_state
-      | _ -> Alcotest.fail "did not return empty body"
-      end
-  | _ -> Alcotest.fail "invalid response form (route not found?)"
-
-let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
-
-let returns_string' ?content_type ~with_status = function
-  | new_state, Some (status, headers, body, _) ->
-      let err = msg_with_body body "incorrect return code" in
-      Alcotest.(check http_status) err with_status status;
-      Option.iter
-        (fun expected ->
-          let header = "Content-Type" in
-          let actual = Header.get headers header in
-          Alcotest.(
-            check' (option string) ~expected:(Option.some expected) ~actual
-              ~msg:header))
-        content_type;
-      begin match body with
-      | `String s -> (new_state, s)
-      | _ -> Alcotest.fail "did not return string"
-      end
-  | _ -> Alcotest.fail "invalid response form (route not found?)"
-
-let returns_string ?content_type ~with_status r =
-  let _, body = returns_string' ?content_type ~with_status r in
-  body
 
 let returns_json of_yojson ~with_status r =
   r

@@ -363,3 +363,48 @@ let check_body_id body id =
 (* Extracts the id from a Location URL like /api/v1/keys/KEYID *)
 let extract_location_id location =
   String.split_on_char '/' location |> fun l -> List.nth l 4
+
+let http_status = Alcotest.testable Http.Status.pp ( = )
+
+let msg_with_body body msg =
+  let body =
+    match body with
+    | `Empty -> "empty"
+    | `String str -> str
+    | _ -> "not empty but not string"
+  in
+  Fmt.str "%s (body was: %s)" msg body
+
+let returns_empty' ~with_status = function
+  | new_state, Some (status, _, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      begin match body with
+      | `Empty -> new_state
+      | _ -> Alcotest.fail "did not return empty body"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_empty ~with_status r = returns_empty' ~with_status r |> ignore
+
+let returns_string' ?content_type ~with_status = function
+  | new_state, Some (status, headers, body, _) ->
+      let err = msg_with_body body "incorrect return code" in
+      Alcotest.(check http_status) err with_status status;
+      Option.iter
+        (fun expected ->
+          let header = "Content-Type" in
+          let actual = Header.get headers header in
+          Alcotest.(
+            check' (option string) ~expected:(Option.some expected) ~actual
+              ~msg:header))
+        content_type;
+      begin match body with
+      | `String s -> (new_state, s)
+      | _ -> Alcotest.fail "did not return string"
+      end
+  | _ -> Alcotest.fail "invalid response form (route not found?)"
+
+let returns_string ?content_type ~with_status r =
+  let _, body = returns_string' ?content_type ~with_status r in
+  body
