@@ -54,6 +54,8 @@ depends: [
   "cohttp-mirage" {>= "5.0.0"} #{with-test}
   "tcpip" {>= "7.0.0"} #{with-test}
   "mirage-kv-mem" #{with-test}
+  "ortac-qcheck-stm" {>= "0.7.2" & with-test}
+  "ortac-dune" {>= "0.7.2" & with-test}
 #  "mirage-random-test" #{with-test}
 ]
 synopsis: "Keyfender library"

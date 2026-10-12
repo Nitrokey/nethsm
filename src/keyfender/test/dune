@@ -1,3 +1,20 @@
+(library
+ (modules test_utils)
+ (libraries
+  alcotest
+  cohttp
+  lwt
+  lwt.unix
+  mirage-crypto-rng.unix
+  fmt
+  mirage-ptime.mock
+  mirage-kv-mem
+  keyfender
+  str)
+ (preprocess
+  (pps ppx_blob ppx_deriving_yojson))
+ (name test_utils))
+
 (tests
  (libraries
   logs.fmt
@@ -8,8 +25,9 @@
   mirage-ptime.mock
   keyfender
   alcotest
+  test_utils
   str)
- (modules test_dispatch test_export_backup test_dispatch_helpers test_utils)
+ (modules test_dispatch test_export_backup test_dispatch_helpers)
  (preprocessor_deps public.pem)
  (preprocess
   (pps ppx_blob ppx_deriving_yojson))
@@ -93,3 +111,22 @@
  (deps ./json_schema.exe)
  (action
   (run ./json_schema.exe)))
+
+(library
+ (name server_spec)
+ (modules server_spec)
+ (libraries keyfender test_utils logs.fmt))
+
+(rule
+ (alias runtest)
+ (package keyfender)
+ (mode promote)
+ (action
+  (with-stdout-to
+   dune.server.inc
+   (setenv
+    ORTAC_ONLY_PLUGIN
+    dune-rules
+    (run ortac dune qcheck-stm server_spec.mli --package=keyfender)))))
+
+(include dune.server.inc)
