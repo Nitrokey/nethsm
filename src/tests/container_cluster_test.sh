@@ -2,14 +2,15 @@
 
 set -e
 
-N1=https://172.22.1.2
-N2=https://172.22.1.3
-N3=https://172.22.1.4
-N4=https://172.22.1.5
-N5=https://172.22.1.6
-N6=https://172.22.1.7
-N7=https://172.22.1.8
-N8=https://172.22.1.9
+# see --resolve in common_functions.sh
+N1=https://nethsm1
+N2=https://nethsm2
+N3=https://nethsm3
+N4=https://nethsm4
+N5=https://nethsm5
+N6=https://nethsm6
+N7=https://nethsm7
+N8=https://nethsm8
 EW=https://172.22.1.10
 
 # Provision and install cert with same CA in N1, N2, N3, N4, N5, N6, N7, N8
@@ -55,7 +56,7 @@ NETHSM_URL="$N1/api"
 source ./common_functions.sh
 
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N2:2380"] }
+{"urls": ["https://$N2_IP:2380"] }
 EOF
 )
 
@@ -150,7 +151,7 @@ GET_admin /v1/keys/keyAcrossCluster # should not 404
 # let's add a third node, from N1
 
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N3:2380"] }
+{"urls": ["https://$N3_IP:2380"] }
 EOF
 )
 
@@ -259,7 +260,7 @@ GET_admin /v1/keys/myKey1 > /dev/null
 
 # Now add N4 to form a 2-node cluster again
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N4:2380"] }
+{"urls": ["https://$N4_IP:2380"] }
 EOF
 )
 
@@ -363,13 +364,13 @@ GET_admin /v1/keys/keyN3 > /dev/null
 NETHSM_URL="$N4/api"
 echo "- Request to join ${N5} to ${N4} in learner mode"
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N5:2380"] }
+{"urls": ["https://$N5_IP:2380"] }
 EOF
 )
 
 echo "- Request to join ${N6} to ${N4} (should fail, still have learner)"
 ! (POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N6:2380"] }
+{"urls": ["https://$N6_IP:2380"] }
 EOF
 ) || exit 1 # in subshell because should fail
 
@@ -393,7 +394,7 @@ sleep 1
 NETHSM_URL="$N4/api"
 echo "- Request to join ${N6} to ${N4} (should still fail, still have learner)"
 ! (POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N6:2380"] }
+{"urls": ["https://$N6_IP:2380"] }
 EOF
 ) || exit 1 # in subshell because should fail
 
@@ -404,7 +405,7 @@ wait
 NETHSM_URL="$N4/api"
 echo "- Request to join ${N6} to ${N4} (no more learners)"
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N6:2380"] }
+{"urls": ["https://$N6_IP:2380"] }
 EOF
 )
 
@@ -417,7 +418,7 @@ join "${N4}"
 NETHSM_URL="$N4/api"
 echo "- Request joining ${N7} to ${N4} and begin joining"
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N7:2380"] }
+{"urls": ["https://$N7_IP:2380"] }
 EOF
 )
 
@@ -445,7 +446,7 @@ wait
 NETHSM_URL="$N4/api"
 echo "- Request to join ${N8} to ${N4} (after deleting a learner)"
 resp=$(POST_admin /v1/cluster/members <<EOF
-{"urls": ["$N8:2380"] }
+{"urls": ["https://$N8_IP:2380"] }
 EOF
 )
 

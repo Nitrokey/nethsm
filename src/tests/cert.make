@@ -26,6 +26,6 @@ clean:
 
 .PHONY: clean-all
 clean-all:
-	rm -rf CA.key CA.pem new_cert.pem nethsm.csr witness.key witness.pem
+	rm -rf api.pem cluster.pem CA.key CA.pem new_cert.pem nethsm.csr witness.key witness.pem
 
 # vi: ft=make

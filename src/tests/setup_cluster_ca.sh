@@ -12,6 +12,33 @@ if [[ "$STATE" != *Operational* ]] ; then
   exit 1
 fi
 
+# API-only cert: no IP addresses
+csr2=$(POST_admin /v1/config/tls/csr.pem <<EOM
+{ "countryName": "DE",
+  "stateOrProvinceName": "",
+  "localityName": "Berlin",
+  "organizationName": "Nitrokey",
+  "organizationalUnitName": "",
+  "commonName": "nethsm",
+  "emailAddress": "info@nitrokey.com",
+  "subjectAltNames": [ "nethsm1", "nethsm2", "nethsm3", "nethsm4", "nethsm5", "nethsm6", "nethsm7", "nethsm8" ]
+}
+EOM
+)
+
+echo "- API: create CA and sign CSR with it"
+make -f cert.make clean
+echo "$csr2" > nethsm.csr
+make -f cert.make new_cert.pem
+cp CA.pem api.pem
+
+echo "- API: install new cert"
+${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/config/tls/cert.pem" \
+    || exit 1
+
+# From now on verify the peer certificate
+[ "${NOCACERT}" = "1" ] || CURL="${CURL_BASE} --cacert api.pem"
 
 csr=$(POST_admin /v1/cluster/tls/csr.pem <<EOM
 { "countryName": "DE",
@@ -30,13 +57,16 @@ echo "- create CA and sign CSR with it"
 make -f cert.make clean
 echo "$csr" > nethsm.csr
 make -f cert.make new_cert.pem
+cp CA.pem cluster.pem
 
 echo "- install new cert"
 ${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
     -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/cluster/tls/cert.pem" \
     || exit 1
 
-sleep 3
+# wait for certificate to be valid, due to different rounding
+# the timestamp of the just-signed certificate could be in the future
+sleep 1
 
 echo "- install cluster CA"
 # TODO: move the location of this config to /cluster/? or have it in both places,
@@ -48,27 +78,4 @@ echo
 
 # check if etcd still healthy after restart
 GET_admin /v1/cluster/members
-
-# API-only cert: no IP addresses
-csr2=$(POST_admin /v1/config/tls/csr.pem <<EOM
-{ "countryName": "DE",
-  "stateOrProvinceName": "",
-  "localityName": "Berlin",
-  "organizationName": "Nitrokey",
-  "organizationalUnitName": "",
-  "commonName": "nethsm",
-  "emailAddress": "info@nitrokey.com"
-}
-EOM
-)
-
-echo "- create CA and sign CSR with it"
-make -f cert.make clean
-echo "$csr2" > nethsm.csr
-make -f cert.make new_cert.pem
-
-echo "- install new cert"
-${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
-    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/config/tls/cert.pem" \
-    || exit 1
 

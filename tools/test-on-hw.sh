@@ -37,7 +37,7 @@ echo "- unlocking"
 curl -s -k -d '{"passphrase": "UnlockPassphrase"}' https://192.168.1.201/api/v1/unlock
 
 NETHSM_URL="https://192.168.1.201/api" ./backup_restore.sh
-NETHSM_URL="https://192.168.1.1/api" ./setup_cluster_ca.sh
+NOCACERT=1 NETHSM_URL="https://192.168.1.1/api" ./setup_cluster_ca.sh
 
 curl -s -k -X PUT -H "content-type: application/json" -d \
     '{"ipAddress":"0.0.0.0","port":0,"logLevel":"warning"}' \
