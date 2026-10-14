@@ -8,7 +8,9 @@ GET()
     url="${NETHSM_URL}$1"
     shift
     echo "GET ${url}" 1>&2
-    ${CURL} ${url} "$@" || exit 1
+    tmp=$(mktemp)
+    (${CURL} ${url} "$@" | tee "${tmp}") || { cat "${tmp}" >&2; rm -f "${tmp}"; exit 1; }
+    rm -f "${tmp}";
     echo
 }
 
@@ -28,7 +30,9 @@ POST()
     url="${NETHSM_URL}$1"
     shift
     echo "POST ${url}" 1>&2
-    ${CURL} -X POST -H "Content-Type: application/json" --data @- ${url} "$@" || exit 1
+    tmp=$(mktemp)
+    (${CURL} -X POST -H "Content-Type: application/json" --data @- ${url} "$@" | tee "${tmp}") || { cat "${tmp}" >&2; rm -f "${tmp}"; exit 1; }
+    rm -f "${tmp}";
     echo
 }
 
