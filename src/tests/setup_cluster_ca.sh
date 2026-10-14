@@ -12,6 +12,7 @@ if [[ "$STATE" != *Operational* ]] ; then
   exit 1
 fi
 
+
 csr=$(POST_admin /v1/cluster/tls/csr.pem <<EOM
 { "countryName": "DE",
   "stateOrProvinceName": "",
@@ -47,3 +48,27 @@ echo
 
 # check if etcd still healthy after restart
 GET_admin /v1/cluster/members
+
+# API-only cert: no IP addresses
+csr2=$(POST_admin /v1/config/tls/csr.pem <<EOM
+{ "countryName": "DE",
+  "stateOrProvinceName": "",
+  "localityName": "Berlin",
+  "organizationName": "Nitrokey",
+  "organizationalUnitName": "",
+  "commonName": "nethsm",
+  "emailAddress": "info@nitrokey.com"
+}
+EOM
+)
+
+echo "- create CA and sign CSR with it"
+make -f cert.make clean
+echo "$csr2" > nethsm.csr
+make -f cert.make new_cert.pem
+
+echo "- install new cert"
+${CURL} -u admin:Administrator -H "Content-Type: application/x-pem-file" \
+    -X PUT --data-binary @./new_cert.pem "${NETHSM_URL}/v1/config/tls/cert.pem" \
+    || exit 1
+
