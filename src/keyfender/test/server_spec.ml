@@ -1,7 +1,5 @@
 open Test_utils
 
-type certificate = int * int
-
 module Cert = struct
   include X509.Certificate
 
@@ -22,7 +20,6 @@ module Unique (O : Set.OrderedType) = struct
     and of_index = IntMap.add index item t.of_index in
     { of_index; to_index }
 
-  let find t index = IntMap.find index t.of_index
   let empty = { to_index = M.empty; of_index = IntMap.empty }
 
   let get_or_add r item =
@@ -49,9 +46,6 @@ module Pubkeys = Unique (Pubkey)
 let pubkeys = ref Pubkeys.empty
 let cert0 = (0, 0)
 let cert1 = (1, 1)
-
-type pubkey = int
-
 let pubkey_of = snd
 
 type t = Hsm.t
@@ -96,6 +90,14 @@ let lookup_certificate cert =
         i1 i2);
   (i1, i2)
 
+let lookup_pubkey pubkey =
+  let i = Pubkeys.get_or_add pubkeys pubkey in
+  Logs.info (fun m ->
+      m "got public key id %s: %d"
+        (X509.Public_key.id pubkey |> Base64.encode_exn)
+        i);
+  i
+
 let keygen_req = {| { "type": "Curve25519", "length": 128 } |}
 
 let api_generate hsm_state =
@@ -122,8 +124,9 @@ let pubkey_get path hsm_state =
   request ~hsm_state ~meth:`GET ~headers:admin_headers path
   |> returns_string ~with_status:`OK
   |> decode X509.Public_key.decode_pem
+  |> lookup_pubkey
 
-let api_pubkey_get = cert_get "/config/tls/public.pem"
-let cluster_pubkey_get = cert_get "/cluster/tls/public.pem"
+let api_pubkey_get = pubkey_get "/config/tls/public.pem"
+let cluster_pubkey_get = pubkey_get "/cluster/tls/public.pem"
 let api_get = cert_get "/config/tls/cert.pem"
 let cluster_get = cert_get "/cluster/tls/cert.pem"

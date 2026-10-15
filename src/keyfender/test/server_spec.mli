@@ -35,10 +35,22 @@ val api_get : t -> int * int
     ensures (cert, pubkey) = t.api_cert
 *)
 
+val api_pubkey_get : t -> int
+(*@ pubkey = api_pubkey_get t
+    pure
+    ensures pubkey = snd t.api_cert
+*)
+
 val cluster_get : t -> int * int
 (*@ cert, pubkey = cluster_get t
     pure
     ensures (cert, pubkey) = t.cluster_cert
+*)
+
+val cluster_pubkey_get : t -> int
+(*@ pubkey = cluster_pubkey_get t
+    pure
+    ensures pubkey = snd t.cluster_cert
 *)
 
 val init : unit -> t
