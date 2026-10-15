@@ -2203,7 +2203,7 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get public key for NetHSMs https API.
+      description: Get public key for NetHSM's https API.
       security:
         - basic: []
       x-annotation-role:
@@ -2258,8 +2258,7 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: |
-            Either NetHSM was not *Operational*, or "cluster-ca.pem" is set and the
-            provided certicicate is not signed by that CA.
+            Either NetHSM was not *Operational*
       description: Set certificate for NetHSMs https API e.g. to replace self-signed intital certificate.
       requestBody:
         content:
@@ -2339,6 +2338,159 @@ paths:
         - Operational
       x-annotation-caller-namespace:
         - Root
+  /cluster/tls/public.pem:
+    get:
+      responses:
+        "200":
+          description: Successful retrieval of public key.
+          content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemPublicKey"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Get public key for NetHSM's cluster peer traffic (i.e. how cluster members communicate)
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+  /cluster/tls/cert.pem:
+    get:
+      responses:
+        "200":
+          description: Successful retrieval of certificate.
+          content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemCert"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+        "415":
+          description: Content type in Accept header not supported or not present.
+      description: Get certificate for NetHSM's cluster peer traffic (i.e. how cluster members communicate)
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+    put:
+      responses:
+        "201":
+          description: Successfully set certificate.
+        "400":
+          description: Certificate malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied.
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: |
+            Either NetHSM was not *Operational*, or "/cluster/tls/ca.pem" is set and the
+            provided certicicate is not signed by that CA.
+      description: Set certificate for NetHSMs peer traffic (i.e. how cluster members communicate), e.g. to replace self-signed initial certificate.
+      requestBody:
+        content:
+          application/x-pem-file:
+            schema:
+              $ref: "#/components/schemas/PemCert"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+  /cluster/tls/csr.pem:
+    post:
+      responses:
+        "200":
+          description: Successful generation of certificate signing request.
+          content:
+            application/x-pem-file:
+              schema:
+                $ref: "#/components/schemas/PemCSR"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Get NetHSM certificate signing request for cluster peer traffic (i.e. how cluster members communicate), e.g. to replace self-signed initial certificate.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DistinguishedName"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
+  /cluster/tls/generate:
+    post:
+      responses:
+        "204":
+          description: Successful creation of new public and private key pair for NetHSM's https cluster.
+        "400":
+          description: Bad request (specified properties are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required but none provided.
+        "403":
+          description: Access denied (e.g. user is in namespace)
+        "406":
+          description: Content type in Accept header not supported.
+        "412":
+          description: Precondition failed (NetHSM was not *Operational*).
+      description: Generate a new pair of public and private key for NetHSM's peer traffic (i.e. how cluster members communicate).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TlsKeyGenerateRequestData"
+        required: true
+      security:
+        - basic: []
+      x-annotation-role:
+        - Administrator
+      x-annotation-state:
+        - Operational
+      x-annotation-caller-namespace:
+        - Root
   /cluster/tls/ca.pem:
     get:
       responses:
@@ -2389,7 +2541,7 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: |
-            Either the NetHSM was not *Operational*, or the installed TLS certificate
+            Either the NetHSM was not *Operational*, or the installed cluster TLS certificate
             is not signed by the given CA. Install a certificate signed by this CA first.
       description: |
         Set cluster certificate authority used for etcd peer traffic (i.e. how cluster members communicate).

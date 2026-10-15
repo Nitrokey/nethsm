@@ -23,6 +23,7 @@ let all_states = [ "Failed"; "Unprovisioned"; "Locked"; "Operational" ]
 let skip_endpoints =
   [
     ("/config/tls/cert.pem", `All);
+    ("/cluster/tls/cert.pem", `All);
     ("/keys/{KeyID}/cert", `All);
     ("/system/backup", `All);
     ("/system/cancel-update", `All);
@@ -43,6 +44,9 @@ let skip_body_endpoints =
     "/config/tls/cert.pem";
     "/config/tls/csr.pem";
     "/config/tls/public.pem";
+    "/cluster/tls/cert.pem";
+    "/cluster/tls/csr.pem";
+    "/cluster/tls/public.pem";
     "/health/state";
     "/keys";
     "/keys/generate";
