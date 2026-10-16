@@ -21,6 +21,7 @@ depends: [
   "alcotest" #{with-test}
   "bos" #{with-test}
   "spawn" #{with-test}
+  "digestif" {< "1.4.0" } #https://github.com/mirage/digestif/issues/184
   "astring"
   "logs"
   "lwt"
