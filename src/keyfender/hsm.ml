@@ -2677,6 +2677,11 @@ module Make (KV : Kv_ext.Platform) = struct
             tls_cluster_key = Some key_pem;
           }
 
+    let tls_maybe_notify t tls_kind =
+      if tls_kind = API then
+        Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
+      else Lwt_result.return ()
+
     let set_tls_cert_pem t tls_kind cert_data =
       let tls = tls_of t tls_kind in
       (* validate the incoming chain (we'll use it for the TLS server):
@@ -2744,10 +2749,7 @@ module Make (KV : Kv_ext.Platform) = struct
                          (cert, chain)))
                 >>= fun r ->
                 tls.public <- { cert; chain };
-                (if tls_kind = API then
-                   Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t)))
-                 else Lwt_result.ok Lwt.return_unit)
-                >>= fun () ->
+                tls_maybe_notify t tls_kind >>= fun () ->
                 let cert_pem =
                   X509.Certificate.encode_pem_multiple (cert :: chain)
                 in
@@ -2805,8 +2807,8 @@ module Make (KV : Kv_ext.Platform) = struct
           (* update state *)
           tls.key <- key;
           tls.public <- { cert; chain = [] };
-          (* notify server *)
-          Lwt_result.ok (Lwt_mvar.put t.mbox (Tls (own_cert t))) >>= fun () ->
+          (* notify server, if needed *)
+          tls_maybe_notify t tls_kind >>= fun () ->
           let cert_pem = X509.Certificate.encode_pem cert in
           let key_pem = X509.Private_key.encode_pem key in
           push_local_config
