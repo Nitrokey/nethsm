@@ -1,3 +1,6 @@
+# 5.1 (2026-10-23)
+* Pre-release version
+
 # 5.0 (2026-08-31)
 * Add Failed mode for diagnosis and disaster recovery
 * Add support for key labels
