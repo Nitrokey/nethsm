@@ -3418,7 +3418,6 @@ components:
         - id
         - name
         - urls
-        - learner
     ClusterState:
       description: |
         Status of etcd cluster process on the local node.
