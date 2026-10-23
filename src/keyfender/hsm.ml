@@ -2445,7 +2445,7 @@ module Make (KV : Kv_ext.Platform) = struct
                   name = m.name;
                   urls = m.urls;
                   id = Some m.id;
-                  learner = m.learner;
+                  learner = Some m.learner;
                 })
               member_list;
           backup_passphrase = None;

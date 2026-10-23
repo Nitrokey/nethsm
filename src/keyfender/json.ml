@@ -276,7 +276,7 @@ type join_req_member = {
       [@default None]
   name : string;
   urls : string list;
-  learner : bool; [@default false]
+  learner : bool option; [@default None]
 }
 [@@deriving yojson, jsonschema]
 
