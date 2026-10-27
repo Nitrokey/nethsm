@@ -3414,6 +3414,7 @@ components:
           $ref: "#/components/schemas/PeerURLs"
         learner:
           type: boolean
+          default: false
       required:
         - id
         - name
