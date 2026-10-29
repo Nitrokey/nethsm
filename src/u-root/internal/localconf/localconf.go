@@ -59,8 +59,8 @@ type LocalConf struct {
 	TLSTrustedCA       *string `json:"tls_cluster_ca,omitempty"`
 	DeviceID           *string `json:"device_id,omitempty"`
 	NetworkConfig      *string `json:"network_config,omitempty"`
-	FailedUnlockSalt   string  `json:"failed_unlock_salt,omitempty"`
-	FailedUnlockDigest string  `json:"failed_unlock_digest,omitempty"`
+	FailedUnlockSalt   *string `json:"failed_unlock_salt,omitempty"`
+	FailedUnlockDigest *string `json:"failed_unlock_digest,omitempty"`
 	NtpIP              *string `json:"ntp_ip,omitempty"`
 	NtsName            *string `json:"nts_name,omitempty"`
 	TimeOffsetS        *int    `json:"time_offset_s,omitempty"` // storage only
@@ -255,6 +255,8 @@ func Set(jsonConf []byte, setTime func(time.Duration) error) error {
 	update(&conf.TLSTrustedCA, upd.TLSTrustedCA)
 	update(&conf.DeviceID, upd.DeviceID)
 	update(&conf.NetworkConfig, upd.NetworkConfig)
+	update(&conf.FailedUnlockSalt, upd.FailedUnlockSalt)
+	update(&conf.FailedUnlockDigest, upd.FailedUnlockDigest)
 	update(&conf.NtpIP, upd.NtpIP)
 	update(&conf.NtsName, upd.NtsName)
 

@@ -296,8 +296,8 @@ func tpmCreatePlatformData(platformDataCh chan<- platformData) error {
 		data.LastTLSClusterCert = tlsCert
 		data.LastTLSClusterKey = tlsKey
 	}
-	data.FailedUnlockSalt = lc.FailedUnlockSalt
-	data.FailedUnlockDigest = lc.FailedUnlockDigest
+	data.FailedUnlockSalt = derefStr(lc.FailedUnlockSalt)
+	data.FailedUnlockDigest = derefStr(lc.FailedUnlockDigest)
 
 	platformDataCh <- data
 	close(platformDataCh)
