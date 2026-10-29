@@ -3004,10 +3004,11 @@ module Make (KV : Kv_ext.Platform) = struct
     >>= fun state' ->
     t.state <- state';
     match (t.failed_unlock_salt, t.failed_unlock_digest) with
-    | Some _, Some _ -> Lwt_result.return ()
-    | None, _ | _, None ->
-        (* if failed_unlock attributes are not set (e.g. after an update
-           from < v5.0), set them now *)
+    | Some s, Some _ when String.equal s salt -> Lwt_result.return ()
+    | _ ->
+        (* the failed-unlock digest is missing (e.g. after an update from
+           < v5.0), or stale because the unlock salt changed: the unlock
+           passphrase was replaced by a restore or a cluster join. *)
         set_failed_unlock t ~unlock_salt:salt ~pass_key;
         Config.push_failed_unlock t
 

@@ -1097,6 +1097,9 @@ let system_restore_v0_backup_operational ~changed_devkey =
     info "Applying post unlock migrations"
     ^ info "migrating /config/backup-key"
     ^ info "migrating /config/backup-salt"
+    (* the restored unlock salt differs, so the failed-unlock digest is
+       renewed *)
+    ^ debug "caching config to the platform"
   in
   let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
@@ -1204,6 +1207,9 @@ let system_restore_v0_backup_operational_unattended ~changed_devkey =
     info "Applying post unlock migrations"
     ^ info "migrating /config/backup-key"
     ^ info "migrating /config/backup-salt"
+    (* the restored unlock salt differs, so the failed-unlock digest is
+       renewed *)
+    ^ debug "caching config to the platform"
   in
   let hsm_state =
     request ~meth:`POST ~expect ~body:(`String unlock_json)
@@ -2335,8 +2341,11 @@ let system_backup_and_restore_operational ~unattended ~changed_devkey
   (* after first restore it should be locked *)
   assert (Hsm.state hsm_state = `Locked);
   let unlock_json = {|{ "passphrase": "unlockPassphrase" }|} in
+  (* the restore brought back the unlock salt from before the passphrase
+     change, so the failed-unlock digest is renewed *)
+  let expect = debug "caching config to the platform" in
   let* hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state ~expect "/unlock"
     |> Expect.no_content
   in
   assert (Hsm.state hsm_state = `Operational);
@@ -5585,6 +5594,18 @@ let cluster_force_new_unprovisioned_unauthenticated_fails =
   request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`Unauthorized
 
+(* boot (again) on an existing store, answering platform requests with [f] *)
+let boot_with_mbox ~platform kv f =
+  Lwt_main.run
+    ( Hsm.boot ~platform software_update_key kv >|= fun (state, o, m) ->
+      Lwt.async (fun () ->
+          let rec go () =
+            Lwt_mvar.take o >>= fun cb ->
+            Lwt_mvar.put m (Ok (f cb)) >>= fun () -> go ()
+          in
+          go ());
+      state )
+
 let cluster_force_new_after_reboot_ok =
   Alcotest.test_case
     "after a reboot, a request for /cluster/force-new in the failed state \
@@ -5632,21 +5653,66 @@ let cluster_force_new_after_reboot_ok =
     }
   in
   (* reboot on the same store *)
-  let hsm_state =
-    Lwt_main.run
-      ( Hsm.boot ~platform software_update_key kv >|= fun (state, o, m) ->
-        Lwt.async (fun () ->
-            let rec go () =
-              Lwt_mvar.take o >>= fun cb ->
-              Lwt_mvar.put m (Ok (mock_diagnose_failed cb)) >>= fun () -> go ()
-            in
-            go ());
-        state )
-  in
+  let hsm_state = boot_with_mbox ~platform kv mock_diagnose_failed in
   inject_failure kv;
   (* failed attempts are rate limited per IP and user, across tests *)
   Keyfender.Rate_limit.reset_all ();
   let headers = auth_header "unlock" "wrongPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`Unauthorized;
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "unlockPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`No_content
+
+let cluster_force_new_stale_digest_renewed =
+  Alcotest.test_case
+    "unlocking renews a stale failed-unlock digest, after which \
+     /cluster/force-new accepts only the current unlock passphrase"
+    `Quick
+  @@ fun () ->
+  let kv, _ = operational_mock_with_mbox'' mock_diagnose_failed in
+  (* the digest of a previous unlock passphrase, e.g. from before a restore:
+     its salt does not belong to the current unlock salt *)
+  let salt = String.make Keyfender.Crypto.salt_len 's' in
+  let platform =
+    {
+      platform with
+      failedUnlockSalt = Some (Base64.encode_string salt);
+      failedUnlockDigest =
+        Some
+          (Base64.encode_string
+             (Keyfender.Crypto.failed_unlock_digest
+                ~pass_key:
+                  (Keyfender.Crypto.key_of_passphrase ~salt "oldPassphrase")));
+    }
+  in
+  let pushes = ref 0 in
+  let count_pushes = function
+    | Hsm.Set_local_config c
+      when Option.is_some c.Keyfender.Json.failed_unlock_digest ->
+        incr pushes;
+        Hsm.EmptyResult
+    | cb -> mock_diagnose_failed cb
+  in
+  let hsm_state = boot_with_mbox ~platform kv count_pushes in
+  let unlock () =
+    match
+      Lwt_main.run
+        (Hsm.unlock_with_passphrase hsm_state ~passphrase:"unlockPassphrase")
+    with
+    | Ok () -> ()
+    | Error (_, msg) -> Alcotest.fail msg
+  in
+  unlock ();
+  Alcotest.(check int) "digest renewed at unlock" 1 !pushes;
+  Hsm.lock hsm_state;
+  unlock ();
+  Alcotest.(check int) "digest kept at the next unlock" 1 !pushes;
+  inject_failure kv;
+  (* failed attempts are rate limited per IP and user, across tests *)
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "oldPassphrase" in
   request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`Unauthorized;
   Keyfender.Rate_limit.reset_all ();
@@ -6339,6 +6405,7 @@ let () =
           cluster_force_new_unauthenticated_fails;
           cluster_force_new_unprovisioned_unauthenticated_fails;
           cluster_force_new_after_reboot_ok;
+          cluster_force_new_stale_digest_renewed;
         ] );
       ( "/health/diagnose",
         [
