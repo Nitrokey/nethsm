@@ -924,6 +924,7 @@ type local_conf = {
       [@default None]
       [@to_yojson network_config_to_string]
       [@ref "network_config"]
+  (* raw bytes, Base64 encoded, because JSON strings must be valid UTF-8 *)
   failed_unlock_salt : string option; [@default None]
   failed_unlock_digest : string option; [@default None]
   ntp_ip : string option; [@default None]

@@ -2533,6 +2533,17 @@ module Make (KV : Kv_ext.Platform) = struct
           (Bad_request, "setting local config failed: " ^ msg))
       |> Lwt_result.map ignore
 
+    let push_failed_unlock t =
+      push_local_config
+        {
+          Json.empty_local_conf with
+          failed_unlock_salt =
+            Option.map Base64.encode_string t.failed_unlock_salt;
+          failed_unlock_digest =
+            Option.map Base64.encode_string t.failed_unlock_digest;
+        }
+        t
+
     (* Full sync: reads all known fields and sends them. Used at provisioning,
        join-cluster, restore, and other operations that establish the full
        platform state. time_ms is forwarded to S-Platform to set its clock. *)
@@ -2566,8 +2577,10 @@ module Make (KV : Kv_ext.Platform) = struct
           tls_cluster_ca;
           tls_key = Some tls_key;
           network_config;
-          failed_unlock_salt = None;
-          failed_unlock_digest = None;
+          failed_unlock_salt =
+            Option.map Base64.encode_string t.failed_unlock_salt;
+          failed_unlock_digest =
+            Option.map Base64.encode_string t.failed_unlock_digest;
           ntp_ip = Json.set_or_clear ntp_ip;
           nts_name = Json.set_or_clear nts_name;
           time_ms;
@@ -2606,7 +2619,7 @@ module Make (KV : Kv_ext.Platform) = struct
           >>= fun () ->
           t.failed_unlock_salt <- Some failed_unlock_salt;
           t.failed_unlock_digest <- Some failed_unlock_digest;
-          set_local_config t >>= fun () -> Lwt_result.return ()
+          push_failed_unlock t
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
 
@@ -2999,7 +3012,7 @@ module Make (KV : Kv_ext.Platform) = struct
         in
         t.failed_unlock_salt <- Some failed_unlock_salt;
         t.failed_unlock_digest <- Some failed_unlock_digest;
-        Config.set_local_config t >>= fun () -> Lwt_result.return ()
+        Config.push_failed_unlock t
 
   let network_configuration = Config.network
 
@@ -4369,6 +4382,17 @@ module Make (KV : Kv_ext.Platform) = struct
     in
     Some (key, chain)
 
+  (* Base64 encoded, see [Json.local_conf] *)
+  let decode_failed_unlock = function
+    | None -> None
+    | Some s -> (
+        match Base64.decode s with
+        | Ok x -> Some x
+        | Error (`Msg msg) ->
+            Log.warn (fun m ->
+                m "ignoring undecodable failed-unlock data: %s" msg);
+            None)
+
   let boot ?(cache_settings = default_cache_settings)
       ?(default_net = "192.168.1.1/24") ~platform software_update_key kv =
     Metrics.set_mem_reporter ();
@@ -4459,8 +4483,8 @@ module Make (KV : Kv_ext.Platform) = struct
         device_key;
         cache_settings;
         default_net;
-        failed_unlock_salt = platform.failedUnlockSalt;
-        failed_unlock_digest = platform.failedUnlockDigest;
+        failed_unlock_salt = decode_failed_unlock platform.failedUnlockSalt;
+        failed_unlock_digest = decode_failed_unlock platform.failedUnlockDigest;
       }
     in
     Lwt.async (fun () ->

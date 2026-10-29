@@ -321,6 +321,7 @@ struct
     }
 
   let dummy_platform : Keyfender.Json.platform_data =
+    let failed_unlock_salt = "AAAAAAAAAAAAAAAAAAAAAA==" in
     {
       Keyfender.Json.deviceId = "0000000000";
       deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -333,13 +334,15 @@ struct
       lastTlsCert = None;
       lastTlsClusterKey = None;
       lastTlsClusterCert = None;
-      failedUnlockSalt = Some "AAAAAAAAAAAAAAAA";
+      failedUnlockSalt = Some failed_unlock_salt;
       failedUnlockDigest =
         Some
-          (Keyfender.Crypto.stored_passphrase ~salt:"AAAAAAAAAAAAAAAA"
-             "UnlockPassphrase");
+          (Base64.encode_string
+             (Keyfender.Crypto.stored_passphrase
+                ~salt:(Base64.decode_exn failed_unlock_salt)
+                "UnlockPassphrase"));
       (* for the sake of Failed mode API tests, pre-load "UnlockPassphrase" as
-           a known unlock passphrase *)
+           a known unlock passphrase (Base64 encoded, as sent by S-Platform) *)
     }
 
   let start update_key_store assets internal_stack ext_stack

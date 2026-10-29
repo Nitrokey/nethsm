@@ -182,11 +182,7 @@ let mock_diagnose_failed = function
   | Hsm.Diagnose -> Hsm.DiagnoseResult mock_diagnose_error
   | _ -> Hsm.EmptyResult
 
-let failed_mock ?(provisioned = true) () =
-  let kv, t =
-    if provisioned then operational_mock_with_mbox'' mock_diagnose_failed
-    else unprovisioned_mock_with_mbox mock_diagnose_failed
-  in
+let inject_failure kv =
   Lwt_main.run
     (let open Lwt_result.Infix in
      (* sent two failure events separated in time by at least the failure
@@ -195,7 +191,14 @@ let failed_mock ?(provisioned = true) () =
      Kv_platform.inject_health_event ~timestamp:(Duration.of_sec 120) kv
        (`Disconnected `Timeout))
   |> Logs.on_error ~pp:Kv_platform.pp_write_error ~use:(fun _ ->
-      failwith "error injecting health event");
+      failwith "error injecting health event")
+
+let failed_mock ?(provisioned = true) () =
+  let kv, t =
+    if provisioned then operational_mock_with_mbox'' mock_diagnose_failed
+    else unprovisioned_mock_with_mbox mock_diagnose_failed
+  in
+  inject_failure kv;
   t
 
 let health_diagnose_operational_ok =
@@ -5582,6 +5585,75 @@ let cluster_force_new_unprovisioned_unauthenticated_fails =
   request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`Unauthorized
 
+let cluster_force_new_after_reboot_ok =
+  Alcotest.test_case
+    "after a reboot, a request for /cluster/force-new in the failed state \
+     accepts the unlock passphrase stored on the platform"
+    `Quick
+  @@ fun () ->
+  (* keep what is sent to S-Platform, merged like S-Platform does: absent
+     fields keep their previous value *)
+  let stored = ref Keyfender.Json.empty_local_conf in
+  let record = function
+    | Hsm.Set_local_config c ->
+        let merge old upd = if Option.is_some upd then upd else old in
+        stored :=
+          {
+            !stored with
+            failed_unlock_salt =
+              merge !stored.failed_unlock_salt c.failed_unlock_salt;
+            failed_unlock_digest =
+              merge !stored.failed_unlock_digest c.failed_unlock_digest;
+          };
+        Hsm.EmptyResult
+    | cb -> mock_diagnose_failed cb
+  in
+  let kv, _ = operational_mock_with_mbox'' record in
+  (* go through JSON like the wire protocol; S-Platform only keeps valid
+     UTF-8 strings *)
+  let wire =
+    Keyfender.Json.local_conf_to_yojson !stored |> Yojson.Safe.to_string
+  in
+  Alcotest.(check bool)
+    "wire format is ASCII" true
+    (String.for_all (fun c -> Char.code c < 0x80) wire);
+  let stored =
+    match
+      Yojson.Safe.from_string wire |> Keyfender.Json.local_conf_of_yojson
+    with
+    | Ok c -> c
+    | Error e -> Alcotest.fail e
+  in
+  let platform =
+    {
+      platform with
+      failedUnlockSalt = stored.failed_unlock_salt;
+      failedUnlockDigest = stored.failed_unlock_digest;
+    }
+  in
+  (* reboot on the same store *)
+  let hsm_state =
+    Lwt_main.run
+      ( Hsm.boot ~platform software_update_key kv >|= fun (state, o, m) ->
+        Lwt.async (fun () ->
+            let rec go () =
+              Lwt_mvar.take o >>= fun cb ->
+              Lwt_mvar.put m (Ok (mock_diagnose_failed cb)) >>= fun () -> go ()
+            in
+            go ());
+        state )
+  in
+  inject_failure kv;
+  (* failed attempts are rate limited per IP and user, across tests *)
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "wrongPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`Unauthorized;
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "unlockPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`No_content
+
 let cluster_member_ops_not_etcd =
   Alcotest.test_case "/cluster/members are not implemented without etcd" `Quick
     (fun () ->
@@ -6266,6 +6338,7 @@ let () =
           cluster_force_new_ok;
           cluster_force_new_unauthenticated_fails;
           cluster_force_new_unprovisioned_unauthenticated_fails;
+          cluster_force_new_after_reboot_ok;
         ] );
       ( "/health/diagnose",
         [
