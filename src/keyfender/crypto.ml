@@ -25,6 +25,9 @@ let key_of_passphrase ~salt password =
   Scrypt.scrypt ~password ~salt ~n:!scrypt_params.n ~r:!scrypt_params.r
     ~p:!scrypt_params.p ~dk_len:(Int32.of_int key_len)
 
+let failed_unlock_digest ~pass_key =
+  Digestif.SHA256.(digest_string ("failed-unlock" ^ pass_key) |> to_raw_string)
+
 let passphrase_salt_len = 16
 
 let stored_passphrase ~salt plain =

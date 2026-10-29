@@ -320,8 +320,25 @@ struct
       evict_delay_s = 10.;
     }
 
-  let dummy_platform : Keyfender.Json.platform_data =
-    let failed_unlock_salt = "AAAAAAAAAAAAAAAAAAAAAA==" in
+  (* For the Failed mode API tests, with --fast-testing pre-load
+     "UnlockPassphrase" as the unlock passphrase (Base64 encoded, as sent by
+     S-Platform). Not without it, to spare the test container a production
+     scrypt at every boot. A function, as the scrypt test parameters are set
+     in [start]. *)
+  let dummy_platform () : Keyfender.Json.platform_data =
+    let failedUnlockSalt, failedUnlockDigest =
+      if Conf_args.fast_testing then
+        let salt = "AAAAAAAAAAAAAAAAAAAAAA==" in
+        let pass_key =
+          Keyfender.Crypto.key_of_passphrase ~salt:(Base64.decode_exn salt)
+            "UnlockPassphrase"
+        in
+        ( Some salt,
+          Some
+            (Base64.encode_string
+               (Keyfender.Crypto.failed_unlock_digest ~pass_key)) )
+      else (None, None)
+    in
     {
       Keyfender.Json.deviceId = "0000000000";
       deviceKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -334,15 +351,8 @@ struct
       lastTlsCert = None;
       lastTlsClusterKey = None;
       lastTlsClusterCert = None;
-      failedUnlockSalt = Some failed_unlock_salt;
-      failedUnlockDigest =
-        Some
-          (Base64.encode_string
-             (Keyfender.Crypto.stored_passphrase
-                ~salt:(Base64.decode_exn failed_unlock_salt)
-                "UnlockPassphrase"));
-      (* for the sake of Failed mode API tests, pre-load "UnlockPassphrase" as
-           a known unlock passphrase (Base64 encoded, as sent by S-Platform) *)
+      failedUnlockSalt;
+      failedUnlockDigest;
     }
 
   let start update_key_store assets internal_stack ext_stack
@@ -365,13 +375,13 @@ struct
           Lwt.fail_with "failed to retrieve platform data from platform"
       | Ok "" -> (
           match Args.device_key () with
-          | None -> Lwt.return dummy_platform
+          | None -> Lwt.return (dummy_platform ())
           | Some x -> (
               Log.info (fun m -> m "device key set with --device-key option");
               match Base64.decode x with
               | Ok _ ->
                   Lwt.return
-                    { dummy_platform with Keyfender.Json.deviceKey = x }
+                    { (dummy_platform ()) with Keyfender.Json.deviceKey = x }
               | Error _ ->
                   Lwt.fail_with "device key is not a valid Base64 string"))
       | Ok data -> (

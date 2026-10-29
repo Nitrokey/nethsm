@@ -22,6 +22,7 @@
   cohttp-mirage
   yojson
   kdf.scrypt
+  eqaf
   mirage-kv
   tls
   x509

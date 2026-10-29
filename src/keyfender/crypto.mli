@@ -13,6 +13,13 @@ module GCM : Mirage_crypto.Block.GCM
 val key_of_passphrase : salt:string -> string -> string
 (** Derive a symmetric key from a passphrase, using SCRYPT. *)
 
+val failed_unlock_digest : pass_key:string -> string
+(** Computes the digest of the unlock passphrase that is kept on the platform to
+    authenticate the "unlock" user in Failed state. [pass_key] is the
+    {!key_of_passphrase} of the unlock passphrase with the unlock salt, so
+    guessing the passphrase costs one SCRYPT. It is hashed, as [pass_key]
+    decrypts the domain key. *)
+
 val set_test_params : unit -> unit
 (** Sets the scrypt parameters. (for tests only) *)
 

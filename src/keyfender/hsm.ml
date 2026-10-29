@@ -1036,6 +1036,13 @@ module Make (KV : Kv_ext.Platform) = struct
 
   let unlock_with_device_key kv ~device_key = unlock kv ~device_key
 
+  (* Remember a digest of the unlock passphrase, for authenticating the
+     "unlock" user in Failed state (see [User.is_failed_authenticated]). The
+     caller sends it to S-Platform. *)
+  let set_failed_unlock t ~unlock_salt ~pass_key =
+    t.failed_unlock_salt <- Some unlock_salt;
+    t.failed_unlock_digest <- Some (Crypto.failed_unlock_digest ~pass_key)
+
   let check_unlock_passphrase t passphrase =
     let** salt =
       internal_server_error Read "Get passphrase salt" Config_store.pp_error
@@ -1374,8 +1381,8 @@ module Make (KV : Kv_ext.Platform) = struct
           Nid.{ namespace = None; id = "unlock" },
           Some salt,
           Some digest ) ->
-          let pass = Crypto.stored_passphrase ~salt passphrase in
-          Lwt.return (String.equal pass digest)
+          let pass_key = Crypto.key_of_passphrase ~salt passphrase in
+          Lwt.return (Eqaf.equal (Crypto.failed_unlock_digest ~pass_key) digest)
       | _ -> Lwt.return_false
 
     let is_authenticated t nid ~passphrase =
@@ -2595,10 +2602,6 @@ module Make (KV : Kv_ext.Platform) = struct
           check_unlock_passphrase t current_passphrase >>= fun () ->
           let salt = Mirage_crypto_rng.generate Crypto.salt_len in
           let pass_key = Crypto.key_of_passphrase ~salt new_passphrase in
-          let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
-          let failed_unlock_digest =
-            Crypto.stored_passphrase ~salt:failed_unlock_salt new_passphrase
-          in
           with_write_lock (fun () ->
               Config_store.batch t.config_store (fun b ->
                   internal_server_error Write "Write unlock salt"
@@ -2617,8 +2620,7 @@ module Make (KV : Kv_ext.Platform) = struct
                     (Domain_key_store.set domain_store Attended enc_dk
                        ~encryption_key)))
           >>= fun () ->
-          t.failed_unlock_salt <- Some failed_unlock_salt;
-          t.failed_unlock_digest <- Some failed_unlock_digest;
+          set_failed_unlock t ~unlock_salt:salt ~pass_key;
           push_failed_unlock t
       | _ -> assert false
     (* Handler_config.service_available checked that we are operational *)
@@ -3005,13 +3007,8 @@ module Make (KV : Kv_ext.Platform) = struct
     | Some _, Some _ -> Lwt_result.return ()
     | None, _ | _, None ->
         (* if failed_unlock attributes are not set (e.g. after an update
-           from < v5.0, generate a salt and store the passphrase now *)
-        let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
-        let failed_unlock_digest =
-          Crypto.stored_passphrase ~salt:failed_unlock_salt passphrase
-        in
-        t.failed_unlock_salt <- Some failed_unlock_salt;
-        t.failed_unlock_digest <- Some failed_unlock_digest;
+           from < v5.0), set them now *)
+        set_failed_unlock t ~unlock_salt:salt ~pass_key;
         Config.push_failed_unlock t
 
   let network_configuration = Config.network
@@ -3023,12 +3020,7 @@ module Make (KV : Kv_ext.Platform) = struct
     assert (state t = `Unprovisioned);
     let unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
     let unlock_key = Crypto.key_of_passphrase ~salt:unlock_salt unlock in
-    let failed_unlock_salt = Mirage_crypto_rng.generate Crypto.salt_len in
-    let failed_unlock_digest =
-      Crypto.stored_passphrase ~salt:failed_unlock_salt unlock
-    in
-    t.failed_unlock_digest <- Some failed_unlock_digest;
-    t.failed_unlock_salt <- Some failed_unlock_salt;
+    set_failed_unlock t ~unlock_salt ~pass_key:unlock_key;
     let domain_key = Mirage_crypto_rng.generate Crypto.key_len in
     let auth_store_key, key_store_key, namespace_store_key, config_store_key =
       make_store_keys domain_key
