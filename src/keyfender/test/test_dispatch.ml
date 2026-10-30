@@ -418,6 +418,33 @@ let system_factory_reset_namespaced_fails =
   | _, Some (`Forbidden, _, _, _) -> true
   | _ -> false
 
+let system_factory_reset_failed_ok =
+  Alcotest.test_case
+    "a request for /system/factory-reset in the failed state produces 204 with \
+     the 'unlock' user and the unlock passphrase"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock () in
+  let headers = auth_header "unlock" "unlockPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
+  |> returns_empty ~with_status:`No_content
+
+let system_factory_reset_failed_unauthenticated_fails =
+  Alcotest.test_case
+    "a request for /system/factory-reset in the failed state produces 401 \
+     without the 'unlock' user and the unlock passphrase"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock () in
+  let post headers =
+    Keyfender.Rate_limit.reset_all ();
+    request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
+    |> returns_empty ~with_status:`Unauthorized
+  in
+  post Cohttp.Header.(init ());
+  post admin_headers;
+  post (auth_header "unlock" "wrongPassphrase")
+
 let update_key =
   {|-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDHuCF+uj5UR6li
@@ -6406,6 +6433,14 @@ let () =
           cluster_force_new_unprovisioned_unauthenticated_fails;
           cluster_force_new_after_reboot_ok;
           cluster_force_new_stale_digest_renewed;
+        ] );
+      (* keep the tests using [failed_mock] here at the start: its health
+         events go through a stream shared by all booted HSMs, and later in
+         the run they leave HSMs of subsequent tests in Failed state *)
+      ( "/system/factory-reset in failed state",
+        [
+          system_factory_reset_failed_ok;
+          system_factory_reset_failed_unauthenticated_fails;
         ] );
       ( "/health/diagnose",
         [

@@ -234,6 +234,7 @@ let make_req_data req meth =
   let roles = req_roles req in
   (* Fr now, just check that each endpoint has namespace annotation *)
   let () = req_caller_namespaces req |> ignore in
+  let failed_unlock_header = auth_header (passphrase "FailedUnlock") in
   let role, auth_header =
     match roles with
     | [ "Public" ] -> (None, "")
@@ -248,6 +249,17 @@ let make_req_data req meth =
         Printf.printf "can't handle roles (make_req_data): %s\n"
           (String.concat "; " r);
         assert false
+  in
+  (* in Failed state, an endpoint that also allows FailedUnlock is called as
+     the "unlock" user *)
+  let for_state s (role, req_auth) =
+    if s = "Failed" && List.mem "FailedUnlock" roles && role <> Some "unlock"
+    then
+      ( Some "unlock",
+        Str.global_replace
+          (Str.regexp_string auth_header)
+          failed_unlock_header req_auth )
+    else (role, req_auth)
   in
   let states = req_states req in
   let states_and_data_for_mediatype =
@@ -270,7 +282,9 @@ let make_req_data req meth =
          (fun s -> { test_res = `Neg; state = s; role; auth_header; substs })
          other_states)
       (List.map
-         (fun s -> { test_res = `Pos; state = s; role; auth_header; substs })
+         (fun s ->
+           let role, auth_header = for_state s (role, auth_header) in
+           { test_res = `Pos; state = s; role; auth_header; substs })
          states)
   in
   List.concat_map unroll_states states_and_data_for_mediatype

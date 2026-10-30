@@ -90,17 +90,23 @@ struct
         Endpoint.input_state_validated hsm_state [ `Operational; `Failed ]
 
       inherit! Endpoint.r_role hsm_state `Administrator ip as r_role
+      inherit! Endpoint.no_namespace () as namespace
       inherit! Endpoint.post
       inherit! Endpoint.no_cache
 
       method! is_authorized rd =
         match Hsm.state hsm_state with
-        | `Locked | `Unprovisioned | `Failed -> Wm.continue `Authorized rd
+        | `Locked | `Unprovisioned -> Wm.continue `Authorized rd
+        | `Failed ->
+            (* as for /cluster/force-new, see [Endpoint.failed_only] *)
+            Endpoint.Access.is_authorized ~use_failed_unlock:true hsm_state ip
+              rd
         | `Operational -> Endpoint.Access.is_authorized hsm_state ip rd
 
       method! forbidden rd =
         match Hsm.state hsm_state with
-        | `Locked | `Unprovisioned | `Failed -> Wm.continue false rd
+        | `Locked | `Unprovisioned -> Wm.continue false rd
+        | `Failed -> namespace#forbidden rd
         | `Operational -> r_role#forbidden rd
 
       method! process_post rd =

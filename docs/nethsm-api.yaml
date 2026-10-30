@@ -2940,18 +2940,21 @@ paths:
         "204":
           description: About to reset NetHSM.
         "401":
-          description: Authentication required but none provided.
+          description: Authentication required but none provided (see description).
         "403":
           description: Access denied (e.g. user is in namespace)
         "406":
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational* or *Failed*).
-      description: Reset NetHSM to factory settings.
+      description:
+        Reset NetHSM to factory settings.
+        As it is destructive, this operation requires authentication even in *Failed* state, which differs from *Operational* authentication. The user *MUST* be `unlock` and the password *MUST* be the last known unlock passphrase. When upgrading to v5.0, this will only work after having unlocked the HSM at least once.
       security:
         - basic: []
       x-annotation-role:
         - Administrator
+        - FailedUnlock
       x-annotation-state:
         - Operational
         - Failed
