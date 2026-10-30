@@ -809,7 +809,7 @@ module Make (KV : Kv_ext.Platform) = struct
     namespace_store : Namespace_store.t;
   }
 
-  let equal_keys a b = String.equal a.domain_key b.domain_key
+  let equal_keys a b = Eqaf.equal a.domain_key b.domain_key
 
   type internal_state =
     | Unprovisioned
@@ -1054,7 +1054,7 @@ module Make (KV : Kv_ext.Platform) = struct
     let* keys = load_keys domain_store device_key (Some pass_key) in
     match (keys, t.state) with
     | Ok (dk, _, _, _, _), Operational { domain_key = dk'; _ }
-      when String.equal dk dk' ->
+      when Eqaf.equal dk dk' ->
         Lwt.return_ok ()
     | _ -> Lwt.return_error (Forbidden, "unlock passphrase is incorrect.")
 
@@ -2915,7 +2915,7 @@ module Make (KV : Kv_ext.Platform) = struct
                 (Config_store.get t.config_store Backup_salt)
             in
             Lwt.return_ok
-              (String.equal backup_key
+              (Eqaf.equal backup_key
                  (Crypto.key_of_passphrase ~salt passphrase))
       in
       if valid then Lwt.return_ok ()
@@ -4098,8 +4098,7 @@ module Make (KV : Kv_ext.Platform) = struct
             | Some (backup_device_id, backup_config_key) ->
                 let is_same_device = String.equal backup_device_id device_id in
                 let is_same_devkey =
-                  String.equal backup_config_key
-                    t.config_store.config_device_key
+                  Eqaf.equal backup_config_key t.config_store.config_device_key
                 in
                 if is_same_device && is_same_devkey then (
                   Logs.info (fun f -> f "no config re-encrypt needed");
