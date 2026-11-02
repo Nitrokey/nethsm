@@ -170,6 +170,7 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
   /opt/go/bin/go build
+  sudo GOPATH=/tmp/gopath GOBIN=/opt/go/bin /opt/go/bin/go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 EOF
 
 FROM base AS builder
