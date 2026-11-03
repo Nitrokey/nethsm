@@ -127,8 +127,15 @@ unset ETCD_INITIAL_ADVERTISE_PEER_URLS
 
 generate_witness_conf
 
-etcd_name="etcd-v3.6.16-linux-arm64"
-tar xf "$etcd_name.tar.gz"
+etcd_ver="v3.6.16"
+etcd_dir="/tmp/etcd-$etcd_ver-linux-arm64"
+if [ ! -x "$etcd_dir/etcd" ]; then
+    # Tests may run in parallel on the same node: unpack aside, then rename atomically.
+    etcd_tmp=$(mktemp -d /tmp/etcd-download.XXXXXX)
+    curl -fsSL --retry 5 "https://storage.googleapis.com/etcd/$etcd_ver/etcd-$etcd_ver-linux-arm64.tar.gz" \
+        | tar xz -C "$etcd_tmp" --strip-components=1 || exit 1
+    mv -T "$etcd_tmp" "$etcd_dir" 2>/dev/null || rm -rf "$etcd_tmp" # lost the race: already installed
+fi
 
 cleanup_etcd() {
     echo "killing etcd due to TRAP"
@@ -139,7 +146,7 @@ cleanup_etcd() {
 trap cleanup_etcd EXIT INT TERM # stop etcd no matter what at the end
 
 echo "- start etcd"
-"$etcd_name/etcd" --config-file witness.conf.yml &
+"$etcd_dir/etcd" --config-file witness.conf.yml &
 ETCD_PID=$!
 
 function wait_join() {
@@ -174,7 +181,7 @@ wait_join
 
 function check_witness_healthy() {
 echo "- check witness is healthy"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 
 echo "- check HSM ends up healthy"
 
@@ -189,7 +196,7 @@ GET_admin /v1/cluster/members
 check_witness_healthy
 
 echo "- check we have synced with HSM"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
     get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
 
 
@@ -237,7 +244,7 @@ EOF
 sleep 0.5 # give some time for the key to be transferred
 
 echo "- check witness can see the new key"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
     get "/key/extraKey" || exit 1
 
 echo "- restoring backup"
@@ -247,7 +254,7 @@ ${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "b
 sleep 5
 
 echo "- check witness cannot see the key anymore"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey"
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey"
 
 function stop_witness_clean() {
 echo "- remove witness cleanly"
@@ -269,7 +276,7 @@ echo "- add back witness to the cluster (should succeed)"
 generate_witness_conf
 
 echo "- start etcd"
-"$etcd_name/etcd" --config-file witness.conf.yml &
+"$etcd_dir/etcd" --config-file witness.conf.yml &
 ETCD_PID=$!
 
 wait_join
@@ -356,7 +363,7 @@ echo "- add back witness to the recovered node"
 generate_witness_conf
 
 echo "- start etcd"
-"$etcd_name/etcd" --config-file witness.conf.yml &
+"$etcd_dir/etcd" --config-file witness.conf.yml &
 ETCD_PID=$!
 
 wait_join
@@ -403,7 +410,7 @@ echo "- launch fresh local etcd"
 
 start_etcd () {
     # purposefully, this etcd instance is only available over IPv6
-    "$etcd_name/etcd" \
+    "$etcd_dir/etcd" \
         --log-format console \
         --log-level error \
         --peer-client-cert-auth=true \
@@ -425,7 +432,7 @@ start_etcd
 # test that we can locally send requests to the witness
 
 echo "- check local etcd is healthy"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 
 # new attempt to join, with the witness listening this time
 # the witness is not expecting a new members, so this should still fail (with an
@@ -448,12 +455,12 @@ PUT_admin /v1/config/unattended-boot <<EOF
 EOF
 
 echo "- check local etcd is healthy again"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 echo "- set /config/version to 1 to allow join to complete"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 put "/config/version" "1" || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 put "/config/version" "1" || exit 1
 
 echo "- adding member to local witness"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member add "joiner" --peer-urls="https://192.168.1.1:2380,https://[fc00:22:1::2]:2380" || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member add "joiner" --peer-urls="https://192.168.1.1:2380,https://[fc00:22:1::2]:2380" || exit 1
 
 echo "- attempt to join witness (should succeed)"
 POST_admin /v1/cluster/join < join_req.json
@@ -474,10 +481,10 @@ fi
 
 
 echo "- local witness should be healthy again after being joined"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 
 echo "- check that NetHSM has written a domain key"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 \
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
     get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
 
 echo "- unlock HSM (should fail, store was never provisioned)"
@@ -526,7 +533,7 @@ echo "- restart witness to check HSM recovers automatically"
 start_etcd # restart etcd to check we can recover
 
 echo "- check local etcd is healthy"
-"$etcd_name/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
+"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 member list || exit 1
 
 x=0
 while test "$(GET /v1/health/state | jq -r .state)" != "Locked"; do
