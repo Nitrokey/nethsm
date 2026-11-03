@@ -246,9 +246,19 @@ module Etcd_api (Stack : Tcpip.Stack.V4V6) = struct
       Lwt.wakeup_later_exn stream_err_resolver (Etcd_error (`Msg msg))
     in
     let do_request = H2C.request conn ~error_handler in
-
+    (* h2 sends no :authority, and grpc-go >= 1.83.2 rejects requests without
+       :authority or host *)
+    let headers =
+      H2.Headers.of_list
+        [
+          ("te", "trailers");
+          ("content-type", "application/grpc+proto");
+          ("host", Fmt.str "%a:%d" Ipaddr.V4.pp (Args.platform ()) etcd_port);
+        ]
+    in
     let grpc_resp =
-      Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~handler ~do_request ()
+      Grpc_lwt.Client.call ~service ~rpc ~scheme:"http" ~headers ~handler
+        ~do_request ()
     in
     Lwt.pick [ grpc_resp; conn_err; stream_err ] >|= function
     | Error e -> etcd_err (`Msg (Fmt.to_to_string H2.Status.pp_hum e))
