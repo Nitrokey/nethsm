@@ -3,7 +3,7 @@
 
 module nethsm
 
-go 1.26.7
+go 1.26.10
 
 require (
 	github.com/beevik/ntp v1.5.0

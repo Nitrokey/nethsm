@@ -159,7 +159,7 @@ EOF
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.26.7.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.26.10.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
