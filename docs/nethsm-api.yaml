@@ -2411,7 +2411,7 @@ paths:
         "412":
           description: |
             Either NetHSM was not *Operational*, or "/cluster/tls/ca.pem" is set and the
-            provided certicicate is not signed by that CA.
+            provided certificate is not signed by that CA.
       description: Set certificate for NetHSMs peer traffic (i.e. how cluster members communicate), e.g. to replace self-signed initial certificate.
       requestBody:
         content:
