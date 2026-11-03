@@ -127,7 +127,7 @@ unset ETCD_INITIAL_ADVERTISE_PEER_URLS
 
 generate_witness_conf
 
-etcd_name="etcd-v3.6.13-linux-arm64"
+etcd_name="etcd-v3.6.16-linux-arm64"
 tar xf "$etcd_name.tar.gz"
 
 cleanup_etcd() {
