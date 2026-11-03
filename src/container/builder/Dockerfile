@@ -165,7 +165,7 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/v0.16.0.tar.gz" -o /tmp/u-root.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/94f7dc44ad299a076ed0f01f2acec0d0c8a42331.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
