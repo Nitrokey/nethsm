@@ -598,6 +598,7 @@ clustering_test:
   script:
     - exec 99>/downloads/.clustering_test.lock
     - flock 99
+    - export ETCD_VER=$(cat ${CI_PROJECT_DIR}/etcd.version)
     - trap "docker compose -f ${CI_PROJECT_DIR}/src/container/alpine/compose-cluster.yaml down -v || true" EXIT
     - docker compose -f ${CI_PROJECT_DIR}/src/container/alpine/compose-cluster.yaml up -d --wait
     - docker compose -f ${CI_PROJECT_DIR}/src/container/alpine/compose-cluster.yaml logs -f --no-color >docker_logs.txt 2>&1 &

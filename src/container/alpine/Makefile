@@ -1,3 +1,6 @@
+# single source of truth for the etcd version, used by the compose files
+export ETCD_VER := $(shell cat ../../../etcd.version)
+
 .PHONY: rebuild down up logs clean flogs etcd-panic etcd-break
 
 clean:

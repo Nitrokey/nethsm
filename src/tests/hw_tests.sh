@@ -127,7 +127,7 @@ unset ETCD_INITIAL_ADVERTISE_PEER_URLS
 
 generate_witness_conf
 
-etcd_ver="v3.6.16"
+etcd_ver=$(cat "$(dirname "$0")/../../etcd.version")
 etcd_dir="/tmp/etcd-$etcd_ver-linux-arm64"
 if [ ! -x "$etcd_dir/etcd" ]; then
     # Tests may run in parallel on the same node: unpack aside, then rename atomically.

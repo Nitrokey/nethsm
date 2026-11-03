@@ -138,13 +138,14 @@ FROM alpine AS nethsm_test
 # Install the same version and binary of etcd/etcdutl than production
 
 COPY Makefile.sub /Makefile
+COPY etcd.version /etcd.version
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   apk add --no-cache gmp make curl &&
   cd / && make -f /Makefile //etcd-download && # really needs to be '//'
   mv /etcd-download/etcd /bin &&
   mv /etcd-download/etcdutl /bin &&
-  rm -r /Makefile /etcd-download
+  rm -r /Makefile /etcd.version /etcd-download
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apk,sharing=locked <<EOF
