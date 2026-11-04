@@ -245,6 +245,11 @@ func platformListener(
 				block++
 			}
 
+			// Fail now rather than commit a partition GRUB won't boot.
+			if err := w.Sync(); err != nil {
+				return errorResponse(err), err, false
+			}
+
 			// Enable COMMIT-UPDATE.
 			log.Printf("[%s] Successfuly wrote UPDATE to %s. (%d blocks)", remoteAddr,
 				sysInactivePartition, block-1)
