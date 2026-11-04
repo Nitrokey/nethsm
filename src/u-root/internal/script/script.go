@@ -19,7 +19,6 @@
 package script
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -44,11 +43,6 @@ func New() *Script {
 	return &Script{}
 }
 
-// ClearErr clears the error associated with Script, if any.
-func (s *Script) ClearErr() {
-	s.err = nil
-}
-
 // Err returns the error associated with Script, if any.
 func (s *Script) Err() error {
 	return s.err
@@ -71,10 +65,6 @@ func (s *Script) ExecAsf(uidgid int, format string, a ...any) {
 
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
-	if len(cmdSplit) == 0 {
-		s.err = fmt.Errorf("empty command string")
-		return
-	}
 
 	cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 	cmd.Stdin = os.Stdin
@@ -101,8 +91,9 @@ func (s *Script) Execf(format string, a ...any) {
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running. It also returns a pointer to the process's exit state.
-// If exitedNtfy is set, it returns the read end of a pipe with the command's
-// stderr, which the caller has to close.
+// exitedNtfy is required and called once the command has exited or failed to
+// start. It also returns the read end of a pipe with the command's stderr, which
+// the caller has to close.
 func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *atomic.Pointer[os.ProcessState], uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
 	earlyExitNtfy := exitedNtfy
 	defer func() {
@@ -121,10 +112,6 @@ func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *at
 
 	cmdString := fmt.Sprintf(format, a...)
 	cmdSplit := strings.Split(cmdString, " ")
-	if len(cmdSplit) == 0 {
-		s.err = fmt.Errorf("empty command string")
-		return nil, nil
-	}
 
 	context, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(context, cmdSplit[0], cmdSplit[1:]...)
@@ -139,33 +126,21 @@ func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *at
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uidgid), Gid: uint32(uidgid)}
 	}
-	var logPipe io.ReadCloser
-	if exitedNtfy != nil {
-		// Not cmd.StderrPipe(): Wait() would close it, losing unread output.
-		r, w, err := os.Pipe()
-		if err != nil {
-			s.err = fmt.Errorf("cannot create stderr pipe: %v", err)
-			return cancel, nil
-		}
-		defer util.Close(w) // the child has its own copy, ours would prevent EOF
-		cmd.Stderr = w
-		logPipe = r
-	} else {
-		cmd.Stderr = os.Stderr
+	// Not cmd.StderrPipe(): Wait() would close it, losing unread output.
+	logPipe, w, err := os.Pipe()
+	if err != nil {
+		s.err = fmt.Errorf("cannot create stderr pipe: %v", err)
+		return cancel, nil
 	}
+	defer util.Close(w) // the child has its own copy, ours would prevent EOF
+	cmd.Stderr = w
 	if err := cmd.Start(); err != nil {
-		if logPipe != nil {
-			util.Close(logPipe)
-		}
+		util.Close(logPipe)
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
 		return cancel, nil
 	}
 	go func() {
-		defer func() {
-			if exitedNtfy != nil {
-				exitedNtfy()
-			}
-		}()
+		defer exitedNtfy()
 		err := cmd.Wait()
 		if processState != nil {
 			processState.Store(cmd.ProcessState)
@@ -179,32 +154,6 @@ func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *at
 	// we no longer want to call exitedNtfy, the goroutine above will do that
 	earlyExitNtfy = nil
 	return cancel, logPipe
-}
-
-// BackgroundExecAsf ...
-func (s *Script) BackgroundExecAsf(uidgid int, format string, a ...any) {
-	_, _ = s.CancelableBackgroundExecAsf(nil, nil, -1, format, a...)
-}
-
-// BackgroundExecf ...
-func (s *Script) BackgroundExecf(format string, a ...any) {
-	s.BackgroundExecAsf(-1, format, a...)
-}
-
-// ReadLine reads a line from standard input.
-func (s *Script) ReadLine() string {
-	if s.err != nil {
-		return "" // XXX correct?
-	}
-
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	err := scanner.Err()
-	if err != nil {
-		s.err = fmt.Errorf("ReadLine() failed: %v", err)
-		return ""
-	}
-	return scanner.Text()
 }
 
 // Glob is the equivalent of filepath.Glob.

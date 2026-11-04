@@ -225,7 +225,7 @@ func notifyConsumers() error {
 // Set updates the local config from a SET-LOCAL-CONFIG message and stores changes to the local
 // cache file. Fields absent from jsonConf keep their existing values;
 // TimeOffsetS is always preserved (S-Platform owns it). Notifies all registered
-// consumers when the config changes or TimeMs is non-nil, and waits for replies.
+// consumers when the config changes, and waits for replies.
 func Set(jsonConf []byte, setTime func(time.Duration) error) error {
 	var upd LocalConf
 	if err := json.Unmarshal(jsonConf, &upd); err != nil {

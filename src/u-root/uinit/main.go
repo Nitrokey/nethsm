@@ -7,9 +7,6 @@
 // As our u-root is shared between all Muen Linux subjects, uinit expects a
 // single argument on the command line, which selects what actions are taken
 // depending on the Linux subject that is being booted.
-//
-// Additionally, an argument of "mock" may be used to run a "mock" uinit for
-// testing purposes. See mock.go for details on how this works.
 package main
 
 import (

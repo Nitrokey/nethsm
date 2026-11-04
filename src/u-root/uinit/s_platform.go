@@ -199,8 +199,7 @@ func platformListener(
 			if err != nil {
 				return nil, err, false
 			}
-			// ParseUint() with a bitSize of 0 guarantees that the value can
-			// fit in an int.
+			// A value too big for an int turns negative and is rejected below.
 			updateBlocks := int(paramU64)
 			if updateBlocks <= 0 {
 				err := fmt.Errorf("update size must be >0")

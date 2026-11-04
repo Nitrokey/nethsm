@@ -135,7 +135,7 @@ func syncTime(ntpIP, ntsName string) (time.Duration, error) {
 
 // startNTP stops any running NTP loop and starts a new background loop that
 // syncs immediately on its first iteration. Blocks until a sync succeeds or
-// 10 attempts have failed (or a kiss-of-death is received); returns nil on
+// 4 attempts have failed (or a kiss-of-death is received); returns nil on
 // success or the last error otherwise. The loop continues running regardless.
 func (t *timeTask) startNTP(ntpIP, ntsName string) error {
 	if t.cancelNTP != nil {

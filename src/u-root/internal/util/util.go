@@ -67,17 +67,6 @@ func ExtractCpioArchive(archiveFile string, destDir string) (err error) {
 	return nil
 }
 
-// SafeGetenv is like os.Getenv but with a default supplied if the environment
-// variable does not exist.
-func SafeGetenv(key string, defaultValue string) string {
-	value, found := os.LookupEnv(key)
-	if found {
-		return value
-	} else {
-		return defaultValue
-	}
-}
-
 // StartTask starts a goroutine that executes function f and logs its lifecycle.
 func StartTask(name string, f func()) {
 	go func() {
