@@ -162,8 +162,9 @@ func Get() LocalConf {
 	if lc == nil {
 		log.Fatal("localconf used before initialization")
 	}
-	lc.TimeMs = nil
-	return *lc
+	c := *lc
+	c.TimeMs = nil
+	return c
 }
 
 // saveConf encrypts and atomically writes conf to disk. Must be called with setMu held.

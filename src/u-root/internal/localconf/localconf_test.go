@@ -48,3 +48,18 @@ func TestDamagedCacheFile(t *testing.T) {
 		t.Errorf("config not restored: %v", got)
 	}
 }
+
+// Fails with the race detector if Get() writes to the shared config.
+func TestGetConcurrently(t *testing.T) {
+	useTestConf(t)
+	localConfig.Store(&LocalConf{})
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			for range 1000 {
+				Get()
+			}
+		})
+	}
+	wg.Wait()
+}
