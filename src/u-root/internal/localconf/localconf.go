@@ -22,10 +22,10 @@ import (
 	"time"
 )
 
-const (
-	localConfigFile = "/data/localConfig"
-	authData        = "local-config"
-)
+const authData = "local-config"
+
+// localConfigFile is overridden by tests.
+var localConfigFile = "/data/localConfig"
 
 var localConfigKey, setLocalConfigKey = func() (func() []byte, func([]byte)) {
 	var key []byte
@@ -139,10 +139,21 @@ func loadFromCache() error {
 	return nil
 }
 
-// Init initializes the localconf package
+// Init initializes the localconf package. If it returns an error the cached
+// config is lost, but the package is usable with an empty config.
 func Init(key []byte) error {
 	setLocalConfigKey(key)
-	return loadFromCache()
+	return loadOrEmpty()
+}
+
+// loadOrEmpty falls back to an empty config, because a damaged cache file must
+// not stop the device from booting.
+func loadOrEmpty() error {
+	err := loadFromCache()
+	if err != nil {
+		localConfig.CompareAndSwap(nil, &LocalConf{})
+	}
+	return err
 }
 
 // Get returns a copy of localConfig.
