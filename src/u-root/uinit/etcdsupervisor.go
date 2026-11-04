@@ -62,9 +62,14 @@ type JoinArgs struct {
 	InitialCluster string // of the form "name1=url1:2380,name2=url2:2380,..."
 }
 
-const (
+// Location and settings of the etcd process, overridden by tests.
+var (
+	etcdBin            = "/bin/etcd"
+	etcdDataDir        = "/data/etcd"
 	etcdBackupJoin     = "/data/etcd.backup"
 	etcdBackupSnapshot = "/data/etcd.backup.snapshot"
+	etcdUser           = etcdUIDGID
+	etcdRetryDelay     = 5 * time.Second
 )
 
 type etcdConf struct {
@@ -136,8 +141,8 @@ func (s *etcdSupervisor) Run() {
 	var err error
 	for i := 0; i <= maxRetries; i++ {
 		if i > 0 {
-			log.Printf("etcd: retrying start in 5 seconds (attempt %d/%d)", i, maxRetries)
-			time.Sleep(5 * time.Second)
+			log.Printf("etcd: retrying start in %v (attempt %d/%d)", etcdRetryDelay, i, maxRetries)
+			time.Sleep(etcdRetryDelay)
 		}
 		err = s.launch(EtcdNormal, etcdConfOf(&conf))
 		if err == nil {
@@ -248,7 +253,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 
 	log.Printf("etcd: launching: %s", cmd)
 	sc := script.New()
-	cancel, logPipe := sc.CancelableBackgroundExecAsf(exitedNtfy, &s.ProcessState, etcdUIDGID, "%s", cmd)
+	cancel, logPipe := sc.CancelableBackgroundExecAsf(exitedNtfy, &s.ProcessState, etcdUser, "%s", cmd)
 	if err := sc.Err(); err != nil {
 		return fmt.Errorf("couldn't exec etcd: %w", err)
 	}
@@ -293,11 +298,11 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 // buildEtcdCmd constructs the etcd command string for the given mode and
 // config. As a side effect it writes TLS credentials to /tmp if configured.
 func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, error) {
-	cmd := "/bin/etcd" +
+	cmd := etcdBin +
 		" --listen-client-urls=http://169.254.169.2:2379" +
 		" --listen-client-http-urls=http://127.0.0.1:2382" + // disables HTTP on client port
 		" --advertise-client-urls=" +
-		" --data-dir=/data/etcd" +
+		" --data-dir=" + etcdDataDir +
 		" --peer-skip-client-san-verification=true" +
 		" --auto-compaction-retention=1h" +
 		" --quota-backend-bytes=5694816256" + // should not be more than RAM
@@ -372,23 +377,23 @@ func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string
 
 func backupEtcd(dest string) error {
 	log.Printf("Moving previous etcd data to %s", dest)
-	if err := os.Rename("/data/etcd", dest); err != nil {
+	if err := os.Rename(etcdDataDir, dest); err != nil {
 		return err
 	}
-	if err := os.Mkdir("/data/etcd", 0o700); err != nil {
+	if err := os.Mkdir(etcdDataDir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chown("/data/etcd", etcdUIDGID, etcdUIDGID); err != nil {
+	if err := os.Chown(etcdDataDir, etcdUser, etcdUser); err != nil {
 		return err
 	}
 	return nil
 }
 
 func restoreJoinBackup() error {
-	if err := os.RemoveAll("/data/etcd"); err != nil {
+	if err := os.RemoveAll(etcdDataDir); err != nil {
 		return err
 	}
-	return os.Rename(etcdBackupJoin, "/data/etcd")
+	return os.Rename(etcdBackupJoin, etcdDataDir)
 }
 
 func restoreFromSnapshotEtcd(conf etcdConf) error {
@@ -403,13 +408,13 @@ func restoreFromSnapshotEtcd(conf etcdConf) error {
 	salt := fmt.Sprintf("%06d", rand.IntN(1000000))
 	clusterToken := fmt.Sprintf("etcd-%s-recovered-%s", name, salt)
 	sc := script.New()
-	sc.ExecAsf(etcdUIDGID, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir /data/etcd --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token %s --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, name, name, clusterToken)
+	sc.ExecAsf(etcdUser, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir %s --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token %s --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, etcdDataDir, name, name, clusterToken)
 	if origErr := sc.Err(); origErr != nil {
 		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
-		if err := os.RemoveAll("/data/etcd"); err != nil {
+		if err := os.RemoveAll(etcdDataDir); err != nil {
 			return fmt.Errorf("snapshot restore (%w) AND removeall failed: %w", origErr, err)
 		}
-		if err := os.Rename(etcdBackupSnapshot, "/data/etcd"); err != nil {
+		if err := os.Rename(etcdBackupSnapshot, etcdDataDir); err != nil {
 			return fmt.Errorf("snapshot restore (%w) AND backup rename failed: %w", origErr, err)
 		}
 		return origErr
