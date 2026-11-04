@@ -5,6 +5,8 @@ package script
 import (
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -37,8 +39,11 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 			}
 
 			if pipe != nil {
-				// if child.Wait() was already called then it is expected that we'd fail to read the pipe here
-				if stderr, err := io.ReadAll(pipe); err == nil && len(stderr) > 0 {
+				defer util.Close(pipe)
+				stderr, err := io.ReadAll(pipe)
+				if err != nil {
+					t.Errorf("Cannot read stderr: %v", err)
+				} else if len(stderr) > 0 {
 					t.Errorf("Unexpected stderr output: %s", stderr)
 				}
 			}
@@ -59,5 +64,31 @@ func TestCancelableBackgroundExecAsf(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The last lines are the ones saying why a process died.
+func TestCancelableBackgroundExecAsfKeepsAllOutput(t *testing.T) {
+	cmd := filepath.Join(t.TempDir(), "cmd")
+	script := "#!/bin/sh\ni=0\nwhile [ $i -lt 400 ]; do echo line$i >&2; i=$((i+1)); done\necho last >&2\nexit 1\n"
+	if err := os.WriteFile(cmd, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for range 300 {
+		s := New()
+		exitedNtfy, exitedSig := util.MakeNtfyPair()
+		_, pipe := s.CancelableBackgroundExecAsf(exitedNtfy, nil, -1, "%s", cmd)
+		if err := s.Err(); err != nil {
+			t.Fatal(err)
+		}
+		stderr, err := io.ReadAll(pipe)
+		util.Close(pipe)
+		<-exitedSig
+		if err != nil {
+			t.Fatalf("Cannot read stderr: %v", err)
+		}
+		if !strings.HasSuffix(string(stderr), "last\n") {
+			t.Fatalf("Last line of stderr lost, got %d bytes", len(stderr))
+		}
 	}
 }

@@ -375,6 +375,7 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, e
 // readEtcdLogs reads etcd's log output, fires aliveNtfy when etcd is ready,
 // and stores warn/error entries in the provided ring buffer.
 func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string, logRing *util.Ring[clusterLogItem]) {
+	defer util.Close(logPipe)
 	logs := bufio.NewReader(logPipe)
 	for {
 		line, err := logs.ReadString('\n')

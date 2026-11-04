@@ -30,6 +30,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+
+	"nethsm/internal/util"
 )
 
 // Script type
@@ -99,6 +101,8 @@ func (s *Script) Execf(format string, a ...any) {
 // and GID equal to uidgid.
 // This function returns a "cancel" function which, when called, kills the
 // running command if running. It also returns a pointer to the process's exit state.
+// If exitedNtfy is set, it returns the read end of a pipe with the command's
+// stderr, which the caller has to close.
 func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *atomic.Pointer[os.ProcessState], uidgid int, format string, a ...any) (context.CancelFunc, io.ReadCloser) {
 	earlyExitNtfy := exitedNtfy
 	defer func() {
@@ -137,16 +141,22 @@ func (s *Script) CancelableBackgroundExecAsf(exitedNtfy func(), processState *at
 	}
 	var logPipe io.ReadCloser
 	if exitedNtfy != nil {
-		var err error
-		logPipe, err = cmd.StderrPipe()
+		// Not cmd.StderrPipe(): Wait() would close it, losing unread output.
+		r, w, err := os.Pipe()
 		if err != nil {
-			s.err = fmt.Errorf("cannot acquire stdout pipe: %v", err)
+			s.err = fmt.Errorf("cannot create stderr pipe: %v", err)
 			return cancel, nil
 		}
+		defer util.Close(w) // the child has its own copy, ours would prevent EOF
+		cmd.Stderr = w
+		logPipe = r
 	} else {
 		cmd.Stderr = os.Stderr
 	}
 	if err := cmd.Start(); err != nil {
+		if logPipe != nil {
+			util.Close(logPipe)
+		}
 		s.err = fmt.Errorf("Exec(%s) failed: %v", cmdString, err)
 		return cancel, nil
 	}
