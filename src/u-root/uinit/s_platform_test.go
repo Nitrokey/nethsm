@@ -4,7 +4,6 @@
 package main
 
 import (
-	"container/ring"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -194,7 +193,7 @@ func TestMain(m *testing.M) {
 	testProto = "unix"
 	testAddr = tmpu.Name()
 	testSupervisor = NewEtcdSupervisor()
-	testSupervisor.Logs.Store(ring.New(1024))
+	testSupervisor.Logs.Store(util.NewRing[clusterLogItem](1024))
 
 	err = mockEtcdFail()
 	if err != nil {

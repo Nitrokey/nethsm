@@ -5,7 +5,6 @@ package main
 
 import (
 	"bufio"
-	"container/ring"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,7 +107,7 @@ type etcdSupervisor struct {
 	Shutdown func()
 	// ProcessState and logs are written by startAndWait and read by platformListener.
 	ProcessState atomic.Pointer[os.ProcessState]
-	Logs         atomic.Pointer[ring.Ring]
+	Logs         atomic.Pointer[util.Ring[clusterLogItem]]
 	// internal
 	configRcv <-chan localconf.ChangeReq
 	cmdsRcv   <-chan EtcdCommand
@@ -292,7 +291,7 @@ func (s *etcdSupervisor) startAndWait(mode EtcdMode, conf etcdConf, joinArgs ...
 		<-exitedSig
 	}
 	lastEtcdError := "unknown error"
-	s.Logs.Store(ring.New(1024))
+	s.Logs.Store(util.NewRing[clusterLogItem](1024))
 
 	var logsDone sync.WaitGroup
 	logsDone.Go(func() {
@@ -375,7 +374,7 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, e
 
 // readEtcdLogs reads etcd's log output, fires aliveNtfy when etcd is ready,
 // and stores warn/error entries in the provided ring buffer.
-func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string, logRing *ring.Ring) {
+func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string, logRing *util.Ring[clusterLogItem]) {
 	logs := bufio.NewReader(logPipe)
 	for {
 		line, err := logs.ReadString('\n')
@@ -396,8 +395,7 @@ func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string
 				case "debug", "info":
 					// skip
 				default:
-					logRing.Value = logItem
-					logRing = logRing.Next()
+					logRing.Add(logItem)
 				}
 			}
 		}

@@ -318,7 +318,7 @@ func platformListener(
 				}
 			}
 
-			data.ClusterLogs = util.RingCollect[clusterLogItem](supervisor.Logs.Load())
+			data.ClusterLogs = supervisor.Logs.Load().Collect()
 
 			json, err := json.Marshal(data)
 			if err != nil {

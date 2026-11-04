@@ -107,13 +107,34 @@ func MakeNtfyPair() (func(), <-chan struct{}) {
 	return emit, ch
 }
 
-// RingCollect returns all non-nil values of type T stored in r.
-func RingCollect[T any](r *ring.Ring) []T {
+// Ring keeps the last values added to it. It is safe for concurrent use.
+type Ring[T any] struct {
+	mu   sync.Mutex
+	next *ring.Ring
+}
+
+// NewRing returns an empty Ring holding at most size values.
+func NewRing[T any](size int) *Ring[T] {
+	return &Ring[T]{next: ring.New(size)}
+}
+
+// Add stores v, replacing the oldest value if the Ring is full.
+func (r *Ring[T]) Add(v T) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.next.Value = v
+	r.next = r.next.Next()
+}
+
+// Collect returns all stored values, oldest first.
+func (r *Ring[T]) Collect() []T {
 	if r == nil {
 		return nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	result := []T{}
-	r.Do(func(v any) {
+	r.next.Do(func(v any) {
 		if item, ok := v.(T); ok {
 			result = append(result, item)
 		}
