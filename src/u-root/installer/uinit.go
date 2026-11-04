@@ -68,35 +68,54 @@ name="data"
 	fmt.Println()
 	wait(5 * time.Second)
 
-	if reset {
-		fmt.Println(sep)
-		fmt.Println("Partitioning hard disk")
-		partitionDisk(partitions, hw.DiskDev)
-		fmt.Println(sep)
-		fmt.Println("Writing to first system partition")
-		writeToPartition(file, hw.DiskPrefix+"1")
-		fmt.Println(sep)
-		fmt.Println("Writing to second system partition")
-		writeToPartition(file, hw.DiskPrefix+"2")
-		fmt.Println(sep)
-		fmt.Println("Formatting data partition")
-		formatDataPartition(hw.DiskPrefix + "3")
-		fmt.Println(sep)
-		fmt.Println("Successfully installed:")
-		fmt.Println(changeLog)
-		fmt.Println()
-		fmt.Println()
-	} else {
-		fmt.Println(sep)
-		fmt.Println("Writing to first system partition")
-		writeToPartition(file, hw.DiskPrefix+"1")
-	}
-
+	err := install(file, partitions, sep, changeLog, reset)
 	fmt.Println(sep)
-	fmt.Println("Done. Shutting down in 30 seconds...")
+	if err != nil {
+		fmt.Printf("INSTALLATION FAILED: %v\n", err)
+		fmt.Println("The system may not boot. Please repeat the installation.")
+		fmt.Println("Shutting down in 30 seconds...")
+	} else {
+		fmt.Println("Done. Shutting down in 30 seconds...")
+	}
 	wait(30 * time.Second)
 	fmt.Println("Shutting down...")
 	shutdownSystem()
+}
+
+// install stops at the first failure, as the later steps would hide it.
+func install(file, partitions, sep, changeLog string, reset bool) error {
+	if !reset {
+		fmt.Println(sep)
+		fmt.Println("Writing to first system partition")
+		return writeToPartition(file, hw.DiskPrefix+"1")
+	}
+
+	fmt.Println(sep)
+	fmt.Println("Partitioning hard disk")
+	if err := partitionDisk(partitions, hw.DiskDev); err != nil {
+		return err
+	}
+	fmt.Println(sep)
+	fmt.Println("Writing to first system partition")
+	if err := writeToPartition(file, hw.DiskPrefix+"1"); err != nil {
+		return err
+	}
+	fmt.Println(sep)
+	fmt.Println("Writing to second system partition")
+	if err := writeToPartition(file, hw.DiskPrefix+"2"); err != nil {
+		return err
+	}
+	fmt.Println(sep)
+	fmt.Println("Formatting data partition")
+	if err := formatDataPartition(hw.DiskPrefix + "3"); err != nil {
+		return err
+	}
+	fmt.Println(sep)
+	fmt.Println("Successfully installed:")
+	fmt.Println(changeLog)
+	fmt.Println()
+	fmt.Println()
+	return nil
 }
 
 func loadModules() {
@@ -125,32 +144,35 @@ func loadModules() {
 	}
 }
 
-func partitionDisk(partitions, device string) {
+func partitionDisk(partitions, device string) error {
 	cmd := exec.Command("sfdisk", device)
 	cmd.Stdin = strings.NewReader(partitions)
 	err := cmd.Run()
 	if err != nil {
-		fmt.Printf("Error partitioning disk %s: %v\n", device, err)
+		return fmt.Errorf("partitioning disk %s: %w", device, err)
 	}
 	_ = exec.Command("sync").Run()
+	return nil
 }
 
-func writeToPartition(file, partition string) {
+func writeToPartition(file, partition string) error {
 	cmd := exec.Command("dd", "if="+file, "of="+partition, "ibs=1M", "obs=1M")
 	err := cmd.Run()
 	if err != nil {
-		fmt.Printf("Error writing to partition %s: %v\n", partition, err)
+		return fmt.Errorf("writing to partition %s: %w", partition, err)
 	}
+	return nil
 }
 
-func formatDataPartition(partition string) {
+func formatDataPartition(partition string) error {
 	cmd := exec.Command("mke2fs", "-t", "ext4", "-E", "discard", "-F", "-m0", "-L", "data", partition)
 	err := cmd.Run()
 	if err != nil {
-		fmt.Printf("Error formatting data partition %s: %v\n", partition, err)
+		return fmt.Errorf("formatting data partition %s: %w", partition, err)
 	}
 	_ = exec.Command("sync").Run()
 	_ = exec.Command("sync").Run()
+	return nil
 }
 
 func readFile(path string) string {
