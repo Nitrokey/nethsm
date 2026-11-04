@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 var setTestKey = sync.OnceFunc(func() { setLocalConfigKey(make([]byte, 32)) })
@@ -62,4 +63,73 @@ func TestGetConcurrently(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
+}
+
+func TestSetKeepsAbsentFields(t *testing.T) {
+	useTestConf(t)
+	if err := loadOrEmpty(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, update := range []string{`{"ntp_ip":"1.2.3.4","nts_name":"a"}`, `{"nts_name":"b"}`} {
+		if err := Set([]byte(update), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Compare what comes back from the file, not only the memory.
+	localConfig.Store(nil)
+	if err := loadOrEmpty(); err != nil {
+		t.Fatal(err)
+	}
+	got := Get()
+	if ip, name := deref(got.NtpIP), deref(got.NtsName); ip != "1.2.3.4" || name != "b" {
+		t.Errorf("got ntp_ip %s, nts_name %s", ip, name)
+	}
+}
+
+func TestSetTimeIsNotStored(t *testing.T) {
+	useTestConf(t)
+	if err := loadOrEmpty(); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	setTime := func(time.Duration) error {
+		called = true
+		return nil
+	}
+	if err := Set([]byte(`{"time_ms":1000,"device_id":"id"}`), setTime); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("time not forwarded")
+	}
+	if got := Get().TimeMs; got != nil {
+		t.Errorf("time_ms stored: %d", *got)
+	}
+}
+
+func TestUpdateTimeOffsetKeepsConfig(t *testing.T) {
+	useTestConf(t)
+	if err := loadOrEmpty(); err != nil {
+		t.Fatal(err)
+	}
+	if err := Set([]byte(`{"device_id":"id"}`), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTimeOffset(42); err != nil {
+		t.Fatal(err)
+	}
+	got := Get()
+	if deref(got.DeviceID) != "id" || got.TimeOffsetS == nil || *got.TimeOffsetS != 42 {
+		t.Errorf("got device_id %s, offset %v", deref(got.DeviceID), got.TimeOffsetS)
+	}
 }
