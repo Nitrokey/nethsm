@@ -169,6 +169,18 @@ func TestDiagnoseRun(t *testing.T) {
 	}
 }
 
+func TestSetLocalConfigTooLarge(t *testing.T) {
+	for _, size := range []string{"8388609", "99999999999999", "18446744073709551615"} {
+		if status, _ := command(t, "SET-LOCAL-CONFIG", size+"\n"); status {
+			t.Errorf("size %s accepted", size)
+		}
+	}
+	// the listener must have survived
+	if status, response := command(t, "DIAGNOSE", ""); !status {
+		t.Errorf("command error: %s", response)
+	}
+}
+
 func TestMain(m *testing.M) {
 	c := make(chan string)
 	platformDataCh := make(chan platformData, 1)

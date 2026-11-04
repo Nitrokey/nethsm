@@ -47,6 +47,10 @@ type diagnoseData struct {
 	ClusterState    clusterState     `json:"clusterState"`
 }
 
+// maxLocalConfigSize leaves room for several PEM files of the 1 MiB that
+// Keyfender accepts in a REST request.
+const maxLocalConfigSize = 8 << 20
+
 // okResponse returns an OK response, optionally with a message if not empty.
 func okResponse(m string) []byte {
 	if m != "" {
@@ -367,6 +371,10 @@ func platformListener(
 			paramU64, err := strconv.ParseUint(param, 10, 0)
 			if err != nil {
 				return nil, err, false
+			}
+			if paramU64 > maxLocalConfigSize {
+				err := fmt.Errorf("local config too large: %d bytes", paramU64)
+				return errorResponse(err), err, false
 			}
 			dataSize := int(paramU64)
 			log.Printf("[%s] Requested SET-LOCAL-CONFIG (%d bytes).", remoteAddr, dataSize)
