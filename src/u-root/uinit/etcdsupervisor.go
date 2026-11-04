@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"nethsm/internal/localconf"
 	"nethsm/internal/script"
@@ -223,8 +224,12 @@ func (s *etcdSupervisor) Run() {
 
 // checkJoinArgs validates a join request before etcd is stopped for it.
 func checkJoinArgs(args JoinArgs) error {
-	if strings.TrimSpace(args.InitialCluster) == "" {
+	if args.InitialCluster == "" {
 		return fmt.Errorf("EtcdClusterJoin requires a non-empty InitialCluster")
+	}
+	// The etcd command line is split on spaces.
+	if strings.ContainsFunc(args.InitialCluster, unicode.IsSpace) {
+		return fmt.Errorf("InitialCluster must not contain whitespace")
 	}
 	return nil
 }
@@ -333,7 +338,7 @@ func buildEtcdCmd(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) (string, e
 
 	if mode == EtcdClusterJoin && len(joinArgs) > 0 {
 		cmd += " --initial-cluster-state=existing"
-		cmd += " --initial-cluster=" + strings.TrimSpace(joinArgs[0].InitialCluster)
+		cmd += " --initial-cluster=" + joinArgs[0].InitialCluster
 	} else {
 		cmd += " --initial-cluster-state=new"
 	}

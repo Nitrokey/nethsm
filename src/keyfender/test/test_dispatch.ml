@@ -5923,6 +5923,17 @@ let cluster_join_fail_invalid =
       |> Alcotest.(
            check string "error msg"
              "{\"message\":\"member URL must start with https://\"}"));
+      let whitespace_name_req =
+        join_req'
+          {|[{"name": "", "urls": ["https://192.168.1.1:2380"]},
+           {"name": "node2 --flag", "urls": ["https://192.168.1.2:2380"]}]|}
+      in
+      (admin_post_request ~body:(`String whitespace_name_req) "/cluster/join"
+      |> returns_string ~with_status:`Bad_request
+      |> Alcotest.(
+           check string "error msg"
+             "{\"message\":\"member names and URLs must not contain \
+              whitespace\"}"));
       let missing_empty_name_req =
         join_req'
           {|[{"name": "node1", "urls": ["https://192.168.1.1:2380"]},

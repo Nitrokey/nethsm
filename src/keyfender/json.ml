@@ -318,6 +318,15 @@ let check_join_req (req : join_req) =
   in
   (* the empty name will be replaced by our device-ID down the line *)
   let all_urls = List.map (fun m -> m.urls) members |> List.concat in
+  (* the platform passes them to etcd on a space-separated command line *)
+  let has_space =
+    String.exists (function ' ' | '\t' | '\r' | '\n' -> true | _ -> false)
+  in
+  let* () =
+    guard
+      (not (List.exists has_space (names @ all_urls)))
+      "member names and URLs must not contain whitespace"
+  in
   let check_url s =
     let uri = Uri.of_string s in
     let* () =

@@ -140,12 +140,14 @@ func TestEtcdSupervisorSurvivesFailedForceNew(t *testing.T) {
 func TestEtcdSupervisorKeepsEtcdRunningOnRejectedJoin(t *testing.T) {
 	useFakeEtcd(t, fakeEtcdReady)
 	s := startSupervisor(t)
-	err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{" "}})
-	if err == nil {
-		t.Fatal("join with empty cluster succeeded")
-	}
-	if !etcdRunning(s, true) {
-		t.Error("etcd is stopped")
+	for _, cluster := range []string{"", " ", " a=https://b:2380", "a=https://b:2380 ", "a=https://b:2380 --log-outputs=stdout"} {
+		err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{cluster}})
+		if err == nil {
+			t.Fatalf("join with cluster %q succeeded", cluster)
+		}
+		if !etcdRunning(s, true) {
+			t.Errorf("etcd is stopped after cluster %q", cluster)
+		}
 	}
 }
 
