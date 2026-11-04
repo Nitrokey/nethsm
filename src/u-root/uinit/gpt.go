@@ -92,10 +92,6 @@ func gptSwapPartitions(diskDevice string) error {
 		return err
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("sfdisk failed to read GPT: %w", err)
-	}
-
 	// Basic sanity check: Ensure we read exactly 11 lines and lines[7] is
 	// blank (separating the header from the partition entries).
 	if len(lines) != 11 {
