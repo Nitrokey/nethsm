@@ -101,3 +101,12 @@ func TestEtcdSupervisorStartsEtcd(t *testing.T) {
 		t.Fatal("unknown command accepted")
 	}
 }
+
+func TestEtcdSupervisorServesCommandsAfterGivingUp(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdFail)
+	s := startSupervisor(t)
+	// There is no etcdutl to restore with, what matters is getting an answer.
+	if err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdForceNew}); err == nil {
+		t.Fatal("force new cluster without etcdutl succeeded")
+	}
+}

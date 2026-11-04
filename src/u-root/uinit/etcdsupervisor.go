@@ -130,6 +130,7 @@ func NewEtcdSupervisor() *etcdSupervisor {
 		},
 		stopSig:  stopSig,
 		Shutdown: stopNtfy,
+		stopEtcd: func() {},
 	}
 	localconf.RegisterConsumer(configCh)
 	return s
@@ -138,6 +139,8 @@ func NewEtcdSupervisor() *etcdSupervisor {
 func (s *etcdSupervisor) Run() {
 	const maxRetries = 5
 	conf := localconf.Get()
+	// Commands need this config even if etcd never starts.
+	s.lastConf = etcdConfOf(&conf)
 	var err error
 	for i := 0; i <= maxRetries; i++ {
 		if i > 0 {
@@ -151,8 +154,8 @@ func (s *etcdSupervisor) Run() {
 		log.Printf("etcd: failed to start: %v", err)
 	}
 	if err != nil {
+		// Keep serving commands: FORCE-NEW-CLUSTER is how this gets repaired.
 		log.Printf("etcd: giving up after %d retries", maxRetries)
-		return
 	}
 
 	for {
