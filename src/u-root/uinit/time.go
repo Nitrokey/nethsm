@@ -118,8 +118,9 @@ func syncTime(ntpIP, ntsName string) (time.Duration, error) {
 		return 0, err
 	}
 
-	if resp.IsKissOfDeath() {
-		return 0, ntp.ErrKissOfDeath
+	// This also reports kiss-of-death as ntp.ErrKissOfDeath.
+	if err := resp.Validate(); err != nil {
+		return 0, err
 	}
 
 	if setErr := setTimeAndUpdateOffset(resp.ClockOffset); setErr != nil {
