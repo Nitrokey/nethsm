@@ -195,6 +195,104 @@ func sNetExternalActions() {
 	select {}
 }
 
+// externalDropExprs returns the expressions of the rules dropping unwanted
+// packets arriving on the external interface.
+func externalDropExprs() [][]expr.Any {
+	// Utility function to drop packets of an IP family matching the given
+	// expressions
+	dropExternal := func(proto byte, match ...expr.Any) []expr.Any {
+		exprs := []expr.Any{
+			// Match input interface
+			&expr.Meta{
+				Key:      expr.MetaKeyIIFNAME,
+				Register: 1,
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(extIface + "\x00"),
+			},
+			// Match IP kind
+			&expr.Meta{
+				Key:      expr.MetaKeyNFPROTO,
+				Register: 1,
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{proto},
+			},
+		}
+		exprs = append(exprs, match...)
+		return append(exprs, &expr.Verdict{Kind: expr.VerdictDrop})
+	}
+
+	// Utility function to drop packets addressed to the internal subnet of the
+	// given IP (v4 or v6). Only the exact subnets are matched, because the
+	// external interface may itself be configured with a link-local address.
+	dropInternalDst := func(ip net.IP) []expr.Any {
+		var proto byte
+		var ipOffset, prefixLen uint32
+		if len(ip) == net.IPv6len {
+			proto = unix.NFPROTO_IPV6
+			ipOffset = 24
+			prefixLen = 15 // /120
+		} else {
+			proto = unix.NFPROTO_IPV4
+			ipOffset = 16
+			prefixLen = 3 // /24
+		}
+		return dropExternal(proto,
+			// Match destination subnet
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       ipOffset,
+				Len:          prefixLen,
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     ip[:prefixLen],
+			},
+		)
+	}
+
+	return [][]expr.Any{
+		// Addresses belong to the host, not to an interface, so without these
+		// rules hosts on the external network could reach our internal
+		// listener and all ports of the internal subjects.
+		dropInternalDst(net.ParseIP(keyfenderIP).To4()),
+		dropInternalDst(net.ParseIP(keyfenderIPv6)),
+		dropInternalDst(net.ParseIP(platformIP).To4()),
+		dropInternalDst(net.ParseIP(platformIPv6)),
+
+		// Nothing we serve needs IPv4 options, and they are required to
+		// trigger CVE-2026-98432.
+		dropExternal(unix.NFPROTO_IPV4,
+			// Match IHL != 5, the length of a header without options
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       0,
+				Len:          1,
+			},
+			&expr.Bitwise{
+				SourceRegister: 1,
+				DestRegister:   1,
+				Len:            1,
+				Mask:           []byte{0x0f},
+				Xor:            []byte{0x00},
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpNeq,
+				Register: 1,
+				Data:     []byte{5},
+			},
+		),
+	}
+}
+
 func setupNFTables() {
 	conn, err := nftables.New()
 	if err != nil {
@@ -205,6 +303,23 @@ func setupNFTables() {
 		Family: nftables.TableFamilyINet,
 		Name:   "nethsm_nat",
 	})
+
+	// Runs before DNAT, so it sees the original destination address
+	filterChain := conn.AddChain(&nftables.Chain{
+		Name:     "FILTER",
+		Table:    natTable,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityRaw,
+	})
+
+	for _, exprs := range externalDropExprs() {
+		conn.AddRule(&nftables.Rule{
+			Table: natTable,
+			Chain: filterChain,
+			Exprs: exprs,
+		})
+	}
 
 	preroutingChain := conn.AddChain(&nftables.Chain{
 		Name:     "PREROUTING",
