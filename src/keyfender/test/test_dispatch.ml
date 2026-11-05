@@ -429,6 +429,23 @@ let system_factory_reset_failed_ok =
   request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
   |> returns_empty ~with_status:`No_content
 
+let system_factory_reset_failed_no_passphrase_ok =
+  Alcotest.test_case
+    "a request for /system/factory-reset in the failed state produces 204 with \
+     the 'unlock' user and password if no unlock passphrase was ever set"
+    `Quick
+  @@ fun () ->
+  let hsm_state = failed_mock ~provisioned:false () in
+  request ~meth:`POST ~hsm_state "/system/factory-reset"
+  |> returns_empty ~with_status:`Unauthorized;
+  let headers = auth_header "unlock" "wrongPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
+  |> returns_empty ~with_status:`Unauthorized;
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "unlock" in
+  request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
+  |> returns_empty ~with_status:`No_content
+
 let system_factory_reset_failed_unauthenticated_fails =
   Alcotest.test_case
     "a request for /system/factory-reset in the failed state produces 401 \
@@ -5755,20 +5772,22 @@ let cluster_force_new_unauthenticated_fails =
   request ~meth:`POST ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`Unauthorized
 
-let cluster_force_new_unprovisioned_unauthenticated_fails =
+let cluster_force_new_no_passphrase_ok =
   Alcotest.test_case
-    "a request for /cluster/force-new in the failed state produces 401 if \
-     authenticated with 'unlock' user and no password"
+    "a request for /cluster/force-new in the failed state produces 204 with \
+     the 'unlock' user and password if no unlock passphrase was ever set"
     `Quick
   @@ fun () ->
   let hsm_state = failed_mock ~provisioned:false () in
-  (* passing no auth at all is still invalid *)
   request ~meth:`POST ~hsm_state "/cluster/force-new"
   |> returns_empty ~with_status:`Unauthorized;
-  (* passing auth with unlock user and any password fails *)
-  let headers = auth_header "unlock" "" in
+  let headers = auth_header "unlock" "wrongPassphrase" in
   request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
-  |> returns_empty ~with_status:`Unauthorized
+  |> returns_empty ~with_status:`Unauthorized;
+  Keyfender.Rate_limit.reset_all ();
+  let headers = auth_header "unlock" "unlock" in
+  request ~meth:`POST ~headers ~hsm_state "/cluster/force-new"
+  |> returns_empty ~with_status:`No_content
 
 (* boot (again) on an existing store, answering platform requests with [f] *)
 let boot_with_mbox ~platform kv f =
@@ -6590,7 +6609,7 @@ let () =
         [
           cluster_force_new_ok;
           cluster_force_new_unauthenticated_fails;
-          cluster_force_new_unprovisioned_unauthenticated_fails;
+          cluster_force_new_no_passphrase_ok;
           cluster_force_new_after_reboot_ok;
           cluster_force_new_stale_digest_renewed;
         ] );
@@ -6600,6 +6619,7 @@ let () =
       ( "/system/factory-reset in failed state",
         [
           system_factory_reset_failed_ok;
+          system_factory_reset_failed_no_passphrase_ok;
           system_factory_reset_failed_unauthenticated_fails;
         ] );
       ( "/health/diagnose",

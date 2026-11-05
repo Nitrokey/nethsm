@@ -1358,6 +1358,9 @@ module Make (KV : Kv_ext.Platform) = struct
           Some digest ) ->
           let pass_key = Crypto.key_of_passphrase ~salt passphrase in
           Lwt.return (Eqaf.equal (Crypto.failed_unlock_digest ~pass_key) digest)
+      (* Without an unlock passphrase the device could not be recovered. *)
+      | Failed _, Nid.{ namespace = None; id = "unlock" }, None, None ->
+          Lwt.return (String.equal passphrase "unlock")
       | _ -> Lwt.return_false
 
     let is_authenticated t nid ~passphrase =
