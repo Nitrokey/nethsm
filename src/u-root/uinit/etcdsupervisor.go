@@ -184,9 +184,13 @@ func (s *etcdSupervisor) Run() {
 			}
 
 		case cmd := <-s.cmdsRcv:
-			s.stopEtcd()
 			switch cmd.Kind {
 			case EtcdCmdJoin:
+				if err := checkJoinArgs(cmd.JoinArgs); err != nil {
+					cmd.Reply <- err
+					continue
+				}
+				s.stopEtcd()
 				err := s.launch(EtcdClusterJoin, s.lastConf, cmd.JoinArgs)
 				if err != nil {
 					cmd.Reply <- err
@@ -196,6 +200,7 @@ func (s *etcdSupervisor) Run() {
 					cmd.Reply <- nil
 				}
 			case EtcdCmdForceNew:
+				s.stopEtcd()
 				if err := restoreFromSnapshotEtcd(s.lastConf); err != nil {
 					cmd.Reply <- err
 					// no reboot follows a failure, so carry on with the old data
@@ -216,15 +221,23 @@ func (s *etcdSupervisor) Run() {
 	}
 }
 
+// checkJoinArgs validates a join request before etcd is stopped for it.
+func checkJoinArgs(args JoinArgs) error {
+	if strings.TrimSpace(args.InitialCluster) == "" {
+		return fmt.Errorf("EtcdClusterJoin requires a non-empty InitialCluster")
+	}
+	return nil
+}
+
 // launch starts etcd in the given mode. If a cluster join fails immediately,
 // it restores the backup and falls back to EtcdNormal, returning the original
 // join error so the caller can report it.
 func (s *etcdSupervisor) launch(mode EtcdMode, conf etcdConf, joinArgs ...JoinArgs) error {
 	if mode == EtcdClusterJoin {
-		if len(joinArgs) == 0 || strings.TrimSpace(joinArgs[0].InitialCluster) == "" {
-			return fmt.Errorf("EtcdClusterJoin requires a non-empty InitialCluster")
-		}
 		if err := backupEtcd(etcdBackupJoin); err != nil {
+			if normalErr := s.startAndWait(EtcdNormal, conf); normalErr != nil {
+				return fmt.Errorf("join failed (%w) and normal restart failed: %w", err, normalErr)
+			}
 			return err
 		}
 		err := s.startAndWait(EtcdClusterJoin, conf, joinArgs...)

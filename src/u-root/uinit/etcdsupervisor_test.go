@@ -136,3 +136,31 @@ func TestEtcdSupervisorSurvivesFailedForceNew(t *testing.T) {
 		t.Error("unknown command accepted")
 	}
 }
+
+func TestEtcdSupervisorKeepsEtcdRunningOnRejectedJoin(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdReady)
+	s := startSupervisor(t)
+	err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{" "}})
+	if err == nil {
+		t.Fatal("join with empty cluster succeeded")
+	}
+	if !etcdRunning(s, true) {
+		t.Error("etcd is stopped")
+	}
+}
+
+func TestEtcdSupervisorRestartsEtcdAfterFailedJoin(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdReady)
+	makeStaleBackup(t, etcdBackupJoin)
+	s := startSupervisor(t)
+	err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{"a=https://b:2380"}})
+	if err == nil {
+		t.Fatal("join over a stale backup succeeded")
+	}
+	if !etcdRunning(s, true) {
+		t.Error("etcd was not restarted")
+	}
+	if _, err := os.Stat(filepath.Join(etcdBackupJoin, "db")); err != nil {
+		t.Errorf("stale backup is gone: %v", err)
+	}
+}
