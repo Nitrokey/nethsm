@@ -66,6 +66,7 @@ type JoinArgs struct {
 // Location and settings of the etcd process, overridden by tests.
 var (
 	etcdBin            = "/bin/etcd"
+	etcdutlBin         = "/bin/etcdutl"
 	etcdDataDir        = "/data/etcd"
 	etcdBackupJoin     = "/data/etcd.backup"
 	etcdBackupSnapshot = "/data/etcd.backup.snapshot"
@@ -403,8 +404,13 @@ func readEtcdLogs(logPipe io.ReadCloser, aliveNtfy func(), lastEtcdError *string
 	}
 }
 
+// backupEtcd replaces an existing backup: a leftover of a power loss must not
+// block the next join or restore.
 func backupEtcd(dest string) error {
 	log.Printf("Moving previous etcd data to %s", dest)
+	if err := os.RemoveAll(dest); err != nil {
+		return err
+	}
 	if err := os.Rename(etcdDataDir, dest); err != nil {
 		return err
 	}
@@ -436,7 +442,7 @@ func restoreFromSnapshotEtcd(conf etcdConf) error {
 	salt := fmt.Sprintf("%06d", rand.IntN(1000000))
 	clusterToken := fmt.Sprintf("etcd-%s-recovered-%s", name, salt)
 	sc := script.New()
-	sc.ExecAsf(etcdUser, "/bin/etcdutl snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir %s --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token %s --initial-advertise-peer-urls https://127.0.0.1:2380", etcdBackupSnapshot, etcdDataDir, name, name, clusterToken)
+	sc.ExecAsf(etcdUser, "%s snapshot restore %s/member/snap/db --bump-revision 1 --mark-compacted --skip-hash-check=true --data-dir %s --name %s --initial-cluster %s=https://127.0.0.1:2380 --initial-cluster-token %s --initial-advertise-peer-urls https://127.0.0.1:2380", etcdutlBin, etcdBackupSnapshot, etcdDataDir, name, name, clusterToken)
 	if origErr := sc.Err(); origErr != nil {
 		log.Printf("restoreFromSnapshotEtcd: restore failed, restoring internal backup")
 		if err := os.RemoveAll(etcdDataDir); err != nil {

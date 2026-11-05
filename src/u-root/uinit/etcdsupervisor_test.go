@@ -40,14 +40,17 @@ func useFakeEtcd(t *testing.T, script string) {
 	}
 
 	oldBin, oldData, oldJoin, oldSnapshot := etcdBin, etcdDataDir, etcdBackupJoin, etcdBackupSnapshot
+	oldUtl := etcdutlBin
 	oldUser, oldDelay := etcdUser, etcdRetryDelay
 	t.Cleanup(func() {
 		etcdBin, etcdDataDir, etcdBackupJoin, etcdBackupSnapshot = oldBin, oldData, oldJoin, oldSnapshot
+		etcdutlBin = oldUtl
 		etcdUser, etcdRetryDelay = oldUser, oldDelay
 	})
 	etcdBin, etcdDataDir = bin, data
 	etcdBackupJoin = filepath.Join(dir, "backup")
 	etcdBackupSnapshot = filepath.Join(dir, "backup.snapshot")
+	etcdutlBin = filepath.Join(dir, "etcdutl") // missing unless a test adds it
 	etcdUser, etcdRetryDelay = -1, time.Millisecond
 }
 
@@ -94,14 +97,43 @@ func etcdRunning(s *etcdSupervisor, want bool) bool {
 	return false
 }
 
-// makeStaleBackup leaves a backup behind, as a power loss would.
-func makeStaleBackup(t *testing.T, dir string) {
+// makeEtcdData creates a directory with etcd data, identified by its file.
+func makeEtcdData(t *testing.T, dir, file string) {
 	t.Helper()
-	if err := os.Mkdir(dir, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "member"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "db"), nil, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "member", file), nil, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func hasEtcdData(dir, file string) bool {
+	return pathExists(filepath.Join(dir, "member", file))
+}
+
+// fakeEtcdutl restores by creating the file "restored" in the data directory.
+func fakeEtcdutl(t *testing.T) {
+	t.Helper()
+	script := `#!/bin/sh
+while [ $# -gt 0 ]; do [ "$1" = --data-dir ] && dir=$2; shift; done
+mkdir "$dir/member" && touch "$dir/member/restored"
+`
+	if err := os.WriteFile(etcdutlBin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitForSupervisor returns when the supervisor is done with starting etcd.
+func waitForSupervisor(t *testing.T, s *etcdSupervisor) {
+	t.Helper()
+	if err := sendCmd(t, s, EtcdCommand{Kind: -1}); err == nil {
+		t.Fatal("unknown command accepted")
 	}
 }
 
@@ -124,16 +156,50 @@ func TestEtcdSupervisorServesCommandsAfterGivingUp(t *testing.T) {
 
 func TestEtcdSupervisorSurvivesFailedForceNew(t *testing.T) {
 	useFakeEtcd(t, fakeEtcdReady)
-	makeStaleBackup(t, etcdBackupSnapshot)
+	makeEtcdData(t, etcdDataDir, "old")
 	s := startSupervisor(t)
 	if err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdForceNew}); err == nil {
-		t.Fatal("force new cluster over a stale backup succeeded")
+		t.Fatal("force new cluster without etcdutl succeeded")
 	}
 	if !etcdRunning(s, true) {
 		t.Error("etcd was not restarted")
 	}
-	if err := sendCmd(t, s, EtcdCommand{Kind: -1}); err == nil {
-		t.Error("unknown command accepted")
+	waitForSupervisor(t, s)
+	if !hasEtcdData(etcdDataDir, "old") {
+		t.Error("data lost")
+	}
+}
+
+// Etcd not starting after a restore is why FORCE-NEW-CLUSTER gets repeated.
+func TestForceNewReplacesOldBackup(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdFail)
+	fakeEtcdutl(t)
+	makeEtcdData(t, etcdDataDir, "old")
+	makeEtcdData(t, etcdBackupSnapshot, "older")
+	s := startSupervisor(t)
+	if err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdForceNew}); err != nil {
+		t.Fatal(err)
+	}
+	if !hasEtcdData(etcdDataDir, "restored") {
+		t.Error("data not restored")
+	}
+	if !hasEtcdData(etcdBackupSnapshot, "old") {
+		t.Error("old data not in backup")
+	}
+}
+
+func TestBackupEtcdReplacesOldBackup(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdReady)
+	makeEtcdData(t, etcdDataDir, "old")
+	makeEtcdData(t, etcdBackupJoin, "older")
+	if err := backupEtcd(etcdBackupJoin); err != nil {
+		t.Fatal(err)
+	}
+	if !hasEtcdData(etcdBackupJoin, "old") {
+		t.Error("old data not in backup")
+	}
+	if !pathExists(etcdDataDir) {
+		t.Error("no new data directory")
 	}
 }
 
@@ -151,18 +217,40 @@ func TestEtcdSupervisorKeepsEtcdRunningOnRejectedJoin(t *testing.T) {
 	}
 }
 
-func TestEtcdSupervisorRestartsEtcdAfterFailedJoin(t *testing.T) {
-	useFakeEtcd(t, fakeEtcdReady)
-	makeStaleBackup(t, etcdBackupJoin)
+func TestEtcdSupervisorRestoresDataAfterFailedJoin(t *testing.T) {
+	useFakeEtcd(t, `case "$*" in *--initial-cluster-state=existing*) echo "fatal: join rejected" >&2; exit 1;; esac
+`+fakeEtcdReady)
+	makeEtcdData(t, etcdDataDir, "old")
 	s := startSupervisor(t)
+	waitForSupervisor(t, s)
 	err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{"a=https://b:2380"}})
 	if err == nil {
-		t.Fatal("join over a stale backup succeeded")
+		t.Fatal("failed join succeeded")
 	}
 	if !etcdRunning(s, true) {
 		t.Error("etcd was not restarted")
 	}
-	if _, err := os.Stat(filepath.Join(etcdBackupJoin, "db")); err != nil {
-		t.Errorf("stale backup is gone: %v", err)
+	if !hasEtcdData(etcdDataDir, "old") {
+		t.Error("data not restored")
+	}
+	if pathExists(etcdBackupJoin) {
+		t.Error("backup left behind")
+	}
+}
+
+func TestEtcdSupervisorRestartsEtcdAfterFailedBackup(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdReady)
+	s := startSupervisor(t)
+	waitForSupervisor(t, s)
+	// makes the backup fail
+	if err := os.RemoveAll(etcdDataDir); err != nil {
+		t.Fatal(err)
+	}
+	err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdJoin, JoinArgs: JoinArgs{"a=https://b:2380"}})
+	if err == nil {
+		t.Fatal("join without data succeeded")
+	}
+	if !etcdRunning(s, true) {
+		t.Error("etcd was not restarted")
 	}
 }
