@@ -94,6 +94,17 @@ func etcdRunning(s *etcdSupervisor, want bool) bool {
 	return false
 }
 
+// makeStaleBackup leaves a backup behind, as a power loss would.
+func makeStaleBackup(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "db"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEtcdSupervisorStartsEtcd(t *testing.T) {
 	useFakeEtcd(t, fakeEtcdReady)
 	s := startSupervisor(t)
@@ -108,5 +119,20 @@ func TestEtcdSupervisorServesCommandsAfterGivingUp(t *testing.T) {
 	// There is no etcdutl to restore with, what matters is getting an answer.
 	if err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdForceNew}); err == nil {
 		t.Fatal("force new cluster without etcdutl succeeded")
+	}
+}
+
+func TestEtcdSupervisorSurvivesFailedForceNew(t *testing.T) {
+	useFakeEtcd(t, fakeEtcdReady)
+	makeStaleBackup(t, etcdBackupSnapshot)
+	s := startSupervisor(t)
+	if err := sendCmd(t, s, EtcdCommand{Kind: EtcdCmdForceNew}); err == nil {
+		t.Fatal("force new cluster over a stale backup succeeded")
+	}
+	if !etcdRunning(s, true) {
+		t.Error("etcd was not restarted")
+	}
+	if err := sendCmd(t, s, EtcdCommand{Kind: -1}); err == nil {
+		t.Error("unknown command accepted")
 	}
 }

@@ -196,8 +196,15 @@ func (s *etcdSupervisor) Run() {
 					cmd.Reply <- nil
 				}
 			case EtcdCmdForceNew:
-				err := restoreFromSnapshotEtcd(s.lastConf)
-				cmd.Reply <- err
+				if err := restoreFromSnapshotEtcd(s.lastConf); err != nil {
+					cmd.Reply <- err
+					// no reboot follows a failure, so carry on with the old data
+					if err := s.launch(EtcdNormal, s.lastConf); err != nil {
+						log.Printf("etcd: restart after failed restore failed: %v", err)
+					}
+					continue
+				}
+				cmd.Reply <- nil
 				// reboot is imminent; wait for shutdown signal rather than
 				// re-entering the select and accidentally restarting etcd
 				<-s.stopSig
