@@ -1839,8 +1839,12 @@ let unlock_twice =
       | _ -> false)
   | _ -> false
 
+let check_failed hsm_state =
+  Alcotest.(check bool) "failed state" true (Hsm.state hsm_state = `Failed)
+
 let boot_device_key_change_fails =
-  Alcotest.test_case "booting with the config store of another device fails"
+  Alcotest.test_case
+    "booting with the config store of another device leads to the failed state"
     `Quick (fun () ->
       let kv =
         Lwt_main.run
@@ -1863,12 +1867,54 @@ let boot_device_key_change_fails =
           deviceKey = "//////////////////////////////////////////8=";
         }
       in
-      Alcotest.check_raises "boot fails"
-        (Invalid_argument "fatal in get unlock-salt not authenticated")
-        (fun () ->
-          Lwt_main.run
-            (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
-          |> ignore))
+      Lwt_main.run
+        (Hsm.boot ~platform software_update_key kv >|= fun (y, _, _) -> y)
+      |> check_failed)
+
+(* Power loss during a join: the cluster data is there, but not yet the data
+   of this device. *)
+let boot_interrupted_join_factory_reset =
+  Alcotest.test_case
+    "after booting with incomplete local config, /system/factory-reset works \
+     and a store health event does not end the failed state"
+    `Quick
+  @@ fun () ->
+  let salt = "salt" in
+  let pass_key = Keyfender.Crypto.key_of_passphrase ~salt "unlockPassphrase" in
+  let platform =
+    {
+      platform with
+      failedUnlockSalt = Some (Base64.encode_string salt);
+      failedUnlockDigest =
+        Some
+          (Base64.encode_string
+             (Keyfender.Crypto.failed_unlock_digest ~pass_key));
+    }
+  in
+  let kv, hsm_state =
+    Lwt_main.run
+      ( Kv_mem.connect () >>= fun kv ->
+        Hsm.boot ~platform software_update_key kv >>= fun (state, o, m) ->
+        happy_mbox o m >>= fun () ->
+        Hsm.provision state ~unlock:"unlockPassphrase" ~admin:"test1Passphrase"
+          Ptime.epoch
+        >>= fun r ->
+        assert (r = Ok ());
+        Kv_mem.remove kv
+          (Mirage_kv.Key.v
+             ("local/" ^ platform.deviceId ^ "/config/unlock-salt"))
+        >>= fun r ->
+        assert (r = Ok ());
+        Hsm.boot ~platform software_update_key kv >>= fun (y, o, m) ->
+        happy_mbox o m >|= fun () -> (kv, y) )
+  in
+  check_failed hsm_state;
+  Lwt_main.run (Kv_platform.inject_health_event kv `Healthy)
+  |> Result.iter_error (fun _ -> failwith "error injecting health event");
+  check_failed hsm_state;
+  let headers = auth_header "unlock" "unlockPassphrase" in
+  request ~meth:`POST ~headers ~hsm_state "/system/factory-reset"
+  |> returns_empty ~with_status:`No_content
 
 let lock_ok =
   "a request for /lock locks the HSM" @? fun () ->
@@ -2891,20 +2937,14 @@ let change_backup_passphrase_empty =
 
 let invalid_config_version =
   Alcotest.test_case "invalid config/version field" `Quick @@ fun () ->
-  Alcotest.check_raises "invalid version breaks HSM"
-    (Invalid_argument "broken NetHSM") (fun () ->
-      Lwt_main.run
-        ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data (Mirage_kv.Key.v "config/version") "abcdef"
-          >>= fun _ -> Hsm.boot ~platform software_update_key data )
-      |> ignore);
-  Alcotest.check_raises "no version breaks HSM"
-    (Invalid_argument "broken NetHSM") (fun () ->
-      Lwt_main.run
-        ( Kv_mem.connect () >>= fun data ->
-          Kv_mem.set data (Mirage_kv.Key.v "config/version") "" >>= fun _ ->
-          Hsm.boot ~platform software_update_key data )
-      |> ignore)
+  let boot version =
+    Lwt_main.run
+      ( Kv_mem.connect () >>= fun data ->
+        Kv_mem.set data (Mirage_kv.Key.v "config/version") version >>= fun _ ->
+        Hsm.boot ~platform software_update_key data >|= fun (y, _, _) -> y )
+  in
+  check_failed (boot "abcdef");
+  check_failed (boot "")
 
 let namespaces_get =
   "GET on /namespaces/ succeeds" @? fun () ->
@@ -6700,6 +6740,7 @@ let () =
         [ change_backup_passphrase; change_backup_passphrase_empty ] );
       ("invalid config version", [ invalid_config_version ]);
       ("config store with wrong device key", [ boot_device_key_change_fails ]);
+      ("interrupted join", [ boot_interrupted_join_factory_reset ]);
       ("/namespaces", [ namespaces_get; namespaces_get_nuser; namespaces_seq ]);
       ( "/namespaces/namespace1",
         [

@@ -4450,17 +4450,21 @@ module Make (KV : Kv_ext.Platform) = struct
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
+    (* Store content can be unusable, for example after a power loss during
+       a join. That must not stop the boot: only a running API can repair it. *)
     let normal_boot () =
-      boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
-        ~config_store
+      Lwt.catch
+        (fun () ->
+          boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
+            ~config_store)
+        (* what store read and decode failures raise; anything else is a bug
+           or a runtime failure, and still stops the boot *)
+        (function
+          | Invalid_argument msg -> Lwt.return_error (`Msg msg)
+          | e -> Lwt.reraise e)
     in
     let** state, (cert, chain, key), (cert', chain', key') =
-      let* healthy = check_store_healthy kv in
-      (* check is store is healthy (reachable), and obtain normal boot state if so *)
-      if healthy then (
-        Log.app (fun m -> m "connected to store");
-        normal_boot ())
-      else
+      let failed_boot () =
         let state = Failed None in
         let decode_or_generate name lastTlsKey lastTlsCert =
           match decode_last_tls lastTlsKey lastTlsCert with
@@ -4491,6 +4495,17 @@ module Make (KV : Kv_ext.Platform) = struct
             platform.lastTlsClusterCert
         in
         Lwt_result.return (state, api, cluster)
+      in
+      let* healthy = check_store_healthy kv in
+      (* check is store is healthy (reachable), and obtain normal boot state if so *)
+      if healthy then (
+        Log.app (fun m -> m "connected to store");
+        normal_boot () >>= function
+        | Ok _ as ok -> Lwt.return ok
+        | Error (`Msg msg) ->
+            Log.err (fun m -> m "boot failed, going to Failed state: %s" msg);
+            failed_boot ())
+      else failed_boot ()
     in
     let tls = { key; public = { cert; chain }; kind = API } in
     let tls_cluster =
