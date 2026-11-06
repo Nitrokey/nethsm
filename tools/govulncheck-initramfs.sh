@@ -1,6 +1,6 @@
 #!/bin/sh
-# Usage: govulncheck-initramfs.sh IMAGE.cpio.gz NAME...
-# Run govulncheck on every Go binary inside the gzipped cpio initramfs, i.e.
+# Usage: govulncheck-initramfs.sh IMAGE.cpio NAME...
+# Run govulncheck on every Go binary inside the uncompressed cpio initramfs, i.e.
 # exactly what ends up on the device. Fails if any of the named binaries
 # (basenames) was not found and scanned.
 set -u
@@ -8,7 +8,7 @@ img=$1; shift
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 # Skip dev/: cpio cannot mknod the device nodes as an unprivileged user and they are not Go binaries.
-gzip -dc "$img" | (cd "$dir" && cpio -id --quiet -f 'dev/*' -f './dev/*') || true
+(cd "$dir" && cpio -id --quiet -f 'dev/*' -f './dev/*') <"$img" || true
 # Known findings in the prebuilt etcd release that upstream has not fixed yet.
 # Drop an ID once a newer etcd release ships the fix (check for releases > v3.6.16).
 #   GO-2026-6866, GO-2026-6860: golang.org/x/net html, fixed in x/net v0.62.0

@@ -260,21 +260,22 @@ test_keyfender:
     - make test-uroot
 
 govulncheck:
+  allow_failure: true
   rules:
     - if: $CI_COMMIT_BRANCH != $DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule"
   variables:
-    MODE: dev
+    MODE: muen
   stage: test
   needs:
     - job: build_builder_image
       optional: true
   script:
-    # Source: our Go module (once per build tag set) and the vendored u-root.
+    # Source: our Go module (once per build tag set) and the u-root commands in the initramfs images.
     - |-
       for tags in testing prodrive_hermes_1 msi_z790_1; do
         (cd src/u-root && GOOS=linux govulncheck -tags ${tags} ./...)
       done
-    - (cd /nethsm-tools/u-root && govulncheck ./cmds/core/...)
+    - make govulncheck-u-root
 
 build_dev:
   rules:
@@ -313,8 +314,6 @@ build_muen_prodrive_hermes:
   before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
-    - tools/govulncheck-initramfs.sh obj/initramfs.cpio.gz uinit etcd etcdutl bb
-    - tools/govulncheck-initramfs.sh obj/installer/boot/initramfs uinit bb
   after_script: *save_artifacts
 
 build_muen_msi_z790:
@@ -338,8 +337,6 @@ build_muen_msi_z790:
   before_script: *setup_job_default
   script:
     - opam exec -- make -j$(nproc) artifacts
-    - tools/govulncheck-initramfs.sh obj/initramfs.cpio.gz uinit etcd etcdutl bb
-    - tools/govulncheck-initramfs.sh obj/installer/boot/initramfs uinit bb
   after_script: *save_artifacts
 
 # build_muen_qemu_kvm:

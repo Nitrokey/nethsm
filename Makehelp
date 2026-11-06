@@ -15,6 +15,7 @@ test-keyfender-api:   Run keyfender generated API tests [MODE=test only]
 test-keyfender-fast:  Run keyfender generated API tests for TEST_API only [MODE=test only]
 test-keyfender-e2e:   Run keyfender end-to-end tests
 test-uroot:           Run the u-root tests
+govulncheck-u-root:   Run govulncheck on the u-root commands in the initramfs images [MODE=muen only]
 coverage-summary:     Run all tests and produce a condensed coverage summary [MODE=test only]
 coverage:             Run all tests and produce HTML coverage report [MODE=test only]
 run:                  Run the system
