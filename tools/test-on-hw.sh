@@ -36,6 +36,29 @@ echo "done."
 echo "- unlocking"
 curl -s -k -d '{"passphrase": "UnlockPassphrase"}' https://192.168.1.201/api/v1/unlock
 
+echo "- software update with the installed version"
+curl -sS -k -f -X POST -H 'Content-Type: application/octet-stream' \
+    --data-binary @../../obj/update.img.bin \
+    https://admin:Administrator@192.168.1.201/api/v1/system/update
+curl -sS -k -f -X POST https://admin:Administrator@192.168.1.201/api/v1/system/commit-update
+
+echo "waiting for NetHSM to reboot"
+x=0
+while curl -m 1 -s -k -f https://192.168.1.201/api/v1/health/state ; do
+    ((x++>25)) && echo "time out!" && exit 1
+    sleep 2
+done
+x=0
+while ! curl -m 1 -s -k -f https://192.168.1.201/api/v1/health/state ; do
+    printf "."
+    ((x++>60)) && echo "time out!" && exit 1
+    sleep 2
+done
+echo "done."
+
+echo "- unlocking"
+curl -s -k -f -d '{"passphrase": "UnlockPassphrase"}' https://192.168.1.201/api/v1/unlock
+
 NETHSM_URL="https://192.168.1.201/api" ./backup_restore.sh
 NOCACERT=1 NETHSM_URL="https://192.168.1.1/api" ./setup_cluster_ca.sh
 

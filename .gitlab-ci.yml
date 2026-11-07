@@ -374,8 +374,10 @@ build_ci_installer_prodrive_hermes:
     expire_in: 1 week
     paths:
       - obj/${CI_INSTALLER_IMG}
+      - obj/update.img.bin.gz
   script:
     - mkdir -p ${CI_PROJECT_DIR}/obj
+    - gzip -c ${CI_PROJECT_DIR}/build_muen_prodrive_hermes_artifacts/update.img.bin >${CI_PROJECT_DIR}/obj/update.img.bin.gz
     - >-
       tools/mk-ci-installer.sh
       ${CI_PROJECT_DIR}/build_muen_prodrive_hermes_artifacts/installer.img
@@ -392,8 +394,10 @@ build_ci_installer_msi_z790:
     expire_in: 1 week
     paths:
       - obj/${CI_INSTALLER_IMG}
+      - obj/update.img.bin.gz
   script:
     - mkdir -p ${CI_PROJECT_DIR}/obj
+    - gzip -c ${CI_PROJECT_DIR}/build_muen_msi_z790_artifacts/update.img.bin >${CI_PROJECT_DIR}/obj/update.img.bin.gz
     - >-
       tools/mk-ci-installer.sh
       ${CI_PROJECT_DIR}/build_muen_msi_z790_artifacts/installer.img
@@ -440,6 +444,7 @@ test_muen_prodrive_hermes:
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - exit_code=0
+    - gunzip -f obj/update.img.bin.gz
     - nsenter --net=/run/netns/hil2 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
@@ -505,6 +510,7 @@ test_muen_msi_z790:
     - echo $! >$SERIALPID
     - trap "kill \$(cat $SERIALPID) || true ; wait \$(cat $SERIALPID) || true ; rm $SERIALPID || true" EXIT
     - exit_code=0
+    - gunzip -f obj/update.img.bin.gz
     - nsenter --net=/run/netns/hil1 tools/test-on-hw.sh || exit_code=$? #wait serial even on failure
     - |-
       echo "waiting for serial output"
