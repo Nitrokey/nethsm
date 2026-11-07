@@ -29,6 +29,8 @@ if [[ "$STATE" != *Operational* ]] ; then
   exit 1
 fi
 
+DEVICE_ID=$(GET_admin /v1/system/info | jq -r .deviceId) || exit 1
+
 ip a
 ip route
 ip -6 route
@@ -197,7 +199,7 @@ check_witness_healthy
 
 echo "- check we have synced with HSM"
 "$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
-    get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
+    get "/local/${DEVICE_ID}/domain-key/attended" --keys-only | grep . || exit 1
 
 
 MEMBERS=$(GET_admin /v1/cluster/members)
@@ -245,7 +247,7 @@ sleep 0.5 # give some time for the key to be transferred
 
 echo "- check witness can see the new key"
 "$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
-    get "/key/extraKey" || exit 1
+    get "/key/extraKey" --keys-only | grep . || exit 1
 
 echo "- restoring backup"
 ${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "backupPassphrase"}' -F backup=@cluster_backup.bin \
@@ -254,7 +256,8 @@ ${CURL} -X POST --user admin:Administrator -F arguments='{"backupPassphrase": "b
 sleep 5
 
 echo "- check witness cannot see the key anymore"
-"$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey"
+KEYS=$("$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 get "/key/extraKey" --keys-only) || exit 1
+[ -z "$KEYS" ] || { echo "extraKey still present after restore"; exit 1; }
 
 function stop_witness_clean() {
 echo "- remove witness cleanly"
@@ -485,7 +488,7 @@ echo "- local witness should be healthy again after being joined"
 
 echo "- check that NetHSM has written a domain key"
 "$etcd_dir/etcdctl" --endpoints=http://127.0.0.1:2379 \
-    get "/local/SN3BVNXQFQ/domain-key/attended" || exit 1
+    get "/local/${DEVICE_ID}/domain-key/attended" --keys-only | grep . || exit 1
 
 echo "- unlock HSM (should fail, store was never provisioned)"
 #in subshell because will fail
