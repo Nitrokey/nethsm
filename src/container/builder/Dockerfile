@@ -165,10 +165,12 @@ EOF
 
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/94f7dc44ad299a076ed0f01f2acec0d0c8a42331.tar.gz" -o /tmp/u-root.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://github.com/u-root/u-root/archive/22766f0846c8540266b2cf5124a78b62402c5a91.tar.gz" -o /tmp/u-root.tar.gz
   mkdir -p /nethsm-tools/u-root
   tar -C /nethsm-tools/u-root --strip-components=1 -xzf /tmp/u-root.tar.gz
   cd /nethsm-tools/u-root
+  /opt/go/bin/go get -u -t ./cmds/...
+  /opt/go/bin/go mod vendor
   /opt/go/bin/go build
   sudo GOPATH=/tmp/gopath GOBIN=/opt/go/bin /opt/go/bin/go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 EOF
