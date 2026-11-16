@@ -1951,22 +1951,6 @@ module Make (KV : Kv_ext.Platform) = struct
           Ok (X509.Public_key.encode_pem pub)
       | Generic _ -> Error (Bad_request, "Generic keys have no public key")
 
-    let csr_pem t ~namespace ~id subject =
-      let open Lwt_result.Infix in
-      get_key t ~namespace id >>= fun key ->
-      let dn = Json.to_distinguished_name subject in
-      let extensions = create_csr_extensions subject in
-      Lwt_result.lift
-      @@
-      match key.priv with
-      | X509 p -> (
-          match X509.Signing_request.create dn ?extensions p with
-          | Error (`Msg e) ->
-              Error (Bad_request, "creating signing request: " ^ e)
-          | Ok c -> Ok (X509.Signing_request.encode_pem c))
-      | Generic _ ->
-          Error (Bad_request, "Generic keys can't create certificates")
-
     let get_cert ~namespace t ~id =
       let open Lwt_result.Infix in
       get_key t ~namespace id >|= fun key -> key.cert
@@ -2042,6 +2026,22 @@ module Make (KV : Kv_ext.Platform) = struct
         else validate_restrictions ~user_info key_data.restrictions
       in
       Result.map (fun () -> key_data) validation |> Lwt.return
+
+    let csr_pem t ~namespace ~id subject =
+      let open Lwt_result.Infix in
+      get_key t ~namespace id >>= fun key ->
+      let dn = Json.to_distinguished_name subject in
+      let extensions = create_csr_extensions subject in
+      Lwt_result.lift
+      @@
+      match key.priv with
+      | X509 p -> (
+          match X509.Signing_request.create dn ?extensions p with
+          | Error (`Msg e) ->
+              Error (Bad_request, "creating signing request: " ^ e)
+          | Ok c -> Ok (X509.Signing_request.encode_pem c))
+      | Generic _ ->
+          Error (Bad_request, "Generic keys can't create certificates")
 
     let set_label ~namespace t ~id ~user_nid ~(label : Json.Label.t) =
       let open Lwt_result.Syntax in
