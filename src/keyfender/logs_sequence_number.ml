@@ -7,10 +7,12 @@ let reporter base =
   {
     Logs.report =
       (fun src level ~over k msgf ->
+        (* one number per report, even if the base reporter calls msgf twice *)
+        incr v;
+        let n = !v in
         let msgf fn =
           let fn ?header ?tags format =
-            incr v;
-            fn ?header ?tags ("[%d] " ^^ format) !v
+            fn ?header ?tags ("[%d] " ^^ format) n
           in
           msgf fn
         in
