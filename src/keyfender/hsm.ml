@@ -259,6 +259,7 @@ module type S = sig
       t ->
       namespace:string option ->
       id:string ->
+      user_nid:Nid.t ->
       Json.subject_req ->
       (string, error) result Lwt.t
 
@@ -2027,9 +2028,10 @@ module Make (KV : Kv_ext.Platform) = struct
       in
       Result.map (fun () -> key_data) validation |> Lwt.return
 
-    let csr_pem t ~namespace ~id subject =
+    let csr_pem t ~namespace ~id ~user_nid subject =
       let open Lwt_result.Infix in
-      get_key t ~namespace id >>= fun key ->
+      get_key t ~namespace id >>= validate_restrictions t ~user_nid
+      >>= fun key ->
       let dn = Json.to_distinguished_name subject in
       let extensions = create_csr_extensions subject in
       Lwt_result.lift

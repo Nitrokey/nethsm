@@ -552,8 +552,12 @@ struct
           match Json.decode_subject content with
           | Error e -> Endpoint.respond_error (Bad_request, e) rd
           | Ok subject -> (
+              let user_nid =
+                Endpoint.Access.get_user rd.Webmachine.Rd.req_headers
+              in
               let namespace = Endpoint.get_namespace rd in
-              Hsm.Key.csr_pem ~namespace hsm_state ~id subject >>= function
+              Hsm.Key.csr_pem ~namespace hsm_state ~id ~user_nid subject
+              >>= function
               | Error e -> Endpoint.respond_error e rd
               | Ok csr_pem ->
                   let rd' = { rd with resp_body = `String csr_pem } in

@@ -256,6 +256,7 @@ module type S = sig
       t ->
       namespace:string option ->
       id:string ->
+      user_nid:Nid.t ->
       Json.subject_req ->
       (string, error) result Lwt.t
 

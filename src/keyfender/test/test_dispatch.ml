@@ -5249,6 +5249,29 @@ let keys_key_restrictions_tags_sign_ok =
   | _, Some (`OK, _, _, _) -> true
   | _ -> false
 
+let keys_key_restrictions_tags_csr_ok =
+  "POST on /keys/keyID/csr.pem with an user matching the tag succeeds"
+  @? fun () ->
+  match
+    request ~headers:operator_headers ~hsm_state:(hsm_with_tags ()) ~meth:`POST
+      ~body:(`String subject) "/keys/keyID/csr.pem"
+  with
+  | _, Some (`OK, _, _, _) -> true
+  | _ -> false
+
+let keys_key_restrictions_tags_csr_fail =
+  "POST on /keys/keyID/csr.pem with an user that doesn't have the tag fails"
+  @? fun () ->
+  let hsm_state = hsm_with_tags () in
+  Lwt_main.run (Hsm.User.remove_tag hsm_state (user "operator") ~tag:"berlin")
+  |> Result.get_ok |> ignore;
+  match
+    request ~headers:operator_headers ~hsm_state ~meth:`POST
+      ~body:(`String subject) "/keys/keyID/csr.pem"
+  with
+  | _, Some (`Forbidden, _, _, _) -> true
+  | _ -> false
+
 let keys_key_restrictions_tags_sign_fail =
   "POST on /keys/keyID/sign with an user that doesn't have the tag fails"
   @? fun () ->
@@ -6839,6 +6862,8 @@ let () =
           keys_key_restrictions_tags_delete_namespace;
           keys_key_restrictions_tags_sign_ok;
           keys_key_restrictions_tags_sign_fail;
+          keys_key_restrictions_tags_csr_ok;
+          keys_key_restrictions_tags_csr_fail;
         ] );
       ( "/keys/keyID/public.pem",
         [
