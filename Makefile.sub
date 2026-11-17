@@ -342,7 +342,7 @@ endif
 ifeq ($(XMODE),test)
 .PHONY: test-uroot
 test-uroot:
-	cd src/u-root && go test -tags testing -race ./...
+	cd src/u-root && go test -race ./...
 
 .PHONY: build-keyfender-fast test-keyfender-fast
 build-keyfender-fast:

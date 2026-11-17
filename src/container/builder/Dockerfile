@@ -159,7 +159,7 @@ EOF
 FROM base AS uroot
 RUN --mount=type=tmpfs,target=/tmp <<EOF
   set -ex
-  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.26.10.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+  curl -sSL --retry 5 --retry-all-errors "https://go.dev/dl/go1.27.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
   sudo tar -C /opt -xzf /tmp/go.tar.gz
 EOF
 
@@ -172,7 +172,7 @@ RUN --mount=type=tmpfs,target=/tmp <<EOF
   /opt/go/bin/go get -u -t ./cmds/...
   /opt/go/bin/go mod vendor
   /opt/go/bin/go build
-  sudo GOPATH=/tmp/gopath GOBIN=/opt/go/bin /opt/go/bin/go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+  sudo GOPATH=/tmp/gopath GOBIN=/opt/go/bin /opt/go/bin/go install golang.org/x/vuln/cmd/govulncheck@latest
 EOF
 
 FROM base AS builder

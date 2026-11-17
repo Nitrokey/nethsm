@@ -1,4 +1,4 @@
-//go:build testing
+//go:build !msi_z790_1 && !prodrive_hermes_1
 
 package hw
 

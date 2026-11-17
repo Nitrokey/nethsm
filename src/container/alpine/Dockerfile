@@ -102,7 +102,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/m
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
-	cd src/u-root && CGO_ENABLED=0 go build -tags testing -o ./uinit/uinit ./uinit
+	cd src/u-root && CGO_ENABLED=0 go build -o ./uinit/uinit ./uinit
 EOF
 
 RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/home/opam/go/pkg/mod,uid=1000,gid=1000 --mount=type=cache,target=/home/opam/.cache/go-build,uid=1000,gid=1000 <<EOF
