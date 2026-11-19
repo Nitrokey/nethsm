@@ -865,19 +865,13 @@ let system_restore_v0_backup_unattended ~changed_devkey =
     ^ info "Migration done (2 deferred)"
   in
   let expect =
-    if changed_devkey then
-      expect ^ info "Device Key changed."
-      ^ info "Rewriting stored Domain Key."
-      ^ debug "removed deprecated time-offset key"
-      ^ error "unattended boot failed with not authenticated"
-      ^ debug "caching config to the platform"
-    else
-      expect
-      ^ debug "removed deprecated time-offset key"
-      ^ info "Applying post unlock migrations"
-      ^ info "migrating /config/backup-key"
-      ^ info "migrating /config/backup-salt"
-      ^ debug "caching config to the platform"
+    expect
+    ^ (if changed_devkey then
+         info "Device Key changed." ^ info "Rewriting stored Domain Key."
+       else "")
+    ^ debug "removed deprecated time-offset key"
+    ^ warning "skipping unattended boot until unlocked with the passphrase"
+    ^ debug "caching config to the platform"
   in
   let hsm_state =
     if changed_devkey then
@@ -906,17 +900,11 @@ let system_restore_v0_backup_unattended ~changed_devkey =
       ^ info "migrating /config/backup-salt"
       ^ debug "caching config to the platform"
     in
-    if changed_devkey then (
-      Alcotest.(
-        check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
-      request ~meth:`POST ~expect ~body:(`String unlock_json)
-        ~hsm_state:hsm_state' "/unlock"
-      |> returns_empty' ~with_status:`No_content)
-    else (
-      Alcotest.(
-        check bool "post restore is locked" true
-          (Hsm.state hsm_state' = `Operational));
-      hsm_state')
+    Alcotest.(
+      check bool "post restore is locked" true (Hsm.state hsm_state' = `Locked));
+    request ~meth:`POST ~expect ~body:(`String unlock_json)
+      ~hsm_state:hsm_state' "/unlock"
+    |> returns_empty' ~with_status:`No_content
   in
 
   Alcotest.(
@@ -927,11 +915,8 @@ let system_restore_v0_backup_unattended ~changed_devkey =
     request ~meth:`POST ~headers:admin_headers ~hsm_state "/lock"
     |> returns_empty' ~with_status:`No_content
   in
-  let expect =
-    if not changed_devkey then debug "caching config to the platform" else ""
-  in
   let hsm_state =
-    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock" ~expect
+    request ~meth:`POST ~body:(`String unlock_json) ~hsm_state "/unlock"
     |> returns_empty' ~with_status:`No_content
   in
   let headers = auth_header "backup" "backupUserPassphrase" in
@@ -1537,8 +1522,7 @@ let boot_migrates_deprecated_time_offset =
   not key_present
 
 let system_backup_and_restore_unattended =
-  Alcotest.test_case "/system/restore with unattended mode -> operational"
-    `Quick
+  Alcotest.test_case "/system/restore with unattended mode -> locked" `Quick
   @@ fun () ->
   let hsm_state = hsm_with_key ~mbox:happy_mbox () in
   let* hsm_state =
@@ -1585,6 +1569,7 @@ let system_backup_and_restore_unattended =
     let expect =
       multipart_log
       ^ info "no config re-encrypt needed"
+      ^ warning "skipping unattended boot until unlocked with the passphrase"
       ^ debug "caching config to the platform"
     in
     request ~expect ~meth:`POST ~content_type ~body:(`String body) ~hsm_state
@@ -1592,18 +1577,66 @@ let system_backup_and_restore_unattended =
     |> Expect.no_content
   in
   Alcotest.(check string)
-    "state" "operational"
+    "state" "locked"
     (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
   let hsm_state =
     Lwt_main.run
       (Hsm.boot ~platform software_update_key store >|= fun (x, _, _) -> x)
   in
   Alcotest.(check string)
-    "state" "operational"
-    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state));
-  request ~meth:`POST ~hsm_state ~headers "/system/backup"
-  |> returns_stream ~with_status:`OK
-  |> ignore
+    "state" "locked"
+    (Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state))
+
+let system_partial_restore_keeps_unattended =
+  Alcotest.test_case
+    "/system/restore into an operational NetHSM with the same domain key keeps \
+     unattended boot on"
+    `Quick
+  @@ fun () ->
+  let hsm_state =
+    admin_put_request ~body:(`String {|{"status":"on"}|})
+      ~hsm_state:(hsm_with_key ~mbox:happy_mbox ())
+      "/config/unattended-boot"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let backup_passphrase = "backup passphrase" in
+  let hsm_state =
+    admin_put_request ~hsm_state
+      ~body:
+        (`String
+           (Printf.sprintf
+              "{ \"newPassphrase\" : %S, \"currentPassphrase\":\"\" }"
+              backup_passphrase))
+      "/config/backup-passphrase"
+    |> returns_empty' ~with_status:`No_content
+  in
+  let hsm_state, s =
+    let headers = auth_header "backup" "backupUserPassphrase" in
+    match request ~meth:`POST ~hsm_state ~headers "/system/backup" with
+    | hsm_state, Some (`OK, _, `Stream s, _) -> (hsm_state, s)
+    | _ -> Alcotest.fail "backup failed"
+  in
+  let arguments =
+    Yojson.Safe.to_string
+      (Keyfender.Json.restore_req_to_yojson
+         ({ backupPassphrase = Some backup_passphrase; systemTime = None }
+           : Keyfender.Json.restore_req))
+  in
+  let backup_data = String.concat "" (Lwt_main.run (Lwt_stream.to_list s)) in
+  let content_type, body =
+    create_multipart_request
+      [ ("arguments", arguments); ("backup_data", backup_data) ]
+  in
+  let hsm_state =
+    request
+      ~expect:(multipart_log ^ info "no config re-encrypt needed")
+      ~meth:`POST ~headers:admin_headers ~content_type ~body:(`String body)
+      ~hsm_state "/system/restore"
+    |> returns_empty' ~with_status:`No_content
+  in
+  request ~headers:admin_headers ~hsm_state "/config/unattended-boot"
+  |> returns_string ~with_status:`OK
+  |> Alcotest.(check string) "unattended boot" {|{"status":"on"}|}
 
 let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
   let hsm_state = hsm_with_key ~mbox:happy_mbox () in
@@ -1667,8 +1700,8 @@ let system_backup_and_restore_unattended_changed_devkey ~also_change_devid =
     let expect =
       multipart_log ^ info "Device Key changed."
       ^ info "Rewriting stored Domain Key."
-      ^ changed_log (* unat. boot fails as expected *)
-      ^ error "unattended boot failed with not authenticated"
+      ^ changed_log
+      ^ warning "skipping unattended boot until unlocked with the passphrase"
       ^ debug "caching config to the platform"
     in
     let arguments =
@@ -1999,7 +2032,11 @@ let get_unattended_boot_ok =
   | _ -> false
 
 let unattended_boot_succeeds =
-  "unattended boot succeeds" @? fun () ->
+  Alcotest.test_case
+    "unattended boot succeeds, but is skipped while S-Platform has no \
+     failed-unlock digest"
+    `Quick
+  @@ fun () ->
   let store, hsm_state =
     Lwt_main.run
       ( Kv_mem.connect () >>= fun store ->
@@ -2009,15 +2046,23 @@ let unattended_boot_succeeds =
           Ptime.epoch
         >|= fun _ -> (store, state) )
   in
-  match
-    admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state
-      "/config/unattended-boot"
-  with
-  | _hsm_state', Some (`No_content, _, _, _) ->
-      Lwt_main.run
-        ( Hsm.boot ~platform software_update_key store
-        >|= fun (hsm_state, _, _) -> Hsm.state hsm_state = `Operational )
-  | _ -> false
+  admin_put_request ~body:(`String {|{ "status" : "on" }|}) ~hsm_state
+    "/config/unattended-boot"
+  |> returns_empty ~with_status:`No_content;
+  let boot platform =
+    Lwt_main.run
+      ( Hsm.boot ~platform software_update_key store >|= fun (hsm_state, _, _) ->
+        Fmt.to_to_string Hsm.pp_state (Hsm.state hsm_state) )
+  in
+  Alcotest.(check string) "without digest" "locked" (boot platform);
+  let platform =
+    {
+      platform with
+      failedUnlockSalt = Some (Base64.encode_string "salt");
+      failedUnlockDigest = Some (Base64.encode_string "digest");
+    }
+  in
+  Alcotest.(check string) "with digest" "operational" (boot platform)
 
 let get_config_tls_public_pem =
   "get tls public pem file succeeds" @? fun () ->
@@ -6684,6 +6729,7 @@ let () =
           system_backup_and_restore_no_backuppassphrase_fails;
           boot_migrates_deprecated_time_offset;
           system_backup_and_restore_unattended;
+          system_partial_restore_keeps_unattended;
           system_backup_and_restore_unattended_changed_devkey;
           system_backup_and_restore_unattended_changed_all;
           system_backup_and_restore_changed_devkey;

@@ -2171,7 +2171,11 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: "Configure unattended boot: switch it on or off (flip the switch)."
+      description:
+        "Configure unattended boot: switch it on or off (flip the switch).
+        Unattended boot is skipped until the unlock passphrase has been entered
+        once, which enables the authentication in *Failed* state, for example
+        after an update to v5.0 or a restore into an *Unprovisioned* NetHSM."
       requestBody:
         content:
           application/json:

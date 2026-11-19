@@ -1134,7 +1134,8 @@ module Make (KV : Kv_ext.Platform) = struct
     Config_store.remove config_store (Time_offset [@ocaml.warning "-3"])
     >|= fun () -> Log.debug (fun m -> m "removed deprecated time-offset key")
 
-  let boot_config_store ~cache_settings config_store device_key =
+  let boot_config_store ?(failed_unlock_known = true) ~cache_settings
+      config_store device_key =
     let open Lwt_result.Infix in
     lwt_error_fatal "get unlock-salt" ~pp_error:Config_store.pp_error
       (Config_store.get config_store Unlock_salt)
@@ -1142,6 +1143,12 @@ module Make (KV : Kv_ext.Platform) = struct
     lwt_error_fatal "get unattended boot" ~pp_error:Config_store.pp_error
       (Config_store.get_opt config_store Unattended_boot)
     >>= function
+    | Some true when not failed_unlock_known ->
+        (* the passphrase unlock sets the authentication in Failed state *)
+        Log.warn (fun m ->
+            m "skipping unattended boot until unlocked with the passphrase");
+        Config_store.forget_config_domain_key config_store;
+        Lwt.return (Ok Locked)
     | Some true -> (
         let open Lwt.Infix in
         let domain_store =
@@ -4150,8 +4157,11 @@ module Make (KV : Kv_ext.Platform) = struct
                  if namespace store is not present in backup, it will be
                  provisioned here. *)
               let** new_state =
-                boot_config_store ~cache_settings:t.cache_settings
-                  t.config_store t.device_key
+                boot_config_store
+                  ~failed_unlock_known:
+                    (Option.is_some t.failed_unlock_salt
+                    && Option.is_some t.failed_unlock_digest)
+                  ~cache_settings:t.cache_settings t.config_store t.device_key
               in
               t.state <- new_state;
               Lwt_result.return ())
@@ -4235,7 +4245,7 @@ module Make (KV : Kv_ext.Platform) = struct
           Lwt.return false
 
   let boot_with_healthy_store ~(system_info : Json.system_info) ~cache_settings
-      ~device_key ~kv ~config_store =
+      ~failed_unlock_known ~device_key ~kv ~config_store =
     let** version =
       lwt_error_to_msg ~pp_error:Config_store.pp_error
         (Config_store.get_opt config_store Version)
@@ -4259,7 +4269,8 @@ module Make (KV : Kv_ext.Platform) = struct
             ~device_id:system_info.deviceId version
         in
         let** state =
-          boot_config_store ~cache_settings config_store device_key
+          boot_config_store ~failed_unlock_known ~cache_settings config_store
+            device_key
         in
         let** api = certificate_chain config_store API in
         let* cluster_opt =
@@ -4453,13 +4464,20 @@ module Make (KV : Kv_ext.Platform) = struct
     and mbox = Lwt_mvar.create_empty ()
     and res_mbox = Lwt_mvar.create_empty () in
     let open Lwt.Infix in
+    let failed_unlock_salt = decode_failed_unlock platform.failedUnlockSalt
+    and failed_unlock_digest =
+      decode_failed_unlock platform.failedUnlockDigest
+    in
+    let failed_unlock_known =
+      Option.is_some failed_unlock_salt && Option.is_some failed_unlock_digest
+    in
     (* Store content can be unusable, for example after a power loss during
        a join. That must not stop the boot: only a running API can repair it. *)
     let normal_boot () =
       Lwt.catch
         (fun () ->
-          boot_with_healthy_store ~system_info ~cache_settings ~device_key ~kv
-            ~config_store)
+          boot_with_healthy_store ~system_info ~cache_settings
+            ~failed_unlock_known ~device_key ~kv ~config_store)
         (* what store read and decode failures raise; anything else is a bug
            or a runtime failure, and still stops the boot *)
         (function
@@ -4530,8 +4548,8 @@ module Make (KV : Kv_ext.Platform) = struct
         device_key;
         cache_settings;
         default_net;
-        failed_unlock_salt = decode_failed_unlock platform.failedUnlockSalt;
-        failed_unlock_digest = decode_failed_unlock platform.failedUnlockDigest;
+        failed_unlock_salt;
+        failed_unlock_digest;
       }
     in
     Lwt.async (fun () ->
