@@ -2721,6 +2721,45 @@ let post_config_tls_generate =
     | _ -> false
   with Failure _ -> false
 
+let post_cluster_tls_generate_caches_cluster_fields =
+  Alcotest.test_case
+    "post cluster tls generate caches the new key in the cluster fields" `Quick
+    (fun () ->
+      let pushed = ref [] in
+      let f = function
+        | Hsm.Set_local_config c ->
+            pushed := c :: !pushed;
+            Hsm.EmptyResult
+        | _ -> Hsm.EmptyResult
+      in
+      let hsm_state = operational_mock_with_mbox' f in
+      pushed := [];
+      admin_post_request ~hsm_state
+        ~body:(`String {|{ type: "RSA", length: 2048 }|})
+        ~expect:(debug "caching config to the platform")
+        "/cluster/tls/generate"
+      |> returns_empty ~with_status:`No_content;
+      let cluster_public =
+        request ~hsm_state ~headers:admin_headers "/cluster/tls/public.pem"
+        |> returns_string ~with_status:`OK
+      in
+      match !pushed with
+      | [ c ] ->
+          Alcotest.(check (option string)) "API cert" None c.tls_cert;
+          Alcotest.(check (option string)) "API key" None c.tls_key;
+          let pushed_public =
+            Option.get c.tls_cluster_key
+            |> X509.Private_key.decode_pem |> Result.get_ok
+            |> X509.Private_key.public |> X509.Public_key.encode_pem
+          in
+          Alcotest.(check string) "cluster key" cluster_public pushed_public;
+          Alcotest.(check bool)
+            "cluster cert" true
+            (Option.is_some c.tls_cluster_cert)
+      | l ->
+          Alcotest.failf "expected one local config push, got %d"
+            (List.length l))
+
 let post_config_tls_generate_generic_key =
   "post tls generate fail generic key" @? fun () ->
   let hsm_state = operational_mock () in
@@ -6790,6 +6829,8 @@ let () =
           post_config_tls_generate_generic_key;
           post_config_tls_generate_bad_length;
         ] );
+      ( "/cluster/tls/generate",
+        [ post_cluster_tls_generate_caches_cluster_fields ] );
       ( "/config/network",
         [
           config_network_ok;

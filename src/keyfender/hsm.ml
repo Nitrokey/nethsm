@@ -2812,13 +2812,7 @@ module Make (KV : Kv_ext.Platform) = struct
           tls_maybe_notify t tls_kind >>= fun () ->
           let cert_pem = X509.Certificate.encode_pem cert in
           let key_pem = X509.Private_key.encode_pem key in
-          push_local_config
-            {
-              Json.empty_local_conf with
-              tls_cert = Some cert_pem;
-              tls_key = Some key_pem;
-            }
-            t
+          push_local_config (local_config_tls_of tls_kind cert_pem key_pem) t
 
     let network t =
       let open Lwt.Infix in
