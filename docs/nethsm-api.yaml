@@ -2401,7 +2401,10 @@ paths:
         "201":
           description: Successfully set certificate.
         "400":
-          description: Certificate malformed.
+          description: |
+            Certificate malformed, or its subject alternative names contain no IP address
+            that cluster members can connect to (i.e. none that is not loopback,
+            unspecified, broadcast or multicast).
           content:
             application/json:
               schema:
@@ -2438,6 +2441,12 @@ paths:
             application/x-pem-file:
               schema:
                 $ref: "#/components/schemas/PemCSR"
+        "400":
+          description: The subjectAltNames are not usable for cluster peer traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required but none provided.
         "403":
@@ -2446,7 +2455,14 @@ paths:
           description: Content type in Accept header not supported.
         "412":
           description: Precondition failed (NetHSM was not *Operational*).
-      description: Get NetHSM certificate signing request for cluster peer traffic (i.e. how cluster members communicate), e.g. to replace self-signed initial certificate.
+      description: |
+        Get NetHSM certificate signing request for cluster peer traffic (i.e. how cluster members communicate), e.g. to replace self-signed initial certificate.
+
+        Cluster members connect to each other by IP address, so the subjectAltNames must
+        contain at least one IP address ("IP:" prefix), and every entry must be a valid IP
+        address or host name. Loopback, unspecified, broadcast and multicast addresses are
+        rejected. If subjectAltNames is omitted, it is set to the configured network IP
+        addresses and, if it is a valid host name, the commonName.
       requestBody:
         content:
           application/json:

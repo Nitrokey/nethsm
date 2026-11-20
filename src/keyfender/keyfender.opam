@@ -45,6 +45,7 @@ depends: [
   "base64" {>= "3.0.0"}
   "hex"
   "ipaddr" {>= "5.0.0"}
+  "domain-name" {>= "0.4.0"}
   "metrics" {>= "0.2.0"}
   "metrics-lwt" {>= "0.2.0"}
   "duration"

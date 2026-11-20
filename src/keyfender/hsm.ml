@@ -1081,42 +1081,70 @@ module Make (KV : Kv_ext.Platform) = struct
               ~pp_error:X509.Validation.pp_signature_error e
         | Ok cert -> (cert, priv))
 
+  let san_ip_prefix = "IP:"
+
+  let san_ip name =
+    let n = String.length san_ip_prefix in
+    if String.starts_with ~prefix:san_ip_prefix name then
+      Some (Ipaddr.of_string (String.sub name n (String.length name - n)))
+    else None
+
+  let san_of_names names =
+    (* support IP:X.X.X.X as syntax for IP SAN, like OpenSSL *)
+    let ip_names, dns_names =
+      List.partition_map
+        (fun name ->
+          match san_ip name with
+          | Some (Error _) ->
+              Logs.warn (fun f ->
+                  f "using IP SAN '%s' as DNS: not a valid IP" name);
+              Either.right name
+          | Some (Ok ip) ->
+              (* RFC 3280 4.2.1.7 par 6 *)
+              Either.left (Ipaddr.to_octets ip)
+          | None -> Either.right name)
+        names
+    in
+    X509.General_name.(add DNS dns_names (add IP ip_names empty))
+
+  let csr_extensions_of_san san_names =
+    let ext_map =
+      X509.Extension.(add Subject_alt_name (false, san_names) empty)
+    in
+    Some X509.Signing_request.Ext.(add Extensions ext_map empty)
+
   let create_csr_extensions subject =
     match subject.Json.subjectAltNames with
     | Some [] -> None
-    | Some names ->
-        (* support IP:X.X.X.X as syntax for IP SAN, like OpenSSL *)
-        let ip_names, dns_names =
-          List.partition_map
-            (fun name ->
-              if String.starts_with ~prefix:"IP:" name then
-                let ip = String.sub name 3 (String.length name - 3) in
-                match Ipaddr.of_string ip with
-                | Error _ ->
-                    Logs.warn (fun f ->
-                        f "using IP SAN '%s' as DNS: not a valid IP" name);
-                    Either.right name
-                | Ok ip ->
-                    (* RFC 3280 4.2.1.7 par 6 *)
-                    Either.left (Ipaddr.to_octets ip)
-              else Either.right name)
-            names
-        in
-        let san_names =
-          X509.General_name.(add DNS dns_names (add IP ip_names empty))
-        in
-        let ext_map =
-          X509.Extension.(add Subject_alt_name (false, san_names) empty)
-        in
-        Some X509.Signing_request.Ext.(add Extensions ext_map empty)
+    | Some names -> csr_extensions_of_san (san_of_names names)
     | None ->
-        let san_names =
+        csr_extensions_of_san
           X509.General_name.(add DNS [ subject.commonName ] empty)
-        in
-        let ext_map =
-          X509.Extension.(add Subject_alt_name (false, san_names) empty)
-        in
-        Some X509.Signing_request.Ext.(add Extensions ext_map empty)
+
+  let is_host_name name =
+    name <> ""
+    && Result.is_ok (Result.bind (Domain_name.of_string name) Domain_name.host)
+
+  let usable_peer_ip ip =
+    (not (Ipaddr.is_multicast ip))
+    && not (List.mem (Ipaddr.scope ip) Ipaddr.[ Point; Interface; Admin ])
+
+  (* cluster peers dial each other by IP (there is no DNS on the platform),
+     so a cluster certificate needs at least one IP SAN that a peer can reach;
+     other entries don't hurt, so certificates from a CA may carry them *)
+  let check_cluster_san san_names =
+    let ips = Option.value ~default:[] (X509.General_name.find IP san_names) in
+    let usable octets =
+      Result.fold ~ok:usable_peer_ip
+        ~error:(fun _ -> false)
+        (Ipaddr.of_octets octets)
+    in
+    if List.exists usable ips then Ok ()
+    else
+      Error
+        ( Bad_request,
+          "cluster subject alternative names must contain at least one usable \
+           IP address" )
 
   let certificate_chain kv tls_kind =
     let open Lwt_result.Infix in
@@ -2743,6 +2771,18 @@ module Make (KV : Kv_ext.Platform) = struct
             | Ok _ ->
                 let open Lwt_result.Infix in
                 check_signed_by_ca () >>= fun () ->
+                (if tls_kind <> Cluster then Lwt.return_ok ()
+                 else
+                   let san_names =
+                     match
+                       X509.Extension.find Subject_alt_name
+                         (X509.Certificate.extensions cert)
+                     with
+                     | Some (_, san_names) -> san_names
+                     | None -> X509.General_name.empty
+                   in
+                   Lwt.return (check_cluster_san san_names))
+                >>= fun () ->
                 with_write_lock (fun () ->
                     internal_server_error Write "Write certificate"
                       Config_store.pp_write_error
@@ -2770,15 +2810,6 @@ module Make (KV : Kv_ext.Platform) = struct
       Config_store.digest t.config_store (Certificate tls_kind) >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
-
-    let tls_csr_pem t tls_kind subject =
-      let t = tls_of t tls_kind in
-      let dn = Json.to_distinguished_name subject in
-      let extensions = create_csr_extensions subject in
-      Lwt.return
-        (match X509.Signing_request.create dn ?extensions t.key with
-        | Ok csr -> Ok (X509.Signing_request.encode_pem csr)
-        | Error (`Msg m) -> Error (Bad_request, "while creating CSR: " ^ m))
 
     let tls_generate t tls_kind typ ~length =
       let tls = tls_of t tls_kind in
@@ -2851,6 +2882,69 @@ module Make (KV : Kv_ext.Platform) = struct
       Config_store.digest t.config_store Ip_config >|= function
       | Ok digest -> Some (to_hex digest)
       | Error _ -> None
+
+    (* without explicit names, a cluster CSR gets the configured IPs, and the
+       common name for when the platform can resolve DNS *)
+    let cluster_csr_extensions t (subject : Json.subject_req) =
+      let open Lwt_result.Infix in
+      (match subject.subjectAltNames with
+        | Some names -> Lwt.return_ok names
+        | None ->
+            (* read only: unlike [network], don't store the default here, and
+               don't guess an IP when the store fails *)
+            internal_server_error Read "Read network configuration"
+              Config_store.pp_error
+              (Config_store.get_opt t.config_store Ip_config)
+            >|= fun net ->
+            let (net : Json.network) =
+              match net with
+              | Some net -> net
+              | None -> default_network_configuration t.default_net
+            in
+            let ip addr = san_ip_prefix ^ Ipaddr.to_string addr in
+            let v4 = ip (V4 (Ipaddr.V4.Prefix.address net.ipv4.cidr)) in
+            let v6 =
+              Option.map
+                (fun (v6 : Json.network_v6) ->
+                  ip (V6 (Ipaddr.V6.Prefix.address v6.cidr)))
+                net.ipv6
+            in
+            let cn =
+              if is_host_name subject.commonName then Some subject.commonName
+              else None
+            in
+            List.filter_map Fun.id [ Some v4; v6; cn ])
+      >>= fun names ->
+      (* stricter than [check_cluster_san]: we don't create useless entries *)
+      let invalid name =
+        match san_ip name with
+        | Some ip ->
+            not (Result.fold ~ok:usable_peer_ip ~error:(fun _ -> false) ip)
+        | None -> not (is_host_name name)
+      in
+      match List.find_opt invalid names with
+      | Some name ->
+          Lwt.return_error
+            ( Bad_request,
+              Fmt.str "invalid cluster subject alternative name: %S" name )
+      | None ->
+          let san_names = san_of_names names in
+          Lwt.return
+            (check_cluster_san san_names
+            |> Result.map (fun () -> csr_extensions_of_san san_names))
+
+    let tls_csr_pem t tls_kind subject =
+      let open Lwt_result.Infix in
+      (match tls_kind with
+        | API -> Lwt.return_ok (create_csr_extensions subject)
+        | Cluster -> cluster_csr_extensions t subject)
+      >>= fun extensions ->
+      let tls = tls_of t tls_kind in
+      let dn = Json.to_distinguished_name subject in
+      Lwt.return
+        (match X509.Signing_request.create dn ?extensions tls.key with
+        | Ok csr -> Ok (X509.Signing_request.encode_pem csr)
+        | Error (`Msg m) -> Error (Bad_request, "while creating CSR: " ^ m))
 
     let default_log = { Json.ipAddress = None; port = 514; logLevel = Info }
 

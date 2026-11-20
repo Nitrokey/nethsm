@@ -2137,6 +2137,22 @@ let gen_ca () =
   in
   (sub, pr_key, ca)
 
+(* X509.Signing_request.sign does not copy the extensions requested in the
+   CSR, so take them over unless others are given *)
+let sign_csr ?extensions ca_key ca_sub csr =
+  let extensions =
+    match extensions with
+    | Some e -> e
+    | None ->
+        X509.Signing_request.(Ext.find Extensions (info csr).extensions)
+        |> Option.value ~default:X509.Extension.empty
+  in
+  let valid_from = Ptime.of_year 2025 |> Option.get in
+  let valid_until = Ptime.of_year 2030 |> Option.get in
+  X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions ca_key
+    ca_sub
+  |> Result.get_ok
+
 let put_config_tls_cluster_ca_pem_fail_not_signed =
   Alcotest.test_case "put tls cluster CA fails when TLS cert not signed by this"
     `Quick (fun () ->
@@ -2333,6 +2349,111 @@ let post_config_tls_csr_pem_custom_san =
       | Error _ -> false)
   | _ -> false
 
+let csr_san csr_pem =
+  let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+  X509.Signing_request.(Ext.find Extensions (info csr).extensions)
+  |> Fun.flip Option.bind (X509.Extension.find Subject_alt_name)
+  |> Option.map snd
+
+let post_cluster_tls_csr_pem_default_san =
+  Alcotest.test_case
+    "post cluster tls csr pem without subjectAltNames uses configured IP" `Quick
+    (fun () ->
+      let san =
+        admin_post_request ~body:(`String subject) "/cluster/tls/csr.pem"
+        |> returns_string ~with_status:`OK
+        |> csr_san |> Option.get
+      in
+      let find k = X509.General_name.find k san |> Option.value ~default:[] in
+      Alcotest.(check (list string))
+        "IP SAN"
+        [ Ipaddr.(to_octets (of_string_exn "192.168.1.1")) ]
+        (find IP);
+      Alcotest.(check (list string)) "DNS SAN" [ "nethsm.local" ] (find DNS))
+
+let post_cluster_tls_csr_pem_invalid_san =
+  Alcotest.test_case "post cluster tls csr pem rejects unusable subjectAltNames"
+    `Quick (fun () ->
+      List.iter
+        (fun names ->
+          let body =
+            Fmt.str {|{ "commonName": "nethsm", "subjectAltNames": %s }|} names
+          in
+          admin_post_request ~body:(`String body) "/cluster/tls/csr.pem"
+          |> returns_string ~with_status:`Bad_request
+          |> ignore)
+        [
+          {|[]|};
+          {|[""]|};
+          {|["nethsm.local"]|};
+          {|["IP:192.168.1.1", ""]|};
+          {|["IP:192.168.1.1", "IP:foo"]|};
+          {|["IP:127.0.0.1"]|};
+          {|["IP:192.168.1.1", "IP:127.0.0.1"]|};
+          {|["IP:192.168.1.1", "IP:0.0.0.0"]|};
+          {|["IP:::1"]|};
+          {|["IP:ff02::1"]|};
+          {|["IP:255.255.255.255"]|};
+        ];
+      admin_post_request
+        ~body:
+          (`String
+             {|{ "commonName": "nethsm", "subjectAltNames": ["IP:169.254.169.1", "IP:fc00:22:1::2", "node1.example.com"] }|})
+        "/cluster/tls/csr.pem"
+      |> returns_string ~with_status:`OK
+      |> ignore)
+
+let put_cluster_tls_cert_pem_san =
+  Alcotest.test_case
+    "put cluster tls cert pem needs a usable IP SAN, ignores the rest" `Quick
+    (fun () ->
+      let hsm_state, csr_pem =
+        admin_post_request
+          ~hsm_state:(operational_mock_with_mbox ())
+          ~body:(`String subject) "/cluster/tls/csr.pem"
+        |> returns_string' ~with_status:`OK
+      in
+      let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
+      let ca_sub, ca_key, _ca = gen_ca () in
+      let put ?expect ~extensions () =
+        let cert = sign_csr ~extensions ca_key ca_sub csr in
+        request ?expect ~hsm_state ~meth:`PUT ~headers:admin_headers
+          ~content_type:"application/x-pem-file"
+          ~body:(`String (X509.Certificate.encode_pem cert))
+          "/cluster/tls/cert.pem"
+      in
+      let rejected ~extensions =
+        put ~extensions () |> returns_string ~with_status:`Bad_request
+      in
+      let with_san san =
+        X509.Extension.(add Subject_alt_name (false, san) empty)
+      in
+      let ips l =
+        with_san
+          X509.General_name.(
+            singleton IP
+              (List.map Ipaddr.(fun s -> to_octets (of_string_exn s)) l))
+      in
+      let msg =
+        {|{"message":"cluster subject alternative names must contain at least one usable IP address"}|}
+      in
+      Alcotest.(check string)
+        "no SAN" msg
+        (rejected ~extensions:X509.Extension.empty);
+      Alcotest.(check string)
+        "DNS only" msg
+        (rejected
+           ~extensions:
+             (with_san X509.General_name.(singleton DNS [ "nethsm.local" ])));
+      Alcotest.(check string)
+        "loopback only" msg
+        (rejected ~extensions:(ips [ "127.0.0.1"; "::1" ]));
+      put
+        ~expect:(debug "caching config to the platform")
+        ~extensions:(ips [ "192.168.1.1"; "127.0.0.1" ])
+        ()
+      |> returns_empty ~with_status:`Created)
+
 let setup_cluster_ca hsm_state =
   let headers = admin_headers in
   (* create a self-signed CA and get the NetHSM CSR *)
@@ -2344,12 +2465,7 @@ let setup_cluster_ca hsm_state =
   let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
   let ca_sub, ca_key, ca = gen_ca () in
   let ca_pem = X509.Certificate.encode_pem ca in
-  let valid_from = Ptime.of_year 2025 |> Option.get in
-  let valid_until = Ptime.of_year 2030 |> Option.get in
-  let new_cert =
-    X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
-    |> Result.get_ok
-  in
+  let new_cert = sign_csr ca_key ca_sub csr in
   let content_type = "application/x-pem-file" in
   let new_cert_pem = X509.Certificate.encode_pem new_cert in
   (* replace the NetHSM with that newly signed cert *)
@@ -6075,12 +6191,7 @@ let cluster_join =
       let csr = X509.Signing_request.decode_pem csr_pem |> Result.get_ok in
       let ca_sub, ca_key, ca = gen_ca () in
       let ca_pem = X509.Certificate.encode_pem ca in
-      let valid_from = Ptime.of_year 2025 |> Option.get in
-      let valid_until = Ptime.of_year 2030 |> Option.get in
-      let new_cert =
-        X509.Signing_request.sign csr ~valid_from ~valid_until ca_key ca_sub
-        |> Result.get_ok
-      in
+      let new_cert = sign_csr ca_key ca_sub csr in
       let content_type = "application/x-pem-file" in
       let new_cert_pem = X509.Certificate.encode_pem new_cert in
       (* replace the NetHSM with that newly signed cert *)
@@ -6814,6 +6925,12 @@ let () =
           put_config_tls_cluster_ca_pem_fail_not_signed;
           put_config_tls_cluster_ca_pem;
         ] );
+      ( "/cluster/tls/csr",
+        [
+          post_cluster_tls_csr_pem_default_san;
+          post_cluster_tls_csr_pem_invalid_san;
+        ] );
+      ("/cluster/tls/cert.pem", [ put_cluster_tls_cert_pem_san ]);
       ( "/config/tls/csr",
         [
           post_config_tls_csr_pem;
